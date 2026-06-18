@@ -128,6 +128,17 @@ def test_repo_commit_pinning(tmp_path):
     assert repo_commit(tmp_path / "nope") == (None, None)   # non-git -> no crash
 
 
+def test_recon_audit_prompt_name_normalization():
+    from argo.stages.recon import _is_audit_prompt, _canonical_prompt_name
+    # accept both underscore and hyphen (real models drift), reject other artifacts
+    assert _is_audit_prompt("audit_p1_full.md") and _is_audit_prompt("audit-cross-instance.md")
+    assert not _is_audit_prompt("repo_profile.json") and not _is_audit_prompt("synthesis_notes.md")
+    assert not _is_audit_prompt("auditing.md")          # must be audit[-_], not just "audit"
+    # normalize hyphenated names so the audit stage's audit_*.md glob picks them up
+    assert _canonical_prompt_name("audit-cross-instance.md") == "audit_cross-instance.md"
+    assert _canonical_prompt_name("audit_p1_full.md") == "audit_p1_full.md"
+
+
 def test_local_scope_synthesis():
     from argo.stages.ingest import _local_scope, _repo_name
     assert _repo_name("https://github.com/org/My-Repo.git", True) == "My-Repo"

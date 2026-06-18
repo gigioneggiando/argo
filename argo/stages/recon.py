@@ -31,6 +31,17 @@ from ..rendering import fill_placeholders, with_artifact_contract
 from ..runner import RunnerError
 
 
+def _is_audit_prompt(name: str) -> bool:
+    """A recon-generated audit prompt. Real models drift between ``audit_foo.md`` and
+    ``audit-foo.md`` (underscore vs hyphen) — accept either."""
+    return bool(re.match(r"audit[-_]", name, re.I)) and name.lower().endswith(".md")
+
+
+def _canonical_prompt_name(name: str) -> str:
+    """Normalize an audit-prompt filename to the ``audit_<rest>.md`` form the audit stage globs."""
+    return name if name.startswith("audit_") else "audit_" + name[len("audit"):].lstrip("-_")
+
+
 def _repo_url(scope) -> str:
     for a in scope.source_repo_assets:
         s = a.asset.strip().lower()
@@ -128,14 +139,16 @@ def run(ctx: RunContext) -> list[Path]:
         elif f.name == "synthesis_notes.md":
             (ctx.run_dir / "synthesis_notes.md").write_text(
                 f.read_text(encoding="utf-8"), encoding="utf-8")
-        elif f.name.startswith("audit_") and f.suffix == ".md":
+        elif _is_audit_prompt(f.name):
             text = f.read_text(encoding="utf-8")
             # Deterministically re-insert any prohibited technique the model paraphrased away
             # (only ever ADDS the scope's own constraints) before the hard gate below.
             text = ensure_prohibited_present(text, scope.prohibited_techniques)
             # Guardrail: a generated prompt that lost the RoE / prohibited techniques fails here.
             assert_audit_prompt_wellformed(text, scope.prohibited_techniques)
-            dst = ctx.prompts_out_dir / f.name
+            # Normalize the filename so the model's `audit-foo.md` is picked up by audit's
+            # `audit_*.md` glob (real models drift between `audit_` and `audit-`).
+            dst = ctx.prompts_out_dir / _canonical_prompt_name(f.name)
             dst.write_text(text, encoding="utf-8")
             prompt_paths.append(dst)
 

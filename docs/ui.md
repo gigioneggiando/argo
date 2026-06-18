@@ -48,7 +48,9 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
   program). Both feed the same engine. Plus *Code to audit* (a local folder path — resolved on the
   machine running the server; mounted read-only and never pushed, though a cloud backend sends the
   source to its API to analyze while a local/OSS model keeps it on-device — or a git URL) and an
-  *Advanced* panel (runner, budget, audit model, parallel, calibration, dry-run, **web research**). The
+  *Advanced* panel (runner, budget, audit model, parallel, calibration, dry-run, **web research**).
+  The Code-to-audit field also has an **⬆ Upload .zip** button (C3): the zip is safely extracted
+  server-side (path-traversal + zip-bomb guarded) and its path fills the field. The
   **Web research (Stage 0)** toggle (default **On**) runs the opt-out web-OSINT pass before recon
   (the only networked step; never the live in-scope hosts); **Off** keeps the run fully offline.
   The **runner** selector offers **Mock** (free) · **Claude** · **Codex** (with a Codex model +

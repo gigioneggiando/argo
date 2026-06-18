@@ -16,9 +16,22 @@ async function req(method, path, body) {
   return ct.includes("application/json") ? res.json() : res.text();
 }
 
+async function upload(path, file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(path, { method: "POST", body: fd });   // browser sets the multipart boundary
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch (_) {}
+    throw new Error(`${res.status}: ${detail}`);
+  }
+  return res.json();
+}
+
 export const api = {
   health: () => req("GET", "/health"),
   startRun: (payload) => req("POST", "/runs", payload),
+  uploadRepo: (file) => upload("/uploads", file),
   listRuns: () => req("GET", "/runs"),
   getRun: (id) => req("GET", `/runs/${id}`),
   cancelRun: (id) => req("POST", `/runs/${id}/cancel`),

@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,11 +36,12 @@ from argo.fixes import generate_fixes
 from argo.knowledge import load_vuln_index
 from argo.config import PipelineConfig
 from argo.ledger import Ledger
-from argo.orchestrator import build_context
+from argo.orchestrator import build_context, new_run_id
 from argo.progress import read_status
 
 from .jobs import JobManager
 from .recommend import recommend
+from .uploads import UnsafeZip, extract_zip
 from .schemas import (ChatMessage, FixRequest, RecommendRequest, RunCreated, RunRequest,
                       Settings)
 from .settings import SettingsStore
@@ -120,6 +122,26 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
         run_id = jobs.start(req)
         return RunCreated(run_id=run_id, state="running",
                           status_url=f"/runs/{run_id}", events_url=f"/runs/{run_id}/events")
+
+    @app.post("/uploads")
+    def upload_repo(file: UploadFile = File(...)):
+        """C3: upload a `.zip` of a repo instead of typing a path. It is safely extracted to a
+        staging dir under runs_dir; the returned `repo` path is then used in a normal `POST /runs`
+        (ingest copies it read-only, like any local folder). The target stays read-only; nothing
+        here executes the uploaded code."""
+        if not (file.filename or "").lower().endswith(".zip"):
+            raise HTTPException(status_code=400, detail="only .zip uploads are supported")
+        staging = runs_dir / "_uploads" / new_run_id()
+        try:
+            info = extract_zip(file.file, staging)
+        except UnsafeZip as exc:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise HTTPException(status_code=400, detail=f"rejected upload: {exc}")
+        except Exception as exc:                       # pragma: no cover - defensive
+            shutil.rmtree(staging, ignore_errors=True)
+            raise HTTPException(status_code=400, detail=f"could not read upload: {exc}")
+        return {"repo": info["path"], "files": info["files"],
+                "name": Path(file.filename).stem}
 
     @app.get("/settings")
     def get_settings():

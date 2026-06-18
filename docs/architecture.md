@@ -39,6 +39,7 @@ server/             HTTP API on top of the pipeline (FastAPI) — see api.md
   app.py            endpoints (run lifecycle, SSE progress, whitelisted artifacts) + serves webapp/
   jobs.py           background daemon-thread runs + cancellation
   schemas.py        request/response models
+  uploads.py        C3: safe repo .zip extraction (path-traversal / zip-bomb guarded)
 
 webapp/             no-build web UI (vanilla ES modules + CSS) — see ui.md
 ```

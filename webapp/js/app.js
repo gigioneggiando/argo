@@ -174,8 +174,25 @@ function newRunView() {
   // ---- mode: general code audit (default) vs bug-bounty triage ----------------
   const briefField = field("Program description", briefEl, "The bug-bounty program page — scope, rules and exclusions are extracted from it; it drives scope filtering and the submission drafts.");
   const linksField = field("Reference links", linksEl, "Docs / security pages / advisory history. One URL per line. Optional.");
-  const repoField = field("Code to audit", repoEl,
-    "A local folder path (resolved on the machine running the server) or a git URL (cloned read-only). The repo is mounted read-only and never pushed anywhere — but a cloud backend (Claude / Codex) sends the source to that provider's API to analyze it; only a local / OSS model keeps everything on-device. Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
+  const uploadStatus = h("span", { class: "help", style: { margin: 0 } });
+  const fileEl = h("input", { type: "file", accept: ".zip,application/zip", style: { display: "none" },
+    onchange: async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      uploadStatus.textContent = `Uploading ${f.name}…`;
+      try {
+        const r = await api.uploadRepo(f);
+        form.repo = r.repo; repoEl.value = r.repo;
+        uploadStatus.textContent = `✓ ${r.name}: ${r.files} files extracted`;
+      } catch (err) { uploadStatus.textContent = ""; toast(err.message, true); }
+      e.target.value = "";                         // allow re-selecting the same file
+    } });
+  const uploadBtn = h("button", { type: "button", class: "btn btn-ghost", style: { padding: "8px 13px" },
+    onclick: () => fileEl.click() }, "⬆ Upload .zip");
+  const repoControl = h("div", {}, repoEl,
+    h("div", { class: "row", style: { marginTop: "8px", alignItems: "center" } }, uploadBtn, uploadStatus, fileEl));
+  const repoField = field("Code to audit", repoControl,
+    "A local folder path (resolved on the machine running the server) or a git URL (cloned read-only) — or **upload a .zip** of the repo. The repo is mounted read-only and never pushed anywhere — but a cloud backend (Claude / Codex) sends the source to that provider's API to analyze it; only a local / OSS model keeps everything on-device. Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
   const modeHint = h("div", { class: "help", style: { marginTop: "8px" } });
   const MODE_COPY = {
     general: "Audit any codebase for vulnerabilities — point at a local folder or repo, no program brief needed. The repo stays read-only and is never pushed anywhere (a local / OSS model keeps it fully on-device; a cloud backend sends the source to its API to analyze).",

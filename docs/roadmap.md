@@ -97,7 +97,8 @@ by the API), tested in `tests/test_api.py`.
 - [x] Results: rendered `REPORT.md`; findings table (sortable + severity filter + detail drawer);
       drafts; raw artifacts viewer. (Dry-run shows the generated prompts.)
 - [x] Run history list (re-open any past run).
-- [ ] _Later:_ repo zip upload (backlog **C3**); richer in-browser visual polish pass.
+- [x] **Repo zip upload** (backlog **C3**) — `POST /uploads` (safe extract) + an Upload .zip button.
+- [ ] _Later:_ richer in-browser visual polish pass.
 
 ### Phase 2 — Settings & "Let the AI choose" — ✅ DONE
 Goal: full configurability + a one-click recommended config. Plus a **light/dark theme** toggle.
@@ -406,7 +407,12 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
   tracked in `status.json`, killable) buys crash-isolation and clean mid-run kill, but adds IPC/serialization
   complexity. **Defer** unless Argo is ever exposed multi-user (then pair with auth).
 
-#### C3 — Repo ZIP upload from the UI — effort **M** · paper value **Low (UX)**
+#### C3 — Repo ZIP upload from the UI — effort **M** · paper value **Low (UX)** — ✅ DONE
+- **Shipped:** `POST /uploads` (multipart) extracts a repo `.zip` into a staging dir under
+  `runs_dir` via `server/uploads.extract_zip` — hardened against **path traversal** (every member
+  must resolve inside the dest), **zip bombs** (entry-count + uncompressed-size caps), and symlinks
+  (skipped); the returned `repo` path then drives a normal `POST /runs` (ingest copies it read-only).
+  The New Run form has an **⬆ Upload .zip** button. `python-multipart` added to requirements.
 - **Feasibility: medium.** No multipart anywhere: `RunRequest.repo` is a string, `api.startRun` sends JSON,
   the New Run field is a text input, and `acquire_repo(source, dest, *, is_url)` only clones a URL or
   `copytree`s a local dir. Need a `multipart/form-data` endpoint (or `POST /runs/upload`), a temp-dir unzip

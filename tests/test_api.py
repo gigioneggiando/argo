@@ -50,6 +50,29 @@ def _wait(client, run_id, timeout=15.0):
     raise AssertionError(f"run {run_id} did not finish; last={st}")
 
 
+def test_upload_zip_then_run(tmp_path):
+    import io, zipfile
+    app, client = _client(tmp_path)
+    try:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("proj/app.py", "x = 1\n")
+            zf.writestr("proj/readme.md", "# proj\n")
+        buf.seek(0)
+        r = client.post("/uploads", files={"file": ("proj.zip", buf, "application/zip")})
+        assert r.status_code == 200, r.text
+        up = r.json()
+        assert up["files"] == 2 and up["name"] == "proj" and up["repo"].endswith("proj")
+        # the returned path drives a normal local-review run (no brief)
+        run_id = _start(client, brief="", repo=up["repo"])
+        assert _wait(client, run_id)["state"] == "completed"
+        # a non-zip upload is rejected
+        bad = client.post("/uploads", files={"file": ("x.txt", io.BytesIO(b"nope"), "text/plain")})
+        assert bad.status_code == 400
+    finally:
+        app.state.ledger.close()
+
+
 def test_full_pipeline_via_api(tmp_path):
     app, client = _client(tmp_path)
     try:

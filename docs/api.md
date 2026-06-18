@@ -27,6 +27,7 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | GET | `/benchmark` | the latest benchmark report (Phase 7): findings P/R/F1 by archetype + CWE, or `null` |
 | GET | `/benchmark/ab` | the latest A/B benchmark report, or `null` |
 | POST | `/runs` | start a run (202 + `run_id`) |
+| POST | `/uploads` | **C3**: upload a repo `.zip` (multipart `file`) → safely extracted to a staging dir; returns `{repo, files, name}`. Use `repo` in `POST /runs`. Guards: path-traversal, zip-bomb caps, no symlinks |
 | GET | `/runs` | list runs, newest first |
 | GET | `/runs/{id}` | live status (stage timeline + cost + ready artifacts) |
 | GET | `/runs/{id}/events` | **SSE** stream of status until terminal |
@@ -151,5 +152,5 @@ dry-run, the SSE stream reaching a terminal state, the artifact whitelist, and 4
 
 ## Not yet (later roadmap phases)
 
-Auth/multi-user, subprocess isolation per run (vs. in-process threads), and file-upload of a repo
-zip. (Mid-stage cancellation and the frontend are done.) See [roadmap.md](roadmap.md).
+Auth/multi-user and subprocess isolation per run (vs. in-process threads). (Mid-stage cancellation,
+the frontend, and repo-zip upload are done.) See [roadmap.md](roadmap.md).

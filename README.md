@@ -358,7 +358,7 @@ This README is the conceptual overview. Deeper, implementation-level docs live i
 
 | Doc | What's in it |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Module map, data flow, the `ClaudeRunner` abstraction, `RunContext`, ledger schema, dedup algorithm |
+| [docs/architecture.md](docs/architecture.md) | Module map, data flow, the `AgentRunner` abstraction, `RunContext`, ledger schema, dedup algorithm |
 | [docs/prompt-synthesis.md](docs/prompt-synthesis.md) | The archetype-driven prompt maker (Stage 2), the specificity self-check, reuse from the legacy generator, safe meta-prompt changes |
 | [docs/cli-reference.md](docs/cli-reference.md) | Every command and flag, with examples (`--smoke`, `--budget`, caps, `--calibration`, …) |
 | [docs/guardrails.md](docs/guardrails.md) | The non-negotiable guardrails and **exactly where each is enforced in code** |

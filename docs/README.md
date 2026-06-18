@@ -1,14 +1,15 @@
 # Documentation
 
-Implementation-level documentation for the bug-bounty source-audit pipeline. For the
-**conceptual overview** (what the pipeline is, why prompt enrichment matters, model strategy,
-operational tips), see the [top-level README](../README.md).
+Implementation-level documentation for Argo — an **LLM-native static vulnerability detector** for
+source code (general code audit by default; bug-bounty triage as one mode). For the **conceptual
+overview** (what the pipeline is, why prompt enrichment matters, model strategy, operational tips),
+see the [top-level README](../README.md).
 
 ## Contents
 
 | Doc | Audience | What's in it |
 |---|---|---|
-| [architecture.md](architecture.md) | developers | Module map, stage data flow, the `ClaudeRunner` interface, `RunContext`, the SQLite ledger schema, the dedup algorithm |
+| [architecture.md](architecture.md) | developers | Module map, stage data flow, the `AgentRunner` interface, `RunContext`, the SQLite ledger schema, the dedup algorithm |
 | [prompt-synthesis.md](prompt-synthesis.md) | prompt authors | How Stage 2 generates target-specific audit prompts: the archetype-driven meta-prompt, the specificity self-check, reuse from the legacy generator, and how to change the meta-prompt safely |
 | [cli-reference.md](cli-reference.md) | operators | Every command and every flag, with worked examples |
 | [guardrails.md](guardrails.md) | reviewers / security | The hard guardrails and the exact code location that enforces each (incl. the research-stage OSINT carve-out and the per-backend mapping) |

@@ -18,7 +18,7 @@ argo/
   schemas.py        Draft-07 validation against scope_schema.json / findings_schema.json
   guardrails.py     tool allowlist enforcement, prohibited-technique assertions, scope filter
   rendering.py      placeholder fill, the .j2 template, the artifact-contract epilogue
-  runner.py         ClaudeRunner interface + HeadlessClaudeRunner + MockClaudeRunner
+  runner.py         AgentRunner interface + HeadlessClaudeRunner · CodexRunner · MockClaudeRunner
   ranking.py        severity/confidence ordering, ref parsing, dedup_key
   ledger.py         SQLite: llm_calls (cost) + findings_ledger (cross-run dedup)
   progress.py       ProgressReporter -> runs/<id>/status.json (live stage timeline + cost)
@@ -56,13 +56,14 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 
 `pipeline` runs 1→5 (or 1→2 with `--dry-run`) and **stops before any submission**.
 
-## The `ClaudeRunner` abstraction
+## The `AgentRunner` abstraction
 
 Every LLM call goes through one interface, so guardrails and cost logging cannot be bypassed
-(BUILD_SPEC: "make the runner an interface so it can be swapped").
+(BUILD_SPEC: "make the runner an interface so it can be swapped"). The abstract base is
+`AgentRunner`; `ClaudeRunner` is kept as a backward-compatible alias.
 
 ```python
-class ClaudeRunner(ABC):
+class AgentRunner(ABC):
     def run(self, *, prompt, run_dir, work_dir, model, stage, run_id,
             repo_dir=None, allowed_tools=ARTIFACT_TOOLS, label=None) -> LLMResult: ...
 ```
@@ -74,9 +75,11 @@ class ClaudeRunner(ABC):
 4. logs the call to the ledger + `llm_log.jsonl` (always, even on error),
 5. surfaces API errors loudly and enforces per-session caps.
 
-Two implementations:
-- **`HeadlessClaudeRunner`** — shells out to `claude -p --output-format json`. See
+Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`):
+- **`HeadlessClaudeRunner`** — shells out to `claude -p --output-format json` (Claude Code). See
   [headless-runner.md](headless-runner.md).
+- **`CodexRunner`** — shells out to the Codex CLI for OpenAI models or, with `--codex-oss`, a local
+  open-source model (Ollama / LM Studio). See [backends.md](backends.md).
 - **`MockClaudeRunner`** — writes fixture files into the scratch dir and returns a synthetic
   manifest. Zero tokens; used by the whole test suite.
 

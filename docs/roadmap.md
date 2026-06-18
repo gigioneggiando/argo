@@ -2,7 +2,7 @@
 
 Status: planning. This document analyzes each requested feature (feasibility / utility / priority
 / needed?), proposes a phased build order, and tracks the todo list. The pipeline (CLI + stages +
-`ClaudeRunner` + ledger) is the engine; everything here sits **on top** of it and must keep its
+`AgentRunner` + ledger) is the engine; everything here sits **on top** of it and must keep its
 guardrails intact (no live host, no patching the target, read-only repo, no auto-submit).
 
 ## Constraints that shape every decision (read first)
@@ -20,7 +20,7 @@ guardrails intact (no live host, no patching the target, read-only repo, no auto
    tools). Any new execution path (other model backends, static-analysis tools, test generation)
    must route through or mirror that chokepoint. Test generation writes **new** files to an
    artifacts dir — it must never modify the target repo.
-4. **The `ClaudeRunner` is already swappable.** Multi-backend is *architecturally* prepared; the
+4. **The `AgentRunner` is already swappable.** Multi-backend is *architecturally* prepared; the
    real cost of adding a backend is re-validating the guardrails + sandbox for it, not the interface.
 
 ## Per-feature analysis
@@ -111,7 +111,7 @@ Goal: full configurability + a one-click recommended config. Plus a **light/dark
 Goal: turn a one-shot report into a conversation that attacks false negatives.
 Implemented in `argo/chat.py` + `server/` (`GET/POST /runs/{id}/chat`, `GET .../generated`)
 + a Chat tab in the UI. See [ui.md](ui.md), [api.md](api.md).
-- [x] Chat endpoint: a `ClaudeRunner` session seeded with the run's artifacts (scope, repo_profile,
+- [x] Chat endpoint: an `AgentRunner` session seeded with the run's artifacts (scope, repo_profile,
       synthesis_notes, validated_findings) + **READ-ONLY** repo; history persisted to
       `runs/<id>/chat.jsonl`; chat uses the run's runner (free for mock runs) and its cost is
       added to the run total.

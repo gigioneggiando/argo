@@ -21,7 +21,7 @@ text plans a human runs.
 - `config.NETWORK_TOOLS` lists every network/sub-agent tool (`Bash`, `WebFetch`, `WebSearch`,
   `Task`, …). `guardrails.enforce_session_tools()` **strips** them from any session's allowlist
   and adds them to `--disallowedTools`.
-- `runner.ClaudeRunner.run()` calls `guardrails.assert_no_network_tools()` immediately before a
+- `runner.AgentRunner.run()` calls `guardrails.assert_no_network_tools()` immediately before a
   session launches — a hard stop.
 - The code-audit sessions (`recon`, `audit`, `validate`) pass the repo via `--add-dir` (a
   no-internet sandbox) and never add a network tool to `--allowedTools`.
@@ -85,7 +85,7 @@ The boundary is enforced, not just prompted:
 
 - `schemas.validate_scope()` gates Stage 1; `schemas.validate_findings()` gates Stage 3 (and the
   per-finding normalization in Stage 4). Draft-07, schemas are authoritative.
-- `ledger.log_call()` runs inside `ClaudeRunner.run()` for **every** call (prompt sha256, model,
+- `ledger.log_call()` runs inside `AgentRunner.run()` for **every** call (prompt sha256, model,
   tokens, `cost_usd`), plus a `runs/<RUN_ID>/llm_log.jsonl` line. Cost logging happens even when
   the session errors.
 - Prompt-asset versions used by a run are recorded in `meta.json` (`asset_versions`, sha256 each).

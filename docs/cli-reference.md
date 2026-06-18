@@ -31,12 +31,12 @@ There is intentionally **no `submit` command** — submission is a manual human 
 ## Per-command inputs
 
 ```bash
-argo ingest   --brief BRIEF.txt --repo PATH_OR_URL [--links LINKS.txt] [--run RUN_ID]
+argo ingest   --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--run RUN_ID]
 argo recon    --run RUN_ID
 argo run      --run RUN_ID
 argo validate --run RUN_ID
 argo report   --run RUN_ID
-argo pipeline --brief BRIEF.txt --repo PATH_OR_URL [--links LINKS.txt] [--dry-run] [--smoke]
+argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--dry-run] [--smoke]
 argo fix      --run RUN_ID [--no-verify] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
 argo bench    --suite DIR [--fixes] [--ab-audit-model MODEL]
 ```

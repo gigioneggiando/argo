@@ -135,6 +135,17 @@ def test_run_suite_with_fixes(env):
     assert report["patch_quality"]["verified_rate"] == 1.0
 
 
+def test_run_suite_re_audit(env, monkeypatch):
+    import argo.fixes as fixes_mod
+    monkeypatch.setattr(fixes_mod, "_reaudit_patched", lambda ctx, ws, f: {
+        "re_audit": {"ran": True, "confirmed_fixed": True, "still_present": False, "findings": 0}})
+    cfg = env().config
+    report = run_suite(cfg, SUITE, fixes=True, re_audit=True)
+    pq = report["patch_quality"]
+    assert pq["re_audit_ran"] == 3 and pq["re_audit_confirmed"] == 3
+    assert pq["re_audit_confirmed_rate"] == 1.0
+
+
 def test_ab_compare_mock(env):
     cfg = env().config
     rep = ab_compare(cfg, SUITE, audit_model_b="claude-opus-4-8")

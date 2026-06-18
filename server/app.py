@@ -354,7 +354,8 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
         try:
             return generate_fixes(ctx, verify=body.verify, docker=body.docker,
                                   build_cmd=body.build_cmd,
-                                  only=set(body.only) if body.only else None)
+                                  only=set(body.only) if body.only else None,
+                                  re_audit=body.re_audit)
         finally:
             try:
                 ctx.ledger.close()

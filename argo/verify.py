@@ -184,12 +184,18 @@ def _check_build_cmd(workspace: Path, build_cmd: str, *, docker: str | None,
 
 
 def verify_patch(repo_dir, patch: str, *, docker: str | None = None,
-                 build_cmd: str | None = None, timeout_s: int = 180) -> dict:
+                 build_cmd: str | None = None, timeout_s: int = 180,
+                 on_patched=None) -> dict:
     """Apply ``patch`` to an isolated copy of ``repo_dir`` and report whether it builds and
     introduces no new errors. The original ``repo_dir`` is never touched.
 
     Returns a dict: ``applied``, ``compiles``, ``new_errors`` (introduced), ``verified``,
     ``targets``, ``tool``, plus diagnostic details.
+
+    ``on_patched(workspace) -> dict`` is an optional hook called on the **patched copy** (once the
+    patch has applied), before cleanup; its returned dict is merged into the result. Phase-6 uses it
+    to re-audit the patched copy (A3 — "is the bug actually gone?"). It never touches the original
+    repo and any error in it is captured, never raised.
     """
     repo_dir = Path(repo_dir)
     targets = patch_targets(patch)
@@ -229,6 +235,13 @@ def verify_patch(repo_dir, patch: str, *, docker: str | None = None,
                     else "does not compile" if not compiles
                     else "ok"),
         )
+        if on_patched is not None:
+            try:
+                extra = on_patched(ws)            # ws = the patched copy (still alive here)
+                if extra:
+                    result.update(extra)
+            except Exception as exc:              # never let the hook crash verification
+                result["re_audit"] = {"ran": False, "reason": f"re-audit error: {exc}"[:300]}
         return result
     except subprocess.TimeoutExpired:
         result.update(applied=result.get("applied", False), compiles=False, verified=False,

@@ -188,7 +188,7 @@ def _cwe_breakdown(findings: list[dict], expected: list[dict], score: dict) -> d
     return out
 
 
-def _run_case(base_config, case: Case, *, fixes: bool) -> dict:
+def _run_case(base_config, case: Case, *, fixes: bool, re_audit: bool = False) -> dict:
     """Run the pipeline on one case and score it. Safe to call concurrently — each case gets its
     own run_id / run_dir; the ledger is opened in WAL mode for concurrent writes."""
     cfg = base_config
@@ -215,34 +215,49 @@ def _run_case(base_config, case: Case, *, fixes: bool) -> dict:
         entry["provenance"] = prov
     if fixes:
         from .fixes import generate_fixes
-        rep = generate_fixes(ctx, verify=True)
-        entry["patch"] = {"patched": rep["patched"], "verified": rep["verified"]}
+        rep = generate_fixes(ctx, verify=True, re_audit=re_audit)
+        patch = {"patched": rep["patched"], "verified": rep["verified"]}
+        if re_audit:
+            patch["re_audit_ran"] = rep.get("re_audit_ran", 0)
+            patch["re_audit_confirmed"] = rep.get("re_audit_confirmed", 0)
+        entry["patch"] = patch
     return entry
 
 
 def run_suite(base_config, suite_dir, *, fixes: bool = False, label: str | None = None,
-              parallel_cases: int = 1) -> dict:
+              parallel_cases: int = 1, re_audit: bool = False) -> dict:
     """Run + score every case in a suite. Returns the aggregated report (also written to
     ``<runs_dir>/benchmark_report.json``).
 
     ``parallel_cases`` > 1 runs that many cases concurrently — useful for **corpora at scale**;
     note real (headless) cost adds up and each case still fans out its own audit sessions, so keep
     it modest. Case order (and thus the report) is preserved regardless.
+
+    ``re_audit`` (needs ``fixes``) additionally re-audits each patched copy and folds the
+    "is the bug actually gone?" rate into ``patch_quality`` (A3).
     """
     cases = load_suite(suite_dir)
     if parallel_cases > 1 and len(cases) > 1:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=min(parallel_cases, len(cases))) as ex:
-            case_results = list(ex.map(lambda c: _run_case(base_config, c, fixes=fixes), cases))
+            case_results = list(ex.map(
+                lambda c: _run_case(base_config, c, fixes=fixes, re_audit=re_audit), cases))
     else:
-        case_results = [_run_case(base_config, c, fixes=fixes) for c in cases]
+        case_results = [_run_case(base_config, c, fixes=fixes, re_audit=re_audit) for c in cases]
 
     report = _aggregate(case_results, label or Path(suite_dir).name)
     if fixes:
         patched = sum(c.get("patch", {}).get("patched", 0) for c in case_results)
         verified = sum(c.get("patch", {}).get("verified", 0) for c in case_results)
-        report["patch_quality"] = {"patched": patched, "verified": verified,
-                                   "verified_rate": round(verified / patched, 4) if patched else 0.0}
+        pq = {"patched": patched, "verified": verified,
+              "verified_rate": round(verified / patched, 4) if patched else 0.0}
+        if re_audit:
+            ra_ran = sum(c.get("patch", {}).get("re_audit_ran", 0) for c in case_results)
+            ra_ok = sum(c.get("patch", {}).get("re_audit_confirmed", 0) for c in case_results)
+            pq["re_audit_ran"] = ra_ran
+            pq["re_audit_confirmed"] = ra_ok
+            pq["re_audit_confirmed_rate"] = round(ra_ok / ra_ran, 4) if ra_ran else 0.0
+        report["patch_quality"] = pq
     out = Path(base_config.runs_dir) / "benchmark_report.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -250,13 +265,14 @@ def run_suite(base_config, suite_dir, *, fixes: bool = False, label: str | None 
 
 
 def ab_compare(base_config, suite_dir, *, audit_model_b: str, fixes: bool = False,
-               parallel_cases: int = 1) -> dict:
+               parallel_cases: int = 1, re_audit: bool = False) -> dict:
     """Run the suite under the base config (A) and again with ``audit_model_b`` (B); report the
     per-metric deltas (B − A). On the mock runner both are identical (deterministic) — the value is
     in headless A/B of real models."""
-    a = run_suite(base_config, suite_dir, fixes=fixes, label="A", parallel_cases=parallel_cases)
-    b = run_suite(base_config.with_stage_model("audit", audit_model_b),
-                  suite_dir, fixes=fixes, label=f"B:{audit_model_b}", parallel_cases=parallel_cases)
+    a = run_suite(base_config, suite_dir, fixes=fixes, label="A",
+                  parallel_cases=parallel_cases, re_audit=re_audit)
+    b = run_suite(base_config.with_stage_model("audit", audit_model_b), suite_dir, fixes=fixes,
+                  label=f"B:{audit_model_b}", parallel_cases=parallel_cases, re_audit=re_audit)
     ta, tb = a["totals"], b["totals"]
     delta = {k: round(tb[k] - ta[k], 4) for k in ("precision", "recall", "f1")}
     report = {"a": a, "b": b, "audit_model_b": audit_model_b, "delta_b_minus_a": delta}

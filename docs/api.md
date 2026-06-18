@@ -67,8 +67,10 @@ verdict per finding:
 
 `verify` (default `true`) toggles the build check; `docker: "image"` runs the build in an offline
 container (`--network=none`); `build_cmd` supplies an explicit build/compile command; `only` limits
-to specific finding ids. The target repo is **never** modified, nothing is applied in place, and no
-PR is opened.
+to specific finding ids. `re_audit` (default `false`) additionally re-audits each patched copy and
+adds `verify.re_audit.confirmed_fixed` per finding (a probabilistic "the vuln is no longer detected"
+signal — one extra model session per patch; see [architecture.md](architecture.md#remediation--verification-phase-6-opt-in)).
+The target repo is **never** modified, nothing is applied in place, and no PR is opened.
 
 ### Benchmarks (Phase 7) — read-only
 

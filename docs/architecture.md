@@ -176,6 +176,15 @@ runs **locally** (auto-detected dependency-free checks: `py_compile`, `node --ch
 `cargo check`) or **in Docker** (`--network=none`, offline) / via an explicit `--build-cmd`. The
 verdict is written to `runs/<id>/fixes_report.json`.
 
+**Optional re-audit (A3 — "is the bug actually gone?").** With `--re-audit` (`argo fix`, `argo bench
+--fixes`, or `re_audit` on the API/`generate_fixes`), `verify.py` exposes an `on_patched(workspace)`
+hook that runs a focused, **unbiased** audit session on the patched copy — scoped to the finding's
+affected file(s), and deliberately **not** told which bug to look for. If the re-audit no longer
+reports the original vuln class in that file (`fixes.py:_still_present`, matched on normalized CWE +
+file, lenient on line), the verdict carries `re_audit.confirmed_fixed`. It is a **probabilistic
+signal** (the model could miss the bug for unrelated reasons), so it is reported *alongside* the
+build check, never instead of it; the benchmark folds it in as `patch_quality.re_audit_confirmed_rate`.
+
 ## Benchmarks & evaluation (Phase 7)
 
 `benchmark.py` scores findings quality against a **suite** of labeled cases

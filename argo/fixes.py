@@ -15,10 +15,12 @@ Guardrails: the target ``repo/`` is never modified; nothing is applied in place;
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from .config import ARTIFACT_TOOLS
 from .context import RunContext, collect_output_files
+from .runner import RunnerError
 from .verify import verify_patch
 
 _SYSTEM = """You are a senior application-security engineer producing a REMEDIATION for one \
@@ -54,6 +56,102 @@ def _build_prompt(finding: dict, repo_dir: Path) -> str:
         f"Primary location: {_primary_file(finding) or '(see affected[])'}",
         "Read the affected file(s), then write `fix.diff` with the minimal root-cause fix.",
     ])
+
+
+# --------------------------------------------------------------- A3: re-audit the patched copy
+_REAUDIT_SYSTEM = """You are a security auditor reviewing specific source files from an AUTHORIZED \
+source-only review. You have READ-ONLY access to the repository (Read/Grep/Glob). Audit ONLY the \
+file(s) listed below for security vulnerabilities (injection, broken authz / IDOR, SSRF, path \
+traversal, unsafe deserialization, weak crypto, hardcoded secrets, etc.).
+
+Report ONLY what you can actually substantiate in the code as it is now — do NOT assume a previously \
+reported issue is present, and do NOT invent issues. Detection ONLY: do not patch, do not contact \
+any live host.
+
+OUTPUT: write a single file `REAUDIT_FINDINGS.json` in your current working directory:
+{"findings": [{"cwe": "CWE-89", "affected": ["path/to/file.py:42"], "title": "..."}]}
+If you find no vulnerabilities in these file(s), write {"findings": []}."""
+
+
+def _norm_cwe(s) -> str:
+    m = re.search(r"\d+", str(s or ""))
+    return m.group(0) if m else ""
+
+
+def _file_of(ref: str) -> str:
+    return str(ref).split(":", 1)[0].replace("\\", "/").strip().lstrip("./").lower()
+
+
+def _affected_files(finding: dict) -> list[str]:
+    seen: list[str] = []
+    for ref in finding.get("affected") or []:
+        f = _file_of(ref)
+        if f and f not in seen:
+            seen.append(f)
+    return seen
+
+
+def _still_present(reaudit_findings: list[dict], orig_cwe: str, orig_files: set[str]) -> bool:
+    """Does the re-audit still report the original vuln (same CWE class, same file)? Lenient on
+    line numbers — a fix usually shifts them. File+CWE match is the right granularity for
+    'is this vulnerability gone'."""
+    for f in reaudit_findings:
+        fc = _norm_cwe(f.get("cwe"))
+        if orig_cwe and fc and fc != orig_cwe:
+            continue
+        ffiles = {_file_of(r) for r in (f.get("affected") or [])}
+        if any(a == b or a.endswith("/" + b) or b.endswith("/" + a) for a in ffiles for b in orig_files):
+            return True
+    return False
+
+
+def _build_reaudit_prompt(files: list[str], workspace: Path) -> str:
+    listing = "\n".join(f"  - {f}" for f in files)
+    return "\n\n".join([
+        _REAUDIT_SYSTEM,
+        f"=== REPOSITORY ROOT (read-only) ===\n{workspace.resolve()}",
+        f"=== FILES TO AUDIT ===\n{listing}",
+        "Read the file(s) above and write `REAUDIT_FINDINGS.json` with what you find.",
+    ])
+
+
+def _reaudit_patched(ctx: RunContext, workspace: Path, finding: dict) -> dict:
+    """Run one focused, UNBIASED audit session on the patched copy (scoped to the finding's
+    affected file(s)) and check whether the original vulnerability is still reported. The prompt
+    never names the specific bug, so a 'gone' result means the model no longer detects that vuln
+    class in that file — a *signal* the fix worked (pair it with the build check; it is
+    probabilistic, not proof)."""
+    files = _affected_files(finding)
+    if not files:
+        return {"re_audit": {"ran": False, "reason": "finding has no affected files"}}
+    work = ctx.work_dir("reaudit", finding["id"])
+    work.mkdir(parents=True, exist_ok=True)
+    try:
+        result = ctx.runner.run(
+            prompt=_build_reaudit_prompt(files, workspace),
+            run_dir=ctx.run_dir,
+            work_dir=work,
+            model=ctx.config.model_for("audit"),
+            stage="audit",
+            run_id=ctx.run_id,
+            repo_dir=workspace,                # the PATCHED copy, mounted READ-ONLY
+            allowed_tools=ARTIFACT_TOOLS,
+            label=f"reaudit-{finding['id']}",
+        )
+        out = collect_output_files(result, "REAUDIT_FINDINGS.json")
+    except RunnerError as exc:
+        return {"re_audit": {"ran": False, "reason": f"session failed: {exc}"[:300]}}
+    rf = next((f for f in out if f.name == "REAUDIT_FINDINGS.json"),
+              next((p for p in work.glob("*.json") if p.is_file()), None))
+    reaudit_findings: list[dict] = []
+    if rf is not None:
+        try:
+            reaudit_findings = json.loads(rf.read_text(encoding="utf-8")).get("findings", [])
+        except (json.JSONDecodeError, AttributeError):
+            reaudit_findings = []
+    still = _still_present(reaudit_findings, _norm_cwe(finding.get("cwe")), set(files))
+    return {"re_audit": {"ran": True, "still_present": still, "confirmed_fixed": not still,
+                         "findings": len(reaudit_findings), "files": files}}
 
 
 def _confirmed_findings(ctx: RunContext) -> list[dict]:
@@ -94,9 +192,16 @@ def _generate_one(ctx: RunContext, finding: dict) -> str | None:
 
 
 def generate_fixes(ctx: RunContext, *, verify: bool = True, docker: str | None = None,
-                   build_cmd: str | None = None, only: set[str] | None = None) -> dict:
+                   build_cmd: str | None = None, only: set[str] | None = None,
+                   re_audit: bool = False) -> dict:
     """Propose + verify a fix for each confirmed finding. Returns the fixes report (also written
-    to ``runs/<id>/fixes_report.json``)."""
+    to ``runs/<id>/fixes_report.json``).
+
+    ``re_audit`` (A3) additionally re-audits the **patched copy** per finding and records whether
+    the original vulnerability is still detected (``verify.re_audit.confirmed_fixed``). It needs
+    ``verify=True`` (the re-audit runs on the verified isolated copy) and costs one extra model
+    session per patched finding.
+    """
     findings = _confirmed_findings(ctx)
     patches_dir = ctx.run_dir / "patches"
     patches_dir.mkdir(parents=True, exist_ok=True)
@@ -118,7 +223,10 @@ def generate_fixes(ctx: RunContext, *, verify: bool = True, docker: str | None =
         patch_path.write_text(diff.replace("\r\n", "\n"), encoding="utf-8", newline="\n")
         entry["patch"] = patch_path.name
         if verify:
-            entry["verify"] = verify_patch(ctx.repo_dir, diff, docker=docker, build_cmd=build_cmd)
+            on_patched = ((lambda ws, _f=finding: _reaudit_patched(ctx, ws, _f))
+                          if re_audit else None)
+            entry["verify"] = verify_patch(ctx.repo_dir, diff, docker=docker, build_cmd=build_cmd,
+                                           on_patched=on_patched)
         fixes.append(entry)
 
     report = {
@@ -129,5 +237,13 @@ def generate_fixes(ctx: RunContext, *, verify: bool = True, docker: str | None =
         "verify_enabled": verify,
         "fixes": fixes,
     }
+    if re_audit:
+        ran = [f for f in fixes if (f.get("verify") or {}).get("re_audit", {}).get("ran")]
+        confirmed = sum(1 for f in ran
+                        if f["verify"]["re_audit"].get("confirmed_fixed"))
+        report["re_audit_enabled"] = True
+        report["re_audit_ran"] = len(ran)
+        report["re_audit_confirmed"] = confirmed
+        report["re_audit_confirmed_rate"] = round(confirmed / len(ran), 4) if ran else 0.0
     (ctx.run_dir / "fixes_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report

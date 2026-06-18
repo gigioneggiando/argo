@@ -195,9 +195,9 @@ under `benchmarks/<case>/` (`case.json` + `expected_findings.json`); see [benchm
       proposed fix **verified** (applies + compiles + no new errors).
 - [x] A repeatable harness + an **A/B mode** (`--ab-audit-model`): run the suite under two configs
       and report the precision/recall/F1 delta (B − A).
-- [ ] _Later:_ the real-world signal — triager accept-rate per program (backlog **A2**, sourced from
-      Fleece), seeded-bug corpora at scale (backlog **A1**, the harness already runs unlimited cases),
-      and "re-audit the patched copy to confirm the bug is gone" as a stronger patch metric (backlog **A3**).
+- [x] **Seeded-bug corpora at scale** (backlog **A1**) — provenance + `--parallel-cases` + corpus recipe.
+- [x] **Re-audit the patched copy** (backlog **A3**) — `patch_quality.re_audit_confirmed_rate`, `--re-audit`.
+- [ ] _Later:_ the real-world signal — triager accept-rate per program (backlog **A2**, sourced from Fleece).
 
 ### Phase 8 — Cost model & economics — ✅ DONE (cost side; quality side needs Phase 7)
 Turn the ledger into guidance. Implemented in `argo/costs.py` + `GET /costs` + a **Costs** UI page.
@@ -245,7 +245,11 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 
 ### A. Evaluation & benchmark (paper-critical)
 
-#### A1 — Seeded-bug benchmark corpora at scale — effort **M (mostly data)** · paper value **High**
+#### A1 — Seeded-bug benchmark corpora at scale — effort **M (mostly data)** · paper value **High** — ✅ ENGINE DONE
+- **Shipped:** `Case` provenance (`corpus_id`, `cve_ids`, `seeded_from`, surfaced in `cases[].provenance`),
+  optional `brief` (local-audit cases), `run_suite(..., parallel_cases=N)` + `argo bench --parallel-cases`,
+  and a documented corpus recipe in `benchmarks/README.md`. **Remaining = data**: curate real labeled
+  CVE/seeded cases (ongoing).
 - **Feasibility: high; the engine seam already exists.** `benchmark.load_suite(suite_dir)` globs every
   `<case>/case.json` + `expected_findings.json`, so the harness already runs an **unlimited** number of
   labeled cases and slices precision/recall/F1 by archetype and CWE (`run_suite`, `_aggregate`,
@@ -292,7 +296,13 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 - **Risk:** small-sample accept-rates are noisy; report n alongside the rate; never publish per-program
   Fleece data from the public repo.
 
-#### A3 — Re-audit the patched copy ("is the bug actually gone?") — effort **M–L** · paper value **High**
+#### A3 — Re-audit the patched copy ("is the bug actually gone?") — effort **M–L** · paper value **High** — ✅ DONE
+- **Shipped:** `verify_patch(..., on_patched=hook)` runs a focused **unbiased** re-audit on the patched
+  copy (`fixes._reaudit_patched`); `_still_present` matches on normalized CWE + file (line-lenient) →
+  `verify.re_audit.confirmed_fixed`. Folded into `fixes_report` and the benchmark as
+  `patch_quality.re_audit_confirmed_rate`. Exposed via `argo fix --re-audit`, `argo bench --fixes
+  --re-audit`, and the API `re_audit` flag. Reported as a probabilistic signal *alongside* the build
+  check (honest caveat in the docs), never instead of it.
 - **Feasibility: medium; a real seam exists but `verify.py` is currently standalone.** `verify_patch(repo_dir,
   patch, *, docker, build_cmd, timeout_s)` copies the repo, applies the diff, and checks
   *applies + compiles + no new errors* (`_check`, `_norm_errors`). It does **not** re-run the audit, so a

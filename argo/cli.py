@@ -168,6 +168,9 @@ def fix(run: str = RunIdArg,
         only: Optional[str] = typer.Option(None, "--only",
                                            help="comma-separated finding ids to fix (default: all "
                                                 "confirmed)"),
+        re_audit: bool = typer.Option(False, "--re-audit",
+                                      help="also re-audit the patched copy to check the vuln is gone "
+                                           "(one extra model session per patch; needs verify on)"),
         runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
         calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
         parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
@@ -177,7 +180,8 @@ def fix(run: str = RunIdArg,
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
     ctx = build_context(cfg, run)
     ids = {s.strip() for s in only.split(",") if s.strip()} if only else None
-    report = generate_fixes(ctx, verify=not no_verify, docker=docker, build_cmd=build_cmd, only=ids)
+    report = generate_fixes(ctx, verify=not no_verify, docker=docker, build_cmd=build_cmd,
+                            only=ids, re_audit=re_audit)
     _emit(report)
 
 
@@ -249,6 +253,9 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
           parallel_cases: int = typer.Option(
               1, "--parallel-cases", min=1, max=16, metavar="N",
               help="run N cases concurrently (corpora at scale; real cost adds up on headless)"),
+          re_audit: bool = typer.Option(
+              False, "--re-audit",
+              help="with --fixes: re-audit each patched copy and report the bug-actually-gone rate"),
           runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
           calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
           parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
@@ -258,9 +265,9 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
     if ab_audit_model:
         _emit(ab_compare(cfg, suite, audit_model_b=ab_audit_model, fixes=fixes,
-                         parallel_cases=parallel_cases))
+                         parallel_cases=parallel_cases, re_audit=re_audit))
     else:
-        _emit(run_suite(cfg, suite, fixes=fixes, parallel_cases=parallel_cases))
+        _emit(run_suite(cfg, suite, fixes=fixes, parallel_cases=parallel_cases, re_audit=re_audit))
 
 
 @app.command()

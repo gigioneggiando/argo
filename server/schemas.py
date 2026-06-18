@@ -50,6 +50,8 @@ class FixRequest(BaseModel):
                                                     "image (offline)")
     build_cmd: Optional[str] = Field(None, description="explicit build command for verification")
     only: Optional[list[str]] = Field(None, description="finding ids to fix (default: all confirmed)")
+    re_audit: bool = Field(False, description="also re-audit each patched copy to check the vuln is "
+                                              "gone (one extra model session per patch; needs verify)")
 
 
 class RunRequest(BaseModel):

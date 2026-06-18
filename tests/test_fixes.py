@@ -107,3 +107,58 @@ def test_generate_fixes_requires_validated_findings(env):
     ctx = env()                      # no pipeline run -> no validated_findings.json
     with pytest.raises(FileNotFoundError):
         generate_fixes(ctx, verify=False)
+
+
+# --------------------------------------------------------------- A3: re-audit the patched copy
+def test_still_present_matcher():
+    from argo.fixes import _still_present
+    files = {"pkg/app.py"}
+    assert _still_present([{"cwe": "CWE-89", "affected": ["pkg/app.py:5"]}], "89", files) is True
+    assert _still_present([{"cwe": "CWE-79", "affected": ["pkg/app.py:5"]}], "89", files) is False  # other CWE
+    assert _still_present([{"cwe": "CWE-89", "affected": ["other.py:5"]}], "89", files) is False     # other file
+    assert _still_present([], "89", files) is False                                                  # gone
+    # suffix match (re-audit reports a longer path)
+    assert _still_present([{"cwe": "CWE-89", "affected": ["src/pkg/app.py:9"]}], "89", {"app.py"}) is True
+
+
+@needs_patch
+def test_verify_patch_on_patched_hook(tmp_path):
+    repo = _py_repo(tmp_path)
+    patch = _diff("pkg/app.py", ["def f():\n", "    return 1\n"],
+                  ["def f():\n", "    return 1\n", "# c\n"])
+    seen = {}
+
+    def hook(ws):
+        seen["ws"] = ws
+        assert (ws / "pkg" / "app.py").is_file()            # the PATCHED copy is available
+        return {"re_audit": {"ran": True, "confirmed_fixed": True}}
+
+    res = verify_patch(repo, patch, on_patched=hook)
+    assert res["verified"] and res["re_audit"]["confirmed_fixed"] is True and seen["ws"]
+    # a raising hook is captured, never crashes verification
+    def boom(ws): raise RuntimeError("kaboom")
+    res2 = verify_patch(repo, patch, on_patched=boom)
+    assert res2["verified"] and res2["re_audit"]["ran"] is False
+
+
+@needs_patch
+def test_generate_fixes_re_audit(env, monkeypatch):
+    import argo.fixes as fixes_mod
+    ctx = env()
+    run_pipeline(ctx, BRIEF, str(REPO))
+    calls = []
+
+    def fake_reaudit(ctx_, ws, finding):
+        calls.append(finding["id"])
+        gone = finding["id"] == "FULL-001"      # pretend only FULL-001 is fixed
+        return {"re_audit": {"ran": True, "confirmed_fixed": gone, "still_present": not gone,
+                             "findings": 0}}
+
+    monkeypatch.setattr(fixes_mod, "_reaudit_patched", fake_reaudit)
+    report = generate_fixes(ctx, verify=True, re_audit=True)
+    assert report["re_audit_enabled"] is True
+    assert report["re_audit_ran"] == 3 and report["re_audit_confirmed"] == 1
+    assert report["re_audit_confirmed_rate"] == round(1 / 3, 4)
+    assert set(calls) == {"FULL-001", "AUTHZ-002", "FULL-003"}
+    for f in report["fixes"]:
+        assert f["verify"]["re_audit"]["ran"] is True

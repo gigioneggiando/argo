@@ -76,7 +76,9 @@ See [api.md](api.md). Implemented in `argo/progress.py` + `server/`.
       boundaries. (`runner=mock` is the default → zero-token by default.)
 - [x] Map request → `PipelineConfig`. Ledger in WAL mode for concurrent read (API) + write (job).
 - [x] `python -m argo.cli serve` command; API tests on the mock runner (`tests/test_api.py`).
-- [ ] _Later:_ subprocess isolation per run, mid-stage cancellation, surface the budget abort in UI.
+- [x] Surface the budget abort in the UI — the run view shows a distinct "Run stopped — budget reached"
+      banner (matches the engine's "Per-run budget … reached" / "session exceeded … cost cap" errors).
+- [ ] _Later:_ subprocess isolation per run (backlog **C2**), mid-stage cancellation (backlog **C1**).
 
 ### Phase 1 — Core UI (the MVP) — ✅ DONE
 Goal: a non-CLI user pastes 3 inputs, clicks start, watches progress, reads results.
@@ -93,7 +95,7 @@ by the API), tested in `tests/test_api.py`.
 - [x] Results: rendered `REPORT.md`; findings table (sortable + severity filter + detail drawer);
       drafts; raw artifacts viewer. (Dry-run shows the generated prompts.)
 - [x] Run history list (re-open any past run).
-- [ ] _Later:_ repo zip upload; richer in-browser visual polish pass.
+- [ ] _Later:_ repo zip upload (backlog **C3**); richer in-browser visual polish pass.
 
 ### Phase 2 — Settings & "Let the AI choose" — ✅ DONE
 Goal: full configurability + a one-click recommended config. Plus a **light/dark theme** toggle.
@@ -119,8 +121,9 @@ Implemented in `argo/chat.py` + `server/` (`GET/POST /runs/{id}/chat`, `GET .../
       CWE", "what did you deprioritize?".
 - [x] Test-suite generation: written to `runs/<id>/generated/` only — the target repo stays
       read-only (verified: generated files never land in `repo/`). Served via `GET .../generated`.
-- [ ] _Later:_ a "why-not-found" lead → append a candidate finding and re-run validation;
-      token-streaming replies (currently one call per turn).
+- [ ] _Later:_ a "why-not-found" lead → synthesize a candidate finding and re-validate it (backlog
+      **B1** — feasible now: `validate._validate_one` already validates a single ad-hoc finding);
+      token-streaming replies (backlog **B2**).
 
 ### Phase 4 — Context enrichment — ◑ PARTIAL (vuln index done; AST metadata deferred)
 Goal: raise recall/quality with cheap, structured context; surface it in the UI.
@@ -192,8 +195,9 @@ under `benchmarks/<case>/` (`case.json` + `expected_findings.json`); see [benchm
       proposed fix **verified** (applies + compiles + no new errors).
 - [x] A repeatable harness + an **A/B mode** (`--ab-audit-model`): run the suite under two configs
       and report the precision/recall/F1 delta (B − A).
-- [ ] _Later:_ the real-world signal (triager-accepted rate per program), seeded-bug corpora at
-      scale, and "re-audit the patched copy to confirm the bug is gone" as a stronger patch metric.
+- [ ] _Later:_ the real-world signal — triager accept-rate per program (backlog **A2**, sourced from
+      Fleece), seeded-bug corpora at scale (backlog **A1**, the harness already runs unlimited cases),
+      and "re-audit the patched copy to confirm the bug is gone" as a stronger patch metric (backlog **A3**).
 
 ### Phase 8 — Cost model & economics — ✅ DONE (cost side; quality side needs Phase 7)
 Turn the ledger into guidance. Implemented in `argo/costs.py` + `GET /costs` + a **Costs** UI page.
@@ -231,6 +235,154 @@ guardrails — today **no code execution** is a hard rule. The design constraint
   at any repo. It needs a hardened sandbox story before it ships, and it should be **clearly separated**
   (a distinct opt-in mode) so the default tool stays static-only. Until then, Argo emits the
   `live_verification_plan` text for a human to run.
+
+## Deferred-feature backlog — feasibility & implementation plan (code-audited 2026-06-18)
+
+Each item below was verified against the current code (exact files, functions, signatures, and
+blockers). Effort is **S/M/L**; "paper value" rates how much it strengthens the research artifact.
+**Recommended order: the evaluation block (A) first — it is what the paper's results section needs;
+the chat depth block (B) next; the run-infra block (C) is low-value for a local single-user tool.**
+
+### A. Evaluation & benchmark (paper-critical)
+
+#### A1 — Seeded-bug benchmark corpora at scale — effort **M (mostly data)** · paper value **High**
+- **Feasibility: high; the engine seam already exists.** `benchmark.load_suite(suite_dir)` globs every
+  `<case>/case.json` + `expected_findings.json`, so the harness already runs an **unlimited** number of
+  labeled cases and slices precision/recall/F1 by archetype and CWE (`run_suite`, `_aggregate`,
+  `score_run`). The gap is **labeled data**, not code: only the bundled mock `acme-widgets` case exists.
+- **Files:** `benchmarks/<new-case>/` (data — the bulk of the work); `argo/benchmark.py` (small
+  additions); `argo/models.py` (none); `benchmarks/README.md` (document the corpus convention).
+- **Implementation:**
+  1. Curate real labeled cases: pinned OSS repos at a vulnerable commit (CVE checkouts) or seeded-bug
+     forks, each a `case.json` (`name`, `brief`, `repo` = local path or URL, `archetype`) +
+     `expected_findings.json` (`label`, `cwe`, `file`, `line`, `line_tolerance`, `aliases`, `severity`).
+  2. Extend `case.json` (optional, additive) with provenance: `seeded_from`, `cve_ids`, `corpus_id` —
+     `Case` is a dataclass; add fields with defaults, surface them in the report `cases[]` entries.
+  3. Parallelize cases in `run_suite` (currently sequential) with a bounded pool, mirroring the
+     `ThreadPoolExecutor` already used in `stages/validate.py`. Cost-gate behind `--runner mock` for
+     harness CI; headless only when measuring real quality.
+- **Hypotheses evaluated:** (a) "we need a corpus registry/versioning" — **not for v1**; pinning the repo
+  commit in `case.json` + git-tracking the `benchmarks/` tree gives reproducibility for free. (b) "label
+  quality must be measured" — worth a `kind: "safe"` negative-label convention (already honored by
+  `score_run`) to catch over-reporting, but a full label-QA metric is over-engineering now.
+- **Risk:** real runs cost money and are non-deterministic — report cost-per-case and run N≥3 for
+  variance. Keep labels exhaustive (the scorer treats unmatched reported findings as FP).
+
+#### A2 — Real triager accept-rate (the real-world precision signal) — effort **M** · paper value **High**
+- **Feasibility: medium; needs a new feedback channel + ledger columns.** Today `findings_ledger`
+  (`argo/ledger.py`) stores `program_name, run_id, dedup_key, title, verdict, validated_severity` and
+  `prior_sightings()` detects cross-run resubmissions — but there is **no accept/reject feedback** and no
+  accept-rate query. This metric is the human-judged precision the paper pairs with benchmark recall.
+- **Cross-repo note:** the real accept/reject data lives in **Fleece** (the private findings registry).
+  The clean design is: Fleece is the source of truth for triager outcomes; Argo ingests them into the
+  ledger (or reads a `quality.json` exported by Fleece) and computes the rate — **no private data in the
+  public repo**.
+- **Files:** `argo/ledger.py` (schema + methods), `argo/benchmark.py` (surface the metric),
+  `server/app.py` (optional `POST /runs/{id}/feedback`), a new `quality.json` writer, `docs/*`.
+- **Implementation:**
+  1. `ALTER`/migrate `findings_ledger`: add `triager_accepted INTEGER NULL`, `triager_feedback TEXT`,
+     `triager_ts TEXT` (nullable, back-compatible).
+  2. `Ledger.record_triager_feedback(program_name, dedup_key, run_id, accepted, feedback=None)` and
+     `Ledger.compute_accept_rate(program_name=None, run_id=None) -> {accepted, rejected, rate, by_verdict}`.
+  3. Feed from Fleece (CLI importer or a small endpoint); emit `quality.json` pairing
+     accept-rate (precision proxy) with benchmark recall — the paper's headline two-number result.
+- **Hypotheses evaluated:** (a) "build a triager API/webhook" — **no**; for a single analyst a CLI
+  importer from Fleece is simpler and keeps the boundary clean. (b) "use it as a feedback loop to retune
+  audits" — out of scope for v1; record-and-report first.
+- **Risk:** small-sample accept-rates are noisy; report n alongside the rate; never publish per-program
+  Fleece data from the public repo.
+
+#### A3 — Re-audit the patched copy ("is the bug actually gone?") — effort **M–L** · paper value **High**
+- **Feasibility: medium; a real seam exists but `verify.py` is currently standalone.** `verify_patch(repo_dir,
+  patch, *, docker, build_cmd, timeout_s)` copies the repo, applies the diff, and checks
+  *applies + compiles + no new errors* (`_check`, `_norm_errors`). It does **not** re-run the audit, so a
+  "verified" patch only means "didn't break the build", not "fixed the vuln". `fixes.generate_fixes(ctx, …)`
+  already has the `RunContext` and writes `patches/<id>.diff` + `fixes_report.json`.
+- **Files:** `argo/verify.py` (accept a re-audit callback or `RunContext`), `argo/fixes.py` (wire the
+  re-audit after verify), `argo/stages/audit.py` (a scoped single-target audit entry), `argo/benchmark.py`
+  (`re_audit_confirmed_rate`), `argo/ranking.py` (reuse `dedup_key`/matching).
+- **Implementation:**
+  1. Add a scoped re-audit: run Stage-3 audit on the **patched isolated copy**, restricted to the
+     finding's affected file(s)/prompt, producing findings.
+  2. Confirm the fix: the original finding's `dedup_key` (file+line+cwe) must be **absent** from the
+     re-audit output → `re_audit_confirmed = True`. Reuse the benchmark `_matches`/`dedup_key` logic.
+  3. Extend the verdict shape with `re_audit_confirmed` and aggregate `re_audit_confirmed_rate` into
+     `patch_quality` in `benchmark.py`; gate behind a `--re-audit` flag (cost).
+- **Hypotheses evaluated:** (a) "finding-gone ⇒ fixed" is **probabilistic** — the model could simply fail
+  to re-surface the bug for unrelated reasons (false "fixed"). Mitigations: re-audit with the *same*
+  generated audit prompt that found it (not a fresh recon), require the line-shift-aware match, and report
+  it as a *signal* not proof. (b) "re-audit the whole repo" — too costly/noisy; scope to affected files.
+  (c) the strongest version is the **Phase-9 dynamic** check (run a PoC that no longer triggers) — note A3
+  as the static bridge to that.
+- **Risk:** doubles audit cost per fixed finding; non-determinism — pair with the build-check, never
+  replace it; keep the source mount untouched (work on the copy, as `verify.py` already does).
+
+### B. Chat depth
+
+#### B1 — "Why didn't you find X?" → candidate finding → re-validate — effort **S–M** · paper value **Med**
+- **Feasibility: HIGH — the hard part already exists.** `stages/validate._validate_one(ctx, scope,
+  scope_json_text, finding)` validates a **single `Finding` in isolation** (builds code excerpts, runs the
+  adversarial `02_adversarial_validation_prompt.md` in a fresh `work_dir`, returns a `Validation`) with **no
+  dependency on the `findings/` directory**. `chat.ask(ctx, message)` already runs a read-only model turn
+  and returns `{reply, generated, cost_usd}`. This directly attacks the dominant failure mode (false
+  negatives) and is the most valuable chat feature.
+- **Files:** `argo/chat.py` (detect the intent, synthesize the candidate, call `_validate_one`),
+  `argo/models.py` (`Finding` — already importable, `extra="allow"`), no API/schema change (same
+  `POST /runs/{id}/chat`), optional `webapp/js/app.js` chip wording.
+- **Implementation:**
+  1. In `chat.ask`, when the message matches a "why didn't you find …" intent, run one model turn that
+     emits a **candidate `Finding` JSON** (the model proposes id/title/cwe/affected/flow/why/impact) for the
+     hypothesis the user raised.
+  2. Construct `Finding.model_validate(candidate)` and call `_validate_one(ctx, scope, scope_json_text,
+     finding)`; append the resulting verdict + rationale (confirmed / refuted / needs-runtime) to the chat
+     reply, and optionally write a `candidate_<id>.json` into `generated/`.
+  3. Keep it **non-mutating**: nothing is added to `validated_findings.json`; it is an interactive probe.
+- **Hypotheses evaluated:** (a) "append the candidate to the run's findings and re-run the whole validate
+  stage" — **no**; `_validate_one` on the single candidate is cheaper, isolated, and avoids rewriting
+  canonical artifacts. (b) "auto-extract the finding from the user's prose deterministically" — let the
+  model synthesize the `Finding` (more robust than regex), then schema-validate.
+- **Risk:** a user-led candidate can coax a false "confirmed" — keep the adversarial validator's
+  refute-first framing (unchanged) and label these as **interactive probes**, not pipeline findings.
+
+#### B2 — Streaming chat replies — effort **L** · paper value **Low (UX only)**
+- **Feasibility: low-to-medium; a real architectural blocker.** Every backend uses a single **blocking**
+  `subprocess.run()` and returns one complete `LLMResult`; there is **no token-callback or streaming path**
+  anywhere (`runner.py` `_invoke` for Headless/Codex; `chat.ask` is one call; `POST /chat` returns a dict;
+  the webapp `await api.sendChat`). The SSE machinery exists only for run status (`/runs/{id}/events`).
+- **Files:** `argo/runner.py` (new streaming invoke via `subprocess.Popen` + line parsing; Claude Code
+  supports `--output-format stream-json`, Codex emits JSONL on stdout — today parsed only post-exit),
+  `argo/chat.py` (`ask_streaming` async generator), `server/app.py` (`GET /runs/{id}/chat/stream`
+  StreamingResponse), `webapp/js/api.js` (`streamChat` via EventSource), `webapp/js/app.js` (progressive
+  render in `chatPanel`).
+- **Hypotheses evaluated:** (a) "add streaming to the core `run()`" — **don't**; add a *separate*
+  `run_streaming()` so the blocking pipeline contract (cost logging, caps, partial recovery) is untouched.
+  (b) value is purely perceived latency for one user — **defer** behind A and B1.
+- **Risk:** async refactor touches the guardrail chokepoint; must preserve ledger logging + per-session
+  caps that currently live in the blocking `run()`.
+
+### C. Run infrastructure (low value for a local single-user tool)
+
+#### C1 — Mid-stage cancellation — effort **M** · paper value **None**
+- **Feasibility: medium.** `cancel_event` is checked only at **stage boundaries** (`orchestrator._check_cancel`),
+  and the runner's `subprocess.run()` is never interrupted, so a click during a long audit takes effect only
+  at the next boundary. Need to thread `cancel_event` into `runner.run`, switch to `subprocess.Popen` + poll,
+  and kill the process group (Windows `CREATE_NEW_PROCESS_GROUP`/`creationflags`; Unix `preexec_fn=os.setsid`
+  + `killpg`), then mark the running stage cancelled in `progress.py` and a "Cancelling…" state in the UI.
+- **Verdict:** real but low priority — boundary cancellation already works for a single local user.
+
+#### C2 — Per-run subprocess isolation — effort **M–L** · paper value **None**
+- **Feasibility: medium.** Runs are in-process daemon threads (`server/jobs.py`, which itself notes
+  "in-process threads are enough" for a local single-user tool). Moving to `multiprocessing.Process` (PID
+  tracked in `status.json`, killable) buys crash-isolation and clean mid-run kill, but adds IPC/serialization
+  complexity. **Defer** unless Argo is ever exposed multi-user (then pair with auth).
+
+#### C3 — Repo ZIP upload from the UI — effort **M** · paper value **Low (UX)**
+- **Feasibility: medium.** No multipart anywhere: `RunRequest.repo` is a string, `api.startRun` sends JSON,
+  the New Run field is a text input, and `acquire_repo(source, dest, *, is_url)` only clones a URL or
+  `copytree`s a local dir. Need a `multipart/form-data` endpoint (or `POST /runs/upload`), a temp-dir unzip
+  with **zip-bomb / path-traversal guards** (entry count, total size, no `..`/absolute members), then pass
+  the unzipped path to ingest with `is_url=False`. **Low value:** the server already resolves a typed local
+  path on the same machine, so upload mainly helps a future remote deployment.
 
 ## Cross-cutting / decisions to make before Phase 0
 

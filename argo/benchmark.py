@@ -53,11 +53,15 @@ def _files_match(a: str, b: str) -> bool:
 @dataclass
 class Case:
     name: str
-    brief: Path
+    brief: Path | None            # None => local/general-audit mode (scope synthesized from repo)
     repo: str
     expected: list[dict]
     archetype: str | None = None
     scenario: str | None = None        # mock fixtures scenario for this case
+    # provenance (optional; for seeded-bug corpora at scale — surfaced in the report)
+    corpus_id: str | None = None       # which labeled corpus this case belongs to
+    cve_ids: list[str] = field(default_factory=list)   # associated CVE ids, if any
+    seeded_from: str | None = None     # source repo@commit the bug was seeded from
 
 
 def _resolve(base: Path, p: str) -> Path:
@@ -78,11 +82,14 @@ def load_suite(suite_dir) -> list[Case]:
         expected = json.loads(exp_path.read_text(encoding="utf-8")) if exp_path.exists() else []
         cases.append(Case(
             name=meta.get("name", cdir.name),
-            brief=_resolve(cdir, meta["brief"]),
+            brief=_resolve(cdir, meta["brief"]) if meta.get("brief") else None,
             repo=str(_resolve(cdir, meta["repo"])),
             expected=expected,
             archetype=meta.get("archetype"),
             scenario=meta.get("scenario"),
+            corpus_id=meta.get("corpus_id"),
+            cve_ids=list(meta.get("cve_ids") or []),
+            seeded_from=meta.get("seeded_from"),
         ))
     if not cases:
         raise FileNotFoundError(f"no cases (<dir>/case.json) found under {suite_dir}")
@@ -181,35 +188,54 @@ def _cwe_breakdown(findings: list[dict], expected: list[dict], score: dict) -> d
     return out
 
 
-def run_suite(base_config, suite_dir, *, fixes: bool = False, label: str | None = None) -> dict:
+def _run_case(base_config, case: Case, *, fixes: bool) -> dict:
+    """Run the pipeline on one case and score it. Safe to call concurrently — each case gets its
+    own run_id / run_dir; the ledger is opened in WAL mode for concurrent writes."""
+    cfg = base_config
+    if case.scenario:
+        cfg = cfg.with_overrides(fixtures_scenario=case.scenario)
+    ctx = build_context(cfg, new_run_id())
+    run_pipeline(ctx, case.brief, case.repo)
+    vf = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8"))
+    findings = vf.get("findings", [])
+    score = score_run(findings, case.expected)
+    archetype = case.archetype or (json.loads(ctx.meta_path.read_text(encoding="utf-8"))
+                                   .get("archetype") if ctx.meta_path.exists() else None)
+    try:
+        cost = ctx.ledger.run_cost(ctx.run_id)
+    except Exception:
+        cost = 0.0
+    entry = {"name": case.name, "run_id": ctx.run_id, "archetype": archetype,
+             "cost_usd": round(cost, 6),
+             "cwe_breakdown": _cwe_breakdown(findings, case.expected, score), **score}
+    prov = {k: v for k, v in (("corpus_id", case.corpus_id),
+                              ("cve_ids", case.cve_ids or None),
+                              ("seeded_from", case.seeded_from)) if v}
+    if prov:
+        entry["provenance"] = prov
+    if fixes:
+        from .fixes import generate_fixes
+        rep = generate_fixes(ctx, verify=True)
+        entry["patch"] = {"patched": rep["patched"], "verified": rep["verified"]}
+    return entry
+
+
+def run_suite(base_config, suite_dir, *, fixes: bool = False, label: str | None = None,
+              parallel_cases: int = 1) -> dict:
     """Run + score every case in a suite. Returns the aggregated report (also written to
-    ``<runs_dir>/benchmark_report.json``)."""
-    from .ledger import Ledger
+    ``<runs_dir>/benchmark_report.json``).
+
+    ``parallel_cases`` > 1 runs that many cases concurrently — useful for **corpora at scale**;
+    note real (headless) cost adds up and each case still fans out its own audit sessions, so keep
+    it modest. Case order (and thus the report) is preserved regardless.
+    """
     cases = load_suite(suite_dir)
-    case_results = []
-    for case in cases:
-        cfg = base_config
-        if case.scenario:
-            cfg = cfg.with_overrides(fixtures_scenario=case.scenario)
-        ctx = build_context(cfg, new_run_id())
-        run_pipeline(ctx, case.brief, case.repo)
-        vf = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8"))
-        findings = vf.get("findings", [])
-        score = score_run(findings, case.expected)
-        archetype = case.archetype or (json.loads(ctx.meta_path.read_text(encoding="utf-8"))
-                                       .get("archetype") if ctx.meta_path.exists() else None)
-        try:
-            cost = ctx.ledger.run_cost(ctx.run_id)
-        except Exception:
-            cost = 0.0
-        entry = {"name": case.name, "run_id": ctx.run_id, "archetype": archetype,
-                 "cost_usd": round(cost, 6),
-                 "cwe_breakdown": _cwe_breakdown(findings, case.expected, score), **score}
-        if fixes:
-            from .fixes import generate_fixes
-            rep = generate_fixes(ctx, verify=True)
-            entry["patch"] = {"patched": rep["patched"], "verified": rep["verified"]}
-        case_results.append(entry)
+    if parallel_cases > 1 and len(cases) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(parallel_cases, len(cases))) as ex:
+            case_results = list(ex.map(lambda c: _run_case(base_config, c, fixes=fixes), cases))
+    else:
+        case_results = [_run_case(base_config, c, fixes=fixes) for c in cases]
 
     report = _aggregate(case_results, label or Path(suite_dir).name)
     if fixes:
@@ -223,13 +249,14 @@ def run_suite(base_config, suite_dir, *, fixes: bool = False, label: str | None 
     return report
 
 
-def ab_compare(base_config, suite_dir, *, audit_model_b: str, fixes: bool = False) -> dict:
+def ab_compare(base_config, suite_dir, *, audit_model_b: str, fixes: bool = False,
+               parallel_cases: int = 1) -> dict:
     """Run the suite under the base config (A) and again with ``audit_model_b`` (B); report the
     per-metric deltas (B − A). On the mock runner both are identical (deterministic) — the value is
     in headless A/B of real models."""
-    a = run_suite(base_config, suite_dir, fixes=fixes, label="A")
+    a = run_suite(base_config, suite_dir, fixes=fixes, label="A", parallel_cases=parallel_cases)
     b = run_suite(base_config.with_stage_model("audit", audit_model_b),
-                  suite_dir, fixes=fixes, label=f"B:{audit_model_b}")
+                  suite_dir, fixes=fixes, label=f"B:{audit_model_b}", parallel_cases=parallel_cases)
     ta, tb = a["totals"], b["totals"]
     delta = {k: round(tb[k] - ta[k], 4) for k in ("precision", "recall", "f1")}
     report = {"a": a, "b": b, "audit_model_b": audit_model_b, "delta_b_minus_a": delta}

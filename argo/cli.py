@@ -246,6 +246,9 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
           ab_audit_model: Optional[str] = typer.Option(
               None, "--ab-audit-model", metavar="MODEL",
               help="run the suite a second time with this audit model and report the delta"),
+          parallel_cases: int = typer.Option(
+              1, "--parallel-cases", min=1, max=16, metavar="N",
+              help="run N cases concurrently (corpora at scale; real cost adds up on headless)"),
           runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
           calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
           parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
@@ -254,9 +257,10 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
     from .benchmark import ab_compare, run_suite
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
     if ab_audit_model:
-        _emit(ab_compare(cfg, suite, audit_model_b=ab_audit_model, fixes=fixes))
+        _emit(ab_compare(cfg, suite, audit_model_b=ab_audit_model, fixes=fixes,
+                         parallel_cases=parallel_cases))
     else:
-        _emit(run_suite(cfg, suite, fixes=fixes))
+        _emit(run_suite(cfg, suite, fixes=fixes, parallel_cases=parallel_cases))
 
 
 @app.command()

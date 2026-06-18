@@ -85,6 +85,49 @@ def test_run_suite_mock(env):
     assert (Path(cfg.runs_dir) / "benchmark_report.json").exists()
 
 
+def _mock_case(cdir: Path, name: str) -> None:
+    """Write a case.json + labels under cdir that the mock 'happy' scenario scores perfectly."""
+    fx = Path(__file__).resolve().parent / "fixtures"
+    cdir.mkdir(parents=True, exist_ok=True)
+    (cdir / "case.json").write_text(json.dumps({
+        "name": name, "brief": str(fx / "brief.txt"), "repo": str(fx / "repo"),
+        "scenario": "happy", "archetype": "web_api_cms", "expected": "expected_findings.json",
+        "corpus_id": "demo-corpus", "cve_ids": ["CVE-2024-0001"], "seeded_from": "acme/widgets@v1",
+    }), encoding="utf-8")
+    (cdir / "expected_findings.json").write_text(json.dumps(_E), encoding="utf-8")
+
+
+def test_load_suite_provenance(tmp_path):
+    _mock_case(tmp_path / "c1", "c1")
+    case = load_suite(tmp_path)[0]
+    assert case.corpus_id == "demo-corpus"
+    assert case.cve_ids == ["CVE-2024-0001"] and case.seeded_from == "acme/widgets@v1"
+
+
+def test_run_suite_parallel_cases(env, tmp_path):
+    # a 2-case suite the mock scores; parallel_cases must score both, order-preserved, with provenance
+    _mock_case(tmp_path / "c1", "c1")
+    _mock_case(tmp_path / "c2", "c2")
+    cfg = env().config
+    report = run_suite(cfg, tmp_path, parallel_cases=2)
+    assert report["totals"]["cases"] == 2 and report["totals"]["f1"] == 1.0
+    assert [c["name"] for c in report["cases"]] == ["c1", "c2"]          # order preserved
+    assert report["cases"][0]["provenance"]["corpus_id"] == "demo-corpus"
+    assert report["cases"][0]["provenance"]["cve_ids"] == ["CVE-2024-0001"]
+
+
+def test_case_brief_optional_for_local_review(tmp_path):
+    # a case with no brief => local/general-audit mode (brief is None, repo-only)
+    fx = Path(__file__).resolve().parent / "fixtures"
+    cdir = tmp_path / "local"; cdir.mkdir()
+    (cdir / "case.json").write_text(json.dumps({
+        "name": "local", "repo": str(fx / "repo"), "scenario": "happy",
+        "expected": "expected_findings.json"}), encoding="utf-8")
+    (cdir / "expected_findings.json").write_text(json.dumps(_E), encoding="utf-8")
+    case = load_suite(tmp_path)[0]
+    assert case.brief is None
+
+
 def test_run_suite_with_fixes(env):
     cfg = env().config
     report = run_suite(cfg, SUITE, fixes=True)

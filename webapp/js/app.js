@@ -548,6 +548,15 @@ function chatPanel(id) {
     try {
       const res = await api.sendChat(id, text);
       pending.remove(); addAssistant(res.reply);
+      const vc = res.validated_candidate;
+      if (vc && vc.verdict) {                 // B1: a re-validated "why didn't you find X" candidate
+        list.append(h("div", { class: "detail" },
+          h("div", { class: "row", style: { alignItems: "center" } },
+            h("strong", { class: "mono", style: { fontSize: "13px" } }, "Re-validated candidate " + (vc.finding_id || "")),
+            verdictPill(vc.verdict)),
+          vc.rationale ? h("div", { class: "help", style: { marginTop: "6px" } }, vc.rationale) : null));
+        scroll();
+      }
       if (res.generated && res.generated.length) {
         const files = await api.generated(id).catch(() => []);
         res.generated.forEach((name) => {

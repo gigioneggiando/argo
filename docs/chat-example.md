@@ -56,11 +56,32 @@ This is the key behaviour for a study: the model does **not** falsely reassure (
 source), lays out the conditional risk, and defers to a human — exactly how `needs_runtime_verification`
 and the synthesis notes' residual-unknowns are meant to surface gaps honestly in the data.
 
+## 4. Re-validating a missed finding (B1) 🔁
+
+When you challenge a **specific, localized** hypothesis, the analyst can propose a candidate finding
+(it writes a `CANDIDATE_FINDING.json`), which is then **re-checked independently** by the *same*
+adversarial validator the pipeline uses (`validate._validate_one`) — isolated, read-only,
+refute-first. The verdict is appended to the answer and shown as a pill (✅ confirmed / ❌ refuted /
+⚠️ needs-runtime). It is an **interactive probe**: nothing is written into `validated_findings.json`.
+
+> **Q:** I think `orders.py:120` has an IDOR — the handler reads `order_id` from the request and
+> never checks ownership. Why didn't you flag it?
+
+> **A (illustrative):** Tracing `orders.py:118–124`, `order_id` is taken from the query string and
+> passed straight to the lookup with no `user_id` scoping … this is a genuine candidate — re-checking.
+> **— ✅ Re-validated: CONFIRMED — candidate `CAND-IDOR-1` (CWE-639).** *The surviving data flow:
+> request → `order_id` → `get_order(order_id)` with no authz predicate; reproducible cross-account
+> read.*
+
+The candidate runs through the **real validator**, so a coaxed or vague hypothesis is **refuted**
+just as it would be in the pipeline — the user can probe, but cannot talk the model into a false
+"confirmed". (Example exchange illustrative; the mechanism and verdict labels are exact.)
+
 ## Limits (kept honest)
 
-- **Advisory only.** A genuine miss surfaced in chat does **not** auto-become a candidate finding that
-  re-runs validation and flows into the registry — that feedback loop is future work (see
-  [roadmap.md](roadmap.md) Phase 3 _Later_).
+- **Probe, not pipeline.** A re-validated candidate (B1, above) is an **interactive probe** — it is
+  re-checked by the real adversarial validator but is **not** added to `validated_findings.json` or
+  the registry. Folding confirmed probes back into the run is future work.
 - **No token streaming**; one model call per turn (history re-sent each turn, capped).
 - **Quality tracks the model.** Strong models (the transcript above is Sonnet) answer well; small
   local models less so — which is exactly what the benchmark measures across backends.

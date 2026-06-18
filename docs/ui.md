@@ -91,8 +91,12 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
 - **Chat** (a results tab) — an interactive analyst with the run's full context + read-only repo.
   Ask "why didn't you find X?", "explain SQLI-001", "what did you deprioritize?", or "generate a
   test suite for CWE-89". Generated test files are shown inline and written to `runs/<id>/generated/`
-  — never into the target repo. Chat uses the run's runner (free for mock runs); its cost is added
-  to the run total. See a **real worked transcript** in [chat-example.md](chat-example.md).
+  — never into the target repo. **B1 — re-validation:** when you challenge a *specific* missed
+  vulnerability, the analyst can propose a candidate finding that is **re-checked independently by
+  the pipeline's adversarial validator**; the verdict (✅ confirmed / ❌ refuted / ⚠️ needs-runtime)
+  appears as a pill under the reply (an interactive probe — it is **not** added to the run's
+  findings). Chat uses the run's runner (free for mock runs); its cost is added to the run total.
+  See a **real worked transcript** in [chat-example.md](chat-example.md).
 - **History** (`#/history`) — every past run (program, state, cost), click to reopen.
 
 ## How live progress works

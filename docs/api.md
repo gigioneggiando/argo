@@ -37,7 +37,7 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | GET / PUT | `/settings` | persisted UI defaults (runner, budget, parallelism, per-stage models, …) |
 | POST | `/recommend` | "Let the AI choose": `{repo, target}` → a recommended config + rationale (heuristic, no LLM; runner stays mock) |
 | GET | `/runs/{id}/chat` | chat history for the run |
-| POST | `/runs/{id}/chat` | `{message}` → one chat turn: `{reply, generated, cost_usd}` (read-only repo; test files go to `generated/`) |
+| POST | `/runs/{id}/chat` | `{message}` → one chat turn: `{reply, generated, cost_usd, validated_candidate}` (read-only repo; test files go to `generated/`). **B1**: if the analyst proposes a `CANDIDATE_FINDING.json` for a "why didn't you find X?", it is re-validated by the pipeline's adversarial validator and `validated_candidate` carries the verdict (null otherwise). `cost_usd` is the chat turn; the re-validation session is logged to the ledger (in the run total). |
 | GET | `/runs/{id}/generated` | files the chat analyst produced (e.g. test suites) |
 | POST | `/runs/{id}/fixes` | **Phase 6** — propose + verify a patch per confirmed finding: `{verify, docker, build_cmd, only}` → the fixes report. Target repo stays read-only; verify runs on an isolated copy |
 | GET | `/runs/{id}/fixes` | the fixes report (`fixes_report.json`), or `null` if none generated |

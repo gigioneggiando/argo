@@ -22,7 +22,8 @@ argo/
   ranking.py        severity/confidence ordering, ref parsing, dedup_key
   ledger.py         SQLite: llm_calls (cost) + findings_ledger (cross-run dedup)
   progress.py       ProgressReporter -> runs/<id>/status.json (live stage timeline + cost)
-  chat.py           Phase-3 interactive analyst over a completed run (read-only repo; test-gen)
+  chat.py           Phase-3 interactive analyst over a completed run (read-only repo; test-gen;
+                    B1: re-validates a user-proposed candidate finding via validate._validate_one)
   knowledge.py      Phase-4 vuln-class index loader (data/vuln_index.yaml) injected into recon
   costs.py          Phase-8 cost analytics from the ledger (by model / stage / run / archetype)
   quality.py        A2 quality report: triager accept-rate (ledger) paired with benchmark recall

@@ -121,9 +121,9 @@ Implemented in `argo/chat.py` + `server/` (`GET/POST /runs/{id}/chat`, `GET .../
       CWE", "what did you deprioritize?".
 - [x] Test-suite generation: written to `runs/<id>/generated/` only — the target repo stays
       read-only (verified: generated files never land in `repo/`). Served via `GET .../generated`.
-- [ ] _Later:_ a "why-not-found" lead → synthesize a candidate finding and re-validate it (backlog
-      **B1** — feasible now: `validate._validate_one` already validates a single ad-hoc finding);
-      token-streaming replies (backlog **B2**).
+- [x] **"why-not-found" → candidate → re-validate** (backlog **B1**) — `chat.ask` re-validates a
+      model-proposed `CANDIDATE_FINDING.json` via `validate._validate_one`; verdict in the UI.
+- [ ] _Later:_ token-streaming replies (backlog **B2**).
 
 ### Phase 4 — Context enrichment — ◑ PARTIAL (vuln index done; AST metadata deferred)
 Goal: raise recall/quality with cheap, structured context; surface it in the UI.
@@ -335,7 +335,13 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 
 ### B. Chat depth
 
-#### B1 — "Why didn't you find X?" → candidate finding → re-validate — effort **S–M** · paper value **Med**
+#### B1 — "Why didn't you find X?" → candidate finding → re-validate — effort **S–M** · paper value **Med** — ✅ DONE
+- **Shipped:** the chat analyst may write a `CANDIDATE_FINDING.json` for a concrete missed-vuln
+  hypothesis; `chat.ask` re-validates it with the pipeline's `validate._validate_one` (isolated,
+  read-only, refute-first) and appends the verdict (`validated_candidate` in the response, a pill in
+  the UI). Non-mutating — it is an interactive probe, never added to `validated_findings.json`. The
+  model (not a regex) decides when to propose a candidate. `_coerce_candidate` backfills partial
+  hypotheses so they still validate.
 - **Feasibility: HIGH — the hard part already exists.** `stages/validate._validate_one(ctx, scope,
   scope_json_text, finding)` validates a **single `Finding` in isolation** (builds code excerpts, runs the
   adversarial `02_adversarial_validation_prompt.md` in a fresh `work_dir`, returns a `Validation`) with **no

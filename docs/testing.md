@@ -8,7 +8,7 @@ construction, and the subprocess error paths with crafted inputs and fakes (stil
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/ -q          # 123 tests (incl. the HTTP API + UI serving on the mock runner)
+python -m pytest tests/ -q          # 127 tests (incl. the HTTP API + UI serving on the mock runner)
 ```
 
 `pytest.ini` pins `--basetemp=.pytest_tmp` so the read-only repo copies the pipeline creates do
@@ -24,9 +24,11 @@ not trip Windows' global temp rotation.
 | `test_headless.py` | strict parser over the **real** captured envelope, shape-drift fail-loud, recoverable-vs-API-error classification, turn/cost caps, `--max-budget-usd` present / no `--max-turns`, session-budget math, empty/malformed/non-zero-exit handling, audit partial-recovery |
 | `test_links.py` | `--links` parsing/normalization/merge, repo-drop safety rule, schema survival, propagation into a rendered prompt, backward compatibility |
 | `test_pipeline.py` | full mock pipeline end-to-end, golden `REPORT.md`, dedup/merge, scope-filter + validation drops, missing-manifest fallback, partial-session recovery, oversized-findings (no truncation), ledger cost + resubmission, dry-run, **research stage on/off** (Stage-0 brief + threat intel; `--no-research` stays offline), no-submit guardrail |
-| `test_api.py` | the HTTP API on the mock runner: full run lifecycle, dry-run, SSE stream to terminal, artifact whitelist, 404s, costs/knowledge/fixes endpoints |
-| `test_fixes.py` | Phase-6 remediation + verify: patch-target parsing, accept a compiling fix, reject one that breaks compile, reject a non-applying patch, **ignore pre-existing errors** (only count introduced ones), end-to-end fix generation on the mock runner |
-| `test_benchmark.py` | Phase-7 scoring: perfect/FN/FP cases, CWE mismatch + alias + line-tolerance matching, suite loading, end-to-end `run_suite` + `--fixes` + A/B on the mock runner |
+| `test_api.py` | the HTTP API on the mock runner: full run lifecycle, dry-run, SSE stream to terminal, artifact whitelist, 404s, costs/knowledge/fixes/**quality** endpoints, chat roundtrip + test-gen |
+| `test_fixes.py` | Phase-6 remediation + verify: patch-target parsing, accept a compiling fix, reject one that breaks compile, reject a non-applying patch, **ignore pre-existing errors** (only count introduced ones), end-to-end fix generation; **A3 re-audit** — the `on_patched` hook (incl. a raising hook captured), the still-present matcher, and `generate_fixes(re_audit=True)` aggregation |
+| `test_benchmark.py` | Phase-7 scoring: perfect/FN/FP cases, CWE mismatch + alias + line-tolerance matching, suite loading, end-to-end `run_suite` + `--fixes` + A/B; **A1** — case provenance, optional brief, `parallel_cases` (order + provenance); **A3** — `re_audit` rate folded into `patch_quality` |
+| `test_quality.py` | **A2 accept-rate**: `record_triager_feedback` + `accept_rate` (severity slice, run-scoping), the old-DB column migration, `quality_report` pairing accept-rate with benchmark recall, and the `argo feedback --import` → `argo quality` CLI flow |
+| `test_chat.py` | **B1 re-validation**: candidate backfill, `_validate_candidate` runs the adversarial validator, full `ask()` flow (model writes `CANDIDATE_FINDING.json` → verdict appended, hypothesis file kept out of `generated`), and the no-candidate path |
 | `test_codex.py` | the **Codex backend**: the sandbox-mapping guardrails (audit stage is `-s workspace-write` + offline, **never** a `danger-*` escape; only `research` gets network), `--oss`/model flags, token parsing + cost estimation, `build_runner` dispatch, CLI/API config passthrough |
 
 ## The two zero-cost modes

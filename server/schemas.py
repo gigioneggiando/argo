@@ -53,8 +53,9 @@ class FixRequest(BaseModel):
 
 
 class RunRequest(BaseModel):
-    brief: str = Field(..., min_length=1, description="program description / brief text")
-    repo: str = Field(..., min_length=1, description="repo path or URL to analyze")
+    brief: Optional[str] = Field(None, description="program description / brief text. OMIT (or empty) "
+                                                  "for a local/personal source-only review of --repo.")
+    repo: str = Field(..., min_length=1, description="codebase to analyze: a local folder path or a git URL")
     links: Optional[str] = Field(None, description="curated reference links, one http(s) URL per line")
     dry_run: bool = Field(False, description="ingest + recon only, then stop before any audit")
     research: bool = Field(True, description="Stage-0 web OSINT before recon (the only networked "

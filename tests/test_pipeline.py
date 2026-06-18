@@ -57,6 +57,23 @@ def test_research_stage_on_by_default(env):
     assert "research" in stages and stages.index("research") < stages.index("recon")
 
 
+def test_local_review_synthesizes_scope_no_brief(env, tmp_path):
+    """A local folder with NO brief -> source-only scope synthesized, zero-token ingest."""
+    from argo.stages import ingest
+    ctx = env()
+    repo = tmp_path / "my-private-app"
+    repo.mkdir()
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    scope = ingest.run(ctx, brief_path=None, repo=str(repo))
+    assert scope.program_name == "my-private-app" and scope.target_type == "source_only"
+    assert scope.in_scope and scope.in_scope[0].type == "source_repo"
+    assert scope.prohibited_techniques                       # conservative defaults applied
+    assert ctx.ledger.run_call_count(ctx.run_id) == 0        # ingest spent ZERO tokens
+    assert ctx.scope_path.exists() and (ctx.repo_dir / "a.py").exists()
+    meta = json.loads(ctx.meta_path.read_text(encoding="utf-8"))
+    assert meta["repo_is_url"] is False and meta["program_name"] == "my-private-app"
+
+
 def test_no_research_keeps_run_offline(env):
     ctx = env()
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)

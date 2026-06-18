@@ -128,6 +128,16 @@ def test_repo_commit_pinning(tmp_path):
     assert repo_commit(tmp_path / "nope") == (None, None)   # non-git -> no crash
 
 
+def test_local_scope_synthesis():
+    from argo.stages.ingest import _local_scope, _repo_name
+    assert _repo_name("https://github.com/org/My-Repo.git", True) == "My-Repo"
+    assert _repo_name("https://gitlab.com/a/b/", True) == "b"
+    s = _local_scope("/home/me/secret-proj", False)
+    assert s["program_name"] == "secret-proj" and s["target_type"] == "source_only"
+    assert s["platform"] == "local" and s["in_scope"][0]["type"] == "source_repo"
+    assert len(s["prohibited_techniques"]) >= 3 and s["automation_allowed"] is True
+
+
 def test_recon_detect_archetype():
     from argo.stages.recon import _detect_archetype
     assert _detect_archetype({"archetype": "library_sdk"}, "") == "library_sdk"

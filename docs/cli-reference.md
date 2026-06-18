@@ -41,8 +41,11 @@ argo fix      --run RUN_ID [--no-verify] [--docker IMAGE] [--build-cmd "CMD"] [-
 argo bench    --suite DIR [--fixes] [--ab-audit-model MODEL]
 ```
 
-- `--brief` — program brief text file (paste the whole program page).
-- `--repo` — the **codebase to analyze**: a local path or a git URL (cloned `--depth 1`).
+- `--brief` — program brief text file (paste the whole program page). **Optional**: omit it to audit
+  a **local/personal codebase** as a source-only review — Argo synthesizes a minimal scope from
+  `--repo` (zero-token ingest, web research auto-off, no live hosts). e.g. `argo pipeline --repo ./my-code`.
+- `--repo` — the **codebase to analyze**: a **local folder path** (need not be a git repo; never
+  pushed anywhere) **or** a git URL (cloned `--depth 1`).
 - `--links` — a curated reference-links file, one `http(s)` URL per line (`#` comments and blank
   lines ignored). **Additive** to links the model extracts from the brief; the `--repo` URL is
   never allowed into `reference_links`. See `--links` semantics in

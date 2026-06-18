@@ -92,7 +92,9 @@ archetype and CWE, plus optional patch-quality and A/B (`GET /benchmark/ab`).
 }
 ```
 
-- `brief` / `links` are **pasted text** (not file paths). `repo` is a URL or local path.
+- `brief` / `links` are **pasted text** (not file paths). `repo` is a git URL **or a local folder
+  path**. **`brief` is optional**: omit it (or send empty) to audit a **local/personal** codebase as a
+  source-only review — the scope is synthesized from `repo` and web research is auto-disabled.
 - `config.runner` defaults to **`mock`** — a request spends **zero tokens** unless the client
   explicitly sets `"headless"` (Claude Code) or `"codex"` (Codex CLI / OpenAI / OSS). This is the
   safety default; the UI adds an explicit confirm + cost preview before a real run.

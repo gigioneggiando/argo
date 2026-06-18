@@ -42,7 +42,9 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
 
 ## The views
 
-- **New run** (`#/`) — program description, reference links, and repository, with an *Advanced*
+- **New run** (`#/`) — program description (**optional** — leave it empty to audit a **local/personal
+  codebase**: point Repository at a local folder path, no brief, no URL needed), reference links, and
+  repository, with an *Advanced*
   panel (runner, budget, audit model, parallel, calibration, dry-run, **web research**). The
   **Web research (Stage 0)** toggle (default **On**) runs the opt-out web-OSINT pass before recon
   (the only networked step; never the live in-scope hosts); **Off** keeps the run fully offline.

@@ -151,7 +151,13 @@ argo run      --run RUN_ID                                     # Stage 3
 argo validate --run RUN_ID                                     # Stage 4
 argo report   --run RUN_ID                                     # Stage 5
 argo pipeline --brief ... --links ... --repo ...               # 1-5, stops before submission
+argo pipeline --repo ./my-code                                 # 🔐 local/personal review — NO brief, NO URL
 ```
+
+**Auditing your own / private local code?** Omit `--brief` and point `--repo` at a **local folder**
+(it does not need to be a git repo, and is never pushed anywhere). Argo synthesizes a minimal
+**source-only** scope from the folder (zero-token ingest, web research auto-off) and audits it. Your
+code stays on your machine.
 
 Pick a backend (default `headless` = Claude Code):
 ```

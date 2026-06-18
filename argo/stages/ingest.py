@@ -219,6 +219,34 @@ def repo_commit(repo_dir: Path) -> tuple[str | None, str | None]:
         return None, None
 
 
+def _repo_name(repo: str, is_url: bool) -> str:
+    if is_url:
+        n = repo.rstrip("/").split("/")[-1]
+        n = n[:-4] if n.lower().endswith(".git") else n
+        return n or "local-review"
+    return Path(repo).expanduser().resolve().name or "local-review"
+
+
+def _local_scope(repo: str, is_url: bool) -> dict:
+    """Synthesize a minimal **source-only** scope for a local/personal codebase audited WITHOUT a
+    bug-bounty brief. The folder itself is the scope; conservative prohibited-technique defaults
+    apply; no live hosts. Deterministic — the ingest stage spends zero tokens in this mode."""
+    name = _repo_name(repo, is_url)
+    return {
+        "program_name": name,
+        "platform": "local",
+        "target_type": "source_only",
+        "in_scope": [{"asset": repo, "type": "source_repo"}],
+        "out_of_scope": [],
+        "prohibited_techniques": list(_DEFAULT_PROHIBITED),
+        "automation_allowed": True,
+        "reference_links": [],
+        "program_brief_raw": (
+            f"Local source-only security review of '{name}'. The owner's own or private codebase, "
+            "analyzed statically — no live hosts are contacted and nothing is submitted."),
+    }
+
+
 def _asset_versions(assets_dir: Path) -> list[AssetVersion]:
     out: list[AssetVersion] = []
     for name in _ASSET_FILES:
@@ -227,47 +255,54 @@ def _asset_versions(assets_dir: Path) -> list[AssetVersion]:
     return out
 
 
-def run(ctx: RunContext, *, brief_path: Path, repo: str, repo_is_url: bool | None = None,
+def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: bool | None = None,
         links_path: Path | None = None) -> Scope:
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
-    brief_text = Path(brief_path).read_text(encoding="utf-8")
-    (ctx.run_dir / "brief.txt").write_text(brief_text, encoding="utf-8")
+    is_url = _is_url(repo) if repo_is_url is None else repo_is_url
 
-    # --- LLM extraction -> scope.json ------------------------------------------------
-    schema_text = (ctx.assets_dir / "scope_schema.json").read_text(encoding="utf-8")
-    prompt = _EXTRACTION_PROMPT.format(
-        defaults="\n".join(f"  - {d}" for d in _DEFAULT_PROHIBITED),
-        schema=schema_text,
-        brief=brief_text,
-    )
-    prompt = with_artifact_contract(
-        prompt,
-        artifacts=[{
-            "type": "scope", "filename": "scope.json", "schema": "scope_schema.json",
-            "desc": "the extracted scope object",
-        }],
-    )
-    result = ctx.runner.run(
-        prompt=prompt,
-        run_dir=ctx.run_dir,
-        work_dir=ctx.work_dir("ingest"),
-        model=ctx.config.model_for("ingest"),
-        stage="ingest",
-        run_id=ctx.run_id,
-        repo_dir=None,                 # brief text only; no repo, no live host
-        allowed_tools=ARTIFACT_TOOLS,
-        label="scope-extraction",
-    )
-
-    files = collect_output_files(result, "scope.json")
-    scope_files = [f for f in files if f.name == "scope.json"]
-    if not scope_files:
-        raise RuntimeError("ingest: model did not produce scope.json")
-    raw = json.loads(scope_files[0].read_text(encoding="utf-8"))
+    if brief_path is None:
+        # --- Local / personal review (no bug-bounty brief): synthesize the scope, zero tokens ---
+        raw = _local_scope(repo, is_url)
+        (ctx.run_dir / "brief.txt").write_text(raw["program_brief_raw"], encoding="utf-8")
+        _log(f"ingest: local source-only review of '{raw['program_name']}' "
+             "(no brief — synthesized scope, zero-token ingest)")
+    else:
+        # --- Bug-bounty program: LLM extraction of brief -> scope.json --------------------
+        brief_text = Path(brief_path).read_text(encoding="utf-8")
+        (ctx.run_dir / "brief.txt").write_text(brief_text, encoding="utf-8")
+        schema_text = (ctx.assets_dir / "scope_schema.json").read_text(encoding="utf-8")
+        prompt = _EXTRACTION_PROMPT.format(
+            defaults="\n".join(f"  - {d}" for d in _DEFAULT_PROHIBITED),
+            schema=schema_text,
+            brief=brief_text,
+        )
+        prompt = with_artifact_contract(
+            prompt,
+            artifacts=[{
+                "type": "scope", "filename": "scope.json", "schema": "scope_schema.json",
+                "desc": "the extracted scope object",
+            }],
+        )
+        result = ctx.runner.run(
+            prompt=prompt,
+            run_dir=ctx.run_dir,
+            work_dir=ctx.work_dir("ingest"),
+            model=ctx.config.model_for("ingest"),
+            stage="ingest",
+            run_id=ctx.run_id,
+            repo_dir=None,                 # brief text only; no repo, no live host
+            allowed_tools=ARTIFACT_TOOLS,
+            label="scope-extraction",
+        )
+        files = collect_output_files(result, "scope.json")
+        scope_files = [f for f in files if f.name == "scope.json"]
+        if not scope_files:
+            raise RuntimeError("ingest: model did not produce scope.json")
+        raw = json.loads(scope_files[0].read_text(encoding="utf-8"))
+        raw = _strip_nulls(raw)                     # null optional fields == absent (real models)
+        raw.setdefault("program_brief_raw", brief_text)
 
     # Conservative post-processing the code owns (not left to the model):
-    raw = _strip_nulls(raw)                         # null optional fields == absent (real models)
-    raw.setdefault("program_brief_raw", brief_text)
     if not raw.get("prohibited_techniques"):
         raw["prohibited_techniques"] = list(_DEFAULT_PROHIBITED)
 
@@ -292,7 +327,6 @@ def run(ctx: RunContext, *, brief_path: Path, repo: str, repo_is_url: bool | Non
 
     # --- acquire repo read-only ------------------------------------------------------
     repo_source = repo
-    is_url = _is_url(repo) if repo_is_url is None else repo_is_url
     acquire_repo(repo, ctx.repo_dir, is_url=is_url)
     commit_sha, commit_date = repo_commit(ctx.repo_dir)   # pin the analyzed source (reproducibility)
 

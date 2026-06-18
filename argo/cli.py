@@ -90,8 +90,10 @@ def _emit(obj: dict) -> None:
 # --- commands -------------------------------------------------------------------------
 @app.command()
 def ingest(
-    brief: Path = typer.Option(..., "--brief", exists=True, help="program brief text file"),
-    repo: str = typer.Option(..., "--repo", help="repo path or URL"),
+    brief: Optional[Path] = typer.Option(None, "--brief", exists=True,
+                                         help="program brief text file (OMIT for a local/personal "
+                                              "source-only review synthesized from --repo)"),
+    repo: str = typer.Option(..., "--repo", help="codebase to analyze: a local folder path or a git URL"),
     links: Optional[Path] = typer.Option(
         None, "--links", exists=True,
         help="curated reference links file (one http(s) URL per line; '#' comments ok). "
@@ -182,8 +184,11 @@ def fix(run: str = RunIdArg,
 @app.command()
 def pipeline(
     brief: Optional[Path] = typer.Option(None, "--brief", exists=True,
-                                         help="program brief text file"),
-    repo: Optional[str] = typer.Option(None, "--repo", help="repo path or URL"),
+                                         help="program brief text file. OPTIONAL: omit it to audit "
+                                              "a local/personal codebase as a source-only review "
+                                              "(scope is synthesized from --repo, zero-token ingest)."),
+    repo: Optional[str] = typer.Option(None, "--repo", help="codebase to analyze: a local folder "
+                                                            "path OR a git URL"),
     links: Optional[Path] = typer.Option(
         None, "--links", exists=True,
         help="curated reference links file (one http(s) URL per line; '#' comments ok). "
@@ -222,8 +227,10 @@ def pipeline(
             brief = Path("tests/fixtures/brief.txt")       # bundled tiny fixture
         if repo is None:
             repo = "tests/fixtures/repo"
-    if brief is None or repo is None:
-        raise typer.BadParameter("--brief and --repo are required (unless --smoke)")
+    if repo is None:
+        raise typer.BadParameter("--repo is required (a local folder path or a git URL)")
+    if brief is None:
+        research = False     # local/personal review: no program context to web-research, stay offline
     ctx = build_context(cfg, run or new_run_id())
     summary = run_pipeline(ctx, brief, repo, dry_run=dry_run, research_enabled=research,
                            links_path=links)

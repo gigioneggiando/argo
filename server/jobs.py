@@ -45,29 +45,36 @@ class JobManager:
         run_id = new_run_id()
         ctx = build_context(self._config_for(req), run_id)
         ctx.run_dir.mkdir(parents=True, exist_ok=True)
-        (ctx.run_dir / "brief.txt").write_text(req.brief, encoding="utf-8")
+        # No brief -> local/personal source-only review (scope synthesized from the repo; offline).
+        local_mode = not (req.brief and req.brief.strip())
+        if not local_mode:
+            (ctx.run_dir / "brief.txt").write_text(req.brief, encoding="utf-8")
+        research = bool(req.research) and not local_mode
         links_path: Path | None = None
         if req.links and req.links.strip():
             links_path = ctx.run_dir / "links.txt"
             links_path.write_text(req.links, encoding="utf-8")
 
-        stages = (["ingest"] + (["research"] if req.research else []) + ["recon"]
+        stages = (["ingest"] + (["research"] if research else []) + ["recon"]
                   + ([] if req.dry_run else ["audit", "validate", "report"]))
         reporter = ProgressReporter(ctx, stages)
         reporter.begin()  # status.json exists before this call returns
 
         cancel = threading.Event()
         thread = threading.Thread(
-            target=self._run, args=(ctx, req, links_path, reporter, cancel), daemon=True)
+            target=self._run, args=(ctx, req, links_path, reporter, cancel, local_mode, research),
+            daemon=True)
         with self._lock:
             self._jobs[run_id] = {"thread": thread, "cancel": cancel, "ctx": ctx}
         thread.start()
         return run_id
 
-    def _run(self, ctx, req: RunRequest, links_path, reporter, cancel) -> None:
+    def _run(self, ctx, req: RunRequest, links_path, reporter, cancel,
+             local_mode=False, research=True) -> None:
         try:
-            run_pipeline(ctx, ctx.run_dir / "brief.txt", req.repo, dry_run=req.dry_run,
-                         research_enabled=req.research, links_path=links_path,
+            brief_path = None if local_mode else (ctx.run_dir / "brief.txt")
+            run_pipeline(ctx, brief_path, req.repo, dry_run=req.dry_run,
+                         research_enabled=research, links_path=links_path,
                          reporter=reporter, cancel_event=cancel)
         except PipelineCancelled:
             reporter.cancelled()

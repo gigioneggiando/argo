@@ -150,8 +150,8 @@ function newRunView() {
   }
 
   async function submit() {
-    if (!form.brief.trim()) return toast("Add a program description", true);
-    if (!form.repo.trim()) return toast("Add a repository URL or path", true);
+    if (!form.repo.trim()) return toast("Add a repository: a local folder path or a git URL", true);
+    // brief is optional: empty brief => local/personal source-only review (scope synthesized).
     startBtn.disabled = true; startBtn.lastChild.textContent = "Starting…";
     try {
       const cfg = { runner: form.runner, parallel: form.parallel, calibration: form.calibration,
@@ -175,9 +175,9 @@ function newRunView() {
       h("p", {}, "Paste the program, point at the source repo, and the agent profiles it, writes target-specific audit prompts, hunts findings, and validates them — stopping at human-review drafts. Never touches a live host, never patches.")),
     recoCard,
     h("div", { class: "card" },
-      field("Program description", briefEl, "The bug-bounty program page — scope and rules are extracted from this.", true),
+      field("Program description", briefEl, "The bug-bounty program page — scope and rules are extracted from this. OPTIONAL: leave empty to audit a local/personal codebase as a source-only review (scope is synthesized from the repo)."),
       field("Reference links", linksEl, "Docs / security pages / advisory history. One URL per line. Optional."),
-      field("Repository", repoEl, "The codebase to analyze (URL is cloned read-only, or a local path).", true),
+      field("Repository", repoEl, "The codebase to analyze: a local folder path, OR a git URL (cloned read-only). Your code never leaves your machine.", true),
       advToggle, adv, costBanner,
       h("div", { class: "spread", style: { marginTop: "22px" } },
         h("span", { class: "grow faint", style: { fontSize: "13px" } }, "Default runner is Mock (free). Switch to Real in Advanced."),

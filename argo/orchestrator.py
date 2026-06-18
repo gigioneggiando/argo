@@ -30,7 +30,7 @@ def build_context(config: PipelineConfig, run_id: str, *, now: str | None = None
 
 
 # --- individual stages (thin wrappers so the CLI and tests share one entry point) ----
-def do_ingest(ctx: RunContext, brief: Path, repo: str, repo_is_url: bool | None = None,
+def do_ingest(ctx: RunContext, brief: Path | None, repo: str, repo_is_url: bool | None = None,
               links_path: Path | None = None):
     return ingest.run(ctx, brief_path=brief, repo=repo, repo_is_url=repo_is_url,
                       links_path=links_path)
@@ -56,7 +56,7 @@ def do_report(ctx: RunContext):
     return report.run(ctx)
 
 
-def run_pipeline(ctx: RunContext, brief: Path, repo: str, *, dry_run: bool = False,
+def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: bool = False,
                  research_enabled: bool = True, repo_is_url: bool | None = None,
                  links_path: Path | None = None, reporter: ProgressReporter | None = None,
                  cancel_event=None) -> dict:

@@ -74,7 +74,7 @@ body {
     radial-gradient(1200px 600px at 80% -10%, rgba(124, 140, 255, 0.10), transparent 60%),
     radial-gradient(900px 500px at -10% 0%, rgba(70, 224, 192, 0.06), transparent 55%),
     var(--bg);
-  background-attachment: fixed;
+  background-repeat: no-repeat;
   -webkit-font-smoothing: antialiased;
   line-height: 1.5;
 }
@@ -119,7 +119,7 @@ code, pre, .mono { font-family: var(--mono); }
 main { max-width: 1080px; margin: 0 auto; padding: 34px 24px 80px; }
 .page-head { margin-bottom: 24px; }
 .page-head h1 { font-size: 26px; }
-.page-head p { color: var(--text-dim); margin: 8px 0 0; max-width: 60ch; }
+.page-head p { color: var(--text-dim); margin: 8px 0 0; }
 .row { display: flex; gap: 14px; flex-wrap: wrap; }
 .spread { display: flex; align-items: center; gap: 12px; }
 .spread .grow { flex: 1; }

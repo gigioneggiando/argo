@@ -715,9 +715,13 @@ function costsView() {
       : null;
     let pricingCard = null;
     if (mm) {
-      const backends = h("div", { class: "banner info" }, "Backends: ",
-        ...(mm.backends || []).map((b, i) => h("span", {}, (i ? " · " : ""),
-          h("strong", {}, b.label), ` — cost: ${b.cost}` + (b.default ? ` (default ${b.default})` : ""))));
+      const backends = h("div", {},
+        h("div", { class: "hint", style: { marginBottom: "8px" } }, "Backends"),
+        h("div", { class: "row" }, ...(mm.backends || []).map((b) =>
+          h("div", { class: "acard", style: { flex: "1 1 200px", minWidth: "180px" } },
+            h("div", { class: "k" }, b.label),
+            h("div", { class: "v", style: { fontSize: "14px" } }, "cost: ", b.cost),
+            b.default ? h("div", { class: "help", style: { margin: "2px 0 0" } }, "default: " + b.default) : null))));
       const priceTbl = (mm.pricing && mm.pricing.length)
         ? dataTable(["Model", "$ / 1M input", "$ / 1M output"],
             mm.pricing.map((p) => [p.model, "$" + p.input_per_mtok, "$" + p.output_per_mtok]))

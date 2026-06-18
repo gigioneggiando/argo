@@ -6,6 +6,7 @@ from argo.config import NETWORK_TOOLS, MUTATION_TOOLS
 from argo.guardrails import (GuardrailError, LiveInteractionForbiddenError,
                                  PromptGuardrailError, assert_audit_prompt_wellformed,
                                  assert_no_network_tools, assert_prohibited_present,
+                                 ensure_prohibited_present,
                                  enforce_session_tools, out_of_scope_match)
 from argo.rendering import fill_placeholders, render_audit_template
 from argo.config import PipelineConfig
@@ -55,6 +56,27 @@ def test_prohibited_present_ok_and_missing():
     assert_prohibited_present(text, PROHIBITED)  # all present -> no raise
     with pytest.raises(PromptGuardrailError):
         assert_prohibited_present("nothing here", PROHIBITED)
+
+
+def test_ensure_prohibited_present_reinserts_missing_under_section():
+    # model paraphrased the prohibited away but kept the section header
+    paraphrased = "## PROHIBITED TECHNIQUES\n- please be nice to the servers\n## NEXT\n"
+    repaired = ensure_prohibited_present(paraphrased, PROHIBITED)
+    assert_prohibited_present(repaired, PROHIBITED)            # now passes the hard gate
+    for p in PROHIBITED:
+        assert p in repaired
+    assert "please be nice to the servers" in repaired         # only ADDS, never removes
+
+
+def test_ensure_prohibited_present_creates_section_when_absent():
+    repaired = ensure_prohibited_present("no prohibited block at all\n", PROHIBITED)
+    assert "## PROHIBITED TECHNIQUES" in repaired
+    assert_prohibited_present(repaired, PROHIBITED)
+
+
+def test_ensure_prohibited_present_noop_when_all_present():
+    text = "x no DoS / stress / volumetric testing y no automated scanning of live hosts z"
+    assert ensure_prohibited_present(text, PROHIBITED) == text  # unchanged
 
 
 def test_prohibited_empty_list_is_rejected():

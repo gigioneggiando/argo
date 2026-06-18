@@ -113,6 +113,32 @@ def assert_prohibited_present(rendered_prompt: str, prohibited_techniques: list[
         )
 
 
+def ensure_prohibited_present(prompt_text: str, prohibited_techniques: list[str]) -> str:
+    """Deterministically guarantee every scope prohibited technique appears *verbatim* in a
+    model-generated audit prompt.
+
+    Recon asks the model to regenerate the audit template carrying the scope's prohibited
+    techniques verbatim; models sometimes paraphrase them. Rather than fail the run on a
+    paraphrase, we re-insert any missing constraint verbatim under the PROHIBITED TECHNIQUES
+    section (creating the section if the model omitted it). We only ever **add** the scope's
+    own constraints, never remove or relax anything, so this strengthens the prompt — and
+    :func:`assert_prohibited_present` still runs afterwards as the hard gate.
+    """
+    if not prohibited_techniques:
+        return prompt_text
+    haystack = _normalize(prompt_text)
+    missing = [p for p in prohibited_techniques if _normalize(p) not in haystack]
+    if not missing:
+        return prompt_text
+    block = "\n".join(f"- {m}" for m in missing)
+    lines = prompt_text.splitlines()
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("#") and "prohibited techniques" in line.lower():
+            lines.insert(i + 1, block)
+            return "\n".join(lines)
+    return prompt_text.rstrip() + "\n\n## PROHIBITED TECHNIQUES\n" + block + "\n"
+
+
 # Anchors that a template-conforming audit prompt must contain (from
 # 01_audit_prompt_template.md.j2). Used to reject malformed model-generated prompts.
 _REQUIRED_AUDIT_ANCHORS = (

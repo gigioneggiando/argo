@@ -74,6 +74,25 @@ def test_local_review_synthesizes_scope_no_brief(env, tmp_path):
     assert meta["repo_is_url"] is False and meta["program_name"] == "my-private-app"
 
 
+def test_local_review_full_pipeline_repairs_prohibited(env, tmp_path):
+    """Full local-folder run (no brief): recon's deterministic repair re-inserts the synthesized
+    prohibited defaults into the model-generated prompts, so the well-formedness gate passes and
+    the pipeline completes end-to-end (the real-backend failure this guards against)."""
+    from argo.stages.ingest import _DEFAULT_PROHIBITED
+    ctx = env()
+    repo = tmp_path / "personal-app"
+    repo.mkdir()
+    (repo / "auth.py").write_text("q = 'SELECT * FROM u WHERE n=' + name\n", encoding="utf-8")
+    summary = run_pipeline(ctx, None, str(repo), research_enabled=False)   # brief=None -> local
+    assert Path(summary["report"]).exists()
+    prompts = list(ctx.prompts_out_dir.glob("audit_*.md"))
+    assert prompts
+    for p in prompts:                                   # every prompt carries every default
+        text = p.read_text(encoding="utf-8")
+        for prohibited in _DEFAULT_PROHIBITED:
+            assert prohibited in text
+
+
 def test_no_research_keeps_run_offline(env):
     ctx = env()
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)

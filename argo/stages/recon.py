@@ -19,7 +19,11 @@ from pathlib import Path
 from ..archetype import canonicalize
 from ..config import ARTIFACT_TOOLS
 from ..context import RunContext, collect_output_files
-from ..guardrails import assert_audit_prompt_wellformed, assert_prohibited_present
+from ..guardrails import (
+    assert_audit_prompt_wellformed,
+    assert_prohibited_present,
+    ensure_prohibited_present,
+)
 from ..knowledge import format_for_prompt
 
 _RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-0 brief so it can't dominate the recon prompt
@@ -126,6 +130,9 @@ def run(ctx: RunContext) -> list[Path]:
                 f.read_text(encoding="utf-8"), encoding="utf-8")
         elif f.name.startswith("audit_") and f.suffix == ".md":
             text = f.read_text(encoding="utf-8")
+            # Deterministically re-insert any prohibited technique the model paraphrased away
+            # (only ever ADDS the scope's own constraints) before the hard gate below.
+            text = ensure_prohibited_present(text, scope.prohibited_techniques)
             # Guardrail: a generated prompt that lost the RoE / prohibited techniques fails here.
             assert_audit_prompt_wellformed(text, scope.prohibited_techniques)
             dst = ctx.prompts_out_dir / f.name

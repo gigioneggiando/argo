@@ -73,7 +73,10 @@ The boundary is enforced, not just prompted:
 - Enforced at every prompt boundary:
   - `stages/recon.py` — on the rendered meta-prompt, and `assert_audit_prompt_wellformed()` on
     **each generated audit prompt** (must also carry the template's RoE sections and "Do NOT
-    patch").
+    patch"). Just before that gate, `ensure_prohibited_present()` **deterministically re-inserts**
+    any prohibited technique the model paraphrased away when it regenerated the template — it only
+    ever *adds* the scope's own constraints (never removes/relaxes), so a model paraphrase can't
+    silently drop a limit *or* fail an otherwise-valid run; the hard gate still runs afterwards.
   - `stages/audit.py` — again on the prompt that actually drives each audit session.
   - `stages/validate.py` — on the rendered validation prompt.
 - Tests: `test_guardrails.py` (present / missing / empty / malformed-template cases).

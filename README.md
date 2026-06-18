@@ -1,13 +1,22 @@
-# 👁️ Argo — AI security-audit pipeline for source-available bug bounty
+# 👁️ Argo — LLM-native static vulnerability detection
 
 > *Argus Panoptes, the all-seeing watchman — a hundred eyes on your code.*
 
-Argo is an automated pipeline that takes a **bug-bounty program description** plus the **code
-repository** and produces a reviewable vulnerability report. The core idea: start from reusable
-general prompts and **automatically enrich them** with target-specific context (stack, endpoints,
-scope, rules, docs, advisory history) — so every scan runs with tailored prompts instead of generic
-ones. It runs on whatever you have: **Claude Code**, the **Codex CLI** (OpenAI), or a **local
-open-source model**.
+Argo finds security vulnerabilities in **source code** by driving an LLM as the analyst — it reads
+the code the way a human auditor would, rather than matching rules against a graph. Point it at any
+codebase — a **local folder**, a private repo, or a public one — and it produces a reviewable
+vulnerability report. The core idea: start from reusable general prompts and **automatically enrich
+them** with target-specific context (stack, endpoints, docs, advisory history) — so every audit runs
+with tailored prompts instead of generic ones. It runs on whatever you have: **Claude Code**, the
+**Codex CLI** (OpenAI), or a **local open-source model**.
+
+**Where it sits.** Argo is an **LLM-native SAST** — a complement and alternative to rule-based static
+analyzers (CodeQL, Semgrep): nothing to write (no queries, no rule packs), and it catches
+logic/authorization bugs that fixed patterns miss — at the cost of being *probabilistic* rather than
+exhaustive (see [design-decisions](docs/design-decisions.md)). It is **static by design** — it never
+executes the target (a hard guardrail), so it is *not* a DAST, fuzzer, or symbolic executor.
+**Bug-bounty triage is one specialized mode** (scope/RoE ingest, submission drafts, cross-run
+resubmission tracking), not the whole tool — see [Two modes](#-two-modes-general-audit-and-bug-bounty).
 
 - 🔎 **Threat-informed audit** — opt-out Stage-0 web OSINT (CVEs, advisories, history) feeds recon.
 - 🧠 **Archetype-driven prompts** — classifies the software, then writes custom audit prompts for it.
@@ -22,19 +31,37 @@ open-source model**.
 
 ---
 
+## 🪪 Two modes: general audit and bug bounty
+
+Argo runs in two modes over the **same** five-stage engine:
+
+| | **General code audit** (default) | **Bug-bounty triage** |
+|---|---|---|
+| **Input** | a folder or repo — **no brief** | a program brief (`--brief`) + links + repo |
+| **Scope** | source-only, synthesized from the code (zero-token ingest) | parsed from the brief (assets, RoE, exclusions) |
+| **For** | your own / private / personal code, OSS review, CTFs, research | scoped programs with safe harbor |
+| **Extras** | — | submission drafts, scope filtering, cross-run resubmission tracking |
+
+Auditing your own code is the common case: omit `--brief`, point `--repo` at a **local folder**, and
+your code never leaves your machine. Bug-bounty mode adds the program-specific scaffolding on top.
+
+---
+
 ## 🔒 Principles and limits (read this first)
 
-This pipeline is intended **only** for authorized security research on bug-bounty programs.
-Three constraints are enforced in the orchestrator, not left to the prompts:
+Argo is for **authorized** security review — your own code, bug-bounty programs with safe harbor,
+CTFs, or research. Three constraints are enforced in the orchestrator, not left to the prompts:
 
 1. **Never auto-submit.** The pipeline stops at drafts; submission is always a human action.
 2. **Never contact live hosts**, even for `source_and_live` targets. Analysis is static, on the
    source. For live targets, verification steps exist only as a text plan that you run yourself,
-   inside the program rules (no DoS, no scanning).
+   inside the program rules (no DoS, no scanning). This static-only stance is *by design*, and is
+   what keeps Argo a SAST rather than a DAST.
 3. **Read-only repo** in every session: the pipeline never patches anything.
 
 Additionally, prohibited techniques declared in scope (e.g. "no DoS") are propagated into every
-generated prompt, and prompt rendering fails if they are missing.
+generated prompt, and prompt rendering fails if they are missing (re-inserted verbatim if a model
+paraphrases them — see [guardrails](docs/guardrails.md)).
 
 ---
 
@@ -87,7 +114,11 @@ runs/<RUN_ID>/         # scope.json, repo/, repo_profile.json, prompts/, finding
 
 ---
 
-## 📥 Inputs: how to set up a program
+## 📥 Inputs: how to set up a program (bug-bounty mode)
+
+> For a **general code audit** you need none of this — just `argo pipeline --repo ./your-code`
+> (see [Two modes](#-two-modes-general-audit-and-bug-bounty)). The inputs below apply to **bug-bounty
+> mode**, where a program brief defines the scope and rules.
 
 Per program, three separate things land in three different places.
 
@@ -258,7 +289,19 @@ report      -> sonnet-4-6
 
 Key concept: validation (Opus) removes **false positives**, but does **not recover false
 negatives** — bugs the audit model never surfaced are gone. So the audit model is the only lever
-on the missed-bug rate, which in bug bounty is the failure that matters.
+on the missed-bug rate, which is the failure that matters for vulnerability detection.
+
+**Model landscape (why the backend is swappable).** Argo deliberately keeps the model behind the
+`AgentRunner` interface, because detection quality tracks the model. The frontier is moving fast and
+toward security specifically: Anthropic's **Claude Mythos 5** was described as having the strongest
+cybersecurity capability of any model — strong enough that the general-use **Fable 5** ships with a
+classifier that *routes* cybersecurity (and bio/chem) requests to Claude Opus 4.8 instead, and
+direct access to Mythos/Fable 5 was later restricted under a US export-control directive
+([Anthropic](https://www.anthropic.com/news/claude-fable-5-mythos-5),
+[red.anthropic.com](https://red.anthropic.com/2026/mythos-preview/)). The takeaway for Argo: as
+security-specialized models become accessible, the swappable backend means Argo gets better by
+pointing at a stronger engine — no pipeline changes. Today it runs on the generally-available
+backends above.
 
 Calibration phase (first ~5 programs): override `audit -> opus-4-8`. While the prompts are
 unproven, you don't want to confound "weak prompt" with "weak model" when diagnosing misses. Once

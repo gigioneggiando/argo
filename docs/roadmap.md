@@ -209,6 +209,29 @@ Turn the ledger into guidance. Implemented in `argo/costs.py` + `GET /costs` + a
 - [ ] _Later (needs Phase 7):_ the **cost/quality frontier** (cheapest config that *holds quality*)
       requires ground-truth quality metrics to pair with these costs.
 
+### Phase 9 — Dynamic / runtime analysis (future, opt-in, sandboxed) — ⬜ NOT STARTED
+Goal: extend Argo beyond **static** detection toward a **confirm-by-running** capability, so a
+finding can be backed by an observed runtime signal (a crashing input, a triggered assertion, an
+exploited path) rather than a static hypothesis alone. This is the natural complement to the
+LLM-native SAST: static finds the *candidate*, dynamic *proves* it.
+
+This is a **deliberate boundary expansion**, so it must be designed carefully against the current
+guardrails — today **no code execution** is a hard rule. The design constraints:
+- **Opt-in and isolated.** Like Phase 6 (fix-verify), it runs only on an **isolated copy**, never the
+  source mount, and never against the program's **live in-scope hosts** (that stays prohibited).
+  Execution happens in a **locked-down sandbox** (offline container, `--network=none`, resource caps).
+- **LLM proposes, harness runs.** The model writes the harness (a unit test, a fuzz target, a PoC
+  script for a candidate finding); the sandbox executes it and feeds the **observed result** back to
+  validation to confirm/refute — the model never gets an execution primitive directly.
+- **Where it pays off.** Turns `needs_runtime_verification` findings into confirmed ones; gives the
+  benchmark a ground-truth signal; raises precision without a second model. Closest existing seam:
+  Phase 6's `verify.py` already builds/compiles an isolated copy — runtime analysis generalizes that
+  from "compiles" to "executes a generated harness".
+- **Why it's later, not now.** It crosses the static-only line that currently makes Argo safe to point
+  at any repo. It needs a hardened sandbox story before it ships, and it should be **clearly separated**
+  (a distinct opt-in mode) so the default tool stays static-only. Until then, Argo emits the
+  `live_verification_plan` text for a human to run.
+
 ## Cross-cutting / decisions to make before Phase 0
 
 - **UI stack.** FastAPI backend is the clear choice. Frontend: a lightweight modern SPA

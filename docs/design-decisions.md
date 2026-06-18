@@ -3,6 +3,23 @@
 The deliberate choices that define what Argo *is* — and, just as importantly, what it is **not**.
 Written to be citable from a paper's "Design" / "Threats to validity" sections.
 
+## 0. Where Argo sits: LLM-native SAST (the category)
+
+Argo is a **static** vulnerability detector for source code, in the same family as CodeQL and
+Semgrep — but where those match **hand-written rules/queries against a code graph**, Argo has an
+**LLM read the source semantically**. The trade is explicit: no rules or queries to author, and it
+surfaces logic/authorization bugs that fixed patterns miss, but it is **probabilistic** (recall and
+precision vary by model and run) rather than deterministic and exhaustive. It is therefore a
+**complement** to rule-based SAST, not a drop-in replacement — and a different tool from **dynamic**
+analyzers: Argo **never executes the target** (§3), so it is not a DAST, fuzzer, or symbolic
+executor (e.g. Mythril for EVM). It can review Solidity or any language *as source*, but it does not
+do symbolic execution. Dynamic confirmation is a deliberately-deferred, opt-in, sandboxed future mode
+(roadmap Phase 9), kept separate so the default tool stays static-only and safe to point at any repo.
+
+**Bug bounty is one mode, not the identity.** The same engine runs as a general code auditor
+(point it at a folder, no brief) or as bug-bounty triage (a program brief adds scope/RoE parsing,
+submission drafts, and cross-run resubmission tracking). The detection core is identical.
+
 ## 1. Orchestration-only glue; the security logic lives in the prompts
 
 Argo is a sequencer, not an analyzer. It ingests a program, drives five LLM stages

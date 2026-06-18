@@ -192,6 +192,22 @@ def test_chat_roundtrip_and_test_generation(tmp_path):
         _force_rmtree(tmp_path / "runs")
 
 
+def test_quality_endpoint(tmp_path):
+    app, client = _client(tmp_path)
+    try:
+        # empty ledger / no feedback -> judged 0, accept_rate null, no crash
+        q0 = client.get("/quality").json()
+        assert q0["accept_rate"]["judged"] == 0 and q0["headline"]["real_world_accept_rate"] is None
+        # seed a finding + record triager feedback on the app's ledger
+        app.state.ledger.record_finding(program_name="acme", run_id="R", dedup_key="k",
+                                        title="t", verdict="confirmed", validated_severity="High")
+        app.state.ledger.record_triager_feedback(program_name="acme", dedup_key="k", accepted=True)
+        q1 = client.get("/quality").json()
+        assert q1["accept_rate"]["accepted"] == 1 and q1["headline"]["real_world_accept_rate"] == 1.0
+    finally:
+        app.state.ledger.close()
+
+
 def test_costs_endpoint(tmp_path):
     app, client = _client(tmp_path)
     try:

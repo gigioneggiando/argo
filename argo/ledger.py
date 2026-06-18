@@ -40,10 +40,19 @@ CREATE TABLE IF NOT EXISTS findings_ledger (
     title              TEXT,
     verdict            TEXT,
     validated_severity TEXT,
+    triager_accepted   INTEGER,           -- real-world feedback: 1 accepted, 0 rejected, NULL pending
+    triager_feedback   TEXT,
+    triager_ts         TEXT,
     UNIQUE(program_name, dedup_key, run_id)
 );
 CREATE INDEX IF NOT EXISTS idx_findings_prog_key ON findings_ledger(program_name, dedup_key);
 """
+
+# Columns added after the original schema shipped — applied to pre-existing DBs at open.
+_MIGRATIONS = {
+    "findings_ledger": [("triager_accepted", "INTEGER"), ("triager_feedback", "TEXT"),
+                        ("triager_ts", "TEXT")],
+}
 
 
 def _now() -> str:
@@ -65,7 +74,17 @@ class Ledger:
         self._lock = threading.Lock()
         with self._lock:
             self._conn.executescript(_SCHEMA)
+            self._migrate()
             self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add any columns introduced after a DB was first created (SQLite has no
+        ADD COLUMN IF NOT EXISTS, so check PRAGMA table_info first)."""
+        for table, cols in _MIGRATIONS.items():
+            have = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
+            for name, decl in cols:
+                if name not in have:
+                    self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     def close(self) -> None:
         self._conn.close()
@@ -183,3 +202,53 @@ class Ledger:
                 (program_name, dedup_key, exclude_run_id),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # -------------------------------------------------- triager feedback (A2: accept-rate)
+    def record_triager_feedback(self, *, program_name: str, dedup_key: str, accepted: bool,
+                                run_id: str | None = None, feedback: str | None = None) -> int:
+        """Record a real-world triager outcome (accepted/rejected) for a previously-reported
+        finding. The source of truth for this is the **Fleece** registry; Argo only ingests it to
+        pair human precision with benchmark recall. Matches on (program, dedup_key), optionally
+        scoped to one ``run_id``. Returns the number of ledger rows updated."""
+        sql = ("UPDATE findings_ledger SET triager_accepted = ?, triager_feedback = ?, "
+               "triager_ts = ? WHERE program_name = ? AND dedup_key = ?")
+        args: list = [1 if accepted else 0, feedback, _now(), program_name, dedup_key]
+        if run_id is not None:
+            sql += " AND run_id = ?"
+            args.append(run_id)
+        with self._lock:
+            cur = self._conn.execute(sql, tuple(args))
+            self._conn.commit()
+        return cur.rowcount
+
+    def accept_rate(self, program_name: str | None = None) -> dict:
+        """Triager accept-rate over recorded findings (the real-world precision proxy). Counts only
+        findings that have feedback; ``pending`` are recorded-but-unjudged. Sliced by severity."""
+        where, args = "", []
+        if program_name:
+            where = " WHERE program_name = ?"
+            args = [program_name]
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT validated_severity AS sev, triager_accepted AS acc, COUNT(*) AS n "
+                f"FROM findings_ledger{where} GROUP BY validated_severity, triager_accepted", args
+            ).fetchall()
+        accepted = rejected = pending = 0
+        by_sev: dict[str, list[int]] = {}
+        for r in rows:
+            sev = r["sev"] or "Unknown"
+            slot = by_sev.setdefault(sev, [0, 0, 0])   # [accepted, rejected, pending]
+            if r["acc"] == 1:
+                accepted += r["n"]; slot[0] += r["n"]
+            elif r["acc"] == 0:
+                rejected += r["n"]; slot[1] += r["n"]
+            else:
+                pending += r["n"]; slot[2] += r["n"]
+        judged = accepted + rejected
+        return {
+            "program_name": program_name,
+            "accepted": accepted, "rejected": rejected, "pending": pending, "judged": judged,
+            "accept_rate": round(accepted / judged, 4) if judged else None,
+            "by_severity": {k: {"accepted": v[0], "rejected": v[1], "pending": v[2]}
+                            for k, v in sorted(by_sev.items())},
+        }

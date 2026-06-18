@@ -174,6 +174,15 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
         """Observed cost analytics from the ledger (Phase 8), grouped by archetype when known."""
         return cost_report(ledger, run_archetypes=_run_archetypes())
 
+    @app.get("/quality")
+    def quality():
+        """A2: real-world triager accept-rate (precision proxy) paired with benchmark recall.
+        Fields are null/empty until feedback is recorded (via `argo feedback`) and a benchmark
+        has been run."""
+        from argo.quality import quality_report
+        bench = runs_dir / "benchmark_report.json"
+        return quality_report(ledger, benchmark_report_path=bench if bench.exists() else None)
+
     def _run_archetypes() -> dict:
         """Map run_id -> canonical archetype, read from each run's meta.json."""
         mapping = {}

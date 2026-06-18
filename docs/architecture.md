@@ -25,6 +25,7 @@ argo/
   chat.py           Phase-3 interactive analyst over a completed run (read-only repo; test-gen)
   knowledge.py      Phase-4 vuln-class index loader (data/vuln_index.yaml) injected into recon
   costs.py          Phase-8 cost analytics from the ledger (by model / stage / run / archetype)
+  quality.py        A2 quality report: triager accept-rate (ledger) paired with benchmark recall
   archetype.py      canonical software archetypes + normalizer (captured per run into meta.json)
   fixes.py          Phase-6 remediation: propose a patch per confirmed finding (opt-in)
   verify.py         Phase-6 patch verification on an ISOLATED COPY (applies? compiles? no new errors?)
@@ -144,12 +145,18 @@ llm_calls(id, ts, run_id, stage, model, prompt_sha256,
           input_tokens, output_tokens, cost_usd, num_turns, session_id, stop_reason)
 
 findings_ledger(id, ts, program_name, run_id, dedup_key, title, verdict, validated_severity,
+                triager_accepted, triager_feedback, triager_ts,
                 UNIQUE(program_name, dedup_key, run_id))
 ```
 
 - `llm_calls` powers cost control and the hard per-run `--budget` guard (`run_cost()`).
 - `findings_ledger` detects cross-run/cross-program resubmission (`prior_sightings()`), which
   Stage 5 surfaces as a "possible resubmissions" section.
+- The `triager_*` columns hold **real-world feedback** (A2): `record_triager_feedback()` ingests
+  accept/reject outcomes (sourced from the **Fleece** registry — never stored in the public repo)
+  and `accept_rate()` computes the human-precision proxy. `quality.py` pairs it with benchmark
+  recall into `quality.json` (`argo quality`, `GET /quality`). Columns are added to pre-existing DBs
+  by `Ledger._migrate()` at open. Neither number alone is the result; the pair is.
 
 The connection is opened with `check_same_thread=False` + a write lock, because the audit and
 validate stages log from parallel worker threads.

@@ -270,6 +270,64 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
         _emit(run_suite(cfg, suite, fixes=fixes, parallel_cases=parallel_cases, re_audit=re_audit))
 
 
+def _ledger_for(ledger: Optional[Path]):
+    from .config import PipelineConfig
+    from .ledger import Ledger
+    return Ledger(ledger or PipelineConfig().ledger_path)
+
+
+@app.command()
+def feedback(
+    program: Optional[str] = typer.Option(None, "--program", help="program name to match"),
+    dedup: Optional[str] = typer.Option(None, "--dedup", help="finding dedup_key to match"),
+    accepted: Optional[bool] = typer.Option(
+        None, "--accepted/--rejected", help="the triager outcome for the matched finding(s)"),
+    run: Optional[str] = typer.Option(None, "--run", help="scope the update to one RUN_ID"),
+    note: Optional[str] = typer.Option(None, "--note", help="optional triager reason / comment"),
+    import_file: Optional[Path] = typer.Option(
+        None, "--import", exists=True, dir_okay=False, metavar="FILE",
+        help="bulk-import a JSON list of {program_name, dedup_key, accepted, run_id?, feedback?}"),
+    ledger: Optional[Path] = typer.Option(None, "--ledger", help="ledger DB path (default: bundled)")):
+    """A2: record real-world triager feedback (accept/reject) for reported findings, feeding the
+    accept-rate. Source of truth is the Fleece registry — this only ingests it into the ledger."""
+    led = _ledger_for(ledger)
+    try:
+        if import_file is not None:
+            items = json.loads(Path(import_file).read_text(encoding="utf-8"))
+            updated = 0
+            for it in items:
+                updated += led.record_triager_feedback(
+                    program_name=it["program_name"], dedup_key=it["dedup_key"],
+                    accepted=bool(it["accepted"]), run_id=it.get("run_id"),
+                    feedback=it.get("feedback"))
+            _emit({"imported": len(items), "rows_updated": updated})
+        else:
+            if not (program and dedup and accepted is not None):
+                raise typer.BadParameter("provide --program, --dedup and --accepted/--rejected "
+                                         "(or use --import FILE)")
+            n = led.record_triager_feedback(program_name=program, dedup_key=dedup,
+                                            accepted=accepted, run_id=run, feedback=note)
+            _emit({"program": program, "dedup_key": dedup, "accepted": accepted,
+                   "rows_updated": n})
+    finally:
+        led.close()
+
+
+@app.command()
+def quality(
+    program: Optional[str] = typer.Option(None, "--program", help="scope to one program"),
+    runs_dir: Path = RunsDirOpt,
+    ledger: Optional[Path] = typer.Option(None, "--ledger", help="ledger DB path (default: bundled)")):
+    """A2: emit quality.json — the real-world triager accept-rate (human precision proxy) paired
+    with the latest benchmark recall. Writes <runs_dir>/quality.json."""
+    from .quality import write_quality
+    led = _ledger_for(ledger)
+    try:
+        _emit(write_quality(led, runs_dir, program_name=program))
+    finally:
+        led.close()
+
+
 @app.command()
 def serve(
     host: str = typer.Option("127.0.0.1", "--host", help="bind address (keep localhost)"),

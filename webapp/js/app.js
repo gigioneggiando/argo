@@ -755,8 +755,22 @@ function benchmarkView() {
   const prf = (m) => [pct(m.precision), pct(m.recall), pct(m.f1)];
 
   const host = h("div", {}, h("div", { class: "skeleton", style: { height: "120px" } }));
-  Promise.all([api.benchmark().catch(() => null), api.benchmarkAb().catch(() => null)]).then(([rep, ab]) => {
-    if (!rep) return mount(host, h("div", { class: "empty" },
+  Promise.all([api.benchmark().catch(() => null), api.benchmarkAb().catch(() => null),
+               api.quality().catch(() => null)]).then(([rep, ab, qual]) => {
+    const qualityCard = () => {
+      const ar = qual && qual.accept_rate;
+      if (!ar || !ar.judged) return null;   // no triager feedback yet
+      const rate = ar.accept_rate == null ? "—" : pct(ar.accept_rate);
+      const recall = qual.benchmark && qual.benchmark.recall != null ? pct(qual.benchmark.recall) : "—";
+      return cardOf("Real-world quality (A2)", h("div", {},
+        h("div", { class: "artifacts" },
+          kv("Accept-rate", rate), kv("Judged (n)", ar.judged),
+          kv("Accepted", ar.accepted), kv("Benchmark recall", recall)),
+        h("div", { class: "help", style: { marginTop: "10px" } },
+          "Triager accept-rate (human precision proxy, from the Fleece registry via ", h("code", {}, "argo feedback"),
+          ") paired with benchmark recall. Small n is noisy.")));
+    };
+    if (!rep) return mount(host, qualityCard() || h("div", {}), h("div", { class: "empty" },
       h("div", { class: "big" }, "No benchmark report yet"),
       h("div", {}, "Run a suite from the CLI: "),
       h("pre", { class: "mono", style: { marginTop: "8px" } }, "argo bench --suite benchmarks --runner mock"),
@@ -788,7 +802,7 @@ function benchmarkView() {
            ["Recall", pct(ab.a.totals.recall), pct(ab.b.totals.recall), sign(d.recall)],
            ["F1", pct(ab.a.totals.f1), pct(ab.b.totals.f1), sign(d.f1)]]));
     }
-    mount(host, head, counts, patch, cases, byArch, byCwe, abCard);
+    mount(host, head, counts, patch, qualityCard(), cases, byArch, byCwe, abCard);
   }).catch((e) => mount(host, h("div", { class: "empty" }, e.message)));
 
   return h("div", {},

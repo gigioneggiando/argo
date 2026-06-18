@@ -37,9 +37,23 @@ argo run      --run RUN_ID
 argo validate --run RUN_ID
 argo report   --run RUN_ID
 argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--dry-run] [--smoke]
-argo fix      --run RUN_ID [--no-verify] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
-argo bench    --suite DIR [--fixes] [--ab-audit-model MODEL]
+argo fix      --run RUN_ID [--no-verify] [--re-audit] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
+argo bench    --suite DIR [--fixes] [--re-audit] [--parallel-cases N] [--ab-audit-model MODEL]
+argo feedback [--program P --dedup K --accepted/--rejected [--run R] [--note ...]] | [--import FILE]
+argo quality  [--program P] [--runs-dir DIR]
 ```
+
+- `argo fix --re-audit` — after verifying a patch, re-audit the patched copy and report whether the
+  vuln is still detected (`verify.re_audit.confirmed_fixed`; one extra model session per patch).
+- `argo bench --parallel-cases N` — run N labeled cases concurrently (corpora at scale);
+  `--re-audit` folds the re-audit rate into `patch_quality`.
+- **`argo feedback`** (A2) — record real-world triager outcomes for reported findings (feeds the
+  accept-rate). Either one finding (`--program`/`--dedup`/`--accepted`|`--rejected`, optional
+  `--run`/`--note`) or bulk `--import FILE` (a JSON list of
+  `{program_name, dedup_key, accepted, run_id?, feedback?}`). The source of truth is the **Fleece**
+  registry; this only ingests it into the local ledger. `--ledger PATH` targets a specific DB.
+- **`argo quality`** (A2) — emit `<runs_dir>/quality.json`: the accept-rate (human precision proxy)
+  paired with the latest benchmark recall. `--program` scopes to one program.
 
 - `--brief` — program brief text file (paste the whole program page). **Optional**: omit it to audit
   a **local/personal codebase** as a source-only review — Argo synthesizes a minimal scope from

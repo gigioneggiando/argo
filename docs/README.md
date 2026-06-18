@@ -38,7 +38,7 @@ BUILD_SPEC.md             the spec the orchestrator was built against
 argo/                 the orchestrator (see architecture.md)
 server/                   the HTTP API on top of the pipeline (see api.md)
 webapp/                   the no-build web UI (see ui.md)
-tests/                    110 tests, zero-token by default (see testing.md)
+tests/                    123 tests, zero-token by default (see testing.md)
 docs/                     you are here
 docs/legacy/              archived reference artifacts (e.g. the original META_PROMPT_generator)
 runs/<RUN_ID>/            per-run artifacts (git-ignored)

@@ -23,6 +23,7 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | GET | `/knowledge` | the curated vulnerability-class index by archetype (Phase 4) |
 | GET | `/models` | available backends + selectable models (incl. the detected Codex default) + the token-cost price table — powers the UI model pickers and the Costs pricing card |
 | GET | `/costs` | observed cost economics from the ledger (Phase 8): totals, by-model, by-stage, recent runs |
+| GET | `/quality` | A2: triager **accept-rate** (real-world precision proxy) paired with benchmark **recall** (null until feedback is recorded via `argo feedback` + a benchmark exists) |
 | GET | `/benchmark` | the latest benchmark report (Phase 7): findings P/R/F1 by archetype + CWE, or `null` |
 | GET | `/benchmark/ab` | the latest A/B benchmark report, or `null` |
 | POST | `/runs` | start a run (202 + `run_id`) |

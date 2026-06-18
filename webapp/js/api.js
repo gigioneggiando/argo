@@ -38,6 +38,7 @@ export const api = {
   costs: () => req("GET", "/costs"),
   benchmark: () => req("GET", "/benchmark"),
   benchmarkAb: () => req("GET", "/benchmark/ab"),
+  quality: () => req("GET", "/quality"),
   getFixes: (id) => req("GET", `/runs/${id}/fixes`),
   patches: (id) => req("GET", `/runs/${id}/patches`),
   generateFixes: (id, opts) => req("POST", `/runs/${id}/fixes`, opts || { verify: true }),

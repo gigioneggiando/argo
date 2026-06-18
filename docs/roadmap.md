@@ -197,7 +197,7 @@ under `benchmarks/<case>/` (`case.json` + `expected_findings.json`); see [benchm
       and report the precision/recall/F1 delta (B − A).
 - [x] **Seeded-bug corpora at scale** (backlog **A1**) — provenance + `--parallel-cases` + corpus recipe.
 - [x] **Re-audit the patched copy** (backlog **A3**) — `patch_quality.re_audit_confirmed_rate`, `--re-audit`.
-- [ ] _Later:_ the real-world signal — triager accept-rate per program (backlog **A2**, sourced from Fleece).
+- [x] **Triager accept-rate** (backlog **A2**) — `argo feedback`/`argo quality`, `GET /quality`, `quality.json`.
 
 ### Phase 8 — Cost model & economics — ✅ DONE (cost side; quality side needs Phase 7)
 Turn the ledger into guidance. Implemented in `argo/costs.py` + `GET /costs` + a **Costs** UI page.
@@ -272,7 +272,13 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 - **Risk:** real runs cost money and are non-deterministic — report cost-per-case and run N≥3 for
   variance. Keep labels exhaustive (the scorer treats unmatched reported findings as FP).
 
-#### A2 — Real triager accept-rate (the real-world precision signal) — effort **M** · paper value **High**
+#### A2 — Real triager accept-rate (the real-world precision signal) — effort **M** · paper value **High** — ✅ DONE
+- **Shipped:** `findings_ledger` gains `triager_accepted/feedback/ts` (auto-migrated on open);
+  `Ledger.record_triager_feedback()` + `Ledger.accept_rate()` (sliced by severity); `quality.py`
+  pairs accept-rate with benchmark recall into `quality.json`. Channels: `argo feedback`
+  (single or `--import` a Fleece export) and `argo quality`, plus `GET /quality` and a **Real-world
+  quality** card on the Benchmarks page. Fleece stays the source of truth — no private data in the
+  public repo.
 - **Feasibility: medium; needs a new feedback channel + ledger columns.** Today `findings_ledger`
   (`argo/ledger.py`) stores `program_name, run_id, dedup_key, title, verdict, validated_severity` and
   `prior_sightings()` detects cross-run resubmissions — but there is **no accept/reject feedback** and no

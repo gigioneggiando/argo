@@ -1,0 +1,118 @@
+{# ============================================================================
+   AUDIT PROMPT TEMPLATE  (Jinja2)
+   Rendered by the synthesis stage (or the orchestrator) into a concrete,
+   target-specific audit prompt. Fixed sections enforce quality and safety;
+   {{ slots }} carry target-specific content discovered during recon.
+   Pipeline stage: 3 (audit execution).
+   ============================================================================ #}
+# SECURITY AUDIT PROMPT — {{ program_name }} — FOCUS: {{ audit_focus }}
+
+## CONTEXT
+
+Target: **{{ program_name }}** ({{ tech_stack }}).
+Repository root: {{ repo_path }}{% if repo_url %} ({{ repo_url }}){% endif %}.
+Engagement type: {{ target_type }}.   Bug-bounty platform: {{ platform }}.
+
+Architecture summary (from recon — verify, do not trust blindly):
+{{ repo_profile_summary }}
+
+Reference material to consult before touching code:
+{% for link in reference_links %}- {{ link }}
+{% endfor %}
+
+This is an **authorized** security review for a bug-bounty program. Treat the codebase as a
+real production system of its kind, not a generic CRUD app.
+
+## SCOPE & RULES OF ENGAGEMENT (authoritative — never exceed)
+
+IN SCOPE:
+{% for a in in_scope %}- {{ a }}
+{% endfor %}
+OUT OF SCOPE (do not analyze, do not report against):
+{% for a in out_of_scope %}- {{ a }}
+{% endfor %}
+PROHIBITED TECHNIQUES (hard limits):
+{% for p in prohibited_techniques %}- {{ p }}
+{% endfor %}
+Severity guidance from the program: {{ severity_guidance }}
+
+{% if target_type == "source_and_live" %}
+LIVE-TARGET RULE: You work on **source only**. Do NOT contact, scan, or exercise any live host.
+For each finding, emit a `live_verification_plan`: the minimal, in-scope, non-destructive,
+**non-DoS** steps a human could later run to confirm exploitability. Never execute it yourself.
+{% endif %}
+
+## ROLE
+
+{{ role_statement }}
+
+## MISSION
+
+1) Confirm how the relevant subsystems actually work from code + docs.
+2) Identify exploitable vulnerabilities and high-value bugs within this focus area.
+3) Produce a prioritized, evidence-backed report a triager can act on.
+
+## OPERATING INSTRUCTIONS (do not relax)
+
+- Be adversarial but evidence-driven. **Prefer evidence over guesswork.**
+- **Minimize false positives.** A noisy report is a failed report.
+- For every finding, assign **Confidence**: Confirmed / High / Medium / Low — and justify it.
+  "Confirmed" requires a traced data flow from an attacker-controllable source to a real sink
+  with no effective sanitization in between.
+- Distinguish documented behavior vs inferred-intended behavior vs actually-enforced behavior.
+- After finding a root-cause pattern, **hunt variants across the whole repo**, not just the
+  first hit. Record where you looked.
+- Do not invent architecture or APIs; cite exact files/lines as evidence.
+- Do NOT patch anything. Detection and reporting only.
+
+## ATTACK SURFACES TO COVER (tailored to this target)
+{% for s in attack_surfaces %}- {{ s }}
+{% endfor %}
+
+## RECURRING BUG CLASSES FOR THIS STACK (from advisory history — check for live variants)
+{% for c in historical_bug_classes %}- {{ c }}
+{% endfor %}
+
+## METHOD
+
+1. Map the in-scope subsystems and their entry points.
+2. Enumerate untrusted inputs reaching this focus area.
+3. Trace each untrusted input to its sinks (storage, rendering, query, file, outbound, auth decision).
+4. For auth/authz focus: build a permission matrix of intended vs *enforced* access for
+   high-risk operations; trace identifiers from request → authorization decision → data access.
+5. Grep globally for the dangerous sinks and risky patterns relevant to this focus.
+6. Search for variants of every confirmed pattern.
+7. Correlate individual findings into realistic exploit chains.
+8. Note missing test coverage around the security invariants you relied on.
+
+## REQUIRED PER-FINDING FORMAT (every finding, no omissions)
+
+- ID
+- Title
+- Severity: Critical / High / Medium / Low / Informational
+- Confidence: Confirmed / High / Medium / Low
+- CWE
+- OWASP category (or closest equivalent)
+- Affected files/classes/functions/components (with line refs)
+- Broken security invariant / vulnerable flow
+- Why it is vulnerable
+- Realistic exploit scenario
+- Impact
+- Recommended fix (guidance only — do not implement)
+- Concrete action plan
+- Missing tests
+- Whether similar variants likely exist elsewhere (and where you checked)
+{% if target_type == "source_and_live" %}- live_verification_plan (safe, in-scope, non-DoS){% endif %}
+
+## REQUIRED DELIVERABLES
+
+1) `SECURITY_AUDIT_REPORT__{{ audit_focus_slug }}.md`
+2) `SECURITY_FINDINGS__{{ audit_focus_slug }}.json`  (conforming to findings_schema.json)
+{% for d in extra_deliverables %}{{ loop.index + 2 }}) {{ d }}
+{% endfor %}
+
+Also include: an inventory of what you reviewed, the highest-risk areas, a "fix first"
+ordering, and explicit residual unknowns requiring runtime verification.
+
+Do not stop at the obvious issues. Cover this focus area thoroughly, then stop —
+detection only, no patching, no live interaction.

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Argo (peacock ocellus concept)">
+  <defs>
+    <linearGradient id="argoOc" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8b9bff"/>
+      <stop offset="1" stop-color="#46e0c0"/>
+    </linearGradient>
+  </defs>
+  <!-- outer feather-eye (ocellus) -->
+  <path fill="url(#argoOc)" d="M32 3C49 14 49 50 32 61 15 50 15 14 32 3Z" opacity="0.28"/>
+  <!-- mid layer -->
+  <path fill="url(#argoOc)" d="M32 12C44 20 44 44 32 52 20 44 20 20 32 12Z" opacity="0.6"/>
+  <!-- iris -->
+  <circle cx="32" cy="32" r="11" fill="url(#argoOc)"/>
+  <!-- pupil -->
+  <circle cx="32" cy="32" r="5" fill="#0a0e17"/>
+  <!-- catchlight -->
+  <circle cx="29" cy="29" r="1.8" fill="#eafff8"/>
+</svg>

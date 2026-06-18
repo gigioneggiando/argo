@@ -1,0 +1,6 @@
+# curated reference links for Acme Widgets (one URL per line; '#' comments + blanks ignored)
+https://acme.example/security
+
+https://app.acme.test/docs/security
+not-a-valid-url
+https://github.com/acme/widgets

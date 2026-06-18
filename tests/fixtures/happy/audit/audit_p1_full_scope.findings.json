@@ -1,0 +1,58 @@
+{
+  "program_name": "Acme Widgets",
+  "audit_focus": "Full-scope architecture-led audit",
+  "generated_at": "2026-06-16T12:00:00Z",
+  "findings": [
+    {
+      "id": "FULL-001",
+      "title": "SQL injection in widget search",
+      "severity": "High",
+      "confidence": "High",
+      "cwe": "CWE-89",
+      "owasp": "A03:2021 Injection",
+      "affected": ["src/api/search.py:42"],
+      "vulnerable_flow": "GET /api/search?q -> search() -> string-built SQL -> db.execute",
+      "why_vulnerable": "The q query parameter is concatenated directly into a SQL LIKE clause with no parameterization or escaping.",
+      "exploit_scenario": "An anonymous user supplies q=%' OR '1'='1 to exfiltrate rows or chain to stacked queries.",
+      "impact": "Database read/exfiltration; potential write depending on driver settings.",
+      "recommended_fix": "Use parameterized queries / bound parameters; never build SQL by string concatenation.",
+      "action_plan": "Replace the f-string with a parameterized query and add a regression test.",
+      "missing_tests": "No test asserts the search query is parameterized.",
+      "variants": "Checked other src/api/*.py for string-built SQL; none else found here.",
+      "live_verification_plan": "With program authorization, send one benign sentinel value to /api/search and observe error/behavior; no automation, no DoS."
+    },
+    {
+      "id": "FULL-002",
+      "title": "Reflected XSS in legacy renderer",
+      "severity": "Medium",
+      "confidence": "High",
+      "cwe": "CWE-79",
+      "owasp": "A03:2021 Injection",
+      "affected": ["src/legacy/render.py:10"],
+      "vulnerable_flow": "template.format(**data) renders untrusted data without encoding",
+      "why_vulnerable": "Untrusted data is interpolated into a template without contextual output encoding.",
+      "exploit_scenario": "Attacker injects markup that executes in a victim's browser.",
+      "impact": "Session/script execution in victim context.",
+      "recommended_fix": "Use an auto-escaping template engine.",
+      "variants": "Only present in the legacy renderer."
+    },
+    {
+      "id": "FULL-003",
+      "title": "SSRF via user-controlled outbound fetch",
+      "severity": "High",
+      "confidence": "Medium",
+      "cwe": "CWE-918",
+      "owasp": "A10:2021 SSRF",
+      "affected": ["src/net/fetch.py:88"],
+      "vulnerable_flow": "user url -> fetch(url) -> http.get(url) with no allow-list visible in source",
+      "why_vulnerable": "A user-influenced URL reaches an outbound HTTP client with no source-visible allow-list.",
+      "exploit_scenario": "Attacker points the URL at an internal metadata service to read credentials.",
+      "impact": "Access to internal services / cloud metadata; potential credential theft.",
+      "recommended_fix": "Enforce a strict egress allow-list and block internal ranges.",
+      "action_plan": "Add an allow-list check before http.get and a test for blocked internal hosts.",
+      "missing_tests": "No test blocks internal-range URLs.",
+      "variants": "Single outbound helper; check callers of fetch().",
+      "live_verification_plan": "With authorization, issue one benign request to a controlled collaborator host; no scanning, no DoS."
+    }
+  ]
+}

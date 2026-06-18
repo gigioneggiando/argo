@@ -1,0 +1,283 @@
+"""Argo — CLI (typer). Source-static security audits for bug-bounty programs.
+
+    argo ingest   --brief BRIEF.txt --repo PATH_OR_URL [--links LINKS.txt] -> scope.json  (Stage 1)
+    argo recon    --run RUN_ID                            -> repo_profile + prompts (Stage 2)
+    argo run      --run RUN_ID                            -> per-focus findings     (Stage 3)
+    argo validate --run RUN_ID                            -> validated findings     (Stage 4)
+    argo report   --run RUN_ID                            -> REPORT.md + drafts     (Stage 5)
+    argo pipeline --brief ... --repo ... [--links ...]    -> stages 1-5, STOPS before submission
+
+There is deliberately NO submit command: submission is a manual human action.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Optional
+
+import typer
+
+from .config import OPUS, PipelineConfig
+from .orchestrator import (build_context, do_audit, do_ingest, do_recon, do_report,
+                           do_validate, new_run_id, run_pipeline)
+
+app = typer.Typer(add_completion=False, help="Argo — authorized source-static bug-bounty audits.")
+
+
+# --- shared options -------------------------------------------------------------------
+def _build_config(
+    runner: str,
+    audit_model: Optional[str],
+    calibration: bool,
+    budget: Optional[float],
+    parallel: int,
+    runs_dir: Path,
+    scenario: str,
+    timeout: Optional[int] = None,
+    max_turns: Optional[int] = None,
+    session_budget: Optional[float] = None,
+    codex_model: Optional[str] = None,
+    codex_oss: bool = False,
+    codex_local_provider: Optional[str] = None,
+) -> PipelineConfig:
+    cfg = PipelineConfig(
+        runner=runner,
+        max_parallel_audits=parallel,
+        budget_usd=budget,                # HARD per-run ceiling (aborts remaining sessions)
+        runs_dir=runs_dir,
+        fixtures_scenario=scenario,
+        session_max_turns=max_turns,
+        session_max_cost_usd=session_budget,
+        codex_model=codex_model,
+        codex_oss=codex_oss,
+        codex_local_provider=codex_local_provider,
+    )
+    if timeout is not None:
+        cfg = cfg.with_overrides(session_timeout_s=timeout)
+    if calibration:
+        cfg = cfg.calibrated()            # audit -> Opus
+    if audit_model:
+        cfg = cfg.with_stage_model("audit", audit_model)
+    return cfg
+
+
+RunnerOpt = typer.Option("headless", "--runner",
+                         help="headless (Claude Code CLI) · codex (Codex CLI / OpenAI / OSS) · mock")
+CodexModelOpt = typer.Option(None, "--codex-model",
+                             help="(runner=codex) model id, e.g. gpt-5-codex; omit to use the "
+                                  "Codex CLI's own default")
+CodexOssOpt = typer.Option(False, "--codex-oss", help="(runner=codex) use the open-source provider (--oss)")
+CodexProviderOpt = typer.Option(None, "--codex-local-provider",
+                                help="(runner=codex --codex-oss) ollama | lmstudio")
+AuditModelOpt = typer.Option(None, "--audit-model", help="override the Stage-3 audit model")
+CalibrationOpt = typer.Option(False, "--calibration", help="run audit on Opus (all-Opus)")
+BudgetOpt = typer.Option(None, "--budget", help="HARD per-run USD ceiling; aborts further sessions")
+ParallelOpt = typer.Option(3, "--parallel", help="max concurrent audit/validate sessions")
+RunsDirOpt = typer.Option(Path("runs"), "--runs-dir", help="root dir for run artifacts")
+ScenarioOpt = typer.Option("happy", "--scenario", help="mock fixtures scenario (runner=mock)")
+TimeoutOpt = typer.Option(None, "--timeout", help="per-session wall-clock cap (seconds)")
+MaxTurnsOpt = typer.Option(None, "--max-turns", help="per-session turn tripwire (orchestrator-side)")
+SessionBudgetOpt = typer.Option(None, "--session-budget",
+                                help="per-session USD cap (native --max-budget-usd)")
+RunIdArg = typer.Option(..., "--run", help="existing RUN_ID under --runs-dir")
+
+
+def _emit(obj: dict) -> None:
+    typer.echo(json.dumps(obj, indent=2))
+
+
+# --- commands -------------------------------------------------------------------------
+@app.command()
+def ingest(
+    brief: Path = typer.Option(..., "--brief", exists=True, help="program brief text file"),
+    repo: str = typer.Option(..., "--repo", help="repo path or URL"),
+    links: Optional[Path] = typer.Option(
+        None, "--links", exists=True,
+        help="curated reference links file (one http(s) URL per line; '#' comments ok). "
+             "Additive to extracted links; the --repo code is NOT a reference link."),
+    run: Optional[str] = typer.Option(None, "--run", help="run id (generated if omitted)"),
+    runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+    calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+    parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+):
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    ctx = build_context(cfg, run or new_run_id())
+    scope = do_ingest(ctx, brief, repo, links_path=links)
+    _emit({"run_id": ctx.run_id, "scope": str(ctx.scope_path),
+           "program": scope.program_name, "target_type": scope.target_type})
+
+
+@app.command()
+def recon(run: str = RunIdArg, runner: str = RunnerOpt,
+          audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
+          budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
+          runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    ctx = build_context(cfg, run)
+    prompts = do_recon(ctx)
+    _emit({"run_id": run, "prompts": [str(p) for p in prompts],
+           "repo_profile": str(ctx.repo_profile_path)})
+
+
+@app.command(name="run")
+def run_audit(run: str = RunIdArg, runner: str = RunnerOpt,
+              audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
+              budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
+              runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    ctx = build_context(cfg, run)
+    findings = do_audit(ctx)
+    _emit({"run_id": run, "findings": [str(p) for p in findings]})
+
+
+@app.command()
+def validate(run: str = RunIdArg, runner: str = RunnerOpt,
+             audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
+             budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
+             runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    ctx = build_context(cfg, run)
+    path = do_validate(ctx)
+    _emit({"run_id": run, "validated_findings": str(path)})
+
+
+@app.command()
+def report(run: str = RunIdArg, runner: str = RunnerOpt,
+           audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
+           budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
+           runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    ctx = build_context(cfg, run)
+    path = do_report(ctx)
+    _emit({"run_id": run, "report": str(path), "drafts_dir": str(ctx.drafts_dir)})
+
+
+@app.command()
+def fix(run: str = RunIdArg,
+        no_verify: bool = typer.Option(False, "--no-verify",
+                                       help="skip the compile / no-new-errors verification"),
+        docker: Optional[str] = typer.Option(None, "--docker", metavar="IMAGE",
+                                             help="run the build/compile check inside this Docker "
+                                                  "image (offline, --network=none)"),
+        build_cmd: Optional[str] = typer.Option(None, "--build-cmd",
+                                                help="explicit build/compile command to verify the "
+                                                     "patch (run in the isolated copy)"),
+        only: Optional[str] = typer.Option(None, "--only",
+                                           help="comma-separated finding ids to fix (default: all "
+                                                "confirmed)"),
+        runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+        calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+        parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """Phase 6 (opt-in): propose a reviewable patch per confirmed finding and VERIFY each on an
+    ISOLATED COPY (applies? compiles? no new errors?). Never modifies the target repo."""
+    from .fixes import generate_fixes
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    ctx = build_context(cfg, run)
+    ids = {s.strip() for s in only.split(",") if s.strip()} if only else None
+    report = generate_fixes(ctx, verify=not no_verify, docker=docker, build_cmd=build_cmd, only=ids)
+    _emit(report)
+
+
+@app.command()
+def pipeline(
+    brief: Optional[Path] = typer.Option(None, "--brief", exists=True,
+                                         help="program brief text file"),
+    repo: Optional[str] = typer.Option(None, "--repo", help="repo path or URL"),
+    links: Optional[Path] = typer.Option(
+        None, "--links", exists=True,
+        help="curated reference links file (one http(s) URL per line; '#' comments ok). "
+             "Additive to extracted links; the --repo code is NOT a reference link."),
+    run: Optional[str] = typer.Option(None, "--run", help="run id (generated if omitted)"),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="run ingest+recon only, then STOP before any audit"),
+    research: bool = typer.Option(
+        True, "--research/--no-research",
+        help="Stage-0 web OSINT/threat-intel before recon (the ONLY networked stage; never the "
+             "live in-scope hosts). On by default; --no-research keeps the run fully offline."),
+    smoke: bool = typer.Option(
+        False, "--smoke",
+        help="de-risked REAL headless check: cheapest model, ONE audit focus, low budget + "
+             "short timeout + tight caps. Defaults --brief/--repo to the bundled fixtures."),
+    runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+    calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+    parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+    timeout: Optional[int] = TimeoutOpt, max_turns: Optional[int] = MaxTurnsOpt,
+    session_budget: Optional[float] = SessionBudgetOpt,
+    codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
+    codex_local_provider: Optional[str] = CodexProviderOpt,
+):
+    """Run stages 1-5 and STOP at human-review drafts. Never submits."""
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
+                        timeout=timeout, max_turns=max_turns, session_budget=session_budget,
+                        codex_model=codex_model, codex_oss=codex_oss,
+                        codex_local_provider=codex_local_provider)
+    if smoke:
+        cfg = cfg.for_smoke()                              # cheapest model, 1 focus, low caps
+        # for_smoke() defaults to the Claude backend; honor an explicit --runner (e.g. codex).
+        cfg = cfg.with_overrides(runner=runner, codex_model=codex_model, codex_oss=codex_oss,
+                                 codex_local_provider=codex_local_provider)
+        research = False                                   # a cheap smoke stays fully offline
+        if brief is None:
+            brief = Path("tests/fixtures/brief.txt")       # bundled tiny fixture
+        if repo is None:
+            repo = "tests/fixtures/repo"
+    if brief is None or repo is None:
+        raise typer.BadParameter("--brief and --repo are required (unless --smoke)")
+    ctx = build_context(cfg, run or new_run_id())
+    summary = run_pipeline(ctx, brief, repo, dry_run=dry_run, research_enabled=research,
+                           links_path=links)
+    summary["smoke"] = smoke
+    _emit(summary)
+
+
+@app.command()
+def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=False,
+                                     help="suite dir (each <case>/case.json + expected_findings.json)"),
+          fixes: bool = typer.Option(False, "--fixes",
+                                     help="also score Phase-6 patch quality (verified rate)"),
+          ab_audit_model: Optional[str] = typer.Option(
+              None, "--ab-audit-model", metavar="MODEL",
+              help="run the suite a second time with this audit model and report the delta"),
+          runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+          calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+          parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """Phase 7: run a labeled suite and score findings precision/recall/F1 (by archetype + CWE).
+    Use --runner mock for a free harness check; headless measures real model quality."""
+    from .benchmark import ab_compare, run_suite
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    if ab_audit_model:
+        _emit(ab_compare(cfg, suite, audit_model_b=ab_audit_model, fixes=fixes))
+    else:
+        _emit(run_suite(cfg, suite, fixes=fixes))
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="bind address (keep localhost)"),
+    port: int = typer.Option(8000, "--port"),
+    runs_dir: Path = RunsDirOpt,
+    open_browser: bool = typer.Option(False, "--open", help="open the web UI in your browser"),
+):
+    """Start the HTTP API + web UI (FastAPI + uvicorn)."""
+    import uvicorn
+    from server.app import create_app
+    cfg = PipelineConfig(runs_dir=runs_dir)
+    url = f"http://{host}:{port}/"
+    typer.echo(f"Serving Argo on {url}  (runs dir: {runs_dir})")
+    if open_browser:
+        import threading
+        import webbrowser
+        threading.Timer(1.5, lambda: _safe_open(webbrowser, url)).start()
+    uvicorn.run(create_app(cfg), host=host, port=port)
+
+
+def _safe_open(webbrowser, url: str) -> None:
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass  # opening a browser is best-effort; never crash the server over it
+
+
+if __name__ == "__main__":
+    app()

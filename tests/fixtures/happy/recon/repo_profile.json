@@ -1,0 +1,22 @@
+{
+  "archetype": "web_api_cms",
+  "languages": ["Python"],
+  "frameworks": ["Flask (inferred)"],
+  "entry_points": [
+    "src/api/search.py:search (GET /api/search)",
+    "src/api/orders.py:get_order (GET /api/orders/<id>)",
+    "src/net/fetch.py:fetch (internal outbound HTTP)"
+  ],
+  "trust_boundaries": [
+    "anonymous HTTP -> API controllers",
+    "API controllers -> database",
+    "API -> outbound HTTP (SSRF surface)"
+  ],
+  "untrusted_input_sources": ["query params", "path params", "request body"],
+  "dangerous_sinks": ["raw SQL string building", "outbound HTTP with user URL", "template .format"],
+  "historical_bug_classes": ["SQL injection", "IDOR / BOLA", "SSRF"],
+  "residual_unknowns": [
+    "Whether an upstream WAF or auth middleware gates /api/* in production (not visible from source).",
+    "Whether the SSRF allow-list is enforced at deploy time via config."
+  ]
+}

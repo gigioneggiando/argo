@@ -1,0 +1,316 @@
+"""Stage 1 — Ingest.
+
+Parse the program brief into ``scope.json`` (LLM extraction, then schema validation), set the
+structural live-interaction flags, and copy/clone the target repo into the run dir READ-ONLY.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
+
+from ..config import ARTIFACT_TOOLS
+from ..context import RunContext, collect_output_files
+from ..models import AssetVersion, RunMeta, Scope
+from ..rendering import sha256_text, with_artifact_contract
+from ..schemas import validate_scope
+
+# Default hard limits injected when the brief does not state them. A real program effectively
+# always forbids these; an empty prohibited_techniques list would also trip the render-time
+# guardrail downstream, so we never allow it to be empty.
+_DEFAULT_PROHIBITED = [
+    "no denial-of-service / stress / volumetric testing",
+    "no automated scanning or exploitation against live hosts",
+    "no social engineering",
+    "no physical testing",
+    "no testing against production user data",
+]
+
+_ASSET_FILES = (
+    "00_recon_synthesis_meta_prompt.md",
+    "01_audit_prompt_template.md.j2",
+    "02_adversarial_validation_prompt.md",
+    "scope_schema.json",
+    "findings_schema.json",
+)
+
+_EXTRACTION_PROMPT = """\
+# SCOPE EXTRACTION (pipeline stage 1)
+
+You are extracting a structured, authoritative scope object from a bug-bounty program brief.
+This is an AUTHORIZED engagement. Read the brief and emit a single `scope.json` that validates
+against the JSON Schema below. Be conservative and literal — do not invent in-scope assets.
+
+Rules:
+- Copy the brief verbatim into `program_brief_raw`.
+- `target_type` is "source_and_live" only if the brief clearly authorizes a live asset;
+  otherwise "source_only".
+- `automation_allowed`: set true ONLY if the brief explicitly permits automated tooling/scanners;
+  if it is unclear or unstated, set it to false (stricter is safer).
+- `prohibited_techniques` MUST be non-empty. Include every hard limit the brief states, AND if
+  the brief is silent, include these conservative defaults verbatim:
+{defaults}
+- Put the in-scope source repository as an `in_scope` entry of type "source_repo".
+
+JSON SCHEMA (scope_schema.json):
+```json
+{schema}
+```
+
+PROGRAM BRIEF (raw):
+```
+{brief}
+```
+"""
+
+
+def _make_readonly(root: Path) -> None:
+    """Best-effort: strip write bits from every file so no session can patch the repo. The
+    primary guarantee is the runner's tool restriction (no Edit/Write into the repo); this is
+    defense-in-depth."""
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for name in filenames:
+            p = Path(dirpath) / name
+            try:
+                mode = p.stat().st_mode
+                os.chmod(p, mode & ~0o222)
+            except OSError:
+                pass  # never fail the run over a chmod
+
+
+def _strip_nulls(obj):
+    """Recursively drop dict keys whose value is ``None``. Real models routinely emit optional
+    fields as ``null`` (e.g. ``"rate_limits": null``); the JSON Schema treats a null optional
+    as a type error, so we normalize null-as-absent BEFORE the schema gate. A required field
+    emitted as null becomes missing and still fails validation loudly."""
+    if isinstance(obj, dict):
+        return {k: _strip_nulls(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [_strip_nulls(v) for v in obj]
+    return obj
+
+
+def _is_url(source: str) -> bool:
+    s = source.strip().lower()
+    return (
+        s.startswith(("http://", "https://", "git@", "ssh://", "git://"))
+        or s.endswith(".git")
+    )
+
+
+def _log(msg: str) -> None:
+    print(f"[ingest] {msg}", file=sys.stderr)
+
+
+# --------------------------------------------------------------- curated reference links
+def _normalize_link(url: str) -> str:
+    """Normalized dedup/comparison key: trim, lowercase scheme+host (keep path case), strip a
+    single trailing slash. Used only for comparison; the stored value stays verbatim."""
+    parts = urlsplit(url.strip())
+    norm = urlunsplit((parts.scheme.lower(), parts.netloc.lower(),
+                       parts.path, parts.query, parts.fragment))
+    if norm.endswith("/"):
+        norm = norm[:-1]
+    return norm
+
+
+def _is_http_url(line: str) -> bool:
+    parts = urlsplit(line.strip())
+    return parts.scheme in ("http", "https") and bool(parts.netloc)
+
+
+def _parse_links_file(path: Path) -> tuple[list[str], int]:
+    """Read curated reference links, one URL per line. Returns ``(valid_urls_in_order,
+    skipped_count)``.
+
+    Blank lines and lines starting with ``#`` are ignored. Only ``http(s)`` URLs are accepted;
+    any other line is SKIPPED with a warning (never fails the whole ingest). Raises
+    ``FileNotFoundError`` if the file does not exist; an empty/all-comment file yields no links
+    and no error."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"--links file not found: {p}")
+    valid: list[str] = []
+    skipped = 0
+    for raw_line in p.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if _is_http_url(line):
+            valid.append(line)
+        else:
+            skipped += 1
+            _log(f"--links: skipping malformed link (not http/https): {line!r}")
+    return valid, skipped
+
+
+def _merge_reference_links(
+    extracted: list[str], user_links: list[str], repo_arg: str
+) -> tuple[list[str], dict]:
+    """Merge curated ``--links`` (FIRST, verbatim — they are curated) with extracted links
+    (appended only if new). Dedup by normalized key, first occurrence wins, value stored
+    verbatim. Any link whose normalized value equals the ``--repo`` argument is DROPPED — the
+    code repo belongs in ``--repo``, never in ``reference_links``."""
+    repo_norm = _normalize_link(repo_arg)
+    seen: set[str] = set()
+    merged: list[str] = []
+    stats = {"user_added": 0, "extracted_added": 0, "deduped": 0, "dropped_repo": 0}
+
+    def consider(link: str, *, is_user: bool) -> None:
+        n = _normalize_link(link)
+        if n == repo_norm:
+            stats["dropped_repo"] += 1
+            _log(f"--links: dropping {link!r} - it matches --repo; the code repo belongs in "
+                 "--repo, not reference_links")
+            return
+        if n in seen:
+            stats["deduped"] += 1
+            return
+        seen.add(n)
+        merged.append(link)
+        stats["user_added" if is_user else "extracted_added"] += 1
+
+    for link in user_links:          # curated user links first (verbatim)
+        consider(link, is_user=True)
+    for link in extracted:           # then extraction-derived links not already present
+        consider(link, is_user=False)
+    return merged, stats
+
+
+def acquire_repo(source: str, dest: Path, *, is_url: bool) -> None:
+    """Clone (URL) or copy (local path) the target source into ``dest`` and mark it read-only.
+
+    Note: cloning the source repository from its host (e.g. GitHub) fetches SOURCE — it is not
+    contacting the bug-bounty program's live target host, which no stage ever does.
+    """
+    if dest.exists():
+        raise FileExistsError(f"repo dir already exists: {dest}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if is_url:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", source, str(dest)],
+            check=True, capture_output=True, text=True,
+        )
+    else:
+        src = Path(source).expanduser().resolve()
+        if not src.is_dir():
+            raise NotADirectoryError(f"local repo path is not a directory: {src}")
+        shutil.copytree(src, dest)
+    _make_readonly(dest)
+
+
+def repo_commit(repo_dir: Path) -> tuple[str | None, str | None]:
+    """Best-effort pinned commit of the acquired repo copy: (sha, iso-date), or (None, None) if it
+    is not a git tree. Read-only; never fails the run."""
+    if not (repo_dir / ".git").exists():
+        return None, None
+    try:
+        sha = subprocess.run(["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+                             check=True, capture_output=True, text=True).stdout.strip()
+        date = subprocess.run(["git", "-C", str(repo_dir), "show", "-s", "--format=%cs", "HEAD"],
+                              capture_output=True, text=True).stdout.strip() or None
+        return (sha or None), date
+    except (subprocess.SubprocessError, OSError):
+        return None, None
+
+
+def _asset_versions(assets_dir: Path) -> list[AssetVersion]:
+    out: list[AssetVersion] = []
+    for name in _ASSET_FILES:
+        text = (assets_dir / name).read_text(encoding="utf-8")
+        out.append(AssetVersion(path=f"prompts/{name}", sha256=sha256_text(text)))
+    return out
+
+
+def run(ctx: RunContext, *, brief_path: Path, repo: str, repo_is_url: bool | None = None,
+        links_path: Path | None = None) -> Scope:
+    ctx.run_dir.mkdir(parents=True, exist_ok=True)
+    brief_text = Path(brief_path).read_text(encoding="utf-8")
+    (ctx.run_dir / "brief.txt").write_text(brief_text, encoding="utf-8")
+
+    # --- LLM extraction -> scope.json ------------------------------------------------
+    schema_text = (ctx.assets_dir / "scope_schema.json").read_text(encoding="utf-8")
+    prompt = _EXTRACTION_PROMPT.format(
+        defaults="\n".join(f"  - {d}" for d in _DEFAULT_PROHIBITED),
+        schema=schema_text,
+        brief=brief_text,
+    )
+    prompt = with_artifact_contract(
+        prompt,
+        artifacts=[{
+            "type": "scope", "filename": "scope.json", "schema": "scope_schema.json",
+            "desc": "the extracted scope object",
+        }],
+    )
+    result = ctx.runner.run(
+        prompt=prompt,
+        run_dir=ctx.run_dir,
+        work_dir=ctx.work_dir("ingest"),
+        model=ctx.config.model_for("ingest"),
+        stage="ingest",
+        run_id=ctx.run_id,
+        repo_dir=None,                 # brief text only; no repo, no live host
+        allowed_tools=ARTIFACT_TOOLS,
+        label="scope-extraction",
+    )
+
+    files = collect_output_files(result, "scope.json")
+    scope_files = [f for f in files if f.name == "scope.json"]
+    if not scope_files:
+        raise RuntimeError("ingest: model did not produce scope.json")
+    raw = json.loads(scope_files[0].read_text(encoding="utf-8"))
+
+    # Conservative post-processing the code owns (not left to the model):
+    raw = _strip_nulls(raw)                         # null optional fields == absent (real models)
+    raw.setdefault("program_brief_raw", brief_text)
+    if not raw.get("prohibited_techniques"):
+        raw["prohibited_techniques"] = list(_DEFAULT_PROHIBITED)
+
+    # Curated --links are purely ADDITIVE to the extracted reference_links, merged here (before
+    # the schema gate, so the merged result is what gets validated and written to scope.json).
+    if links_path is not None:
+        user_links, n_skipped = _parse_links_file(Path(links_path))
+        merged, stats = _merge_reference_links(
+            raw.get("reference_links") or [], user_links, repo)
+        raw["reference_links"] = merged
+        _log(f"--links: {stats['user_added']} added, {n_skipped} skipped (malformed), "
+             f"{stats['deduped']} duplicate(s) ignored, {stats['dropped_repo']} dropped "
+             f"(== --repo); {stats['extracted_added']} extracted link(s) kept")
+
+    validate_scope(raw, ctx.assets_dir)            # schema gate
+    scope = Scope.model_validate(raw)
+    if not scope.prohibited_techniques:            # guardrail precondition for every render
+        raise RuntimeError("ingest: scope.prohibited_techniques is empty after extraction")
+
+    ctx.scope_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    ctx.scope = scope
+
+    # --- acquire repo read-only ------------------------------------------------------
+    repo_source = repo
+    is_url = _is_url(repo) if repo_is_url is None else repo_is_url
+    acquire_repo(repo, ctx.repo_dir, is_url=is_url)
+    commit_sha, commit_date = repo_commit(ctx.repo_dir)   # pin the analyzed source (reproducibility)
+
+    # --- meta.json (reproducibility + cost control) ----------------------------------
+    meta = RunMeta(
+        run_id=ctx.run_id,
+        created_at=ctx.timestamp(),
+        program_name=scope.program_name,
+        target_type=scope.target_type,
+        repo_source=repo_source,
+        repo_is_url=is_url,
+        repo_commit=commit_sha,
+        repo_commit_date=commit_date,
+        runner=ctx.config.runner,
+        stage_models=dict(ctx.config.stage_models),
+        live_forbidden=True,                                   # always
+        automation_forbidden=not bool(scope.automation_allowed),
+        asset_versions=_asset_versions(ctx.assets_dir),
+    )
+    ctx.meta_path.write_text(meta.model_dump_json(indent=2), encoding="utf-8")
+    return scope

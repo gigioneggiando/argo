@@ -1,0 +1,27 @@
+[
+  {
+    "label": "SQL injection in widget search",
+    "cwe": "CWE-89",
+    "file": "src/api/search.py",
+    "line": 42,
+    "line_tolerance": 25,
+    "severity": "High"
+  },
+  {
+    "label": "IDOR / BOLA on order lookup",
+    "cwe": "CWE-639",
+    "aliases": ["CWE-862", "CWE-285"],
+    "file": "src/api/orders.py",
+    "line": 120,
+    "line_tolerance": 25,
+    "severity": "High"
+  },
+  {
+    "label": "SSRF in outbound fetch",
+    "cwe": "CWE-918",
+    "file": "src/net/fetch.py",
+    "line": 88,
+    "line_tolerance": 25,
+    "severity": "High"
+  }
+]

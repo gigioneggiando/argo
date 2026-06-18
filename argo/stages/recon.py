@@ -1,0 +1,167 @@
+"""Stage 2 — Recon + prompt synthesis.
+
+Render ``00_recon_synthesis_meta_prompt.md`` with the scope + repo path and run it with
+READ-ONLY repo access. The model profiles the repo, reconciles it with scope, and emits the
+complementary custom audit prompts (each conforming to ``01_audit_prompt_template.md.j2``),
+plus ``repo_profile.json`` and ``synthesis_notes.md``.
+
+Guardrail: every generated audit prompt is verified to carry the scope's prohibited techniques
+verbatim and the safety template's required sections; the run FAILS otherwise.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+from ..archetype import canonicalize
+from ..config import ARTIFACT_TOOLS
+from ..context import RunContext, collect_output_files
+from ..guardrails import assert_audit_prompt_wellformed, assert_prohibited_present
+from ..knowledge import format_for_prompt
+
+_RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-0 brief so it can't dominate the recon prompt
+from ..rendering import fill_placeholders, with_artifact_contract
+from ..runner import RunnerError
+
+
+def _repo_url(scope) -> str:
+    for a in scope.source_repo_assets:
+        s = a.asset.strip().lower()
+        if s.startswith(("http://", "https://", "git@", "ssh://", "git://")) or s.endswith(".git"):
+            return a.asset
+    return ""
+
+
+def run(ctx: RunContext) -> list[Path]:
+    scope = ctx.load_scope()
+    scope_json_text = ctx.scope_path.read_text(encoding="utf-8")
+
+    meta_prompt = (ctx.assets_dir / "00_recon_synthesis_meta_prompt.md").read_text(encoding="utf-8")
+    rendered = fill_placeholders(meta_prompt, {
+        "SCOPE_JSON": scope_json_text,
+        "PROGRAM_BRIEF_RAW": scope.program_brief_raw or "",
+        "REPO_PATH": str(ctx.repo_dir.resolve()),
+        "REPO_URL": _repo_url(scope),
+        "TARGET_TYPE": scope.target_type,
+    })
+
+    # The headless session cannot see pipeline/prompts/, so inline the template the generated
+    # prompts must conform to.
+    template_text = (ctx.assets_dir / "01_audit_prompt_template.md.j2").read_text(encoding="utf-8")
+    rendered += (
+        "\n\n---\n\n## TEMPLATE THE GENERATED AUDIT PROMPTS MUST CONFORM TO "
+        "(01_audit_prompt_template.md.j2)\n\n```jinja\n" + template_text + "\n```\n"
+    )
+
+    # Inject the curated vulnerability-class index as ADDITIONAL reference (archetype-keyed);
+    # additive context, the model still classifies and discovers on its own.
+    rendered += "\n\n---\n\n" + format_for_prompt() + "\n"
+
+    # Inject the Stage-0 web research brief if present (opt-out --research): known CVEs, security
+    # history, where to focus. Additive — the model still classifies + discovers on its own.
+    if ctx.research_brief_path.exists():
+        brief = ctx.research_brief_path.read_text(encoding="utf-8")[:_RESEARCH_BRIEF_CAP]
+        rendered += ("\n\n---\n\n## EXTERNAL THREAT INTELLIGENCE (Stage-0 web research — additive)\n\n"
+                     + brief + "\n\nUse this to PRIORITIZE the audit; it is not exhaustive — still "
+                     "classify and discover on your own.\n")
+
+    # Guardrail: prohibited techniques must be present in the prompt we send (they live inside
+    # SCOPE_JSON). Fail the run otherwise.
+    assert_prohibited_present(rendered, scope.prohibited_techniques)
+
+    prompt = with_artifact_contract(
+        rendered,
+        artifacts=[
+            {"type": "repo_profile", "filename": "repo_profile.json", "schema": None,
+             "desc": "structured repo profile incl. residual_unknowns and a top-level `archetype` "
+                     "field set to ONE canonical key: web_api_cms | plugin_extension | "
+                     "library_sdk | cli_desktop | agent_llm_mcp | mobile | data_ml | "
+                     "smart_contract | firmware | iac | other"},
+            {"type": "audit_prompt", "filename": "audit_<focus-slug>.md", "schema": None,
+             "desc": "ONE file per generated custom audit prompt; lowercase kebab slug; each "
+                     "MUST conform to the template above (carry the scope + prohibited "
+                     "techniques verbatim, the per-finding format, and the deliverables)"},
+            # repo_profile.json should also carry a canonical `archetype` (see desc above);
+            # captured below for cost/benchmark grouping.
+            {"type": "synthesis_notes", "filename": "synthesis_notes.md", "schema": None,
+             "desc": "why you split the audit this way, deprioritized surfaces, residual unknowns"},
+        ],
+    )
+
+    work = ctx.work_dir("recon")
+    try:
+        result = ctx.runner.run(
+            prompt=prompt,
+            run_dir=ctx.run_dir,
+            work_dir=work,
+            model=ctx.config.model_for("recon"),
+            stage="recon",
+            run_id=ctx.run_id,
+            repo_dir=ctx.repo_dir,          # READ-ONLY repo access
+            allowed_tools=ARTIFACT_TOOLS,
+            label="recon-synthesis",
+        )
+        files = collect_output_files(result, "*")
+    except RunnerError as exc:
+        # Session died (e.g. timeout) but may have already written the artifacts to scratch.
+        # Recover them; the well-formedness guardrail below still gates every prompt.
+        files = sorted(p for p in work.glob("*") if p.is_file())
+        if not files:
+            raise
+        print(f"[recon] session failed ({exc}); recovered {len(files)} partial artifact(s) "
+              "from the scratch dir", file=sys.stderr)
+
+    ctx.prompts_out_dir.mkdir(parents=True, exist_ok=True)
+
+    prompt_paths: list[Path] = []
+    for f in files:
+        if f.name == "repo_profile.json":
+            json.loads(f.read_text(encoding="utf-8"))  # must be valid JSON
+            ctx.repo_profile_path.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+        elif f.name == "synthesis_notes.md":
+            (ctx.run_dir / "synthesis_notes.md").write_text(
+                f.read_text(encoding="utf-8"), encoding="utf-8")
+        elif f.name.startswith("audit_") and f.suffix == ".md":
+            text = f.read_text(encoding="utf-8")
+            # Guardrail: a generated prompt that lost the RoE / prohibited techniques fails here.
+            assert_audit_prompt_wellformed(text, scope.prohibited_techniques)
+            dst = ctx.prompts_out_dir / f.name
+            dst.write_text(text, encoding="utf-8")
+            prompt_paths.append(dst)
+
+    if not prompt_paths:
+        raise RuntimeError("recon: no audit prompts were generated (audit_*.md)")
+    if not ctx.repo_profile_path.exists():
+        raise RuntimeError("recon: repo_profile.json was not produced")
+
+    _capture_archetype(ctx)
+    return sorted(prompt_paths)
+
+
+def _detect_archetype(repo_profile: dict, synthesis: str) -> str:
+    """Canonical archetype: from repo_profile.archetype, else parsed from synthesis_notes."""
+    raw = (repo_profile or {}).get("archetype")
+    if not raw:
+        m = re.search(r"^#{1,4}\s*Archetype[^\n]*\n+([^\n]+)", synthesis or "", re.I | re.M)
+        raw = m.group(1) if m else ""
+    return canonicalize(str(raw))
+
+
+def _capture_archetype(ctx: RunContext) -> None:
+    """Persist the recon-classified archetype into meta.json (for cost/benchmark grouping)."""
+    try:
+        profile = json.loads(ctx.repo_profile_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        profile = {}
+    synth_path = ctx.run_dir / "synthesis_notes.md"
+    synth = synth_path.read_text(encoding="utf-8") if synth_path.exists() else ""
+    archetype = _detect_archetype(profile if isinstance(profile, dict) else {}, synth)
+    try:
+        meta = json.loads(ctx.meta_path.read_text(encoding="utf-8"))
+        meta["archetype"] = archetype
+        ctx.meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    except (OSError, ValueError):
+        pass  # telemetry only — never fail the run over it

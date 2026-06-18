@@ -1,0 +1,8 @@
+{
+  "name": "acme-widgets",
+  "brief": "tests/fixtures/brief.txt",
+  "repo": "tests/fixtures/repo",
+  "scenario": "happy",
+  "archetype": "web_api_cms",
+  "expected": "expected_findings.json"
+}

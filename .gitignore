@@ -1,0 +1,26 @@
+# Run artifacts and local state
+runs/
+.pytest_tmp/
+argo/ledger.sqlite
+argo/ledger.sqlite-*
+argo/app_settings.json
+
+# Local agent/IDE state — never publish
+.claude/
+
+# Private research data & audit targets (kept OUT of the public repo)
+Vulnerability Repo/
+vuln-registry/
+targets/
+chatplugin/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Python packaging
+*.egg-info/
+build/
+dist/
+.eggs/

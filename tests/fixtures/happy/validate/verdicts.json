@@ -1,0 +1,38 @@
+{
+  "FULL-001": {
+    "verdict": "confirmed",
+    "validated_confidence": "Confirmed",
+    "validated_severity": "High",
+    "rationale": "Traced q from the public search route to unparameterized SQL with no sanitization on the path.",
+    "surviving_data_flow": "GET /api/search?q -> search() -> 'SELECT ... LIKE %'+q+'%' -> db.execute (src/api/search.py:42)",
+    "unmet_preconditions": []
+  },
+  "FULL-003": {
+    "verdict": "needs_runtime_verification",
+    "validated_confidence": "Medium",
+    "validated_severity": "High",
+    "rationale": "SSRF sink is reachable, but whether an egress allow-list blocks internal ranges depends on deploy-time config not visible from source.",
+    "surviving_data_flow": "user url -> fetch(url) -> http.get (src/net/fetch.py:88)",
+    "live_verification_plan": "With program authorization, issue a single benign request to a controlled collaborator host; no scanning, no DoS."
+  },
+  "AUTHZ-002": {
+    "verdict": "confirmed",
+    "validated_confidence": "High",
+    "validated_severity": "High",
+    "rationale": "get_order fetches by client-supplied id with no ownership/authorization check anywhere on the path.",
+    "surviving_data_flow": "GET /api/orders/<id> -> get_order() -> repo.find(id) (src/api/orders.py:120)",
+    "unmet_preconditions": ["caller must be authenticated"]
+  },
+  "AUTHZ-003": {
+    "verdict": "refuted",
+    "validated_confidence": "Low",
+    "rationale": "SERVICE_BANNER is a server-derived constant, not attacker-controlled, and the program marks banner/version disclosure as known/low; no real sink.",
+    "unmet_preconditions": ["attacker control of the value (absent)"]
+  },
+  "_default": {
+    "verdict": "confirmed",
+    "validated_confidence": "Medium",
+    "validated_severity": "Medium",
+    "rationale": "default mock verdict"
+  }
+}

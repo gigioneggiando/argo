@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Argo">
+  <defs>
+    <linearGradient id="argoMark" x1="6" y1="12" x2="58" y2="52" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7c8cff"/>
+      <stop offset="1" stop-color="#46e0c0"/>
+    </linearGradient>
+  </defs>
+  <!-- almond eye (eyelids) as a gradient ring -->
+  <path fill="url(#argoMark)" fill-rule="evenodd" d="M3 32C15 14 49 14 61 32 49 50 15 50 3 32Zm11 0c8-10 28-10 36 0-8 10-28 10-36 0Z"/>
+  <!-- iris / pupil -->
+  <circle cx="32" cy="32" r="7.5" fill="url(#argoMark)"/>
+</svg>

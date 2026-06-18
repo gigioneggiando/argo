@@ -1,0 +1,54 @@
+{
+  "program_name": "Acme Widgets",
+  "audit_focus": "Identity / authorization / API exposure audit",
+  "generated_at": "2026-06-16T12:00:00Z",
+  "findings": [
+    {
+      "id": "AUTHZ-001",
+      "title": "SQL injection reachable from search endpoint",
+      "severity": "High",
+      "confidence": "High",
+      "cwe": "CWE-89",
+      "owasp": "A03:2021 Injection",
+      "affected": ["src/api/search.py:42"],
+      "vulnerable_flow": "GET /api/search?q -> search() -> string-built SQL",
+      "why_vulnerable": "Same unparameterized SQL build reached from the public search route.",
+      "exploit_scenario": "Anonymous attacker injects via q to read data.",
+      "impact": "Database exfiltration.",
+      "recommended_fix": "Parameterize the query.",
+      "variants": "Also reachable via the /api/v2/search alias; verify both routes."
+    },
+    {
+      "id": "AUTHZ-002",
+      "title": "IDOR: order access without ownership check",
+      "severity": "High",
+      "confidence": "High",
+      "cwe": "CWE-639",
+      "owasp": "A01:2021 Broken Access Control",
+      "affected": ["src/api/orders.py:120"],
+      "vulnerable_flow": "GET /api/orders/<id> -> get_order() -> repo.find(id) with no owner check",
+      "why_vulnerable": "The order is fetched purely by client-supplied id; no check binds the order to the caller.",
+      "exploit_scenario": "An authenticated user iterates order ids to read other customers' orders.",
+      "impact": "Cross-tenant data disclosure of all orders.",
+      "recommended_fix": "Enforce an ownership/authorization check binding order.owner to the caller.",
+      "action_plan": "Add a policy check in get_order and a test for cross-user access denial.",
+      "missing_tests": "No test asserts a user cannot read another user's order.",
+      "variants": "Audit all repo.find(id) call sites in src/api for the same pattern.",
+      "live_verification_plan": "With authorization, request two order ids belonging to a test account only; no enumeration of real users, no automation."
+    },
+    {
+      "id": "AUTHZ-003",
+      "title": "Service banner disclosure",
+      "severity": "Low",
+      "confidence": "Low",
+      "cwe": "CWE-200",
+      "owasp": "A05:2021 Security Misconfiguration",
+      "affected": ["src/api/util.py:5"],
+      "vulnerable_flow": "SERVICE_BANNER constant returned in responses",
+      "why_vulnerable": "A version banner is exposed; informational at most.",
+      "exploit_scenario": "Attacker fingerprints the service version.",
+      "impact": "Minor information disclosure.",
+      "recommended_fix": "Consider removing the version banner from responses."
+    }
+  ]
+}

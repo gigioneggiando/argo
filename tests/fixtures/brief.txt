@@ -1,0 +1,18 @@
+Acme Widgets — Bug Bounty Program (HackerOne)
+
+In scope:
+  - Source repository: https://github.com/acme/widgets (source_repo)
+  - Production web app: https://app.acme.test (web)
+
+Out of scope:
+  - Anything under /legacy/ (deprecated, scheduled for removal)
+  - third_party/ vendored dependencies
+
+Rules of engagement:
+  - This is an authorized test with safe harbor.
+  - Automated tooling against the source repository is permitted.
+  - Hard limits: no DoS / stress / volumetric testing; no automated scanning of live hosts;
+    no social engineering.
+
+Severity guidance: We pay highest for authn/authz bypass, SQLi, and SSRF reaching internal
+services. Self-XSS and missing security headers are known/low.

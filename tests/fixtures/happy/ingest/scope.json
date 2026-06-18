@@ -1,0 +1,20 @@
+{
+  "program_name": "Acme Widgets",
+  "platform": "HackerOne",
+  "target_type": "source_and_live",
+  "in_scope": [
+    {"asset": "https://github.com/acme/widgets", "type": "source_repo", "notes": "main backend"},
+    {"asset": "https://app.acme.test", "type": "web", "notes": "production web app"}
+  ],
+  "out_of_scope": ["/legacy/", "third_party/"],
+  "prohibited_techniques": [
+    "no DoS / stress / volumetric testing",
+    "no automated scanning of live hosts",
+    "no social engineering"
+  ],
+  "severity_guidance": "Highest pay for authn/authz bypass, SQLi, SSRF to internal services. Self-XSS and missing headers are known/low.",
+  "safe_harbor": true,
+  "automation_allowed": true,
+  "reference_links": ["https://app.acme.test/docs/security"],
+  "program_brief_raw": "Acme Widgets — Bug Bounty Program (HackerOne). In scope: source repo + production web app. Out of scope: /legacy/, third_party/. Hard limits: no DoS / stress / volumetric testing; no automated scanning of live hosts; no social engineering."
+}

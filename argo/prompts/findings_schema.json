@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SecurityFindings",
+  "description": "Normalized findings emitted by the audit stage. One file per audit focus; merged + deduped + validated downstream.",
+  "type": "object",
+  "required": ["program_name", "audit_focus", "generated_at", "findings"],
+  "properties": {
+    "program_name": { "type": "string" },
+    "audit_focus": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "severity", "confidence", "cwe", "affected", "vulnerable_flow", "why_vulnerable", "exploit_scenario", "impact", "recommended_fix"],
+        "properties": {
+          "id": { "type": "string", "description": "Stable within a run, e.g. AUTHZ-001" },
+          "title": { "type": "string" },
+          "severity": { "type": "string", "enum": ["Critical", "High", "Medium", "Low", "Informational"] },
+          "confidence": { "type": "string", "enum": ["Confirmed", "High", "Medium", "Low"] },
+          "cwe": { "type": "string", "description": "e.g. CWE-89" },
+          "owasp": { "type": "string", "description": "OWASP category or closest equivalent" },
+          "affected": {
+            "type": "array",
+            "items": { "type": "string", "description": "file:line / class / function / component" },
+            "minItems": 1
+          },
+          "vulnerable_flow": { "type": "string", "description": "source -> ... -> sink with refs" },
+          "why_vulnerable": { "type": "string" },
+          "exploit_scenario": { "type": "string" },
+          "impact": { "type": "string" },
+          "recommended_fix": { "type": "string", "description": "Guidance only; pipeline does not patch." },
+          "action_plan": { "type": "string" },
+          "missing_tests": { "type": "string" },
+          "variants": { "type": "string", "description": "Where similar patterns may exist + where the author checked" },
+          "live_verification_plan": { "type": "string", "description": "Safe, in-scope, non-DoS steps for a human. Only for source_and_live targets." },
+          "dedup_key": { "type": "string", "description": "Computed downstream: hash of normalized(file + primary_line + cwe). Not set by audit stage." },
+          "validation": {
+            "type": "object",
+            "description": "Filled by the adversarial validation stage; absent until validated.",
+            "properties": {
+              "verdict": { "type": "string", "enum": ["confirmed", "refuted", "needs_runtime_verification", "out_of_scope"] },
+              "validated_confidence": { "type": "string", "enum": ["Confirmed", "High", "Medium", "Low"] },
+              "validated_severity": { "type": "string", "enum": ["Critical", "High", "Medium", "Low", "Informational"] },
+              "rationale": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

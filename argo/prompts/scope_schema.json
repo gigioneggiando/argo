@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BugBountyScope",
+  "description": "Structured scope + rules of engagement parsed from a bug-bounty program brief. Authoritative input to every pipeline stage; also used to filter findings in post-processing.",
+  "type": "object",
+  "required": ["program_name", "platform", "target_type", "in_scope", "out_of_scope", "prohibited_techniques"],
+  "properties": {
+    "program_name": { "type": "string" },
+    "platform": {
+      "type": "string",
+      "description": "e.g. HackerOne, Bugcrowd, Intigriti, YesWeHack, self-hosted"
+    },
+    "target_type": {
+      "type": "string",
+      "enum": ["source_only", "source_and_live"]
+    },
+    "in_scope": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["asset", "type"],
+        "properties": {
+          "asset": { "type": "string", "description": "repo URL/path, domain, API base, package name, etc." },
+          "type": { "type": "string", "enum": ["source_repo", "web", "api", "mobile", "binary", "other"] },
+          "notes": { "type": "string" }
+        }
+      },
+      "minItems": 1
+    },
+    "out_of_scope": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Assets, paths, or features explicitly excluded. Findings here MUST be dropped."
+    },
+    "prohibited_techniques": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Hard limits propagated into every prompt, e.g. 'no DoS / stress / volumetric testing', 'no automated scanning of live hosts', 'no social engineering', 'no physical', 'no testing against production data'."
+    },
+    "severity_guidance": {
+      "type": "string",
+      "description": "Program's stated severity model / what they care about / known-issue exclusions."
+    },
+    "rate_limits": {
+      "type": "string",
+      "description": "Any stated request-rate or testing-window constraints for live assets."
+    },
+    "safe_harbor": {
+      "type": "boolean",
+      "description": "Whether the program offers safe-harbor / authorization language."
+    },
+    "automation_allowed": {
+      "type": "boolean",
+      "description": "Whether the program permits automated tooling at all. If false, source-only static analysis only; never touch live assets with tooling."
+    },
+    "special_notes": { "type": "string" },
+    "reference_links": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Docs, security pages, advisory history, architecture references to embed into generated prompts."
+    },
+    "program_brief_raw": {
+      "type": "string",
+      "description": "Original unparsed brief text, kept for audit trail and for the synthesis stage."
+    }
+  }
+}

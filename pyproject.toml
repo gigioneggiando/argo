@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "argo-audit"
+version = "0.1.0"
+description = "Argo — AI source-static security-audit pipeline for bug-bounty programs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Luigi Colluto" }]
+keywords = ["security", "bug-bounty", "static-analysis", "llm", "audit"]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+]
+dependencies = [
+  "jinja2>=3.1",
+  "jsonschema>=4.0",
+  "pydantic>=2.0",
+  "pyyaml>=6.0",
+  "typer>=0.12",
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27"]
+
+[project.scripts]
+# After `pip install -e .` the `argo` command is available on every OS
+# (pip writes the platform-appropriate launcher). Without installing, use `python -m argo.cli`.
+argo = "argo.cli:app"
+
+[tool.setuptools]
+packages = ["argo", "argo.stages", "server"]
+
+[tool.setuptools.package-data]
+argo = ["prompts/*", "data/*.yaml"]
+
+# pytest config lives in pytest.ini (kept separate; do not duplicate here).

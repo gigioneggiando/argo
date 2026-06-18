@@ -1,0 +1,199 @@
+"""Headless-seam hardening: strict parser over the REAL captured envelope, per-session caps,
+and robust error handling on the subprocess path. No tokens spent."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+import argo.runner as runner_mod
+from argo.config import HAIKU, PipelineConfig
+from argo.ledger import Ledger
+from argo.runner import (ClaudeRunner, HeadlessClaudeRunner, RunnerError,
+                             parse_result_envelope)
+
+from conftest import FIXTURES
+
+REAL = json.loads((FIXTURES / "real_envelope.json").read_text(encoding="utf-8"))
+
+
+# --------------------------------------------------------------------- parser (Step 2)
+def test_parser_over_real_envelope():
+    r = parse_result_envelope(REAL, model="m", prompt_sha256="h", work_dir=Path("."))
+    assert r.text == "ok"
+    assert r.cost_usd == 0.0160078                 # real total_cost_usd
+    assert r.input_tokens == 9 and r.output_tokens == 42
+    assert r.num_turns == 1
+    assert r.session_id == "de1a6cc6-03e3-4ab0-a614-1c8594feff6a"
+    assert r.stop_reason == "end_turn"             # real stop_reason field
+    assert r.is_error is False and r.api_error_status is None
+
+
+def test_parser_fails_loud_on_shape_drift():
+    drifted = {"is_error": False, "result": "x", "usage": {},
+               "num_turns": 1, "session_id": "s"}   # missing total_cost_usd
+    with pytest.raises(RunnerError) as e:
+        parse_result_envelope(drifted, model="m", prompt_sha256="h", work_dir=Path("."))
+    assert "total_cost_usd" in str(e.value)
+
+
+def test_parser_rejects_non_envelope():
+    with pytest.raises(RunnerError):
+        parse_result_envelope({"foo": "bar"}, model="m", prompt_sha256="h", work_dir=Path("."))
+
+
+# ---- a runner that returns a crafted envelope (drives run() without a subprocess) ----
+class _EnvelopeRunner(ClaudeRunner):
+    def __init__(self, config, ledger, envelope):
+        super().__init__(config, ledger)
+        self._env = envelope
+
+    def _invoke(self, **kw):
+        return self._env
+
+
+def _run(cfg, ledger, env, tmp_path, *, stage="audit"):
+    return _EnvelopeRunner(cfg, ledger, env).run(
+        prompt="p", run_dir=tmp_path / "r", work_dir=tmp_path / "r" / "w",
+        model="m", stage=stage, run_id="R")
+
+
+# --------------------------------------------------------------------- caps (Step 3)
+def test_recoverable_is_error_returns_and_is_logged(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    env = {"is_error": True, "api_error_status": None, "result": "partial",
+           "usage": {"input_tokens": 1, "output_tokens": 2}, "total_cost_usd": 0.02,
+           "num_turns": 2, "session_id": "s", "stop_reason": "max_budget"}
+    res = _run(PipelineConfig(), ledger, env, tmp_path)
+    assert res.is_error is True and res.cost_usd == 0.02     # returned for partial recovery
+    assert ledger.run_call_count("R") == 1                   # logged even on error
+    ledger.close()
+
+
+def test_api_error_raises_loud_after_logging(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    env = {"is_error": True, "api_error_status": "authentication_error", "result": "bad key",
+           "usage": {}, "total_cost_usd": 0.0, "num_turns": 0, "session_id": None}
+    with pytest.raises(RunnerError) as e:
+        _run(PipelineConfig(), ledger, env, tmp_path, stage="ingest")
+    assert "authentication_error" in str(e.value)
+    assert ledger.run_call_count("R") == 1                   # cost logged before raising
+    ledger.close()
+
+
+def test_max_turns_tripwire(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    env = {"is_error": False, "result": "x", "usage": {"input_tokens": 1, "output_tokens": 1},
+           "total_cost_usd": 0.0, "num_turns": 99, "session_id": "s"}
+    with pytest.raises(RunnerError) as e:
+        _run(PipelineConfig(session_max_turns=5), ledger, env, tmp_path)
+    assert "max_turns" in str(e.value)
+    ledger.close()
+
+
+def test_session_cost_cap(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    env = {"is_error": False, "result": "x", "usage": {"input_tokens": 1, "output_tokens": 1},
+           "total_cost_usd": 5.0, "num_turns": 1, "session_id": "s"}
+    with pytest.raises(RunnerError) as e:
+        _run(PipelineConfig(session_max_cost_usd=0.10), ledger, env, tmp_path)
+    assert "cost cap" in str(e.value)
+    ledger.close()
+
+
+def test_session_budget_uses_remaining_run_budget(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    runner = HeadlessClaudeRunner(PipelineConfig(budget_usd=1.0), ledger)
+    assert runner._session_budget("R") == 1.0
+    ledger.log_call(run_id="R", stage="audit", model="m", prompt_sha256="h", cost_usd=0.7)
+    assert abs(runner._session_budget("R") - 0.3) < 1e-9
+    tighter = HeadlessClaudeRunner(
+        PipelineConfig(budget_usd=1.0, session_max_cost_usd=0.1), ledger)
+    assert tighter._session_budget("R") == 0.1               # min(0.1, remaining 0.3)
+    ledger.close()
+
+
+# --------------------------------------------------------------------- flags (Step 1/3)
+def test_build_cmd_caps_and_no_max_turns(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    cmd = HeadlessClaudeRunner(PipelineConfig(), ledger)._build_cmd(
+        model="m", repo_dir=None, allowed=["Read"], disallowed=["Bash"], session_budget_usd=0.5)
+    assert "--max-budget-usd" in cmd and cmd[cmd.index("--max-budget-usd") + 1] == "0.5000"
+    assert "--max-turns" not in cmd                          # this CLI version has no such flag
+    ledger.close()
+
+
+# --------------------------------------------------------------------- subprocess errors (Step 4)
+class _FakeProc:
+    def __init__(self, stdout, stderr="", returncode=0):
+        self.stdout, self.stderr, self.returncode = stdout, stderr, returncode
+
+
+def _invoke(runner, tmp_path):
+    return runner._invoke(prompt="p", work_dir=tmp_path, model="m", repo_dir=None,
+                          allowed=["Read"], disallowed=["Bash"], stage="ingest",
+                          run_id="R", label="x", timeout_s=5)
+
+
+def test_invoke_raises_on_empty_stdout(tmp_path, monkeypatch):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    runner = HeadlessClaudeRunner(PipelineConfig(), ledger)
+    monkeypatch.setattr(runner_mod.subprocess, "run",
+                        lambda *a, **k: _FakeProc("", "auth failed", 1))
+    with pytest.raises(RunnerError) as e:
+        _invoke(runner, tmp_path)
+    assert "no parseable JSON envelope" in str(e.value)
+    assert "auth failed" in str(e.value)                     # stderr surfaced
+    ledger.close()
+
+
+def test_invoke_raises_on_malformed_json(tmp_path, monkeypatch):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    runner = HeadlessClaudeRunner(PipelineConfig(), ledger)
+    monkeypatch.setattr(runner_mod.subprocess, "run",
+                        lambda *a, **k: _FakeProc("not json {", "", 0))
+    with pytest.raises(RunnerError):
+        _invoke(runner, tmp_path)
+    ledger.close()
+
+
+def test_invoke_returns_envelope_even_on_nonzero_exit(tmp_path, monkeypatch):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    runner = HeadlessClaudeRunner(PipelineConfig(), ledger)
+    env = json.dumps({"is_error": True, "api_error_status": None, "result": "x", "usage": {},
+                      "total_cost_usd": 0.0, "num_turns": 1, "session_id": "s"})
+    monkeypatch.setattr(runner_mod.subprocess, "run", lambda *a, **k: _FakeProc(env, "", 2))
+    out = _invoke(runner, tmp_path)                          # non-zero exit but valid envelope
+    assert out["is_error"] is True
+    ledger.close()
+
+
+# --------------------------------------------------------------------- partial recovery (Step 4)
+class _DyingRunner(ClaudeRunner):
+    """Writes a valid findings file into the scratch dir, then dies hard (RunnerError)."""
+    FINDINGS = {
+        "program_name": "Acme Widgets", "audit_focus": "x",
+        "generated_at": "2026-06-16T12:00:00Z",
+        "findings": [{
+            "id": "X-1", "title": "t", "severity": "High", "confidence": "High",
+            "cwe": "CWE-89", "affected": ["src/api/search.py:42"],
+            "vulnerable_flow": "f", "why_vulnerable": "w", "exploit_scenario": "e",
+            "impact": "i", "recommended_fix": "r"}],
+    }
+
+    def _invoke(self, *, work_dir, **kw):
+        (work_dir / f"SECURITY_FINDINGS__{work_dir.name}.json").write_text(
+            json.dumps(self.FINDINGS), encoding="utf-8")
+        raise RunnerError("session crashed mid-write")
+
+
+def test_audit_recovers_partial_artifact_on_hard_failure(env, monkeypatch):
+    from argo.orchestrator import do_audit, do_ingest, do_recon
+    from conftest import BRIEF, REPO
+    ctx = env()
+    do_ingest(ctx, BRIEF, str(REPO))
+    do_recon(ctx)
+    ctx.runner = _DyingRunner(ctx.config, ctx.ledger)        # sessions now die mid-write
+    findings = do_audit(ctx)
+    assert findings, "partial findings should be recovered from the scratch dir"
+    assert all(p.exists() for p in findings)

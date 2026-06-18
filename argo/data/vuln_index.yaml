@@ -1,0 +1,74 @@
+# Vulnerability-class index by software archetype (Phase 4 — context enrichment).
+#
+# A curated, persistent reference of the vulnerability classes most likely to hide real bugs in
+# each kind of software. It is injected into the recon stage as REFERENCE ("use the relevant ones,
+# do not limit yourself to them") and surfaced in the UI. It complements — never replaces — the
+# model's own dynamic discovery.
+#
+# Each archetype maps to a list of {cwe, name, note}.
+
+web_api_cms:
+  - {cwe: CWE-89,  name: SQL / NoSQL injection,            note: unparameterized queries, ORM raw fragments, search/filter passthrough}
+  - {cwe: CWE-79,  name: XSS (stored / reflected / DOM),   note: template auto-escaping bypass, rich-text/markdown sanitizer gaps}
+  - {cwe: CWE-639, name: IDOR / BOLA,                       note: object access by client-supplied id without an ownership check}
+  - {cwe: CWE-862, name: Missing function-level authz,     note: state-changing endpoints lacking a policy/role check}
+  - {cwe: CWE-918, name: SSRF,                              note: user-controlled URL reaching an outbound HTTP client / metadata}
+  - {cwe: CWE-915, name: Mass assignment,                  note: binding request bodies straight onto models (privilege fields)}
+  - {cwe: CWE-22,  name: Path traversal / file access,     note: user input in file paths, upload handlers, template includes}
+  - {cwe: CWE-502, name: Insecure deserialization,         note: native serializers on untrusted input}
+  - {cwe: CWE-384, name: Auth / session flaws,             note: reset/invite tokens, fixation, SameSite/cookie prefix, JWT alg}
+
+plugin_extension:
+  - {cwe: CWE-94,  name: Placeholder / format-string injection, note: user text re-entering the host placeholder/template engine}
+  - {cwe: CWE-77,  name: Command dispatch to host,         note: config/user-driven commands run as console/host with privilege}
+  - {cwe: CWE-862, name: Permission-node / capability bypass, note: missing or inverted host permission checks; offline-mode identity}
+  - {cwe: CWE-502, name: Unsafe config/YAML deserialization, note: non-safe SnakeYAML/pickle constructors on any non-trusted document}
+  - {cwe: CWE-306, name: Unauthenticated cross-instance protocol, note: hand-rolled socket/IPC with weak/no auth, plaintext, no integrity}
+  - {cwe: CWE-1333, name: ReDoS in config-compiled regex,  note: blacklist/anti-spam/url filters run on user input}
+  - {cwe: CWE-494, name: Runtime download supply chain,    note: fetching jars/plugins validated by weak hash / no signature}
+  - {cwe: CWE-200, name: Secret leak via debug/diagnostics, note: status dumps exposing tokens/keys not masked}
+
+library_sdk:
+  - {cwe: CWE-1188, name: Insecure default,                note: a footgun default (verification off, permissive parser) a caller inherits}
+  - {cwe: CWE-502, name: Deserialization / parsing,        note: parsers that instantiate types or recurse on hostile input}
+  - {cwe: CWE-1333, name: ReDoS / algorithmic complexity,  note: regexes and parsers with super-linear worst case on attacker input}
+  - {cwe: CWE-327, name: Crypto misuse,                    note: weak primitives, static IV/nonce, non-constant-time comparison}
+  - {cwe: CWE-89,  name: Injection passthrough,            note: helpers that build queries/commands/paths from caller data unsanitized}
+  - {cwe: CWE-400, name: Resource exhaustion,              note: unbounded allocation/recursion from a size/count field}
+
+cli_desktop:
+  - {cwe: CWE-78,  name: OS command / argument injection,  note: argv/env/config interpolated into a shell or exec}
+  - {cwe: CWE-22,  name: Path traversal / symlink,         note: user paths, archive extraction (zip-slip), temp-file races}
+  - {cwe: CWE-269, name: Privilege / setuid issues,        note: dropping privileges incorrectly, world-writable install paths}
+  - {cwe: CWE-494, name: Insecure update mechanism,        note: unsigned/over-HTTP updates, no integrity on downloaded code}
+  - {cwe: CWE-312, name: Local secret storage,             note: credentials/tokens in plaintext config or logs}
+  - {cwe: CWE-502, name: Local-file deserialization,       note: loading project/state files that can execute code}
+
+agent_llm_mcp:
+  - {cwe: CWE-77,  name: Prompt injection (direct/indirect), note: untrusted content steering tool use; data exfil via tool outputs}
+  - {cwe: CWE-94,  name: Unsafe tool invocation,           note: tool args derived from model/untrusted text reaching code-exec/shell}
+  - {cwe: CWE-829, name: Untrusted tool-output feedback,    note: tool results re-entering context and being trusted as instructions}
+  - {cwe: CWE-693, name: Sandbox / permission escape,      note: tools that can read/write/network beyond the intended boundary}
+  - {cwe: CWE-200, name: Secret exposure to the model,     note: keys/PII placed in the prompt or reachable via a tool}
+  - {cwe: CWE-918, name: SSRF via tools,                   note: fetch/browse tools with attacker-influenced URLs}
+
+mobile:
+  - {cwe: CWE-312, name: Insecure local storage,           note: secrets/PII in shared prefs, plists, unencrypted DB}
+  - {cwe: CWE-927, name: Exported component / IPC,         note: exported activities/services/receivers, intent redirection}
+  - {cwe: CWE-939, name: Deeplink / URL-scheme hijack,     note: unvalidated deeplink params driving sensitive actions}
+  - {cwe: CWE-749, name: WebView / JS bridge,              note: addJavascriptInterface exposure, file:// access, mixed content}
+  - {cwe: CWE-295, name: Improper cert validation,         note: disabled pinning / trust-all managers}
+
+data_ml:
+  - {cwe: CWE-502, name: Model / pickle deserialization,   note: loading model/checkpoint/notebook files that execute code}
+  - {cwe: CWE-94,  name: UDF / notebook code execution,    note: user-supplied transforms/expressions evaluated unsandboxed}
+  - {cwe: CWE-89,  name: Query / pipeline injection,       note: dynamic SQL/SparkSQL/templating in ETL steps}
+  - {cwe: CWE-918, name: SSRF in data fetch,               note: ingesting from attacker-influenced URLs/paths}
+  - {cwe: CWE-1395, name: Model/dataset supply chain,      note: untrusted weights/datasets pulled without integrity}
+
+general:
+  - {cwe: CWE-200, name: Sensitive-data exposure,          note: secrets/PII via logs, errors, debug dumps, verbose responses}
+  - {cwe: CWE-285, name: Improper authorization,           note: checks declared but not enforced on every path}
+  - {cwe: CWE-20,  name: Improper input validation,        note: missing length/type/allow-list before a sink}
+  - {cwe: CWE-489, name: Leftover debug / test code,       note: backdoors, hard-coded credentials, debug endpoints}
+  - {cwe: CWE-1104, name: Outdated / vulnerable deps,      note: pinned versions with known advisories (cross-reference manually)}

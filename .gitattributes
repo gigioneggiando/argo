@@ -1,0 +1,8 @@
+# Normalize line endings so the launchers work on every OS when cloned.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.sh  text eol=lf
+*.png binary
+*.jpg binary
+*.svg text

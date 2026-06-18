@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Argo — source-static security audits</title>
+  <!-- set theme before paint to avoid a flash of the wrong theme -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("theme");
+        if (t !== "light" && t !== "dark")
+          t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/svg+xml" href="assets/argo-mark.svg" />
+  <!-- vendored markdown renderer (no runtime CDN dependency) -->
+  <script src="vendor/marked.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/" style="color:inherit;text-decoration:none">
+      <svg class="brand-logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="brandG" x1="6" y1="12" x2="58" y2="52" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#7c8cff"/><stop offset="1" stop-color="#46e0c0"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#brandG)" fill-rule="evenodd" d="M3 32C15 14 49 14 61 32 49 50 15 50 3 32Zm11 0c8-10 28-10 36 0-8 10-28 10-36 0Z"/>
+        <circle cx="32" cy="32" r="7.5" fill="url(#brandG)"/>
+      </svg>
+      <span>Argo <small>· source-static security audits</small></span>
+    </a>
+    <nav class="nav" id="nav">
+      <a href="#/">New run</a>
+      <a href="#/knowledge">Vuln index</a>
+      <a href="#/costs">Costs</a>
+      <a href="#/benchmark">Benchmarks</a>
+      <a href="#/settings">Settings</a>
+      <a href="#/history">History</a>
+      <button class="theme-toggle" id="themeToggle" title="Toggle light / dark" aria-label="Toggle theme">☀</button>
+    </nav>
+  </header>
+
+  <main id="app"><!-- views render here --></main>
+  <div class="toast-wrap" id="toasts"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

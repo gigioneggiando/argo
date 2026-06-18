@@ -42,9 +42,11 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
 
 ## The views
 
-- **New run** (`#/`) — program description (**optional** — leave it empty to audit a **local/personal
-  codebase**: point Repository at a local folder path, no brief, no URL needed), reference links, and
-  repository, with an *Advanced*
+- **New run** (`#/`) — a **mode** toggle picks the workflow: **🔍 General audit** (default — audit any
+  codebase: point *Code to audit* at a local folder path or repo, **no brief**; the brief/links fields
+  are hidden) or **🎯 Bug bounty** (reveals *Program description* + *Reference links* for a scoped
+  program). Both feed the same engine. Plus *Code to audit* (a local folder path — resolved on the
+  machine running the server, your code never leaves it — or a git URL) and an *Advanced*
   panel (runner, budget, audit model, parallel, calibration, dry-run, **web research**). The
   **Web research (Stage 0)** toggle (default **On**) runs the opt-out web-OSINT pass before recon
   (the only networked step; never the live in-scope hosts); **Off** keeps the run fully offline.

@@ -66,9 +66,10 @@ render();
 function newRunView() {
   const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "" };
 
+  let mode = "general";  // "general" = audit any code (no brief) · "bounty" = scoped program
   const briefEl = h("textarea", { placeholder: "Paste the bug-bounty program page: scope, rules, rewards, exclusions, “no DoS”…", oninput: (e) => form.brief = e.target.value });
   const linksEl = h("textarea", { placeholder: "https://project.example/docs\nhttps://project.example/security", style: { minHeight: "70px" }, oninput: (e) => form.links = e.target.value });
-  const repoEl = h("input", { type: "text", placeholder: "https://github.com/org/repo  (or a local path)", oninput: (e) => form.repo = e.target.value });
+  const repoEl = h("input", { type: "text", placeholder: "/home/me/project   ·   C:\\dev\\app   ·   https://github.com/org/repo", oninput: (e) => form.repo = e.target.value });
 
   const runnerSeg = seg([["mock", "Mock · free"], ["headless", "Claude"], ["codex", "Codex"]], "mock", (v) => {
     form.runner = v; costBanner.classList.toggle("hidden", v === "mock");
@@ -150,14 +151,16 @@ function newRunView() {
   }
 
   async function submit() {
-    if (!form.repo.trim()) return toast("Add a repository: a local folder path or a git URL", true);
-    // brief is optional: empty brief => local/personal source-only review (scope synthesized).
+    if (!form.repo.trim()) return toast("Add code to audit: a local folder path or a git URL", true);
+    // General mode => empty brief => local/personal source-only review (scope synthesized).
+    const brief = mode === "general" ? "" : form.brief;
+    const links = mode === "general" ? null : (form.links.trim() || null);
     startBtn.disabled = true; startBtn.lastChild.textContent = "Starting…";
     try {
       const cfg = { runner: form.runner, parallel: form.parallel, calibration: form.calibration,
         budget_usd: form.budget ? Number(form.budget) : null, audit_model: form.audit_model.trim() || null,
         codex_model: form.codex_model || null, codex_oss: form.codex_oss, codex_local_provider: form.codex_local_provider || null };
-      const res = await api.startRun({ brief: form.brief, repo: form.repo, links: form.links.trim() || null, dry_run: form.dry_run, research: form.research, config: cfg });
+      const res = await api.startRun({ brief, repo: form.repo, links, dry_run: form.dry_run, research: form.research, config: cfg });
       location.hash = `#/run/${encodeURIComponent(res.run_id)}`;
     } catch (e) {
       toast(e.message, true); startBtn.disabled = false;
@@ -168,16 +171,35 @@ function newRunView() {
   // load persisted defaults (Settings page)
   api.getSettings().then((s) => applyConfig({ runner: s.runner, budget_usd: s.budget_usd, parallel: s.parallel, audit_model: s.audit_model, calibration: s.calibration, models: s.models })).catch(() => {});
 
+  // ---- mode: general code audit (default) vs bug-bounty triage ----------------
+  const briefField = field("Program description", briefEl, "The bug-bounty program page — scope, rules and exclusions are extracted from it; it drives scope filtering and the submission drafts.");
+  const linksField = field("Reference links", linksEl, "Docs / security pages / advisory history. One URL per line. Optional.");
+  const repoField = field("Code to audit", repoEl,
+    "A local folder path (resolved on this machine — your code never leaves it) or a git URL (cloned read-only). Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
+  const modeHint = h("div", { class: "help", style: { marginTop: "8px" } });
+  const MODE_COPY = {
+    general: "Audit any codebase for vulnerabilities — point at a local folder or repo, no program brief needed. Your code never leaves your machine.",
+    bounty: "Triage a scoped bug-bounty program — paste the program brief; scope, rules and submission drafts come from it.",
+  };
+  function setMode(m) {
+    mode = m;
+    briefField.classList.toggle("hidden", m === "general");
+    linksField.classList.toggle("hidden", m === "general");
+    modeHint.textContent = MODE_COPY[m];
+  }
+  const modeSeg = seg([["general", "🔍 General audit"], ["bounty", "🎯 Bug bounty"]], "general", setMode);
+  setMode("general");
+  const modeRow = h("div", { class: "field" }, h("label", { class: "lbl" }, "Mode"), modeSeg, modeHint);
+
   return h("div", {},
     claudeDL, codexDL,
     h("div", { class: "page-head" },
       h("h1", {}, "New audit run"),
-      h("p", {}, "Paste the program, point at the source repo, and the agent profiles it, writes target-specific audit prompts, hunts findings, and validates them — stopping at human-review drafts. Never touches a live host, never patches.")),
+      h("p", {}, "Point Argo at any codebase — a local folder, a private repo, or a public one — and an LLM audits the source like a human reviewer: it profiles the code, writes target-specific audit prompts, hunts findings, and adversarially validates them, stopping at human-review drafts. Never touches a live host, never patches.")),
     recoCard,
     h("div", { class: "card" },
-      field("Program description", briefEl, "The bug-bounty program page — scope and rules are extracted from this. OPTIONAL: leave empty to audit a local/personal codebase as a source-only review (scope is synthesized from the repo)."),
-      field("Reference links", linksEl, "Docs / security pages / advisory history. One URL per line. Optional."),
-      field("Repository", repoEl, "The codebase to analyze: a local folder path, OR a git URL (cloned read-only). Your code never leaves your machine.", true),
+      modeRow,
+      briefField, linksField, repoField,
       advToggle, adv, costBanner,
       h("div", { class: "spread", style: { marginTop: "22px" } },
         h("span", { class: "grow faint", style: { fontSize: "13px" } }, "Default runner is Mock (free). Switch to Real in Advanced."),
@@ -329,8 +351,11 @@ function renderArtifacts(host, a) {
 // ------------------------------------------------------- results (completed run)
 function renderResults(host, id, st) {
   if (st.state === "failed") {
-    return mount(host, h("div", { class: "banner warn" }, h("span", {}, "✖"),
-      h("span", {}, h("strong", {}, "Run failed. "), st.error || "Unknown error")));
+    const err = st.error || "Unknown error";
+    const budget = /budget|ceiling|exceed|cost cap/i.test(err);
+    return mount(host, h("div", { class: "banner danger" }, h("span", {}, budget ? "💸" : "✖"),
+      h("span", {}, h("strong", {}, budget ? "Run stopped — budget reached. " : "Run failed. "), err,
+        budget ? h("div", { class: "help", style: { marginTop: "4px" } }, "Raise the per-run budget in Advanced and start a new run.") : null)));
   }
   if (st.state === "cancelled") {
     return mount(host, h("div", { class: "banner info" }, "Run cancelled."));

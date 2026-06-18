@@ -337,3 +337,20 @@ table.findings td .floc { font-family: var(--mono); font-size: 12px; color: var(
 .banner { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius-sm); font-size: 13.5px; }
 .banner.warn { background: rgba(255,176,46,.10); border: 1px solid rgba(255,176,46,.3); color: #ffd89a; }
 .banner.info { background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border)); color: var(--text-dim); }
+.banner.danger { background: rgba(255,93,108,.12); border: 1px solid rgba(255,93,108,.4); color: #ffb3ba; }
+
+/* ----------------------------------------------------------------- polish */
+/* visible keyboard focus on every interactive surface (mouse focus stays clean) */
+.btn:focus-visible, .seg button:focus-visible, .tabs button:focus-visible,
+.nav a:focus-visible, .theme-toggle:focus-visible, .runrow:focus-visible,
+.filters .chip:focus-visible, .adv-toggle:focus-visible {
+  outline: none; box-shadow: var(--ring); border-radius: var(--radius-sm);
+}
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }
+.acard { transition: border-color var(--t-fast), transform var(--t-fast); }
+.acard.on:hover { transform: translateY(-1px); }
+
+/* respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}

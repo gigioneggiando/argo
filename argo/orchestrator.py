@@ -11,7 +11,7 @@ from .config import PipelineConfig
 from .context import RunContext
 from .ledger import Ledger
 from .progress import ProgressReporter
-from .runner import build_runner
+from .runner import RunnerCancelled, build_runner
 from .stages import audit, ingest, recon, report, research, validate
 
 
@@ -65,7 +65,7 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
     ``research_enabled`` (default on) inserts the Stage-0 web-OSINT step before recon; it is the
     only networked session and is best-effort (a failure never aborts the run). Optional
     ``reporter`` records per-stage progress to ``status.json``; ``cancel_event`` aborts at the next
-    stage boundary.
+    stage boundary AND mid-stage — it is wired into the runner so an in-flight CLI session is killed.
     """
     stages = (["ingest"] + (["research"] if research_enabled else []) + ["recon"]
               + ([] if dry_run else ["audit", "validate", "report"]))
@@ -73,6 +73,10 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
     reporter = reporter or ProgressReporter(ctx, stages)
     if own:
         reporter.begin()
+
+    # Wire cancellation into the runner so a long session (e.g. a 20-min audit) is killed on Cancel,
+    # not just checked between stages.
+    ctx.runner.cancel_event = cancel_event
 
     def _check_cancel() -> None:
         if cancel_event is not None and cancel_event.is_set():
@@ -84,6 +88,11 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
         reporter.start_stage(name)
         try:
             result = fn()
+        except PipelineCancelled:
+            raise
+        except RunnerCancelled as exc:                 # killed mid-stage -> a cancellation, not a failure
+            reporter.cancelled()
+            raise PipelineCancelled(f"run {ctx.run_id} cancelled mid-stage ({name})") from exc
         except Exception as exc:
             reporter.fail_stage(name, f"{type(exc).__name__}: {exc}")
             raise

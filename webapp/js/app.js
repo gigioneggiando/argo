@@ -285,7 +285,9 @@ function runView(id) {
   const stateChipHost = h("span", {});
   const costHost = h("span", {});
   const cancelBtn = h("button", { class: "btn btn-danger hidden", onclick: async () => {
-    cancelBtn.disabled = true; try { await api.cancelRun(id); toast("Cancellation requested"); } catch (e) { toast(e.message, true); }
+    cancelBtn.disabled = true; cancelBtn.textContent = "Cancelling…";
+    try { await api.cancelRun(id); toast("Cancelling — stopping the active session"); }
+    catch (e) { toast(e.message, true); cancelBtn.disabled = false; cancelBtn.textContent = "Cancel"; }
   } }, "Cancel");
 
   const tlHost = h("div", { class: "timeline" });

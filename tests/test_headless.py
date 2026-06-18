@@ -138,8 +138,7 @@ def _invoke(runner, tmp_path):
 def test_invoke_raises_on_empty_stdout(tmp_path, monkeypatch):
     ledger = Ledger(tmp_path / "l.sqlite")
     runner = HeadlessClaudeRunner(PipelineConfig(), ledger)
-    monkeypatch.setattr(runner_mod.subprocess, "run",
-                        lambda *a, **k: _FakeProc("", "auth failed", 1))
+    monkeypatch.setattr(runner, "_exec", lambda *a, **k: _FakeProc("", "auth failed", 1))
     with pytest.raises(RunnerError) as e:
         _invoke(runner, tmp_path)
     assert "no parseable JSON envelope" in str(e.value)
@@ -150,8 +149,7 @@ def test_invoke_raises_on_empty_stdout(tmp_path, monkeypatch):
 def test_invoke_raises_on_malformed_json(tmp_path, monkeypatch):
     ledger = Ledger(tmp_path / "l.sqlite")
     runner = HeadlessClaudeRunner(PipelineConfig(), ledger)
-    monkeypatch.setattr(runner_mod.subprocess, "run",
-                        lambda *a, **k: _FakeProc("not json {", "", 0))
+    monkeypatch.setattr(runner, "_exec", lambda *a, **k: _FakeProc("not json {", "", 0))
     with pytest.raises(RunnerError):
         _invoke(runner, tmp_path)
     ledger.close()
@@ -162,7 +160,7 @@ def test_invoke_returns_envelope_even_on_nonzero_exit(tmp_path, monkeypatch):
     runner = HeadlessClaudeRunner(PipelineConfig(), ledger)
     env = json.dumps({"is_error": True, "api_error_status": None, "result": "x", "usage": {},
                       "total_cost_usd": 0.0, "num_turns": 1, "session_id": "s"})
-    monkeypatch.setattr(runner_mod.subprocess, "run", lambda *a, **k: _FakeProc(env, "", 2))
+    monkeypatch.setattr(runner, "_exec", lambda *a, **k: _FakeProc(env, "", 2))
     out = _invoke(runner, tmp_path)                          # non-zero exit but valid envelope
     assert out["is_error"] is True
     ledger.close()

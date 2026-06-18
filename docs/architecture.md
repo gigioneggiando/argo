@@ -85,6 +85,12 @@ Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`
 - **`MockClaudeRunner`** — writes fixture files into the scratch dir and returns a synthetic
   manifest. Zero tokens; used by the whole test suite.
 
+The real backends launch the CLI through `AgentRunner._exec`, a **cancellable** subprocess: a pump
+thread runs `communicate` while the main thread polls `self.cancel_event` (set by the orchestrator
+for the run). On Cancel it kills the whole process **tree** (`_kill_tree`: `taskkill /T` on Windows,
+`killpg` on POSIX) and raises `RunnerCancelled`, which the orchestrator turns into a cancellation —
+so a long audit stops mid-stage, not at the next boundary (C1). Timeouts use the same path.
+
 ## `RunContext`
 
 Threaded through every stage. Holds `run_id`, `config`, `runner`, `ledger`, the loaded `scope`,

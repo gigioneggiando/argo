@@ -30,7 +30,7 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | GET | `/runs` | list runs, newest first |
 | GET | `/runs/{id}` | live status (stage timeline + cost + ready artifacts) |
 | GET | `/runs/{id}/events` | **SSE** stream of status until terminal |
-| POST | `/runs/{id}/cancel` | request cancellation (effective at the next stage boundary) |
+| POST | `/runs/{id}/cancel` | request cancellation — **effective immediately**: the in-flight CLI session is killed mid-stage (C1), and at the next stage boundary as a backstop |
 | GET | `/runs/{id}/report` | `REPORT.md` (text/markdown) |
 | GET | `/runs/{id}/artifacts/{name}` | a whitelisted single-file artifact |
 | GET | `/runs/{id}/prompts` · `/findings` · `/drafts` | the multi-file artifacts |
@@ -151,5 +151,5 @@ dry-run, the SSE stream reaching a terminal state, the artifact whitelist, and 4
 
 ## Not yet (later roadmap phases)
 
-Auth/multi-user, subprocess isolation per run (vs. in-process threads), mid-stage cancellation,
-file-upload of a repo zip, and the frontend itself (Phase 1). See [roadmap.md](roadmap.md).
+Auth/multi-user, subprocess isolation per run (vs. in-process threads), and file-upload of a repo
+zip. (Mid-stage cancellation and the frontend are done.) See [roadmap.md](roadmap.md).

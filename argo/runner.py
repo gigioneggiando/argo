@@ -17,9 +17,13 @@ an interface so it can be swapped").
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
+import threading
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -49,6 +53,12 @@ class LLMResult:
 
 class RunnerError(RuntimeError):
     pass
+
+
+class RunnerCancelled(RuntimeError):
+    """The session's process was killed because the run was cancelled mid-stage. Deliberately NOT
+    a :class:`RunnerError`, so stage-level ``except RunnerError`` partial-recovery does not swallow
+    it — it propagates to the orchestrator, which marks the run cancelled."""
 
 
 # Field paths verified against the REAL claude v2.1.178 `--output-format json` envelope
@@ -105,6 +115,64 @@ class AgentRunner(ABC):
     def __init__(self, config: PipelineConfig, ledger: Ledger):
         self.config = config
         self.ledger = ledger
+        # Set by the orchestrator for the duration of a run; when it fires, an in-flight CLI
+        # subprocess is killed (mid-stage cancellation). None => not cancellable (e.g. CLI runs).
+        self.cancel_event = None
+
+    # ---------------------------------------------------------------- cancellable subprocess
+    def _exec(self, cmd: list[str], *, prompt: str, cwd, timeout: float) -> subprocess.CompletedProcess:
+        """Run a backend CLI as a **cancellable** subprocess: if ``self.cancel_event`` fires (the
+        user hit Cancel mid-stage) or the timeout elapses, kill the whole process **tree** and raise.
+
+        Returns a ``CompletedProcess`` (stdout/stderr captured as text). Raises
+        ``subprocess.TimeoutExpired`` on timeout and :class:`RunnerCancelled` on cancellation —
+        keeping the same surface the previous ``subprocess.run`` calls relied on.
+        """
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        preexec = os.setsid if os.name != "nt" else None      # own process group on POSIX
+        proc = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace", cwd=str(cwd),
+            creationflags=creationflags, preexec_fn=preexec)
+        box: dict = {}
+
+        def _pump():
+            try:
+                box["out"], box["err"] = proc.communicate(input=prompt)
+            except Exception as exc:               # pragma: no cover - defensive
+                box["exc"] = exc
+
+        th = threading.Thread(target=_pump, daemon=True)
+        th.start()
+        ev = self.cancel_event
+        deadline = time.monotonic() + timeout
+        while th.is_alive():
+            th.join(0.2)
+            if ev is not None and ev.is_set():
+                self._kill_tree(proc); th.join(5)
+                raise RunnerCancelled("session cancelled mid-stage")
+            if time.monotonic() > deadline:
+                self._kill_tree(proc); th.join(5)
+                raise subprocess.TimeoutExpired(cmd, timeout)
+        if "exc" in box:                           # pragma: no cover - defensive
+            raise box["exc"]
+        return subprocess.CompletedProcess(cmd, proc.returncode, box.get("out", ""),
+                                           box.get("err", ""))
+
+    @staticmethod
+    def _kill_tree(proc: subprocess.Popen) -> None:
+        """Kill the subprocess AND its descendants (the CLI spawns a node/runtime child)."""
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                               capture_output=True)
+            else:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception:                          # pragma: no cover - best effort
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
     def parse_envelope(self, raw: dict, *, model: str, prompt_sha256: str,
                        work_dir: Path) -> LLMResult:
@@ -292,16 +360,7 @@ class HeadlessClaudeRunner(AgentRunner):
                               disallowed=disallowed, session_budget_usd=session_budget_usd)
         timeout = timeout_s or self.config.session_timeout_s
         try:
-            proc = subprocess.run(
-                cmd,
-                input=prompt,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",   # prompts/envelopes carry non-cp1252 chars (e.g. source->sink arrows)
-                errors="replace",
-                cwd=str(work_dir),
-                timeout=timeout,
-            )
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout)
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
             raise RunnerError(
                 f"claude session timed out after {timeout}s "
@@ -407,9 +466,7 @@ class CodexRunner(AgentRunner):
         cmd = self._build_codex_cmd(model=model, policy=policy, last_msg_file=last_msg)
         timeout = timeout_s or self.config.session_timeout_s
         try:
-            proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
-                                  encoding="utf-8", errors="replace", cwd=str(work_dir),
-                                  timeout=timeout)
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout)
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
             raise RunnerError(f"codex session timed out after {timeout}s (stage={stage}, "
                               f"run_id={run_id}, label={label})") from exc

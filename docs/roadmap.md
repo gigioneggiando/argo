@@ -78,7 +78,9 @@ See [api.md](api.md). Implemented in `argo/progress.py` + `server/`.
 - [x] `python -m argo.cli serve` command; API tests on the mock runner (`tests/test_api.py`).
 - [x] Surface the budget abort in the UI — the run view shows a distinct "Run stopped — budget reached"
       banner (matches the engine's "Per-run budget … reached" / "session exceeded … cost cap" errors).
-- [ ] _Later:_ subprocess isolation per run (backlog **C2**), mid-stage cancellation (backlog **C1**).
+- [x] **Mid-stage cancellation** (backlog **C1**) — the runner kills the in-flight CLI process tree
+      on Cancel (`AgentRunner._exec`/`_kill_tree`); the orchestrator marks it cancelled.
+- [ ] _Later:_ subprocess isolation per run (backlog **C2**).
 
 ### Phase 1 — Core UI (the MVP) — ✅ DONE
 Goal: a non-CLI user pastes 3 inputs, clicks start, watches progress, reads results.
@@ -384,7 +386,13 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 
 ### C. Run infrastructure (low value for a local single-user tool)
 
-#### C1 — Mid-stage cancellation — effort **M** · paper value **None**
+#### C1 — Mid-stage cancellation — effort **M** · paper value **None** — ✅ DONE
+- **Shipped:** the runner runs each CLI as a **cancellable subprocess** (`AgentRunner._exec`): a
+  pump thread does `communicate`, the main thread polls `self.cancel_event` and, on Cancel,
+  `_kill_tree` kills the whole process tree (`taskkill /T` on Windows, `killpg` on POSIX) and raises
+  `RunnerCancelled`. The orchestrator wires `cancel_event` onto the runner and normalizes a mid-stage
+  `RunnerCancelled` to a cancellation (status → cancelled). The UI shows "Cancelling…". Timeout path
+  unchanged. So Cancel during a 20-min audit now stops it immediately, not at the next boundary.
 - **Feasibility: medium.** `cancel_event` is checked only at **stage boundaries** (`orchestrator._check_cancel`),
   and the runner's `subprocess.run()` is never interrupted, so a click during a long audit takes effect only
   at the next boundary. Need to thread `cancel_event` into `runner.run`, switch to `subprocess.Popen` + poll,

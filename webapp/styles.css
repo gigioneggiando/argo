@@ -354,3 +354,12 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+/* light-theme readability: the dark theme used pale text on tinted fills, which is
+   unreadable on light backgrounds (e.g. selected "Claude" = orange-on-orange, the
+   real-run warning = yellow-on-yellow). Use the theme's stronger ink in light mode. */
+:root[data-theme="light"] .seg button.on.danger { background: rgba(224,46,68,.12); color: var(--danger); }
+:root[data-theme="light"] .btn-danger { color: var(--danger); }
+:root[data-theme="light"] .btn-danger:hover:not(:disabled) { background: rgba(224,46,68,.18); }
+:root[data-theme="light"] .banner.warn { color: #8a5a00; }
+:root[data-theme="light"] .banner.danger { color: var(--danger); }

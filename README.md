@@ -43,7 +43,9 @@ Argo runs in two modes over the **same** five-stage engine:
 | **Extras** | — | submission drafts, scope filtering, cross-run resubmission tracking |
 
 Auditing your own code is the common case: omit `--brief`, point `--repo` at a **local folder**, and
-your code never leaves your machine. Bug-bounty mode adds the program-specific scaffolding on top.
+the repo is mounted read-only and never pushed anywhere (a local / OSS model keeps the source
+fully on-device; a cloud backend sends it to its API to analyze). Bug-bounty mode adds the
+program-specific scaffolding on top.
 
 ---
 
@@ -186,9 +188,11 @@ argo pipeline --repo ./my-code                                 # 🔐 local/pers
 ```
 
 **Auditing your own / private local code?** Omit `--brief` and point `--repo` at a **local folder**
-(it does not need to be a git repo, and is never pushed anywhere). Argo synthesizes a minimal
-**source-only** scope from the folder (zero-token ingest, web research auto-off) and audits it. Your
-code stays on your machine.
+(it does not need to be a git repo, and is **never pushed anywhere** — the repo is mounted read-only).
+Argo synthesizes a minimal **source-only** scope from the folder (zero-token ingest, web research
+auto-off) and audits it. Note the analysis itself: a **cloud backend** (Claude / Codex) sends the
+source to that provider's API to analyze it — only a **local / OSS model** (`--codex-oss`) keeps
+everything **fully on-device**.
 
 Pick a backend (default `headless` = Claude Code):
 ```

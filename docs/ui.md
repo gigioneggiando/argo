@@ -46,8 +46,9 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
   codebase: point *Code to audit* at a local folder path or repo, **no brief**; the brief/links fields
   are hidden) or **🎯 Bug bounty** (reveals *Program description* + *Reference links* for a scoped
   program). Both feed the same engine. Plus *Code to audit* (a local folder path — resolved on the
-  machine running the server, your code never leaves it — or a git URL) and an *Advanced*
-  panel (runner, budget, audit model, parallel, calibration, dry-run, **web research**). The
+  machine running the server; mounted read-only and never pushed, though a cloud backend sends the
+  source to its API to analyze while a local/OSS model keeps it on-device — or a git URL) and an
+  *Advanced* panel (runner, budget, audit model, parallel, calibration, dry-run, **web research**). The
   **Web research (Stage 0)** toggle (default **On**) runs the opt-out web-OSINT pass before recon
   (the only networked step; never the live in-scope hosts); **Off** keeps the run fully offline.
   The **runner** selector offers **Mock** (free) · **Claude** · **Codex** (with a Codex model +

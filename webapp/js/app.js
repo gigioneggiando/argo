@@ -84,7 +84,7 @@ function newRunView() {
   const drySeg = seg([["false", "Full pipeline"], ["true", "Dry-run (stop after recon)"]], "false", (v) => form.dry_run = v === "true");
   const calSeg = seg([["false", "Off"], ["true", "Calibration (audit→Opus)"]], "false", (v) => form.calibration = v === "true");
   const researchSeg = seg([["true", "On · web OSINT"], ["false", "Off · offline"]], "true", (v) => form.research = v === "true");
-  const budgetEl = h("input", { type: "number", min: "0", step: "1", placeholder: "e.g. 20", oninput: (e) => form.budget = e.target.value });
+  const budgetEl = h("input", { type: "number", min: "0", step: "1", placeholder: "blank = no limit (run to completion)", oninput: (e) => form.budget = e.target.value });
   const modelEl = h("input", { type: "text", list: "dl-claude-models", placeholder: "default (per-stage)", oninput: (e) => form.audit_model = e.target.value });
   const claudeDL = h("datalist", { id: "dl-claude-models" });
   const codexDL = h("datalist", { id: "dl-codex-models" });
@@ -102,10 +102,10 @@ function newRunView() {
       field("Runner", runnerSeg, "Mock replays fixtures (zero tokens). Claude = Claude Code; Codex = Codex CLI (OpenAI / local-OSS)."),
       field("Mode", drySeg, "Dry-run shows the generated prompts before paying for audits.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
-      field("Budget (USD)", budgetEl, "Hard per-run ceiling; aborts further sessions."),
+      field("Budget (USD)", budgetEl, "Hard per-run ceiling in USD. Leave blank for no limit — the default: the audit runs to completion regardless of cost. Set a number to abort once spending reaches it."),
       field("Audit model", modelEl, "Override only the Stage-3 model (the missed-bug lever).")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
-      field("Parallel sessions", parallelEl, "Max concurrent audit/validate sessions."),
+      field("Parallel sessions", parallelEl, "How many audit/validate sessions run at once (default 3). Higher = faster wall-clock but more simultaneous spend and more chance of provider rate-limits; lower = slower but gentler. It changes speed, not what's found."),
       field("Calibration", calSeg, "Force audit on Opus while prompts are unproven.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Web research (Stage 0)", researchSeg, "On: a web-OSINT pass (CVEs, advisories, the project's history) feeds recon — the ONLY networked step, never the live in-scope hosts. Off: fully offline.")),
@@ -175,10 +175,10 @@ function newRunView() {
   const briefField = field("Program description", briefEl, "The bug-bounty program page — scope, rules and exclusions are extracted from it; it drives scope filtering and the submission drafts.");
   const linksField = field("Reference links", linksEl, "Docs / security pages / advisory history. One URL per line. Optional.");
   const repoField = field("Code to audit", repoEl,
-    "A local folder path (resolved on this machine — your code never leaves it) or a git URL (cloned read-only). Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
+    "A local folder path (resolved on the machine running the server) or a git URL (cloned read-only). The repo is mounted read-only and never pushed anywhere — but a cloud backend (Claude / Codex) sends the source to that provider's API to analyze it; only a local / OSS model keeps everything on-device. Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
   const modeHint = h("div", { class: "help", style: { marginTop: "8px" } });
   const MODE_COPY = {
-    general: "Audit any codebase for vulnerabilities — point at a local folder or repo, no program brief needed. Your code never leaves your machine.",
+    general: "Audit any codebase for vulnerabilities — point at a local folder or repo, no program brief needed. The repo stays read-only and is never pushed anywhere (a local / OSS model keeps it fully on-device; a cloud backend sends the source to its API to analyze).",
     bounty: "Triage a scoped bug-bounty program — paste the program brief; scope, rules and submission drafts come from it.",
   };
   function setMode(m) {
@@ -696,8 +696,9 @@ function costsView() {
       kv("Avg / run", usd(t.avg_cost_per_run)), kv("Total spent", usd(t.cost_usd)),
       kv("Runs", t.runs), kv("LLM calls", t.calls));
     const cheapest = c.cheapest_model_per_1k_output
-      ? h("div", { class: "banner info" }, "💡 Most cost-effective by output tokens: ",
-          h("strong", {}, " " + c.cheapest_model_per_1k_output))
+      ? h("div", { class: "banner info", style: { marginTop: "16px", marginBottom: "4px" } },
+          h("span", {}, "💡"),
+          h("span", {}, "Most cost-effective by output tokens: ", h("strong", {}, c.cheapest_model_per_1k_output)))
       : null;
     const models = dataTable(["Model", "Calls", "Cost", "$/call", "$/1k out", "%"],
       c.by_model.map((m) => [m.model, m.calls, usd(m.cost_usd), usd(m.avg_cost_per_call),
@@ -733,7 +734,7 @@ function costsView() {
 
   return h("div", {},
     h("div", { class: "page-head" }, h("h1", {}, "Costs"),
-      h("p", {}, "Observed economics from the ledger — real per-call costs, not estimates. Mock runs are free ($0); figures populate as you do real (headless) runs. This also feeds the budget hint in “Let the pipeline choose”.")),
+      h("p", {}, "Observed economics from your local ledger — real per-call costs, not estimates. This data lives only on this machine (the ledger is git-ignored, served on localhost); it is never bundled with the app or shared. Mock runs are free ($0); figures populate as you do real (headless) runs. This also feeds the budget hint in “Let the pipeline choose”.")),
     host);
 }
 

@@ -183,6 +183,13 @@ copy** under `runs/<id>/fix_workspace/`.
       the **copy** — the source mount is **never** modified; nothing is applied in place; no PR.
 - [ ] _Later:_ richer fixes (multi-file, test-included), a "regenerate this patch" loop, and PR-draft
       export; today's fix is one minimal root-cause diff per finding.
+- [ ] _Later (observed limitation):_ **diff fidelity on large real repos.** On a real ChatPlugin run
+      (Java, deep multi-module paths), 7/11 model-generated unified diffs failed `git apply` with
+      "corrupt patch" — the model miscounts multi-hunk `@@` line ranges (paths were correct, files
+      existed; the 4 simpler single-hunk diffs applied + verified). The robust fix is to have the
+      model emit the **full rewritten file** (or per-hunk before/after blocks) and let Argo compute
+      the diff mechanically, removing the model's line-counting as a failure mode. Until then,
+      `verify_patch` correctly flags non-applying patches (they remain useful as guidance).
 
 ### Phase 7 — Benchmarks & evaluation — ✅ DONE (core harness)
 Measure quality so prompt/model changes are decisions, not guesses. Implemented in

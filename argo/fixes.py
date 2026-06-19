@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 
 from .config import ARTIFACT_TOOLS
@@ -163,21 +164,34 @@ def _confirmed_findings(ctx: RunContext) -> list[dict]:
 
 
 def _generate_one(ctx: RunContext, finding: dict) -> str | None:
-    """Run one remediation session; return the unified-diff text, or None if none was produced."""
+    """Run one remediation session; return the unified-diff text, or None if none was produced.
+
+    A single session failing (timeout / API error) must NOT abort the whole fix run — we recover any
+    partial ``*.diff`` from the scratch dir and otherwise return None so the caller records this
+    finding as un-patched and moves on (mirrors the audit stage's per-focus resilience)."""
     work = ctx.work_dir("remediate", finding["id"])
     work.mkdir(parents=True, exist_ok=True)
-    result = ctx.runner.run(
-        prompt=_build_prompt(finding, ctx.repo_dir),
-        run_dir=ctx.run_dir,
-        work_dir=work,
-        model=ctx.config.model_for("remediate"),
-        stage="remediate",
-        run_id=ctx.run_id,
-        repo_dir=ctx.repo_dir,            # READ-ONLY
-        allowed_tools=ARTIFACT_TOOLS,     # read repo + write the diff into the scratch dir
-        label=f"remediate-{finding['id']}",
-    )
-    files = collect_output_files(result, "*")
+    try:
+        result = ctx.runner.run(
+            prompt=_build_prompt(finding, ctx.repo_dir),
+            run_dir=ctx.run_dir,
+            work_dir=work,
+            model=ctx.config.model_for("remediate"),
+            stage="remediate",
+            run_id=ctx.run_id,
+            repo_dir=ctx.repo_dir,            # READ-ONLY
+            allowed_tools=ARTIFACT_TOOLS,     # read repo + write the diff into the scratch dir
+            label=f"remediate-{finding['id']}",
+        )
+        files = collect_output_files(result, "*")
+    except RunnerError as exc:
+        files = sorted(work.glob("*"))        # the session may have written the diff before dying
+        if not files:
+            print(f"[fixes] {finding['id']}: remediation session failed ({exc}); no patch",
+                  file=sys.stderr)
+            return None
+        print(f"[fixes] {finding['id']}: session failed ({exc}); recovered partial from scratch",
+              file=sys.stderr)
     diff = next((f for f in files if f.name == "fix.diff"), None)
     if diff is None:  # partial-recovery: glob the scratch dir
         diff = next((p for p in work.glob("*.diff") if p.is_file()), None)

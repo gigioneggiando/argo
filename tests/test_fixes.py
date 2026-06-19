@@ -103,6 +103,28 @@ def test_generate_fixes_end_to_end(env):
     assert (ctx.run_dir / "fixes_report.json").exists()
 
 
+@needs_patch
+def test_generate_fixes_resilient_to_session_failure(env, monkeypatch):
+    """One remediation session failing (e.g. a timeout) must NOT abort the whole fix run: that
+    finding is recorded un-patched and the others still get patches + a report."""
+    from argo.runner import RunnerError
+    ctx = env()
+    run_pipeline(ctx, BRIEF, str(REPO))
+    real_run = ctx.runner.run
+
+    def flaky(**kw):
+        if kw.get("stage") == "remediate" and kw.get("label") == "remediate-AUTHZ-002":
+            raise RunnerError("simulated remediation timeout")
+        return real_run(**kw)
+
+    monkeypatch.setattr(ctx.runner, "run", flaky)
+    report = generate_fixes(ctx, verify=True)                 # must NOT raise
+    by = {f["finding_id"]: f for f in report["fixes"]}
+    assert by["AUTHZ-002"]["patch"] is None and by["AUTHZ-002"]["verify"]["verified"] is False
+    assert by["FULL-001"]["patch"] and by["FULL-003"]["patch"]      # the others still patched
+    assert report["patched"] == 2 and (ctx.run_dir / "fixes_report.json").exists()
+
+
 def test_generate_fixes_requires_validated_findings(env):
     ctx = env()                      # no pipeline run -> no validated_findings.json
     with pytest.raises(FileNotFoundError):

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from conftest import BRIEF, REPO
 
 from argo.orchestrator import run_pipeline
-from argo.stages import sca
+from argo.stages import sca, validate
 from argo.stages.audit import _normalize_findings_doc, _repair_finding
 from argo.stages.validate import _format_ground_truth
 
@@ -135,6 +135,22 @@ def test_format_ground_truth_surfaces_carveouts_and_baseline():
     out = _format_ground_truth(gt, "F")
     assert "global carve A" in out and "focus carve B" in out
     assert "MoveController" in out and "CARVE-OUTS" in out
+
+
+def test_validate_disambiguates_colliding_finding_ids(env):
+    ctx = env()
+    ctx.findings_dir.mkdir(parents=True, exist_ok=True)
+    def doc(focus, aff):
+        return {"program_name": "p", "audit_focus": focus,
+                "generated_at": "2026-01-01T00:00:00+00:00",
+                "findings": [{"id": "AUTHZ-003", "title": "t", "severity": "Medium",
+                              "confidence": "High", "cwe": "CWE-1", "affected": [aff],
+                              "vulnerable_flow": "x", "why_vulnerable": "y", "exploit_scenario": "z",
+                              "impact": "i", "recommended_fix": "f"}]}
+    (ctx.findings_dir / "a.json").write_text(json.dumps(doc("A", "a.cs:1")), encoding="utf-8")
+    (ctx.findings_dir / "b.json").write_text(json.dumps(doc("B", "b.cs:1")), encoding="utf-8")
+    ids = [f.id for f in validate._load_all(ctx)]
+    assert sorted(ids) == ["AUTHZ-003", "AUTHZ-003#2"]   # collision disambiguated
 
 
 def test_format_ground_truth_empty_is_safe():

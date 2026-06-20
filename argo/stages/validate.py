@@ -60,12 +60,19 @@ def _format_ground_truth(gt: dict, focus: str | None) -> str:
 # --------------------------------------------------------------------------- merge/dedup
 def _load_all(ctx: RunContext) -> list[Finding]:
     findings: list[Finding] = []
+    # Each focus session numbers its findings independently (AUTHZ-001, AUTHZ-002, ...), so the same
+    # id can collide across focuses. Disambiguate to a globally-unique id — otherwise downstream
+    # id-keyed merges (e.g. the runtime stage attaching a verdict by id) mis-attach to the wrong one.
+    seen: dict[str, int] = {}
     for path in sorted(ctx.findings_dir.glob("*.json")):
         doc = json.loads(path.read_text(encoding="utf-8"))
         focus = doc.get("audit_focus", path.stem)
         for raw in doc.get("findings", []):
             f = Finding.model_validate(raw)
             f.source_focus = focus
+            seen[f.id] = seen.get(f.id, 0) + 1
+            if seen[f.id] > 1:
+                f.id = f"{f.id}#{seen[f.id]}"
             findings.append(f)
     return findings
 

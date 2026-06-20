@@ -1,0 +1,18 @@
+[
+  {
+    "finding_id": "REF-A17-server-status-anon",
+    "note": "anonymous server-status disclosure (confirmed live: 200 to anon)",
+    "requests": [
+      {"method": "GET", "path": "/umbraco/management/api/v1/server/status",
+       "expect": {"status": [200]}}
+    ]
+  },
+  {
+    "finding_id": "REF-RT-server-config-anon",
+    "note": "anonymous server-configuration leak (confirmed live: 200 + allowPasswordReset)",
+    "requests": [
+      {"method": "GET", "path": "/umbraco/management/api/v1/server/configuration",
+       "expect": {"status": [200], "body_contains": ["allowPasswordReset"]}}
+    ]
+  }
+]

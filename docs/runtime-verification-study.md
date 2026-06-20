@@ -64,7 +64,9 @@ block; `report.py` surfaces "✅ runtime-confirmed (HTTP PoC)"; `benchmark.py` f
 Getting a complex app to actually run is the hard part (Umbraco = .NET 10 SDK + Node 22 + unattended
 DB). A generic "boot any repo" is **not** feasible. Pluggable launcher, in priority order:
 1. **User recipe** — `--runtime-image IMG` / `--runtime-run-cmd "..."` / a repo `Dockerfile` /
-   `docker-compose.yml`. Most reliable for real apps.
+   `docker-compose.yml`. Most reliable for real apps. A worked, validated example (the one used for
+   the live Umbraco confirmations) lives at
+   [examples/runtime-recipes/umbraco/](examples/runtime-recipes/umbraco/).
 2. **Auto-detect** simple stacks (single Flask/Express/FastAPI, static server).
 3. **Graceful skip** — no runnable instance ⇒ the stage no-ops; findings keep their static verdict.
 

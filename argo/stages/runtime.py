@@ -51,7 +51,7 @@ def _docker_ok() -> bool:
 # The FIXED in-container probe runner. Not model-controlled. Polls for boot, then replays the
 # validated plan against loopback with per-request timeout + a rate cap, recording observations.
 _PROBE_RUNNER = r'''
-import json, time, urllib.request, urllib.error, socket
+import json, time, urllib.request, urllib.error, socket, http.cookiejar
 cfg = json.load(open("/work/probe_cfg.json"))
 plan = json.load(open("/work/probe_plan.json"))
 port = cfg["port"]; base = "http://127.0.0.1:%d" % port
@@ -63,30 +63,42 @@ while time.time() < deadline:
         s = socket.create_connection(("127.0.0.1", port), timeout=2); s.close(); up = True; break
     except OSError:
         time.sleep(1)
+
+def send(opener, req):
+    path = req.get("path", "/")
+    url = path if path.startswith("http") else base + (path if path.startswith("/") else "/" + path)
+    data = req.get("body")
+    body = data.encode("utf-8") if isinstance(data, str) else None
+    r = urllib.request.Request(url, data=body, method=req.get("method", "GET").upper(),
+                               headers=req.get("headers") or {})
+    rec = {"method": r.get_method(), "path": path}
+    try:
+        with opener.open(r, timeout=cfg["req_timeout"]) as resp:
+            rec.update(status=resp.status, body_snippet=resp.read(2048).decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        snippet = e.read(2048).decode("utf-8", "replace") if hasattr(e, "read") else ""
+        rec.update(status=e.code, body_snippet=snippet)
+    except Exception as e:
+        rec.update(status=None, error=str(e)[:300])
+    return rec
+
 results = {"booted": up, "findings": []}
 sent = 0
 for entry in plan:
     fr = {"finding_id": entry.get("finding_id"), "requests": []}
+    # Per-finding cookie jar so an auth/login step's session carries into the probes.
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    auth = entry.get("auth")
+    if isinstance(auth, dict) and sent < cfg["max_requests"]:
+        sent += 1
+        ar = send(opener, auth); ar["auth"] = True
+        fr["requests"].append(ar)
+        time.sleep(cfg["interval"])
     for req in entry.get("requests", []):
         if sent >= cfg["max_requests"]:
             fr["requests"].append({"skipped": "max_requests cap reached"}); continue
         sent += 1
-        path = req.get("path", "/")
-        url = path if path.startswith("http") else base + (path if path.startswith("/") else "/" + path)
-        data = req.get("body")
-        body = data.encode("utf-8") if isinstance(data, str) else None
-        r = urllib.request.Request(url, data=body, method=req.get("method", "GET").upper(),
-                                   headers=req.get("headers") or {})
-        rec = {"method": r.get_method(), "path": path, "expect": req.get("expect")}
-        try:
-            with urllib.request.urlopen(r, timeout=cfg["req_timeout"]) as resp:
-                snippet = resp.read(2048).decode("utf-8", "replace")
-                rec.update(status=resp.status, body_snippet=snippet)
-        except urllib.error.HTTPError as e:
-            snippet = e.read(2048).decode("utf-8", "replace") if hasattr(e, "read") else ""
-            rec.update(status=e.code, body_snippet=snippet)
-        except Exception as e:
-            rec.update(status=None, error=str(e)[:300])
+        rec = send(opener, req); rec["expect"] = req.get("expect")
         ex = req.get("expect") or {}
         ok = True
         if "status" in ex:
@@ -256,13 +268,17 @@ def _generate_plan(ctx: RunContext, scope) -> list | None:
                   "for non-destructive confirmations." if cfg.runtime_allow_state_changing
                   else "ONLY GET/HEAD/OPTIONS are permitted — no writes.")
     template = (ctx.assets_dir / "04_runtime_probe_prompt.md").read_text(encoding="utf-8")
+    creds = cfg.runtime_credentials
+    creds_note = (f"Test credentials you MAY use in an `auth` login step: {json.dumps(creds)}."
+                  if creds else "No test credentials provided — only anonymous probes are possible; "
+                  "for findings that need a session, omit them.")
     rendered = fill_placeholders(template, {
         "PROGRAM_NAME": scope.program_name, "REPO_PATH": str(ctx.repo_dir.resolve()),
         "PORT": str(cfg.runtime_port), "FINDINGS_JSON": json.dumps(findings, indent=2),
         "PROHIBITED_TECHNIQUES": "\n".join(f"- {p}" for p in scope.prohibited_techniques),
         "MAX_REQUESTS": str(cfg.runtime_max_requests),
         "METHOD_HINT": "GET/HEAD/OPTIONS" if not cfg.runtime_allow_state_changing else "GET/HEAD/OPTIONS, and POST/PUT only if non-destructive",
-        "STATE_CHANGING_NOTE": state_note})
+        "STATE_CHANGING_NOTE": state_note, "CREDENTIALS_NOTE": creds_note})
     assert_prohibited_present(rendered, scope.prohibited_techniques)
     prompt = with_artifact_contract(rendered, artifacts=[{
         "type": "probe_plan", "filename": "runtime_probe_plan.json", "schema": None,

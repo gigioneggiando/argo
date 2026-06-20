@@ -134,6 +134,27 @@ def test_r2_run_generates_plan_then_skips_without_recipe(env):
     assert (ctx.run_dir / "runtime_probe_plan.json").is_file()   # but the LLM plan was generated
 
 
+# ----------------------------------------------------------------- R2-auth: login step
+def test_auth_step_is_loopback_checked():
+    plan = [{"finding_id": "F", "auth": {"method": "POST", "path": "http://evil.com/login"},
+             "requests": [{"method": "GET", "path": "/x"}]}]
+    with pytest.raises(RuntimeProbeError):
+        assert_loopback_only(plan, _scope())
+
+
+def test_auth_login_post_allowed_even_when_readonly():
+    plan = [{"finding_id": "F", "auth": {"method": "POST", "path": "/login", "body": "{}"},
+             "requests": [{"method": "GET", "path": "/admin-only"}]}]
+    validate_probe_plan(plan, max_requests=50, max_payload_bytes=8192, allow_state_changing=False)
+
+
+def test_probe_post_still_blocked_when_readonly_even_with_auth():
+    plan = [{"finding_id": "F", "auth": {"method": "POST", "path": "/login"},
+             "requests": [{"method": "POST", "path": "/admin-only"}]}]
+    with pytest.raises(RuntimeProbeError):   # only the auth step is exempt; the probe POST is not
+        validate_probe_plan(plan, max_requests=50, max_payload_bytes=8192, allow_state_changing=False)
+
+
 # ----------------------------------------------------------------- R3: launcher resolution
 def test_r3_explicit_config_wins(env):
     ctx = env(runtime_enabled=True, runtime_image="img", runtime_run_cmd="run me",

@@ -16,6 +16,8 @@ LOCAL INSTANCE BASE URL: http://127.0.0.1:{{PORT}}   (loopback only)
 PROHIBITED TECHNIQUES (hard limits — never exceed):
 {{PROHIBITED_TECHNIQUES}}
 
+AUTHENTICATION: {{CREDENTIALS_NOTE}}
+
 FINDINGS TO PROBE (confirm/refute each where an HTTP signal is observable):
 ```json
 {{FINDINGS_JSON}}
@@ -36,9 +38,11 @@ FINDINGS TO PROBE (confirm/refute each where an HTTP signal is observable):
 
 ## METHOD
 
-1. For each finding, decide whether it has an **observable HTTP signal** from an anonymous (or
-   minimally-privileged) caller. Many authz findings need an authenticated session — if you cannot
-   construct a safe, self-contained probe, **omit that finding** (don't invent a weak probe).
+1. For each finding, decide whether it has an **observable HTTP signal**. If it needs a session and
+   **test credentials are provided above**, add an `auth` login step to that finding's entry — a
+   single login request whose response sets a session cookie; the runner keeps a per-finding cookie
+   jar so your probes run **as that logged-in user** (use it to show, e.g., that a non-admin can hit
+   an admin-only endpoint). If it needs a session and there are **no** credentials, **omit it**.
 2. Read the repo to get the **exact route** (controllers, route attributes, API base paths) and the
    exact response shape that would distinguish vulnerable vs safe.
 3. Express the expectation precisely: the status code(s) and/or a `body_contains` token that proves
@@ -52,6 +56,8 @@ A JSON **array**, one entry per finding you can probe:
   {
     "finding_id": "<id from FINDINGS_JSON>",
     "note": "<one line: what this probe demonstrates>",
+    "auth": {"method": "POST", "path": "/login", "headers": {"Content-Type": "application/json"},
+             "body": "{\"username\":\"...\",\"password\":\"...\"}"},
     "requests": [
       {"method": "GET", "path": "/exact/route", "headers": {},
        "expect": {"status": [200], "body_contains": ["<token proving the issue>"]}}
@@ -59,4 +65,6 @@ A JSON **array**, one entry per finding you can probe:
   }
 ]
 ```
+The `auth` field is OPTIONAL — include it only when the finding needs a session and credentials were
+provided. Omit it for anonymous probes.
 Emit ONLY this file. If no finding has a safe observable probe, emit `[]`.

@@ -85,7 +85,11 @@ DB). A generic "boot any repo" is **not** feasible. Pluggable launcher, in prior
   offline, read-only repo) generates `runtime_probe_plan.json` from the validated findings (gated by
   the R1 validators); `05_runtime_interpret_prompt.md` (interpret) turns the observations into
   per-finding `runtime_confirmed/refuted/inconclusive` verdicts merged into `validated_findings.json`.
-  A hand-written plan still overrides generation.
+  A hand-written plan still overrides generation. **R2-auth:** a finding entry may carry an optional
+  `auth` login step (used only when `runtime_credentials` are provided) — the probe runner keeps a
+  per-finding cookie jar so the probes run as that session, letting **authz** findings be
+  runtime-confirmed. The login POST is exempt from the read-only gate (it is non-destructive) but is
+  still loopback-checked and capped; the actual probe methods stay read-only unless explicitly opted in.
 - **R3 — launcher auto-detection** ✅ **DONE** — `_resolve_launcher` resolves provisioning in
   priority order: explicit `--runtime-image`/`--runtime-run-cmd` → an **`argo-runtime.json`** recipe
   (`{image | dockerfile, run_cmd?, port?, env?, mount_source?, boot_timeout?}`; a `dockerfile` is

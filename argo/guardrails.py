@@ -187,13 +187,21 @@ def _probe_host(path_or_url: str) -> str | None:
     return None                                    # host-relative path: loopback by construction
 
 
+def _entry_requests(entry: dict) -> list[dict]:
+    """All HTTP requests in a plan entry: the optional ``auth`` login step + the probe requests."""
+    reqs = list(entry.get("requests", []))
+    if isinstance(entry.get("auth"), dict):
+        reqs.append(entry["auth"])
+    return reqs
+
+
 def assert_loopback_only(probe_plan: list[dict], scope) -> None:
     """Hard gate: every probe must target loopback, and no probe path/Host may name a scope host.
     Defends the core 'never touch a live host' guardrail at the probe layer."""
     scope_hosts = {_normalize(a.asset) for a in getattr(scope, "in_scope", [])} | \
                   {_normalize(x) for x in getattr(scope, "out_of_scope", [])}
     for entry in probe_plan:
-        for req in entry.get("requests", []):
+        for req in _entry_requests(entry):
             path = str(req.get("path", ""))
             host = _probe_host(path)
             if host is not None and host.lower() not in _LOOPBACK_HOSTS:
@@ -220,10 +228,13 @@ def validate_probe_plan(probe_plan: list[dict], *, max_requests: int, max_payloa
     allowed = set(_READONLY_METHODS) | (set(_STATE_CHANGING_METHODS) if allow_state_changing else set())
     total = 0
     for entry in probe_plan:
-        for req in entry.get("requests", []):
+        auth = entry.get("auth") if isinstance(entry.get("auth"), dict) else None
+        for req in _entry_requests(entry):
             total += 1
             method = str(req.get("method", "GET")).upper()
-            if method not in allowed:
+            # The auth/login step is inherently a (non-destructive) POST — exempt it from the
+            # read-only gate, but it is still loopback-checked, counted, and body-capped.
+            if req is not auth and method not in allowed:
                 raise RuntimeProbeError(
                     f"probe method {method!r} not allowed (finding {entry.get('finding_id')!r}); "
                     f"allowed: {sorted(allowed)}"

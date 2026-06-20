@@ -163,6 +163,9 @@ class PipelineConfig:
     runtime_mount_source: bool = True   # mount the isolated source copy at /src:ro (build-at-run
                                         # model). Set False for a self-contained PRE-BUILT image.
     runtime_build_timeout_s: int = 1800  # R3: max seconds to docker-build a recipe/repo Dockerfile
+    # R2-auth: optional credentials the LLM may use to script a login step so authz findings can be
+    # runtime-confirmed (the probe runner keeps a per-finding cookie jar across the auth + probes).
+    runtime_credentials: dict = field(default_factory=dict)   # e.g. {"username":..., "password":...}
 
     # Validation excerpt sizing.
     excerpt_context_lines: int = 40     # +/- lines of source around each cited file:line

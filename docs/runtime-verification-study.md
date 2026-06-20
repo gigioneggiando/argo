@@ -71,6 +71,19 @@ DB). A generic "boot any repo" is **not** feasible. Pluggable launcher, in prior
 2. **Auto-detect** simple stacks (single Flask/Express/FastAPI, static server).
 3. **Graceful skip** — no runnable instance ⇒ the stage no-ops; findings keep their static verdict.
 
+## 7a. Known limitation — PKCE / OAuth authentication
+
+R2-auth scripts a **single (or simple multi-step) cookie login**, which covers apps whose session
+is established by a username/password POST. It does **not** cover an **OAuth authorization-code +
+PKCE** flow (e.g. Umbraco's backoffice: `POST /login` only sets the Identity cookie; the Management
+API requires an OpenIddict access token obtained via `GET /authorize` → `POST /token` with a
+**runtime-generated `code_verifier`/`code_challenge`** and a redirect-extracted `code`). PKCE values
+cannot be expressed as static probe requests (they are generated/parsed at runtime), so the LLM
+cannot script them. Confirming such authz findings at runtime would need a **dedicated, target-
+specific OAuth helper** — a brittle, low-ROI effort, since those findings are already confirmed
+statically and diffed against the baseline-correct reference. **Deliberately not built**; authz
+findings on OAuth/PKCE backends stay `runtime_inconclusive` (honestly), not falsely confirmed.
+
 ## 8. Decisions (current defaults)
 1. **Provisioning:** user-recipe-first + graceful skip (reliable, honest) — not magical auto-boot.
 2. **Docker:** required; skip with a clear message if absent.

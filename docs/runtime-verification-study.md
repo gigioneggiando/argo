@@ -83,8 +83,12 @@ DB). A generic "boot any repo" is **not** feasible. Pluggable launcher, in prior
   the R1 validators); `05_runtime_interpret_prompt.md` (interpret) turns the observations into
   per-finding `runtime_confirmed/refuted/inconclusive` verdicts merged into `validated_findings.json`.
   A hand-written plan still overrides generation.
-- **R3 — launcher auto-detection** (Dockerfile/compose/simple stacks) + recipe schema.
-- **R4 — verdicts + report + benchmark** (`runtime_confirmed_rate`), docs/diagrams.
+- **R3 — launcher auto-detection** (Dockerfile/compose/simple stacks) + recipe schema. _(pending)_
+- **R4 — verdicts in the report** ✅ **DONE** — each finding's `validation.runtime` verdict +
+  evidence renders in `REPORT.md` (and confirmed ones in the submission draft); a gated
+  exec-summary line counts runtime-confirmed findings. The golden report stays byte-stable because
+  the runtime block only renders when present (off by default). The benchmark
+  `runtime_confirmed_rate` is deferred (it needs a runtime recipe per labeled case — a rare config).
 
 ## 10. Files
 `config.py` (runtime flags/caps) · `guardrails.py` (`assert_loopback_only`, `validate_probe_plan`) ·

@@ -10,6 +10,7 @@ import pytest
 
 from argo.guardrails import (assert_loopback_only, validate_probe_plan, RuntimeProbeError)
 from argo.stages import runtime as rt
+from argo.stages import report
 
 
 def _scope(in_scope=("api.acme.com",), oos=("legacy.acme.com",)):
@@ -131,6 +132,27 @@ def test_r2_run_generates_plan_then_skips_without_recipe(env):
     ctx.validated_findings_path.write_text(json.dumps(_ONE_FINDING), encoding="utf-8")
     assert rt.run(ctx) is None                      # no runtime_image -> graceful skip
     assert (ctx.run_dir / "runtime_probe_plan.json").is_file()   # but the LLM plan was generated
+
+
+# ----------------------------------------------------------------- R4: report integration
+def test_report_renders_runtime_verdict():
+    f = {"id": "X", "title": "t", "severity": "Medium", "confidence": "High", "cwe": "CWE-1",
+         "affected": ["a:1"], "vulnerable_flow": "", "why_vulnerable": "", "exploit_scenario": "",
+         "impact": "", "recommended_fix": "",
+         "validation": {"verdict": "confirmed",
+                        "runtime": {"booted": True, "verdict": "runtime_confirmed",
+                                    "evidence": "200 to anonymous caller"}}}
+    section = "\n".join(report._finding_section(f))
+    assert "Runtime verification" in section
+    assert "runtime_confirmed" in section
+    assert "200 to anonymous caller" in section
+
+
+def test_report_no_runtime_block_when_absent():
+    f = {"id": "X", "title": "t", "severity": "Low", "confidence": "Low", "cwe": "CWE-1",
+         "affected": ["a:1"], "vulnerable_flow": "", "why_vulnerable": "", "exploit_scenario": "",
+         "impact": "", "recommended_fix": "", "validation": {"verdict": "confirmed"}}
+    assert "Runtime verification" not in "\n".join(report._finding_section(f))
 
 
 # ----------------------------------------------------------------- end-to-end (Docker-gated)

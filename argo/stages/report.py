@@ -133,6 +133,10 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
     L.append(f"- Dropped in validation/scope filtering: **{len(dropped)}**")
     sev_line = ", ".join(f"{s}: {counts[s]}" for s in SEVERITY_ORDER if counts[s])
     L.append(f"- Surviving by severity: {sev_line or 'none'}")
+    if any(_validation_field(f, "runtime") for f in survivors):
+        rt_conf = sum(1 for f in survivors
+                      if (_validation_field(f, "runtime") or {}).get("verdict") == "runtime_confirmed")
+        L.append(f"- Runtime-verified (sandboxed HTTP probes): **{rt_conf}** confirmed")
     L.append("")
 
     # Fix-first ordering
@@ -218,6 +222,14 @@ def _finding_section(f: dict) -> list[str]:
     if sdf:
         L.append(f"**Validated data flow.** {sdf}")
         L.append("")
+    rt = _validation_field(f, "runtime")
+    if rt:
+        booted = "sandbox booted" if rt.get("booted") else "sandbox did NOT boot"
+        line = f"**Runtime verification.** `{rt.get('verdict', 'runtime_inconclusive')}` ({booted})."
+        if rt.get("evidence"):
+            line += f" Evidence: {rt.get('evidence')}"
+        L.append(line)
+        L.append("")
     L.append(f"**Recommended fix (guidance only).** {f.get('recommended_fix', '')}")
     L.append("")
     if f.get("live_verification_plan"):
@@ -257,6 +269,12 @@ def _render_draft(ctx, scope, f: dict) -> str:
     if sdf:
         L.append("### Validated data flow")
         L.append(sdf)
+        L.append("")
+    rt = _validation_field(f, "runtime")
+    if rt and rt.get("verdict") == "runtime_confirmed":
+        L.append("### Runtime verification (sandboxed local instance)")
+        L.append(f"Confirmed at runtime via HTTP probe against a sealed local instance. "
+                 f"{rt.get('evidence', '')}")
         L.append("")
     L.append("### Suggested remediation")
     L.append(f.get("recommended_fix", ""))

@@ -134,6 +134,39 @@ def test_r2_run_generates_plan_then_skips_without_recipe(env):
     assert (ctx.run_dir / "runtime_probe_plan.json").is_file()   # but the LLM plan was generated
 
 
+# ----------------------------------------------------------------- R3: launcher resolution
+def test_r3_explicit_config_wins(env):
+    ctx = env(runtime_enabled=True, runtime_image="img", runtime_run_cmd="run me",
+              runtime_port=7000)
+    l = rt._resolve_launcher(ctx, None)
+    assert l["image"] == "img" and l["run_cmd"] == "run me" and l["port"] == 7000
+
+
+def test_r3_recipe_file_prebuilt_image(env):
+    ctx = env(runtime_enabled=True)
+    ctx.repo_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.repo_dir / "argo-runtime.json").write_text(json.dumps({
+        "image": "myapp:latest", "run_cmd": "./serve", "port": 9000, "env": {"A": "B"}}),
+        encoding="utf-8")
+    l = rt._resolve_launcher(ctx, None)
+    assert l["image"] == "myapp:latest" and l["port"] == 9000
+    assert l["env"] == {"A": "B"} and l["mount_source"] is False
+
+
+def test_r3_no_launcher_returns_none(env):
+    ctx = env(runtime_enabled=True)
+    ctx.repo_dir.mkdir(parents=True, exist_ok=True)
+    assert rt._resolve_launcher(ctx, None) is None
+
+
+def test_r3_dockerfile_expose(tmp_path):
+    df = tmp_path / "Dockerfile"
+    df.write_text("FROM x\nEXPOSE 5000/tcp\nCMD run\n", encoding="utf-8")
+    assert rt._dockerfile_expose(df) == 5000
+    df.write_text("FROM x\nCMD run\n", encoding="utf-8")
+    assert rt._dockerfile_expose(df) is None
+
+
 # ----------------------------------------------------------------- R4: report integration
 def test_report_renders_runtime_verdict():
     f = {"id": "X", "title": "t", "severity": "Medium", "confidence": "High", "cwe": "CWE-1",

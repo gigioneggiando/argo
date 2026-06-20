@@ -60,7 +60,8 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `audit_critic_passes` | `--critic-passes` | completeness-critic re-passes per audit focus (depth lever; default 1, 0 disables; loops until a pass adds nothing) |
 | `sca_enabled` | `--sca / --no-sca` | run the software-composition (dependency) stage between audit and validate (default on) |
 | `runtime_enabled` | `--runtime` | **opt-in** sandboxed runtime verification after validate (default **off**) — build the target into an egress-blocked, loopback-only container and probe ONLY the local instance; see [runtime-verification-study.md](runtime-verification-study.md) |
-| `runtime_image` / `runtime_run_cmd` / `runtime_build_cmd` / `runtime_port` | `--runtime-image` / `--runtime-run-cmd` / … | launcher recipe: the Docker image + in-container start/build command + loopback port |
+| `runtime_image` / `runtime_run_cmd` / `runtime_port` | `--runtime-image` / `--runtime-run-cmd` / `--runtime-port` | explicit launcher (highest priority). **R3** also auto-resolves an `argo-runtime.json` recipe or the repo's own `Dockerfile` when these are unset |
+| `runtime_build_timeout_s` | — | R3: max seconds to docker-build a recipe/repo Dockerfile (default 1800) |
 | `runtime_max_requests` / `runtime_min_request_interval_s` / `runtime_max_payload_bytes` / `runtime_allow_state_changing` | — | anti-DoS caps + read-only-by-default method gate enforced by `guardrails.validate_probe_plan` |
 
 ## Other fields

@@ -244,17 +244,19 @@ Turn the ledger into guidance. Implemented in `argo/costs.py` + `GET /costs` + a
 - [ ] _Later (needs Phase 7):_ the **cost/quality frontier** (cheapest config that *holds quality*)
       requires ground-truth quality metrics to pair with these costs.
 
-### Phase 9 — Dynamic / runtime analysis (opt-in, sandboxed) — ◑ DESIGN DONE · R1 IN PROGRESS
+### Phase 9 — Dynamic / runtime analysis (opt-in, sandboxed) — ✅ R1–R4 DONE
 > Full design in **[runtime-verification-study.md](runtime-verification-study.md)**. Motivated by the
 > Umbraco head-to-head: the reference audit's edge was 5 **HTTP-level live confirmations**. Runtime
 > verification is **opt-in** (`--runtime`, default off), best-effort (graceful skip), and preserves
 > the core guardrail — it builds the OSS target from the cloned source into an **ephemeral,
 > egress-blocked, loopback-only** container and probes only that local instance, never the program's
 > live hosts (same model as `verify.py`'s `--network=none` builds).
-> Phases: **R1** safe harness (sealed sandbox + `assert_loopback_only`/`validate_probe_plan` +
-> hand-written probe plan) → **R2** LLM probe plans (validated) → **R3** launcher auto-detection →
-> **R4** verdicts + report + `runtime_confirmed_rate`. Decisions: user-recipe-first provisioning,
-> Docker required (else skip), read-only probes by default.
+> Phases (all shipped): **R1** safe harness (sealed sandbox + `assert_loopback_only`/
+> `validate_probe_plan`; proven live on Umbraco) → **R2** LLM proposes+interprets probe plans
+> (validated; proven live) → **R3** launcher auto-detection (explicit / `argo-runtime.json` / repo
+> Dockerfile) → **R4** verdicts rendered in `REPORT.md`. Decisions: user-recipe-first provisioning,
+> Docker required (else skip), read-only probes by default. (Benchmark `runtime_confirmed_rate`
+> deferred — needs a runtime recipe per labeled case.)
 
 Goal: extend Argo beyond **static** detection toward a **confirm-by-running** capability, so a
 finding can be backed by an observed runtime signal (a crashing input, a triggered assertion, an

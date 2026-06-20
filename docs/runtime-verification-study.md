@@ -63,10 +63,11 @@ block; `report.py` surfaces "✅ runtime-confirmed (HTTP PoC)"; `benchmark.py` f
 ## 7. The real blocker is *provisioning*, not safety
 Getting a complex app to actually run is the hard part (Umbraco = .NET 10 SDK + Node 22 + unattended
 DB). A generic "boot any repo" is **not** feasible. Pluggable launcher, in priority order:
-1. **User recipe** — `--runtime-image IMG` / `--runtime-run-cmd "..."` / a repo `Dockerfile` /
-   `docker-compose.yml`. Most reliable for real apps. A worked, validated example (the one used for
-   the live Umbraco confirmations) lives at
-   [examples/runtime-recipes/umbraco/](examples/runtime-recipes/umbraco/).
+1. **User recipe (R3)** — explicit `--runtime-image`/`--runtime-run-cmd`, OR a committed
+   **`argo-runtime.json`** at the repo root (`{image | dockerfile, run_cmd?, port?, env?,
+   mount_source?, boot_timeout?}`), OR the repo's **own `Dockerfile`** (auto-built). Most reliable
+   for real apps. A worked, validated example (the one used for the live Umbraco confirmations) lives
+   at [examples/runtime-recipes/umbraco/](examples/runtime-recipes/umbraco/).
 2. **Auto-detect** simple stacks (single Flask/Express/FastAPI, static server).
 3. **Graceful skip** — no runnable instance ⇒ the stage no-ops; findings keep their static verdict.
 
@@ -85,7 +86,11 @@ DB). A generic "boot any repo" is **not** feasible. Pluggable launcher, in prior
   the R1 validators); `05_runtime_interpret_prompt.md` (interpret) turns the observations into
   per-finding `runtime_confirmed/refuted/inconclusive` verdicts merged into `validated_findings.json`.
   A hand-written plan still overrides generation.
-- **R3 — launcher auto-detection** (Dockerfile/compose/simple stacks) + recipe schema. _(pending)_
+- **R3 — launcher auto-detection** ✅ **DONE** — `_resolve_launcher` resolves provisioning in
+  priority order: explicit `--runtime-image`/`--runtime-run-cmd` → an **`argo-runtime.json`** recipe
+  (`{image | dockerfile, run_cmd?, port?, env?, mount_source?, boot_timeout?}`; a `dockerfile` is
+  auto-built) → the **repo's own `Dockerfile`** (auto-built, run via its default CMD, port from
+  `EXPOSE`). None → graceful skip. Env injection (`-e`) and image-default-CMD now supported.
 - **R4 — verdicts in the report** ✅ **DONE** — each finding's `validation.runtime` verdict +
   evidence renders in `REPORT.md` (and confirmed ones in the submission draft); a gated
   exec-summary line counts runtime-confirmed findings. The golden report stays byte-stable because

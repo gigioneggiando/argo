@@ -102,34 +102,35 @@ json.dump(results, open("/work/results.json", "w"), indent=2)
 '''
 
 
-def _run_sandbox(ctx: RunContext, copy_dir: Path, work_dir: Path, plan: list[dict]) -> dict | None:
+def _run_sandbox(ctx: RunContext, copy_dir: Path, work_dir: Path, plan: list[dict],
+                 launcher: dict) -> dict | None:
     cfg = ctx.config
     name = f"argo-rt-{ctx.run_id}"[:60]
     (work_dir / "probe_plan.json").write_text(json.dumps(plan), encoding="utf-8")
     (work_dir / "probe_runner.py").write_text(_PROBE_RUNNER, encoding="utf-8")
     (work_dir / "probe_cfg.json").write_text(json.dumps({
-        "port": cfg.runtime_port, "boot_timeout": cfg.runtime_boot_timeout_s,
+        "port": launcher["port"], "boot_timeout": launcher["boot_timeout"],
         "req_timeout": cfg.runtime_request_timeout_s, "max_requests": cfg.runtime_max_requests,
         "interval": cfg.runtime_min_request_interval_s}), encoding="utf-8")
 
-    start = cfg.runtime_run_cmd
-    if cfg.runtime_build_cmd:
-        start = f"{cfg.runtime_build_cmd} && {start}"
+    start = launcher.get("run_cmd")
+    env_flags = [a for k, v in (launcher.get("env") or {}).items() for a in ("-e", f"{k}={v}")]
     subprocess.run(["docker", "rm", "-f", name], capture_output=True)   # stale cleanup
     try:
-        # App container: sealed (only loopback), runs the app on PORT. The isolated source copy is
-        # mounted read-only at /src for the build-at-run model; a self-contained PRE-BUILT image
-        # (runtime_mount_source=False) uses its own baked /src instead.
-        mount = ["-v", f"{copy_dir.resolve().as_posix()}:/src:ro"] if cfg.runtime_mount_source else []
-        up = subprocess.run(
-            ["docker", "run", "-d", "--rm", "--name", name, "--network=none",
-             *mount, "-w", "/src", cfg.runtime_image, "sh", "-lc", start],
-            capture_output=True, text=True, timeout=120)
+        # App container: sealed (only loopback). The isolated source copy is mounted read-only at
+        # /src for the build-at-run model; a self-contained image (mount_source=False) uses its
+        # baked /src. With a run_cmd we `sh -lc` it; without one we use the image's own CMD.
+        mount = ["-v", f"{copy_dir.resolve().as_posix()}:/src:ro"] if launcher.get("mount_source") else []
+        cmd = ["docker", "run", "-d", "--rm", "--name", name, "--network=none",
+               *mount, *env_flags, "-w", "/src", launcher["image"]]
+        if start:
+            cmd += ["sh", "-lc", start]
+        up = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if up.returncode != 0:
             _log(f"app container failed to start: {(up.stderr or up.stdout)[:300]}")
             return None
         # Probe container: joins the SAME sealed namespace; runs the fixed stdlib runner.
-        total_timeout = cfg.runtime_boot_timeout_s + cfg.runtime_request_timeout_s * cfg.runtime_max_requests + 60
+        total_timeout = launcher["boot_timeout"] + cfg.runtime_request_timeout_s * cfg.runtime_max_requests + 60
         pr = subprocess.run(
             ["docker", "run", "--rm", f"--network=container:{name}",
              "-v", f"{work_dir.resolve().as_posix()}:/work", _PROBE_IMAGE, "python", "/work/probe_runner.py"],
@@ -147,6 +148,85 @@ def _run_sandbox(ctx: RunContext, copy_dir: Path, work_dir: Path, plan: list[dic
         return None
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+
+
+# ------------------------------------------------------------------ R3: launcher auto-detection
+def _dockerfile_expose(df: Path) -> int | None:
+    """The first EXPOSE port in a Dockerfile, if any."""
+    try:
+        for line in df.read_text(encoding="utf-8", errors="replace").splitlines():
+            s = line.strip()
+            if s.upper().startswith("EXPOSE"):
+                return int(s.split()[1].split("/")[0])
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
+def _build_image(ctx: RunContext, dockerfile: Path, context: Path) -> str | None:
+    """docker-build a Dockerfile (network on) into a throwaway tag for the sealed run."""
+    tag = f"argo-rt-auto-{ctx.run_id}".lower().replace("_", "-")[:60]
+    _log(f"building image from {dockerfile.name} (network on; may take a while)...")
+    try:
+        r = subprocess.run(
+            ["docker", "build", "-f", str(dockerfile.resolve()), "-t", tag, str(context.resolve())],
+            capture_output=True, text=True, timeout=ctx.config.runtime_build_timeout_s)
+    except subprocess.TimeoutExpired:
+        _log("docker build timed out")
+        return None
+    if r.returncode != 0:
+        _log(f"docker build failed: {((r.stderr or '') + (r.stdout or '')).strip()[-400:]}")
+        return None
+    return tag
+
+
+def _launcher_from_recipe(recipe: dict, ctx: RunContext, base_dir: Path) -> dict | None:
+    """Turn an argo-runtime.json recipe ({image|dockerfile, run_cmd?, port?, env?, ...}) into a
+    resolved launcher; builds the Dockerfile if the recipe names one."""
+    cfg = ctx.config
+    image = recipe.get("image")
+    if recipe.get("dockerfile"):
+        df = base_dir / recipe["dockerfile"]
+        context = (base_dir / recipe["build_context"]) if recipe.get("build_context") else ctx.repo_dir
+        image = _build_image(ctx, df, context)
+    if not image:
+        return None
+    return {"image": image, "run_cmd": recipe.get("run_cmd"),
+            "port": int(recipe.get("port", cfg.runtime_port)),
+            "mount_source": bool(recipe.get("mount_source", False)),
+            "env": recipe.get("env") or {},
+            "boot_timeout": int(recipe.get("boot_timeout", cfg.runtime_boot_timeout_s))}
+
+
+def _resolve_launcher(ctx: RunContext, scope) -> dict | None:
+    """Provisioning resolution (priority): explicit config -> argo-runtime.json recipe -> the repo's
+    own Dockerfile. Returns a launcher dict or None (graceful skip)."""
+    cfg = ctx.config
+    if cfg.runtime_image and cfg.runtime_run_cmd:
+        return {"image": cfg.runtime_image, "run_cmd": cfg.runtime_run_cmd, "port": cfg.runtime_port,
+                "mount_source": cfg.runtime_mount_source, "env": {},
+                "boot_timeout": cfg.runtime_boot_timeout_s}
+    for cand in (ctx.repo_dir / "argo-runtime.json", ctx.repo_dir / ".argo" / "runtime.json",
+                 ctx.run_dir / "runtime_recipe.json"):
+        if cand.is_file():
+            try:
+                recipe = json.loads(cand.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                _log(f"recipe {cand.name} unreadable ({exc}); skipping it")
+                continue
+            launcher = _launcher_from_recipe(recipe, ctx, cand.parent)
+            if launcher:
+                _log(f"using launcher recipe {cand.name}")
+                return launcher
+    df = ctx.repo_dir / "Dockerfile"
+    if df.is_file():
+        image = _build_image(ctx, df, ctx.repo_dir)
+        if image:
+            port = _dockerfile_expose(df) or cfg.runtime_port
+            _log(f"built the repo's own Dockerfile (port {port}); using its default CMD")
+            return {"image": image, "run_cmd": None, "port": port, "mount_source": False,
+                    "env": {}, "boot_timeout": cfg.runtime_boot_timeout_s}
+    return None
 
 
 # --------------------------------------------------------------------- R2: LLM propose / interpret
@@ -273,11 +353,14 @@ def run(ctx: RunContext) -> Path | None:
                         max_payload_bytes=cfg.runtime_max_payload_bytes,
                         allow_state_changing=cfg.runtime_allow_state_changing)
 
-    if not cfg.runtime_image or not cfg.runtime_run_cmd:
-        _log("no launcher recipe (runtime_image / runtime_run_cmd); skipping (graceful)")
-        return None
     if not _docker_ok():
         _log("Docker unavailable; skipping runtime verification (graceful)")
+        return None
+    # R3: resolve a launcher — explicit config, else an argo-runtime.json recipe, else the repo's
+    # own Dockerfile (auto-built). None -> graceful skip.
+    launcher = _resolve_launcher(ctx, scope)
+    if launcher is None:
+        _log("no launcher (config / argo-runtime.json / repo Dockerfile); skipping (graceful)")
         return None
 
     tmp = Path(tempfile.mkdtemp(prefix="argo-runtime-"))
@@ -285,9 +368,10 @@ def run(ctx: RunContext) -> Path | None:
     work_dir = ctx.work_dir("runtime")
     work_dir.mkdir(parents=True, exist_ok=True)
     try:
-        _copy_repo(ctx.repo_dir, copy_dir)
-        _log(f"building + running '{cfg.runtime_image}' (sealed, --network=none) and probing loopback")
-        results = _run_sandbox(ctx, copy_dir, work_dir, plan)
+        if launcher.get("mount_source"):
+            _copy_repo(ctx.repo_dir, copy_dir)
+        _log(f"running '{launcher['image']}' (sealed, --network=none) and probing loopback")
+        results = _run_sandbox(ctx, copy_dir, work_dir, plan, launcher)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     if results is None:

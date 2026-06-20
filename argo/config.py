@@ -162,6 +162,7 @@ class PipelineConfig:
     runtime_allow_state_changing: bool = False    # default: read-only probes (GET/HEAD/OPTIONS)
     runtime_mount_source: bool = True   # mount the isolated source copy at /src:ro (build-at-run
                                         # model). Set False for a self-contained PRE-BUILT image.
+    runtime_build_timeout_s: int = 1800  # R3: max seconds to docker-build a recipe/repo Dockerfile
 
     # Validation excerpt sizing.
     excerpt_context_lines: int = 40     # +/- lines of source around each cited file:line

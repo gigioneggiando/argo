@@ -114,6 +114,68 @@ def _format_pins(pins: list[dict]) -> str:
     return "\n".join(f"- {p['name']} {p['version']}  ({p['ref']})" for p in pins)
 
 
+# --- deterministic known-vulnerable matching (kills model variance on the high-confidence cases) ---
+_KNOWN_PATH = Path(__file__).resolve().parent.parent / "data" / "known_vuln_deps.json"
+
+
+def _load_known() -> list[dict]:
+    try:
+        return json.loads(_KNOWN_PATH.read_text(encoding="utf-8")).get("entries", [])
+    except (OSError, ValueError):
+        return []
+
+
+def _vparts(v: str) -> list[int]:
+    out = []
+    for part in str(v).split("."):
+        m = re.match(r"\d+", part)
+        out.append(int(m.group()) if m else 0)
+    return out
+
+
+def _vle(a: str, b: str) -> bool:
+    """a <= b on dotted numeric versions (suffixes ignored)."""
+    pa, pb = _vparts(a), _vparts(b)
+    n = max(len(pa), len(pb))
+    pa += [0] * (n - len(pa))
+    pb += [0] * (n - len(pb))
+    return pa <= pb
+
+
+def _match_known(pins: list[dict]) -> list[dict]:
+    """Deterministically flag pins that match the curated known-vulnerable list. Always runs,
+    independent of the model, so the high-confidence advisories are never missed to variance."""
+    known = _load_known()
+    out: list[dict] = []
+    idx = 1
+    for pin in pins:
+        nm, ver = pin["name"].lower(), pin["version"]
+        for e in known:
+            if e.get("name", "").lower() != nm:
+                continue
+            hit = ("prefix" in e and ver.startswith(e["prefix"])) or ("max" in e and _vle(ver, e["max"]))
+            if not hit:
+                continue
+            out.append({
+                "id": f"DEP-KNOWN-{idx:03d}",
+                "title": f"Known-vulnerable pinned dependency: {pin['name']} {ver}",
+                "severity": e.get("severity", "Low"), "confidence": "High",
+                "cwe": e.get("cwe", "CWE-937"),
+                "owasp": "A06:2021 - Vulnerable and Outdated Components",
+                "affected": [pin["ref"]],
+                "vulnerable_flow": f"{pin['name']} is pinned at {ver} ({pin['ref']}).",
+                "why_vulnerable": f"{e.get('advisory', 'known advisory')}. Pinned version {ver} is in "
+                                  "the vulnerable range (matched against Argo's curated known-vuln list).",
+                "exploit_scenario": "Reachability depends on whether the vulnerable API is exercised; "
+                                    "flagged from the manifest — verify against the advisory database.",
+                "impact": "Inherits the dependency advisory's impact if the vulnerable path is reachable.",
+                "recommended_fix": f"Bump {pin['name']} to {e.get('fixed', 'a fixed version')}.",
+                "source": "sca-known-list"})
+            idx += 1
+            break
+    return out
+
+
 def _collect_manifests(repo_dir: Path) -> list[Path]:
     found: list[Path] = []
     seen: set[Path] = set()
@@ -198,7 +260,12 @@ def run(ctx: RunContext) -> Path | None:
                + schema_text + "\n```\n")
 
     work = ctx.work_dir("sca")
-    _log(f"scanning {len(manifests)} manifest file(s); {len(pins)} pinned version(s) extracted")
+    det = _match_known(pins)                       # deterministic — always runs, model-independent
+    if det:
+        _log(f"{len(det)} known-vulnerable pin(s) matched deterministically")
+    _log(f"scanning {len(manifests)} manifest file(s); {len(pins)} pin(s); asking the model for the long tail")
+    llm_findings: list[dict] = []
+    files: list[Path] = []
     try:
         result = ctx.runner.run(
             prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
@@ -208,29 +275,28 @@ def run(ctx: RunContext) -> Path | None:
     except RunnerError as exc:
         files = sorted(work.glob("SECURITY_FINDINGS__*.json"))
         if not files:
-            _log(f"SCA session failed, no partial artifact ({exc})")
-            return None
-    if not files:
-        _log("SCA produced no findings file")
-        return None
+            _log(f"SCA model session failed ({exc}); using deterministic matches only")
+    if files:
+        chosen = next((f for f in files if f.name == findings_filename), files[0])
+        try:
+            ndoc, repaired, _unrec, _c = _normalize_findings_doc(
+                json.loads(chosen.read_text(encoding="utf-8")), ctx, scope, "dependencies")
+            llm_findings = ndoc.get("findings", [])
+            if repaired:
+                _log(f"schema-repaired {len(repaired)} model dependency finding(s)")
+        except (ValueError, OSError) as exc:
+            _log(f"SCA model findings unreadable ({exc}); using deterministic matches only")
 
-    import json
-    chosen = next((f for f in files if f.name == findings_filename), files[0])
-    try:
-        raw_doc = json.loads(chosen.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        _log(f"SCA findings file is not valid JSON ({exc}); skipping")
+    det_refs = {(d.get("affected") or [None])[0] for d in det}
+    merged = det + [f for f in llm_findings if (f.get("affected") or [None])[0] not in det_refs]
+    if not merged:
+        _log("no vulnerable dependencies found")
         return None
-    doc, repaired, unrec, _coerced = _normalize_findings_doc(raw_doc, ctx, scope, "dependencies")
-    doc["audit_focus"] = "dependencies"
-    n = len(doc.get("findings", []))
-    if n == 0:
-        _log("no confidently-vulnerable dependencies found")
-        return None
-    if repaired:
-        _log(f"schema-repaired {len(repaired)} dependency finding(s)")
+    doc = {"program_name": scope.program_name, "audit_focus": "dependencies",
+           "generated_at": ctx.timestamp(), "findings": merged}
     ctx.findings_dir.mkdir(parents=True, exist_ok=True)
     out = ctx.findings_dir / "dependencies.json"
     out.write_text(json.dumps(doc, indent=2), encoding="utf-8")
-    _log(f"{n} dependency finding(s) -> {out.name}")
+    _log(f"{len(merged)} dependency finding(s) ({len(det)} deterministic + "
+         f"{len(merged) - len(det)} model) -> {out.name}")
     return out

@@ -1,0 +1,25 @@
+{
+  "_comment": "Small, HIGH-CONFIDENCE curated list of well-known vulnerable dependency versions, matched DETERMINISTICALLY by sca.py so they are always flagged regardless of model variance. Conservative on purpose: only rock-solid, widely-documented cases. 'prefix' matches any version starting with it; 'max' flags versions <= it. Severity is honest; framed as 'known-vulnerable pinned version — verify against the advisory DB and bump'. The LLM still adds the long tail on top.",
+  "entries": [
+    {"ecosystem": "nuget", "name": "System.Net.Http", "prefix": "4.3.", "severity": "Low", "cwe": "CWE-937",
+     "advisory": "legacy System.* 4.3.x transitive package with published advisories (e.g. CVE-2017-0247/0248/0249/0256, CVE-2018-8292 family)", "fixed": "use the in-box framework assembly / a maintained version"},
+    {"ecosystem": "nuget", "name": "System.Private.Uri", "prefix": "4.3.", "severity": "Low", "cwe": "CWE-937",
+     "advisory": "legacy System.* 4.3.x transitive package with published advisories", "fixed": "remove the explicit pin / use the in-box assembly"},
+    {"ecosystem": "nuget", "name": "System.Text.RegularExpressions", "prefix": "4.3.", "severity": "Low", "cwe": "CWE-1333",
+     "advisory": "legacy System.Text.RegularExpressions 4.3.x — ReDoS advisory (CVE-2019-0820 family)", "fixed": "use the in-box framework assembly"},
+    {"ecosystem": "nuget", "name": "Newtonsoft.Json", "max": "12.0.3", "severity": "Medium", "cwe": "CWE-400",
+     "advisory": "Newtonsoft.Json < 13.0.1 — uncontrolled recursion DoS (CVE-2024-21907 / GHSA-5crp-9r3c-p9vr)", "fixed": "13.0.1"},
+    {"ecosystem": "maven", "name": "log4j-core", "max": "2.14.1", "severity": "Critical", "cwe": "CWE-502",
+     "advisory": "Log4Shell — log4j-core 2.0-beta9..2.14.1 RCE (CVE-2021-44228)", "fixed": "2.17.1"},
+    {"ecosystem": "npm", "name": "lodash", "max": "4.17.20", "severity": "High", "cwe": "CWE-1321",
+     "advisory": "lodash < 4.17.21 — prototype pollution / ReDoS (CVE-2020-8203, CVE-2021-23337)", "fixed": "4.17.21"},
+    {"ecosystem": "npm", "name": "minimist", "max": "1.2.5", "severity": "Medium", "cwe": "CWE-1321",
+     "advisory": "minimist < 1.2.6 — prototype pollution (CVE-2021-44906)", "fixed": "1.2.6"},
+    {"ecosystem": "npm", "name": "axios", "max": "0.21.1", "severity": "Medium", "cwe": "CWE-918",
+     "advisory": "axios <= 0.21.1 — SSRF / ReDoS (CVE-2021-3749 etc.)", "fixed": "1.6.0+"},
+    {"ecosystem": "pypi", "name": "pyyaml", "max": "5.3.1", "severity": "High", "cwe": "CWE-502",
+     "advisory": "PyYAML < 5.4 — arbitrary code execution via full_load/unsafe load (CVE-2020-14343)", "fixed": "5.4"},
+    {"ecosystem": "pypi", "name": "jinja2", "max": "2.11.2", "severity": "Medium", "cwe": "CWE-1333",
+     "advisory": "Jinja2 < 2.11.3 — ReDoS (CVE-2020-28493)", "fixed": "2.11.3"}
+  ]
+}

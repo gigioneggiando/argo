@@ -50,6 +50,29 @@ def test_sca_extracts_pins_with_file_line(tmp_path):
     assert "Directory.Packages.props:3" == sysnet["ref"]   # exact file:line
 
 
+def test_sca_known_list_deterministic_match():
+    pins = [
+        {"name": "System.Net.Http", "version": "4.3.4", "ref": "Directory.Packages.props:10"},
+        {"name": "lodash", "version": "4.17.20", "ref": "package.json:5"},
+        {"name": "SomethingSafe", "version": "9.9.9", "ref": "x:1"},
+        {"name": "lodash", "version": "4.17.21", "ref": "package.json:6"},   # fixed -> no match
+    ]
+    fs = sca._match_known(pins)
+    titles = " | ".join(f["title"] for f in fs)
+    assert "System.Net.Http 4.3.4" in titles and "lodash 4.17.20" in titles
+    assert "4.17.21" not in titles and "SomethingSafe" not in titles   # fixed/unknown skipped
+    f = fs[0]                                                           # schema-shaped
+    assert f["severity"] and f["cwe"] and f["affected"] and f["recommended_fix"]
+    assert f["confidence"] == "High"
+
+
+def test_sca_version_compare():
+    assert sca._vle("4.17.20", "4.17.20")
+    assert sca._vle("4.17.19", "4.17.20")
+    assert not sca._vle("4.17.21", "4.17.20")
+    assert sca._vle("1.2", "1.2.5")
+
+
 def test_sca_off_by_default_flag(env):
     ctx = env(sca_enabled=False)
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)

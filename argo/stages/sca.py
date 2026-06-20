@@ -10,6 +10,8 @@ A no-op (returns None) when the repo has no recognizable dependency manifests.
 
 from __future__ import annotations
 
+import json
+import re
 import sys
 from pathlib import Path
 
@@ -39,6 +41,77 @@ _MAX_TOTAL_BYTES = 160_000
 
 def _log(msg: str) -> None:
     print(f"[sca] {msg}", file=sys.stderr)
+
+
+# --- deterministic pin extraction (give the model exact name@version@file:line, not raw files) ---
+_DOTNET_VER = re.compile(r'<Package(?:Version|Reference)\s+Include="([^"]+)"[^>]*\bVersion="([^"]+)"', re.I)
+_PKGCFG = re.compile(r'<package\s+id="([^"]+)"\s+version="([^"]+)"', re.I)
+_REQ = re.compile(r'^\s*([A-Za-z0-9_.\-]+)\s*(?:==|>=|~=|<=|@)\s*([0-9][^\s;#]*)')
+_GOMOD = re.compile(r'^\s*([^\s/]+/[^\s]+)\s+v([0-9][^\s]*)')
+_MAX_PINS = 400
+
+
+def _extract_pins(repo_dir: Path, manifests: list[Path]) -> list[dict]:
+    """Best-effort (ecosystem, name, version, file:line) pins from the common manifests, so the
+    model judges concrete versions instead of fishing them out of raw files."""
+    pins: list[dict] = []
+
+    def add(name: str, version: str, rel: str, line: int | None):
+        pins.append({"name": name.strip(), "version": str(version).strip(),
+                     "ref": f"{rel}:{line}" if line else rel})
+
+    for p in manifests:
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        rel = p.relative_to(repo_dir).as_posix()
+        lines = text.splitlines()
+        nm = p.name.lower()
+        if nm.endswith(".csproj") or nm in ("directory.packages.props", "directory.build.props"):
+            for i, ln in enumerate(lines, 1):
+                for m in _DOTNET_VER.finditer(ln):
+                    add(m.group(1), m.group(2), rel, i)
+        elif nm == "packages.config":
+            for i, ln in enumerate(lines, 1):
+                for m in _PKGCFG.finditer(ln):
+                    add(m.group(1), m.group(2), rel, i)
+        elif nm == "package.json":
+            try:
+                data = json.loads(text)
+                for sect in ("dependencies", "devDependencies", "peerDependencies"):
+                    for k, v in (data.get(sect) or {}).items():
+                        ln = next((i for i, l in enumerate(lines, 1) if f'"{k}"' in l), None)
+                        add(k, v, rel, ln)
+            except ValueError:
+                pass
+        elif nm.startswith("requirements") and nm.endswith(".txt"):
+            for i, ln in enumerate(lines, 1):
+                m = _REQ.match(ln)
+                if m:
+                    add(m.group(1), m.group(2), rel, i)
+        elif nm == "go.mod":
+            for i, ln in enumerate(lines, 1):
+                m = _GOMOD.match(ln)
+                if m:
+                    add(m.group(1), "v" + m.group(2), rel, i)
+        if len(pins) >= _MAX_PINS:
+            break
+
+    seen: set[tuple[str, str]] = set()
+    out: list[dict] = []
+    for pin in pins:
+        key = (pin["name"].lower(), pin["version"])
+        if key not in seen:
+            seen.add(key)
+            out.append(pin)
+    return out[:_MAX_PINS]
+
+
+def _format_pins(pins: list[dict]) -> str:
+    if not pins:
+        return "(could not auto-extract pins; read the manifests above directly)"
+    return "\n".join(f"- {p['name']} {p['version']}  ({p['ref']})" for p in pins)
 
 
 def _collect_manifests(repo_dir: Path) -> list[Path]:
@@ -101,11 +174,13 @@ def run(ctx: RunContext) -> Path | None:
         _log(f"budget reached; skipping SCA ({exc})")
         return None
 
+    pins = _extract_pins(ctx.repo_dir, manifests)
     template = (ctx.assets_dir / "03_dependency_audit_prompt.md").read_text(encoding="utf-8")
     rendered = fill_placeholders(template, {
         "PROGRAM_NAME": scope.program_name,
         "REPO_PATH": str(ctx.repo_dir.resolve()),
         "PROHIBITED_TECHNIQUES": "\n".join(f"- {p}" for p in scope.prohibited_techniques),
+        "PINS": _format_pins(pins),
         "MANIFESTS": _render_manifests(ctx.repo_dir, manifests),
     })
     assert_prohibited_present(rendered, scope.prohibited_techniques)   # guardrail
@@ -123,7 +198,7 @@ def run(ctx: RunContext) -> Path | None:
                + schema_text + "\n```\n")
 
     work = ctx.work_dir("sca")
-    _log(f"scanning {len(manifests)} manifest file(s)")
+    _log(f"scanning {len(manifests)} manifest file(s); {len(pins)} pinned version(s) extracted")
     try:
         result = ctx.runner.run(
             prompt=prompt, run_dir=ctx.run_dir, work_dir=work,

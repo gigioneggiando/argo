@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from conftest import BRIEF, REPO
 
 from argo.orchestrator import run_pipeline
+from argo.stages import sca
 from argo.stages.audit import _normalize_findings_doc, _repair_finding
 from argo.stages.validate import _format_ground_truth
 
@@ -31,6 +32,22 @@ def test_sca_findings_flow_into_validation(env):
     dep = next(f for f in doc["findings"] if f["id"] == "DEP-001")
     # Confirmed-confidence SCA finding is kept as 'confirmed' without an adversarial session.
     assert dep["validation"]["verdict"] == "confirmed"
+
+
+def test_sca_extracts_pins_with_file_line(tmp_path):
+    (tmp_path / "Directory.Packages.props").write_text(
+        '<Project>\n  <ItemGroup>\n'
+        '    <PackageVersion Include="System.Net.Http" Version="4.3.4" />\n'
+        '  </ItemGroup>\n</Project>\n', encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"dependencies": {"lodash": "4.17.20"}}', encoding="utf-8")
+    (tmp_path / "requirements.txt").write_text("flask==1.0.0\n# c\nrequests>=2.20.0\n", encoding="utf-8")
+    pins = sca._extract_pins(tmp_path, sca._collect_manifests(tmp_path))
+    by = {(p["name"], p["version"]) for p in pins}
+    assert ("System.Net.Http", "4.3.4") in by
+    assert ("lodash", "4.17.20") in by
+    assert ("flask", "1.0.0") in by
+    sysnet = next(p for p in pins if p["name"] == "System.Net.Http")
+    assert "Directory.Packages.props:3" == sysnet["ref"]   # exact file:line
 
 
 def test_sca_off_by_default_flag(env):

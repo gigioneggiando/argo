@@ -239,16 +239,35 @@ does **public web OSINT** (CVEs, advisories, the project's security history) and
 touches the program's live in-scope hosts; `--no-research` keeps the run fully offline.
 
 **2 — Recon + synthesis.** Runs `00_recon_synthesis_meta_prompt.md` with read access to the repo.
-Produces `repo_profile.json`, the complementary custom prompts (conforming to the template), and
-`synthesis_notes.md`.
+Produces `repo_profile.json`, the complementary custom prompts, `synthesis_notes.md`, and
+**`ground_truth.json`** — a deep extraction (per focus) of security **invariants**,
+**baseline-correct references** to diff siblings against, the enumerated **variant families**, and
+target-specific **false-positive carve-outs**. Baking this into the prompts turns the audit from
+open-ended hunting into closed-ended verification (the main precision + depth lever).
 
 **3 — Audit.** For each prompt, a separate agent session in an isolated working dir, repo
-read-only. Each session emits findings JSON validated against `findings_schema.json`. Focuses can
-run in parallel.
+read-only. Each session emits findings JSON (validated against `findings_schema.json`) and a
+`VARIANT_HUNT_LOG` (one row per variant-family member). A **completeness-critic** re-pass
+(`--critic-passes`, default 1) then re-audits each focus for what was missed, looping until dry. A
+finding that drifts off-schema is **repaired and kept** (flagged), never silently dropped.
+
+**SCA — Software-composition analysis** *(opt-out, between audit and validate)*. Reads dependency
+manifests and flags pinned versions with known advisories as a `dependencies` focus. `--no-sca` or
+a repo with no manifests skips it.
 
 **4 — Validate.** Merges findings, computes `dedup_key = sha1(normalize(file + line + cwe))` and
 collapses duplicates. For each survivor, runs `02_adversarial_validation_prompt.md` in a fresh
-context. Drops `out_of_scope` and `refuted`; keeps `confirmed` and `needs_runtime_verification`.
+context — now **ground-truth-aware** (the carve-outs + baseline-correct refs are injected).
+**Downgrade-don't-delete:** `refuted` is reserved for findings provably contradicted by code (or
+matching a carve-out); anything merely uncertain is **kept** as `needs_runtime_verification` with a
+concrete question. Drops `out_of_scope`; keeps `confirmed` and `needs_runtime_verification`.
+
+**RUNTIME — Runtime verification** *(opt-in, sandboxed; default off)*. Builds the OSS target from
+the cloned source into an **ephemeral, egress-blocked, loopback-only** container (`--network=none`)
+and probes **only that local instance** with HTTP PoCs to confirm/refute findings — never the
+program's live hosts (same trust model as the Phase-6 isolated build). Read-only probes by default,
+anti-DoS caps, no model execution primitive. Needs Docker + a launcher recipe; gracefully skips
+otherwise. Full safety design in [docs/runtime-verification-study.md](docs/runtime-verification-study.md).
 
 **5 — Report.** Produces `REPORT.md` (summary, findings sorted by validated severity then
 confidence, "fix first" ordering, residual unknowns) and one DRAFT submission per confirmed

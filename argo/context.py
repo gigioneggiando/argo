@@ -57,12 +57,25 @@ class RunContext:
         return self.run_dir / "findings"
 
     @property
+    def variant_logs_dir(self) -> Path:
+        """Per-focus VARIANT_HUNT_LOG markdown (coverage forcing-function from the audit stage):
+        one row per variant-family member + the invariant-checklist results."""
+        return self.run_dir / "variant_logs"
+
+    @property
     def validated_findings_path(self) -> Path:
         return self.run_dir / "validated_findings.json"
 
     @property
     def repo_profile_path(self) -> Path:
         return self.run_dir / "repo_profile.json"
+
+    @property
+    def ground_truth_path(self) -> Path:
+        """Recon's structured ground-truth pack (invariants / baseline-correct refs / variant
+        families / FP carve-outs per focus). Best-effort: the authoritative copy is baked into
+        each audit prompt; this file lets audit/validate/report consume it programmatically."""
+        return self.run_dir / "ground_truth.json"
 
     @property
     def research_brief_path(self) -> Path:

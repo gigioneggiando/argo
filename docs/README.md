@@ -21,6 +21,7 @@ see the [top-level README](../README.md).
 | [ui.md](ui.md) | everyone | The web UI (`webapp/`): how to run it, the no-build stack, the three views (New run / live Run / History) |
 | [configuration.md](configuration.md) | operators | `PipelineConfig` fields, per-stage model assignment, budgets and safety caps |
 | [testing.md](testing.md) | developers | Running the suite, coverage map, mock vs. headless, fixtures |
+| [runtime-verification-study.md](runtime-verification-study.md) | reviewers / security | The **opt-in, sandboxed runtime verification** design: the loopback-only sealed-container safety model, the propose→validate→execute→interpret flow, provisioning, and the R1–R4 plan |
 | [roadmap.md](roadmap.md) | everyone | Planned UI + advanced features: per-feature analysis (feasibility/utility/priority), phased build order, and the todo list |
 
 ## Diagrams
@@ -38,7 +39,7 @@ BUILD_SPEC.md             the spec the orchestrator was built against
 argo/                 the orchestrator (see architecture.md)
 server/                   the HTTP API on top of the pipeline (see api.md)
 webapp/                   the no-build web UI (see ui.md)
-tests/                    139 tests, zero-token by default (see testing.md)
+tests/                    162 tests, zero-token by default (see testing.md)
 docs/                     you are here
 docs/legacy/              archived reference artifacts (e.g. the original META_PROMPT_generator)
 runs/<RUN_ID>/            per-run artifacts (git-ignored)

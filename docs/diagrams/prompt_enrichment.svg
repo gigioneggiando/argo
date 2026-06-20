@@ -1,6 +1,6 @@
 <svg width="680" viewBox="0 0 680 300" role="img" font-family="-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" xmlns="http://www.w3.org/2000/svg">
 <title>Prompt enrichment: general to custom</title>
-<desc>Reusable assets, scope, and repo recon converge in the synthesis stage, which generates three complementary audit prompts: full-scope, authz, and runtime.</desc>
+<desc>Reusable assets, scope, and repo recon converge in the synthesis stage, which extracts ground truth (invariants, baseline-correct references, enumerated variant families, false-positive carve-outs) and bakes it into three complementary audit prompts: full-scope, authz, and runtime.</desc>
 <defs><marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
 
 <rect x="40" y="40" width="180" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
@@ -18,8 +18,9 @@
 <line x1="220" y1="248" x2="248" y2="178" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow2)"/>
 
 <rect x="250" y="115" width="180" height="86" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
-<text x="340" y="149" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#26215C">Synthesis stage</text>
-<text x="340" y="169" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534AB7">fills the template</text>
+<text x="340" y="145" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#26215C">Synthesis stage</text>
+<text x="340" y="165" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534AB7">extract ground truth</text>
+<text x="340" y="182" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534AB7">&#8594; fill the template</text>
 
 <line x1="430" y1="138" x2="458" y2="68" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow2)"/>
 <line x1="430" y1="158" x2="458" y2="158" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow2)"/>

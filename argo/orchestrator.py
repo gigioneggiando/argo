@@ -12,7 +12,7 @@ from .context import RunContext
 from .ledger import Ledger
 from .progress import ProgressReporter
 from .runner import RunnerCancelled, build_runner
-from .stages import audit, ingest, recon, report, research, validate
+from .stages import audit, ingest, recon, report, research, runtime, sca, validate
 
 
 class PipelineCancelled(RuntimeError):
@@ -48,8 +48,16 @@ def do_audit(ctx: RunContext):
     return audit.run(ctx)
 
 
+def do_sca(ctx: RunContext):
+    return sca.run(ctx)
+
+
 def do_validate(ctx: RunContext):
     return validate.run(ctx)
+
+
+def do_runtime(ctx: RunContext):
+    return runtime.run(ctx)
 
 
 def do_report(ctx: RunContext):
@@ -67,8 +75,11 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
     ``reporter`` records per-stage progress to ``status.json``; ``cancel_event`` aborts at the next
     stage boundary AND mid-stage — it is wired into the runner so an in-flight CLI session is killed.
     """
+    do_sca_stage = (not dry_run) and ctx.config.sca_enabled
+    do_runtime_stage = (not dry_run) and ctx.config.runtime_enabled
     stages = (["ingest"] + (["research"] if research_enabled else []) + ["recon"]
-              + ([] if dry_run else ["audit", "validate", "report"]))
+              + ([] if dry_run else ["audit"] + (["sca"] if do_sca_stage else [])
+                 + ["validate"] + (["runtime"] if do_runtime_stage else []) + ["report"]))
     own = reporter is None
     reporter = reporter or ProgressReporter(ctx, stages)
     if own:
@@ -113,7 +124,11 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
             "scope": str(ctx.scope_path),
         }
     _stage("audit", lambda: do_audit(ctx))
+    if do_sca_stage:
+        _stage("sca", lambda: do_sca(ctx))
     _stage("validate", lambda: do_validate(ctx))
+    if do_runtime_stage:
+        _stage("runtime", lambda: do_runtime(ctx))
     report_path = _stage("report", lambda: do_report(ctx))
     reporter.complete()
     return {

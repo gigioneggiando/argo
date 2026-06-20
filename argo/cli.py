@@ -20,7 +20,7 @@ import typer
 
 from .config import OPUS, PipelineConfig
 from .orchestrator import (build_context, do_audit, do_ingest, do_recon, do_report,
-                           do_validate, new_run_id, run_pipeline)
+                           do_runtime, do_sca, do_validate, new_run_id, run_pipeline)
 
 app = typer.Typer(add_completion=False, help="Argo — authorized source-static bug-bounty audits.")
 
@@ -134,6 +134,46 @@ def run_audit(run: str = RunIdArg, runner: str = RunnerOpt,
 
 
 @app.command()
+def sca(run: str = RunIdArg, runner: str = RunnerOpt,
+        audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
+        budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
+        runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """Software-composition analysis: flag dependency manifest pins with known advisories
+    (emits a `dependencies` focus into findings/ that joins the validate+report flow)."""
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    ctx = build_context(cfg, run)
+    path = do_sca(ctx)
+    _emit({"run_id": run, "dependency_findings": str(path) if path else None})
+
+
+@app.command()
+def runtime(run: str = RunIdArg,
+            image: Optional[str] = typer.Option(None, "--runtime-image",
+                help="Docker image that contains/builds the runnable app"),
+            run_cmd: Optional[str] = typer.Option(None, "--runtime-run-cmd",
+                help="in-container command that starts the app on --runtime-port (127.0.0.1)"),
+            build_cmd: Optional[str] = typer.Option(None, "--runtime-build-cmd",
+                help="optional in-container build step before run"),
+            port: int = typer.Option(8080, "--runtime-port", help="in-container loopback port"),
+            boot_timeout: int = typer.Option(180, "--runtime-boot-timeout",
+                help="max seconds to wait for the app to listen (raise for slow first-boot installs)"),
+            mount_source: bool = typer.Option(True, "--mount-source/--no-mount-source",
+                help="mount the isolated source at /src (build-at-run). Use --no-mount-source for a "
+                     "self-contained PRE-BUILT image."),
+            runner: str = RunnerOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """OPT-IN, SANDBOXED runtime verification: build the target into an egress-blocked, loopback-only
+    container and probe ONLY that local instance (never the program's live hosts) to confirm/refute
+    findings. Reads a hand-written runs/<id>/runtime_probe_plan.json (R1)."""
+    cfg = _build_config(runner, None, False, None, 3, runs_dir, scenario).with_overrides(
+        runtime_enabled=True, runtime_image=image, runtime_run_cmd=run_cmd,
+        runtime_build_cmd=build_cmd, runtime_port=port, runtime_boot_timeout_s=boot_timeout,
+        runtime_mount_source=mount_source)
+    ctx = build_context(cfg, run)
+    path = do_runtime(ctx)
+    _emit({"run_id": run, "runtime_results": str(path) if path else None})
+
+
+@app.command()
 def validate(run: str = RunIdArg, runner: str = RunnerOpt,
              audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
              budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
@@ -208,6 +248,18 @@ def pipeline(
         False, "--smoke",
         help="de-risked REAL headless check: cheapest model, ONE audit focus, low budget + "
              "short timeout + tight caps. Defaults --brief/--repo to the bundled fixtures."),
+    sca: bool = typer.Option(True, "--sca/--no-sca",
+                             help="software-composition analysis of dependency manifests (on by default)"),
+    critic_passes: Optional[int] = typer.Option(
+        None, "--critic-passes",
+        help="completeness-critic re-passes per audit focus (depth lever; default 1, 0 disables)"),
+    runtime: bool = typer.Option(False, "--runtime/--no-runtime",
+        help="OPT-IN sandboxed runtime verification (build target in an egress-blocked, "
+             "loopback-only container; probe ONLY the local instance). Needs a launcher recipe."),
+    runtime_image: Optional[str] = typer.Option(None, "--runtime-image",
+        help="(--runtime) Docker image that contains/builds the runnable app"),
+    runtime_run_cmd: Optional[str] = typer.Option(None, "--runtime-run-cmd",
+        help="(--runtime) in-container command that starts the app on --runtime-port"),
     runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
     calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
     parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
@@ -221,6 +273,10 @@ def pipeline(
                         timeout=timeout, max_turns=max_turns, session_budget=session_budget,
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider)
+    cfg = cfg.with_overrides(sca_enabled=sca, runtime_enabled=runtime,
+                             runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd)
+    if critic_passes is not None:
+        cfg = cfg.with_overrides(audit_critic_passes=critic_passes)
     if smoke:
         cfg = cfg.for_smoke()                              # cheapest model, 1 focus, low caps
         # for_smoke() defaults to the Claude backend; honor an explicit --runner (e.g. codex).

@@ -21,8 +21,10 @@ Per-stage defaults (`DEFAULT_STAGE_MODELS`), each overridable per run:
 | ingest | Sonnet | cheap extraction, but never Haiku — misreading scope/RoE has outsized cost |
 | recon | Opus | highest-leverage step; the whole audit's quality depends on the synthesis |
 | audit | Sonnet | high-volume parallel fan-out (the headline tunable — see below) |
-| validate | Opus | the lever on the accepted-report rate (kills false positives) |
+| validate | Opus | the lever on the accepted-report rate (downgrade-don't-delete; ground-truth-aware) |
 | report | Sonnet | only used if report LLM-polish is ever enabled; report is deterministic by default |
+| sca | Opus | software-composition analysis: read dependency manifests, flag known-vuln pins |
+| runtime | Sonnet | R2: propose loopback probe plans (offline, read-only repo) + interpret results |
 
 **The audit model is the tunable that matters.** Validation can only remove false positives; it
 cannot recover a bug the audit model never surfaced. So the audit model sets the missed-bug rate.
@@ -52,9 +54,14 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `session_max_cost_usd` | `--session-budget` | per-session cap → the CLI's native `--max-budget-usd` |
 | `session_max_turns` | `--max-turns` | per-session turn tripwire (post-hoc; this CLI has no native turn cap) |
 | `session_timeout_s` | `--timeout` | default per-session wall-clock cap (1800s) |
-| `stage_timeouts` | — | optional per-stage timeout overrides (`timeout_for(stage)`) |
+| `stage_timeouts` | — | per-stage timeout overrides (`timeout_for(stage)`); seeded with `DEFAULT_STAGE_TIMEOUTS` (recon + audit → 3600s, since the deep ground-truth extraction and per-family walk need headroom) |
 | `max_parallel_audits` | `--parallel` | concurrency cap for Stage 3 / Stage 4 fan-out (default 3) |
 | `max_focuses` | (set by `--smoke`) | cap the audit fan-out to the first N focuses; truncation is logged |
+| `audit_critic_passes` | `--critic-passes` | completeness-critic re-passes per audit focus (depth lever; default 1, 0 disables; loops until a pass adds nothing) |
+| `sca_enabled` | `--sca / --no-sca` | run the software-composition (dependency) stage between audit and validate (default on) |
+| `runtime_enabled` | `--runtime` | **opt-in** sandboxed runtime verification after validate (default **off**) — build the target into an egress-blocked, loopback-only container and probe ONLY the local instance; see [runtime-verification-study.md](runtime-verification-study.md) |
+| `runtime_image` / `runtime_run_cmd` / `runtime_build_cmd` / `runtime_port` | `--runtime-image` / `--runtime-run-cmd` / … | launcher recipe: the Docker image + in-container start/build command + loopback port |
+| `runtime_max_requests` / `runtime_min_request_interval_s` / `runtime_max_payload_bytes` / `runtime_allow_state_changing` | — | anti-DoS caps + read-only-by-default method gate enforced by `guardrails.validate_probe_plan` |
 
 ## Other fields
 

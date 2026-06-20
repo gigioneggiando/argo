@@ -38,6 +38,10 @@ def env(tmp_path):
 
     def _make(scenario: str = "happy", *, fixtures_dir: Path | None = None,
               run_id: str = FIXED_RUN_ID, **cfg_overrides) -> "object":
+        # Determinism default: pin the completeness-critic OFF so call-count/golden tests are stable
+        # (a dedicated test opts back in with audit_critic_passes=1). Same spirit as research-off.
+        cfg_overrides.setdefault("audit_critic_passes", 0)
+        cfg_overrides.setdefault("sca_enabled", False)   # SCA adds a stage/call; opt in per-test
         cfg = PipelineConfig(
             runner="mock",
             runs_dir=tmp_path / "runs",

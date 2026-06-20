@@ -103,6 +103,10 @@ def run(ctx: RunContext) -> list[Path]:
             # captured below for cost/benchmark grouping.
             {"type": "synthesis_notes", "filename": "synthesis_notes.md", "schema": None,
              "desc": "why you split the audit this way, deprioritized surfaces, residual unknowns"},
+            {"type": "ground_truth", "filename": "ground_truth.json", "schema": None,
+             "desc": "structured ground-truth pack: per-focus invariants, baseline-correct refs, "
+                     "variant_families (with concrete member lists), and fp_carveouts, plus global "
+                     "fp_carveouts/advisory_classes/dependency_risks (see meta-prompt OUTPUT A2)"},
         ],
     )
 
@@ -136,6 +140,15 @@ def run(ctx: RunContext) -> list[Path]:
         if f.name == "repo_profile.json":
             json.loads(f.read_text(encoding="utf-8"))  # must be valid JSON
             ctx.repo_profile_path.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+        elif f.name == "ground_truth.json":
+            # Best-effort: the authoritative ground truth is baked into each audit prompt; this
+            # structured copy feeds validate/report. A malformed pack must NOT fail the run.
+            try:
+                json.loads(f.read_text(encoding="utf-8"))
+                ctx.ground_truth_path.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+            except (OSError, ValueError) as exc:
+                print(f"[recon] ground_truth.json present but unreadable ({exc}); "
+                      "continuing (prompts carry the ground truth inline)", file=sys.stderr)
         elif f.name == "synthesis_notes.md":
             (ctx.run_dir / "synthesis_notes.md").write_text(
                 f.read_text(encoding="utf-8"), encoding="utf-8")
@@ -157,8 +170,34 @@ def run(ctx: RunContext) -> list[Path]:
     if not ctx.repo_profile_path.exists():
         raise RuntimeError("recon: repo_profile.json was not produced")
 
+    _warn_shallow_prompts(prompt_paths)
+    if not ctx.ground_truth_path.exists():
+        print("[recon] WARNING: ground_truth.json was not produced — the audit prompts still "
+              "carry ground truth inline, but validate/report lose the structured carve-outs",
+              file=sys.stderr)
+
     _capture_archetype(ctx)
     return sorted(prompt_paths)
+
+
+# Section headers a gen-2 (target-specific) audit prompt must carry. Soft check: a missing section
+# means recon fell back to a generic prompt — log it loudly, but never fail the run over phrasing.
+_DEPTH_SECTIONS = (
+    "INVARIANT CHECKLIST",
+    "BASELINE-CORRECT REFERENCES",
+    "VARIANT FAMILIES",
+    "FALSE-POSITIVE CARVE-OUTS",
+)
+
+
+def _warn_shallow_prompts(prompt_paths: list[Path]) -> None:
+    for p in prompt_paths:
+        text = p.read_text(encoding="utf-8")
+        missing = [s for s in _DEPTH_SECTIONS if s.lower() not in text.lower()]
+        if missing:
+            print(f"[recon] WARNING: {p.name} is missing ground-truth section(s) {missing} — "
+                  "it may be too generic (the depth+precision uplift expects all four)",
+                  file=sys.stderr)
 
 
 def _detect_archetype(repo_profile: dict, synthesis: str) -> str:

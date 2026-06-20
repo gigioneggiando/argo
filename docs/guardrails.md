@@ -56,6 +56,28 @@ The boundary is enforced, not just prompted:
 - Best-effort: a research failure never aborts the run (recon just proceeds without the brief).
 - `--no-research` (CLI) / `research: false` (API) keeps a run **100% offline**, exactly as before.
 
+### 2b. The other bounded exception: the `runtime` stage (loopback-only sandbox)
+
+Runtime verification (`stages/runtime.py`, **opt-in** via `--runtime`, default **off**) runs a live
+instance — but **never the program's live in-scope host.** It builds the OSS target from the
+**cloned source** into an ephemeral, **egress-blocked** Docker container (`--network=none`, so the
+network namespace has *only* loopback) and probes **only `127.0.0.1`** inside that sealed namespace.
+Same trust model as `verify.py`'s offline builds; the "never a live host" rule (§2) is preserved and
+extended to the probe layer:
+
+- **Loopback-only gate** — `guardrails.assert_loopback_only(plan, scope)` rejects any probe whose
+  target (URL host, `Host:` header, or `//host` form) is not loopback, **or** that names a scope
+  in/out-of-scope host. A violation **aborts** runtime; it never proceeds.
+- **Anti-DoS / method gate** — `guardrails.validate_probe_plan(...)` caps total request count, body
+  size, and rate, and allows **read-only** methods only (GET/HEAD/OPTIONS) unless
+  `runtime_allow_state_changing` is explicitly opted in (honors `prohibited_techniques`: no DoS).
+- **No model execution primitive** — the model proposes a probe plan (R2); a deterministic validator
+  gates it and a **fixed** stdlib probe runner (not model-controlled) executes it; the target image
+  needs no probe tooling because a separate probe container *joins the app's sealed namespace*.
+- **Best-effort + isolated** — throwaway `copytree` + `--rm` containers; gracefully skips (never
+  fails the run) when disabled, Docker absent, no launcher recipe, or no probe plan. Full design:
+  [runtime-verification-study.md](runtime-verification-study.md).
+
 ## 3. Repo mounted read-only to every session; the pipeline never patches
 
 - The session **cwd is a separate writable scratch dir**, never the repo. The repo is exposed

@@ -33,6 +33,17 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
     "chat": SONNET,    # interactive post-run analysis (explain / why-not-found / test-gen)
     "remediate": OPUS, # Phase-6 fix generation (proposed patch per confirmed finding)
     "research": SONNET, # opt-out Stage-0 web OSINT / threat intel (feeds recon)
+    "sca": OPUS,        # dependency / software-composition analysis (manifest -> known-vuln deps)
+    "runtime": SONNET,  # R2: propose loopback probe plans + interpret results (offline, validated)
+}
+
+#: Default per-stage wall-clock overrides (seconds). Recon now does deep ground-truth extraction
+#: (enumerating variant families, baseline-correct refs, invariants across the whole tree) and the
+#: audit walks every family member — both want more headroom than the 1800s global default. The
+#: completeness-critic re-pass (audit) also runs inside the audit stage budget.
+DEFAULT_STAGE_TIMEOUTS: dict[str, int] = {
+    "recon": 3600,
+    "audit": 3600,
 }
 
 # --- Cost estimation for backends that report tokens but not USD ---------------------
@@ -115,7 +126,8 @@ class PipelineConfig:
     codex_oss: bool = False             # use Codex's open-source provider (--oss)
     codex_local_provider: str | None = None  # "ollama" | "lmstudio" (with --oss)
     session_timeout_s: int = 1800       # default per-session wall-clock cap (seconds)
-    stage_timeouts: dict[str, int] = field(default_factory=dict)  # per-stage overrides
+    # per-stage wall-clock overrides; seeded with DEFAULT_STAGE_TIMEOUTS (deep recon + audit).
+    stage_timeouts: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_STAGE_TIMEOUTS))
     budget_usd: float | None = None     # HARD per-run USD ceiling; None = unbounded
 
     # Per-session safety caps (this CLI has NO --max-turns flag in v2.1.178):
@@ -124,6 +136,32 @@ class PipelineConfig:
     session_max_cost_usd: float | None = None   # per-session cost cap (also -> --max-budget-usd)
     session_max_turns: int | None = None        # per-session turn tripwire; None = off
     max_focuses: int | None = None              # cap audit fan-out to first N focuses (smoke)
+    # Completeness-critic re-passes per focus (Phase-3 depth lever): after a focus's first audit
+    # session, re-invoke it to find what was MISSED — uncovered variant-family members, unverified
+    # invariants, 🟡 rows not promoted. Each pass appends only NEW findings; passes stop early when
+    # a pass yields nothing new (loop-until-dry, capped). 0 disables. Trades tokens for recall.
+    audit_critic_passes: int = 1
+    # Software-composition analysis: read dependency manifests and flag pinned versions with known
+    # advisories. Emits a synthetic `dependencies` focus that joins the normal validate+report flow.
+    sca_enabled: bool = True
+
+    # --- Runtime verification (opt-in, sandboxed; see docs/runtime-verification-study.md) ---------
+    # OFF by default. When on, build the OSS target from the cloned source into an EPHEMERAL,
+    # EGRESS-BLOCKED (--network=none), LOOPBACK-ONLY container and probe ONLY that local instance to
+    # confirm/refute findings with HTTP-level PoCs. NEVER touches the program's live in-scope hosts.
+    runtime_enabled: bool = False
+    runtime_image: str | None = None        # docker image that contains/builds the runnable app
+    runtime_run_cmd: str | None = None      # command (in-container) that starts the app on the port
+    runtime_build_cmd: str | None = None    # optional in-container build step before run
+    runtime_port: int = 8080                # in-container loopback port the app listens on
+    runtime_boot_timeout_s: int = 180       # max wait for the app to come up on 127.0.0.1:port
+    runtime_request_timeout_s: int = 10     # per-probe HTTP timeout
+    runtime_max_requests: int = 50          # hard cap on total probe requests (anti-DoS)
+    runtime_min_request_interval_s: float = 0.2   # rate cap between probes (anti-DoS)
+    runtime_max_payload_bytes: int = 8192   # cap request body size (anti-DoS)
+    runtime_allow_state_changing: bool = False    # default: read-only probes (GET/HEAD/OPTIONS)
+    runtime_mount_source: bool = True   # mount the isolated source copy at /src:ro (build-at-run
+                                        # model). Set False for a self-contained PRE-BUILT image.
 
     # Validation excerpt sizing.
     excerpt_context_lines: int = 40     # +/- lines of source around each cited file:line
@@ -180,9 +218,11 @@ class PipelineConfig:
             runner="headless",
             stage_models=models,
             budget_usd=2.0,
+            stage_timeouts={},            # smoke stays cheap: no deep recon/audit overrides
             session_timeout_s=600,        # sonnet recon explores the repo; give it headroom
             session_max_cost_usd=0.75,
             session_max_turns=60,
             max_focuses=1,
             max_parallel_audits=1,
+            audit_critic_passes=0,        # smoke stays single-session
         )

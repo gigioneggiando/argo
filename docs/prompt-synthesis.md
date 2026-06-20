@@ -8,7 +8,9 @@ on the repo with **read-only** access and produces three machine-readable artifa
   untrusted-input sources, dangerous sinks, historical bug classes, `residual_unknowns`);
 - `prompts/audit_*.md` — N complementary custom audit prompts, each conforming to
   `01_audit_prompt_template.md.j2`;
-- `synthesis_notes.md` — why the audit was split this way, deprioritized surfaces, residual unknowns.
+- `synthesis_notes.md` — why the audit was split this way, deprioritized surfaces, residual unknowns;
+- `ground_truth.json` — the structured ground-truth pack (per-focus invariants, baseline-correct
+  references, variant families, FP carve-outs) — see below.
 
 Default model: **Opus** (`config.DEFAULT_STAGE_MODELS["recon"]`). This stage is the highest
 leverage in the pipeline — validation can only remove false positives, it cannot recover a bug a
@@ -42,6 +44,31 @@ The general web-security toolkit (SSRF, IDOR, injection) is kept and applied **w
 (a Minecraft plugin still has SSRF via player-name-in-URL and IDOR on moderation lookups) — it is
 a toolkit, not a straitjacket. The change was about *adding* archetype lenses, not removing the
 general checklist.
+
+## Ground-truth extraction (the depth + precision lever)
+
+The decisive difference between a generic prompt and one that finds the long tail is **how much
+ground truth recon has already established by reading the code**. METHOD step 8 of the meta-prompt
+makes recon do the enumeration work up front and bake it into both the audit-prompt prose and
+`ground_truth.json`, per focus:
+
+- **Invariants** — `location → expected → how-to-check` triples (e.g. *"`HasValidApiKey` MUST use a
+  constant-time compare"*). The audit turns these into a PASS/FAIL checklist instead of open-ended
+  hunting.
+- **Baseline-correct references** — for each *systemic* pattern, the one place the code does it
+  right (e.g. *"`MoveDocumentController` authorizes both source and destination"*). Every sibling is
+  diffed against it — the most precise way to find variant bugs.
+- **Variant families** — the repeated shapes (controller-per-operation, converter-per-type, …) with
+  their **concrete enumerated member list**, so the audit verifies *each* member, not just the first.
+- **False-positive carve-outs** — target-specific "do not flag" rules with justifications. These
+  raise precision in the audit **and are passed to the validator** (`stages/validate._format_ground_truth`)
+  so it does not re-derive them and wrongly refute a real finding.
+
+These map to required sections in `01_audit_prompt_template.md.j2` (INVARIANT CHECKLIST,
+BASELINE-CORRECT REFERENCES, VARIANT FAMILIES, FALSE-POSITIVE CARVE-OUTS) plus a mandated
+`VARIANT_HUNT_LOG` deliverable (one row per family member, verdict 🟢/🟡/🔴) as a coverage
+forcing-function. Recon emits a non-fatal warning (`recon._warn_shallow_prompts`) if a generated
+prompt is missing any of the four — a regression-to-generic signal.
 
 ## Quality controls inside the meta-prompt
 

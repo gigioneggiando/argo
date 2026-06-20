@@ -32,8 +32,9 @@ argo/
   verify.py         Phase-6 patch verification on an ISOLATED COPY (applies? compiles? no new errors?)
   benchmark.py      Phase-7 eval: score findings P/R/F1 vs labeled suites (by archetype / CWE) + A/B
   stages/
-    ingest.py   research.py   recon.py   audit.py   validate.py   report.py
-  prompts/          the five assets, version-pinned (sha256 recorded per run)
+    ingest.py  research.py  recon.py  audit.py  sca.py  validate.py  runtime.py  report.py
+  verify.py         Phase-6 isolated-copy build/compile check (reused by the runtime sandbox)
+  prompts/          the assets, version-pinned (sha256 recorded per run)
 
 server/             HTTP API on top of the pipeline (FastAPI) — see api.md
   app.py            endpoints (run lifecycle, SSE progress, whitelisted artifacts) + serves webapp/
@@ -52,12 +53,40 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 |---|---|---|---|
 | 1 Ingest | `stages/ingest.run` | brief (or **none** → local review), repo (folder or URL) | `scope.json`, `meta.json` (incl. pinned `repo_commit`), read-only `repo/`. No brief ⇒ a source-only scope is **synthesized** from the folder (zero-token, no LLM call). |
 | 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, the ONLY networked stage; no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
-| 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md` (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
-| 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json` |
-| 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json` | `validated_findings.json` |
+| 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
+| 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
+| SCA | `stages/sca.run` | `repo/` dependency manifests, `scope.json` | `findings/dependencies.json` — **opt-out** software-composition analysis (known-vuln pinned deps); a no-op if no manifests |
+| 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json`, **`ground_truth.json`** | `validated_findings.json` |
+| RUNTIME | `stages/runtime.run` | `validated_findings.json`, `repo/` (+ optional hand-written `runtime_probe_plan.json`) | `runtime_results.json` + per-finding `runtime` verdict — **opt-in**, sandboxed. **R2:** an LLM proposes the probe plan (gated by the loopback/anti-DoS validators) and interprets the observations into confirmed/refuted/inconclusive. No-op unless enabled + Docker + recipe |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
-`pipeline` runs 1→5 (or 1→2 with `--dry-run`) and **stops before any submission**.
+`pipeline` runs 1→5 (SCA between audit and validate, on by default; or 1→2 with `--dry-run`) and
+**stops before any submission**.
+
+## Precision + depth uplift (ground-truth recon → enumerate → downgrade-don't-delete)
+
+The single biggest quality lever is **how much ground truth recon bakes into the audit prompts**.
+Recon (`stages/recon.py`, `prompts/00_recon_synthesis_meta_prompt.md`) now performs a deep
+ground-truth extraction (METHOD step 8) and emits, per focus, into both the audit prompt prose and
+`ground_truth.json`:
+
+- **Invariants** — `location → expected → how-to-check` triples (a PASS/FAIL checklist).
+- **Baseline-correct references** — the one place a systemic pattern is done right; every sibling is
+  diffed against it (the most precise variant technique).
+- **Variant families** — the concrete, enumerated member list of each repeated shape
+  (controller-per-operation, converter-per-type…), so the audit verifies *each*, not just the first.
+- **False-positive carve-outs** — target-specific "do not flag" rules (with justifications), which
+  are **also handed to the validator** so it stops re-deriving and wrongly refuting real findings.
+
+The audit template (`prompts/01_audit_prompt_template.md.j2`) carries these as required sections and
+mandates a `VARIANT_HUNT_LOG` (one row per family member, verdict 🟢/🟡/🔴) — a coverage
+forcing-function. A **completeness-critic** re-pass (`audit._run_critic_for_focus`,
+`--critic-passes`, default 1) then re-audits each focus for what was missed, looping until a pass
+adds nothing new. Validate (`stages/validate.py`, `prompts/02_adversarial_validation_prompt.md`)
+switches from binary confirm/refute to **downgrade-don't-delete**: `refuted` is reserved for findings
+**provably contradicted by code** (or matching a carve-out); anything merely uncertain is **kept** as
+`needs_runtime_verification` with a concrete question. Drift-repaired audit findings (see below) and
+SCA findings bypass adversarial refutation and are kept for human review.
 
 ## The `AgentRunner` abstraction
 
@@ -132,6 +161,12 @@ deliberately removed. For `repo_profile.json` / `prompts/` the two copies are us
 to stand out. The `work/` tree is safe to delete after a successful run if you want leaner run
 dirs; keep it when a run fails, since that is when partial recovery and raw-output debugging need
 it.
+
+**Drift-repair (no whole-focus loss).** The audit normalizer (`audit._normalize_findings_doc`)
+coerces a real model's findings to the schema. A finding that still fails after coercion is no
+longer dropped — `audit._repair_finding` backfills the missing required fields, flags it
+`schema_repair_failed`, and keeps it for review (only a genuinely unparseable object is dropped).
+This prevents an entire focus from vanishing to a formatting mismatch.
 
 ## Dedup algorithm (Stage 4)
 

@@ -26,6 +26,10 @@ SCOPE (for confirming the finding is in-scope):
 {{SCOPE_JSON}}
 ```
 
+RECON GROUND TRUTH for this finding's focus (authoritative — the audit stage already established
+these by reading the code; use them so you do NOT re-derive and wrongly refute a real bug):
+{{GROUND_TRUTH}}
+
 ---
 
 ## ROLE
@@ -78,10 +82,20 @@ conclude otherwise. You do not extend trust to the author's reasoning; you re-de
 }
 ```
 
-Rules for the verdict:
-- `confirmed` only if you could not break any link AND the full source→sink flow holds.
-- `needs_runtime_verification` if the static evidence is strong but exploitability genuinely
-  depends on runtime/config state you cannot see from source.
-- `refuted` if any link breaks. Explain which and why.
+Rules for the verdict (DOWNGRADE-DON'T-DELETE — a wrongly-refuted real bug is the worst outcome
+here, worse than a kept-but-downgraded one):
+- `confirmed` if the full source→sink flow holds with no effective mitigation on the path.
+- `refuted` ONLY when the finding is **provably wrong from the code** — you can cite the exact
+  `file:line` that contradicts it: a real mitigation sits ON the path, the input is genuinely not
+  attacker-controllable, the sink is not dangerous in this context, OR the finding matches one of
+  the **FALSE-POSITIVE CARVE-OUTS** above (cite which). "I couldn't fully confirm it" is NOT grounds
+  to refute.
+- `needs_runtime_verification` is the default for an UNCERTAIN finding: the static evidence is
+  plausible but a link depends on runtime/config state, or on code you cannot see, or you simply
+  could not disprove it. Downgrade `validated_severity`/`validated_confidence` honestly and write the
+  precise question a human must answer. **Do not refute out of doubt — downgrade and keep.**
 - `out_of_scope` if the affected asset is not in `SCOPE_JSON`.
-- Be honest about downgrades. A confirmed-but-low finding beats an inflated-and-rejected one.
+- Ground-truth use: if a **BASELINE-CORRECT** reference shows the correct shape and this finding's
+  code deviates from it, that is evidence the bug is REAL — do not refute it on a "maybe it's handled
+  elsewhere" assumption; verify the specific path. Only the explicit CARVE-OUTS are pre-cleared.
+- Be honest about downgrades. A confirmed-but-low or kept-for-runtime finding beats a wrongly-rejected one.

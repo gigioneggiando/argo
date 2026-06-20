@@ -25,6 +25,8 @@ def _client(tmp_path):
         ledger_path=tmp_path / "ledger.sqlite",
         fixtures_dir=FIXTURES,
         fixtures_scenario="happy",
+        sca_enabled=False,          # API-surface tests: keep the deterministic 2-focus survivor set
+        audit_critic_passes=0,
     )
     app = create_app(cfg)
     return app, TestClient(app)

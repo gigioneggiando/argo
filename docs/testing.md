@@ -8,7 +8,7 @@ construction, and the subprocess error paths with crafted inputs and fakes (stil
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/ -q          # 139 tests (incl. the HTTP API + UI serving on the mock runner)
+python -m pytest tests/ -q          # 162 tests (incl. the HTTP API + UI serving on the mock runner)
 ```
 
 `pytest.ini` pins `--basetemp=.pytest_tmp` so the read-only repo copies the pipeline creates do
@@ -31,6 +31,8 @@ not trip Windows' global temp rotation.
 | `test_quality.py` | **A2 accept-rate**: `record_triager_feedback` + `accept_rate` (severity slice, run-scoping), the old-DB column migration, `quality_report` pairing accept-rate with benchmark recall, and the `argo feedback --import` → `argo quality` CLI flow |
 | `test_chat.py` | **B1 re-validation**: candidate backfill, `_validate_candidate` runs the adversarial validator, full `ask()` flow (model writes `CANDIDATE_FINDING.json` → verdict appended, hypothesis file kept out of `generated`), and the no-candidate path |
 | `test_cancel.py` | **C1 mid-stage cancellation**: `AgentRunner._exec` runs a real subprocess, kills it **promptly** when the cancel_event fires (not after the full sleep) and on timeout, returns a CompletedProcess on success; the orchestrator turns a mid-stage `RunnerCancelled` into a cancelled run (status.json) |
+| `test_runtime.py` | **R1+R2 runtime verification**: the safety validators (`assert_loopback_only` rejects external/scope hosts + protocol-relative; `validate_probe_plan` caps request count, body size, and read-only methods unless opted in), the stage's graceful-skip gating, a **Docker-gated end-to-end sealed-sandbox proof** (`--network=none` app container + a probe container sharing its loopback namespace), and **R2** (`_generate_plan` LLM-proposes a plan, `_interpret` returns verdicts, full `run()` generates-then-skips without a recipe) |
+| `test_uplift.py` | the **precision/depth uplift**: recon captures `ground_truth.json`; the **SCA** dependency stage flows a `dependencies` finding into the validated set (and `--no-sca` suppresses it); the **completeness-critic** re-pass adds nothing-but-duplicates in mock and spends extra sessions; **drift-repair** keeps a malformed finding (flagged `schema_repair_failed`) instead of dropping it; `_format_ground_truth` surfaces carve-outs + baseline-correct refs to the validator |
 | `test_codex.py` | the **Codex backend**: the sandbox-mapping guardrails (audit stage is `-s workspace-write` + offline, **never** a `danger-*` escape; only `research` gets network), `--oss`/model flags, token parsing + cost estimation, `build_runner` dispatch, CLI/API config passthrough |
 
 ## The two zero-cost modes

@@ -28,6 +28,35 @@ def _log(msg: str) -> None:
     print(f"[validate] {msg}", file=sys.stderr)
 
 
+# --------------------------------------------------------------------------- ground truth
+def _load_ground_truth(ctx: RunContext) -> dict:
+    """Recon's structured ground-truth pack (best-effort; empty dict if absent/malformed)."""
+    try:
+        return json.loads(ctx.ground_truth_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _format_ground_truth(gt: dict, focus: str | None) -> str:
+    """The slice of ground truth relevant to one finding's focus: FP carve-outs (global + focus)
+    and baseline-correct references — exactly what stops the validator over-refuting a real bug."""
+    if not gt:
+        return "(none captured by recon — judge from the code and scope only)"
+    glob = gt.get("global", {}) if isinstance(gt.get("global"), dict) else {}
+    foc = (gt.get("focuses", {}) or {}).get(focus or "", {}) if isinstance(gt.get("focuses"), dict) else {}
+    carveouts = list(glob.get("fp_carveouts", []) or []) + list(foc.get("fp_carveouts", []) or [])
+    baseline = list(foc.get("baseline_correct", []) or [])
+    parts: list[str] = []
+    if carveouts:
+        parts.append("FALSE-POSITIVE CARVE-OUTS (a finding matching one of these IS a correct refute):\n"
+                     + "\n".join(f"- {c}" for c in carveouts))
+    if baseline:
+        parts.append("BASELINE-CORRECT REFERENCES (deviation from these is evidence the bug is real):\n"
+                     + "\n".join(f"- {b.get('pattern','?')}: known-correct `{b.get('reference_impl','?')}` "
+                                 f"— {b.get('why_correct','')}" for b in baseline if isinstance(b, dict)))
+    return "\n\n".join(parts) if parts else "(no focus-specific carve-outs; judge from code + scope)"
+
+
 # --------------------------------------------------------------------------- merge/dedup
 def _load_all(ctx: RunContext) -> list[Finding]:
     findings: list[Finding] = []
@@ -103,7 +132,8 @@ def _build_excerpts(repo_dir: Path, affected: list[str], ctx_lines: int, max_byt
 
 
 # --------------------------------------------------------------------------- per-finding
-def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding) -> Validation:
+def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding,
+                  ground_truth: dict | None = None) -> Validation:
     excerpts = _build_excerpts(
         ctx.repo_dir, finding.affected,
         ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes,
@@ -115,6 +145,7 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         "REPO_PATH": str(ctx.repo_dir.resolve()),
         "TARGET_TYPE": scope.target_type,
         "SCOPE_JSON": scope_json_text,
+        "GROUND_TRUTH": _format_ground_truth(ground_truth, finding.source_focus),
     })
     assert_prohibited_present(rendered, scope.prohibited_techniques)  # guardrail
 
@@ -161,6 +192,7 @@ def run(ctx: RunContext) -> Path:
     scope = ctx.load_scope()
     scope_json_text = ctx.scope_path.read_text(encoding="utf-8")
 
+    ground_truth = _load_ground_truth(ctx)
     raw_findings = _load_all(ctx)
     _assign_keys(raw_findings)
     merged = _merge(raw_findings)
@@ -168,6 +200,7 @@ def run(ctx: RunContext) -> Path:
 
     dropped: list[dict] = []
     to_validate: list[Finding] = []
+    survivors: list[Finding] = []
     for f in merged:
         token = out_of_scope_match(f.affected, scope.out_of_scope)
         if token:
@@ -175,11 +208,30 @@ def run(ctx: RunContext) -> Path:
                                       rationale=f"affected asset matches out-of-scope '{token}'")
             dropped.append(_drop_record(f, "out_of_scope (code-side scope filter)"))
             _log(f"{f.id}: dropped pre-validation (out-of-scope '{token}')")
+        elif f.source_focus == "dependencies":
+            # SCA advisory findings: the adversarial validator is offline and cannot re-check a CVE,
+            # so it would refute real ones for "unverifiable". Keep them on their own confidence.
+            verdict = "confirmed" if f.confidence == "Confirmed" else "needs_runtime_verification"
+            f.validation = Validation(
+                verdict=verdict, validated_severity=f.severity, validated_confidence=f.confidence,
+                rationale="software-composition finding; advisory not re-checkable offline — kept "
+                          "on the SCA stage's own confidence for human confirmation")
+            survivors.append(f)
+            _log(f"{f.id}: kept ({verdict}) — SCA dependency finding")
+        elif getattr(f, "schema_repair_failed", False):
+            # A drift-repaired finding has placeholder fields; the adversarial validator would just
+            # refute it for thin evidence. Keep it for a human (never auto-drop salvaged coverage).
+            f.validation = Validation(
+                verdict="needs_runtime_verification",
+                rationale="schema-repaired audit finding (fields were backfilled); kept for human "
+                          "review rather than adversarially validated against placeholder content")
+            survivors.append(f)
+            _log(f"{f.id}: kept unvalidated (schema-repaired finding, flagged for human review)")
         else:
             to_validate.append(f)
 
     # Adversarial validation (parallel, budget-guarded). Skips are logged.
-    survivors: list[Finding] = []
+    # NB: `survivors` already holds any schema-repaired findings kept above — do not reset it.
     launch: list[Finding] = []
     for f in to_validate:
         try:
@@ -198,7 +250,8 @@ def run(ctx: RunContext) -> Path:
     verdicts: dict[str, Validation] = {}
     if launch:
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futs = {ex.submit(_validate_one, ctx, scope, scope_json_text, f): f for f in launch}
+            futs = {ex.submit(_validate_one, ctx, scope, scope_json_text, f, ground_truth): f
+                    for f in launch}
             for fut in as_completed(futs):
                 f = futs[fut]
                 verdicts[f.id] = fut.result()

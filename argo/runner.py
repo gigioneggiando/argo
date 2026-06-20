@@ -526,6 +526,10 @@ class MockClaudeRunner(ClaudeRunner):
             return self._research(work_dir, label)
         if stage == "remediate":
             return self._remediate(work_dir, label, prompt, repo_dir)
+        if stage == "sca":
+            return self._sca(work_dir, label)
+        if stage == "runtime":
+            return self._runtime(work_dir, label)
         handler = {
             "ingest": self._ingest,
             "recon": self._recon,
@@ -582,9 +586,19 @@ class MockClaudeRunner(ClaudeRunner):
         return self._envelope(self._manifest(arts))
 
     def _audit(self, work_dir: Path, label) -> dict:
-        slug = work_dir.name  # work/audit/<slug>
+        slug = work_dir.name  # work/audit/<slug>  (a completeness-critic re-pass is "<slug>__critic")
         src = self.scenario_dir / "audit" / f"{slug}.findings.json"
         out = work_dir / f"SECURITY_FINDINGS__{slug}.json"
+        if not src.is_file():
+            # Completeness-critic re-pass (or unknown focus): no fixture -> emit an empty, valid
+            # findings file so the critic dedup path is exercised and finds nothing new.
+            base = slug.replace("__critic", "")
+            out.write_text(json.dumps({
+                "program_name": "mock", "audit_focus": base,
+                "generated_at": "2026-01-01T00:00:00+00:00", "findings": []}, indent=2),
+                encoding="utf-8")
+            return self._envelope(self._manifest(
+                [{"type": "findings", "path": out.name, "status": "ok"}]))
         self._copy(src, out)
         # Sentinel: simulate a session that died mid-write (no manifest, partial-ish file).
         if (self.scenario_dir / "audit" / f"{slug}._partial").exists():
@@ -593,6 +607,38 @@ class MockClaudeRunner(ClaudeRunner):
             return self._envelope("Audit complete; manifest omitted.")
         return self._envelope(self._manifest(
             [{"type": "findings", "path": out.name, "status": "ok"}]))
+
+    def _sca(self, work_dir: Path, label) -> dict:
+        """Mock SCA: emit a dependencies findings file from a fixture if present, else empty."""
+        out = work_dir / "SECURITY_FINDINGS__dependencies.json"
+        src = self.scenario_dir / "sca" / "dependencies.findings.json"
+        if src.is_file():
+            self._copy(src, out)
+        else:
+            out.write_text(json.dumps({
+                "program_name": "mock", "audit_focus": "dependencies",
+                "generated_at": "2026-01-01T00:00:00+00:00", "findings": []}, indent=2),
+                encoding="utf-8")
+        return self._envelope(self._manifest(
+            [{"type": "findings", "path": out.name, "status": "ok"}]))
+
+    def _runtime(self, work_dir: Path, label) -> dict:
+        """Mock R2 runtime sessions: 'propose' emits a probe plan, 'interpret' emits verdicts."""
+        if "interpret" in (label or ""):
+            out = work_dir / "runtime_verdicts.json"
+            out.write_text(json.dumps({"verdicts": [
+                {"finding_id": "MOCK-1", "runtime_verdict": "runtime_confirmed",
+                 "evidence": "200 to anonymous caller", "rationale": "endpoint requires no auth"}]}),
+                encoding="utf-8")
+            return self._envelope(self._manifest(
+                [{"type": "runtime_verdicts", "path": out.name, "status": "ok"}]))
+        out = work_dir / "runtime_probe_plan.json"
+        out.write_text(json.dumps([
+            {"finding_id": "MOCK-1", "note": "mock probe",
+             "requests": [{"method": "GET", "path": "/status", "expect": {"status": [200]}}]}]),
+            encoding="utf-8")
+        return self._envelope(self._manifest(
+            [{"type": "probe_plan", "path": out.name, "status": "ok"}]))
 
     def _research(self, work_dir: Path, label) -> dict:
         """Mock Stage-0 web research: emit a research_brief.md + threat_intel.json (no real web)."""

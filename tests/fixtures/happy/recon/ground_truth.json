@@ -1,0 +1,37 @@
+{
+  "global": {
+    "fp_carveouts": [
+      "Parameterized query builders (lambda Where) are not SQL injection — do not flag."
+    ],
+    "advisory_classes": ["stored XSS via editor content", "IDOR on object endpoints"],
+    "dependency_risks": [
+      {"name": "left-pad", "version": "1.0.0", "note": "example pinned transitive dep"}
+    ]
+  },
+  "focuses": {
+    "Full-scope architecture-led audit": {
+      "invariants": [
+        {"location": "app/render.py:fn", "expected": "output is HTML-encoded",
+         "how_to_check": "trace value-converter to the Razor sink"}
+      ],
+      "baseline_correct": [
+        {"pattern": "bidirectional authz on move", "reference_impl": "MoveController",
+         "why_correct": "authorizes both source and destination"}
+      ],
+      "variant_families": [
+        {"pattern_id": "move-copy", "root_cause": "destination not authorized",
+         "members": ["MoveController", "CopyController", "RestoreController"]}
+      ],
+      "fp_carveouts": ["NotFound -> not-denied in authorizers is intended existence-hiding."]
+    },
+    "Identity / authorization / API exposure audit": {
+      "invariants": [
+        {"location": "auth/keys.py:compare", "expected": "constant-time comparison",
+         "how_to_check": "grep for == on secrets"}
+      ],
+      "baseline_correct": [],
+      "variant_families": [],
+      "fp_carveouts": []
+    }
+  }
+}

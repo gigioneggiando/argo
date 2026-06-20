@@ -160,6 +160,83 @@ def assert_audit_prompt_wellformed(prompt_text: str, prohibited_techniques: list
     assert_prohibited_present(prompt_text, prohibited_techniques)
 
 
+# ------------------------------------------------------------------ runtime probe safety
+class RuntimeProbeError(GuardrailError):
+    """A runtime probe plan tried to leave loopback, exceed safety caps, or use an unsafe method.
+    The runtime stage builds the OSS target into an egress-blocked, loopback-only container and
+    probes ONLY that local instance — it must NEVER reach the program's real in-scope hosts."""
+
+
+#: Hosts a probe is allowed to target. The app binds inside an ``--network=none`` container (only
+#: loopback exists), so a probe can ONLY legitimately address loopback. Anything else is a bug or
+#: an attempt to reach a real host — rejected.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+_READONLY_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+_STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def _probe_host(path_or_url: str) -> str | None:
+    """Return the host a probe targets, or None for a host-relative path (host is injected as
+    loopback by the runner). An absolute URL must carry an explicit host."""
+    s = (path_or_url or "").strip()
+    if s.startswith(("http://", "https://")):
+        rest = s.split("://", 1)[1]
+        return rest.split("/", 1)[0].split("@")[-1].split(":")[0] or None
+    if s.startswith("//"):                         # protocol-relative -> //host/...
+        return s[2:].split("/", 1)[0].split(":")[0] or None
+    return None                                    # host-relative path: loopback by construction
+
+
+def assert_loopback_only(probe_plan: list[dict], scope) -> None:
+    """Hard gate: every probe must target loopback, and no probe path/Host may name a scope host.
+    Defends the core 'never touch a live host' guardrail at the probe layer."""
+    scope_hosts = {_normalize(a.asset) for a in getattr(scope, "in_scope", [])} | \
+                  {_normalize(x) for x in getattr(scope, "out_of_scope", [])}
+    for entry in probe_plan:
+        for req in entry.get("requests", []):
+            path = str(req.get("path", ""))
+            host = _probe_host(path)
+            if host is not None and host.lower() not in _LOOPBACK_HOSTS:
+                raise RuntimeProbeError(
+                    f"probe targets non-loopback host {host!r} (finding "
+                    f"{entry.get('finding_id')!r}); only 127.0.0.1/localhost is allowed")
+            hdr_host = ""
+            for k, v in (req.get("headers") or {}).items():
+                if k.strip().lower() == "host":
+                    hdr_host = str(v).strip().lower()
+            blob = _normalize(path + " " + hdr_host)
+            for sh in scope_hosts:
+                # ignore trivial tokens; flag a probe that embeds a real in/out-of-scope host
+                if sh and len(sh) > 3 and sh not in {"localhost", "127.0.0.1"} and sh in blob:
+                    raise RuntimeProbeError(
+                        f"probe references a scope host {sh!r} (finding "
+                        f"{entry.get('finding_id')!r}); runtime probes hit only the local instance")
+
+
+def validate_probe_plan(probe_plan: list[dict], *, max_requests: int, max_payload_bytes: int,
+                        allow_state_changing: bool) -> None:
+    """Hard caps against DoS / unsafe ops. Methods are limited to read-only unless state-changing is
+    explicitly opted in; total request count and per-body size are capped."""
+    allowed = set(_READONLY_METHODS) | (set(_STATE_CHANGING_METHODS) if allow_state_changing else set())
+    total = 0
+    for entry in probe_plan:
+        for req in entry.get("requests", []):
+            total += 1
+            method = str(req.get("method", "GET")).upper()
+            if method not in allowed:
+                raise RuntimeProbeError(
+                    f"probe method {method!r} not allowed (finding {entry.get('finding_id')!r}); "
+                    f"allowed: {sorted(allowed)}"
+                    + ("" if allow_state_changing else " — enable runtime_allow_state_changing for writes"))
+            body = req.get("body")
+            if body is not None and len(str(body).encode("utf-8", "ignore")) > max_payload_bytes:
+                raise RuntimeProbeError(
+                    f"probe body exceeds {max_payload_bytes} bytes (finding {entry.get('finding_id')!r})")
+    if total > max_requests:
+        raise RuntimeProbeError(
+            f"probe plan has {total} requests, exceeding the cap of {max_requests} (anti-DoS)")
+
+
 # ------------------------------------------------------------------------- scope filter
 def out_of_scope_match(affected: list[str], out_of_scope: list[str]) -> str | None:
     """Code-side scope filter, independent of the LLM verdict.

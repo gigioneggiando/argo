@@ -87,6 +87,34 @@ building the map and writing the field instructions that a later agent will foll
    browsed).
 7. **Reconcile with scope.** Drop surfaces that are out of scope. Flag any in-scope asset you
    could not locate in the source tree.
+8. **Extract GROUND TRUTH (the depth+precision step — do the enumeration work HERE so the audit
+   agent verifies instead of searches).** This is what separates a generic prompt from a
+   target-specific one. For each focus you will emit, read the actual code and produce:
+   - **Invariants** — concrete, named security properties that MUST hold, as `location → expected →
+     how-to-check` triples. Cite the real file/class/method (e.g. *"`ApiAccessService.HasValidApiKey`
+     MUST use a constant-time comparison (`CryptographicOperations.FixedTimeEquals`), not
+     `string.Equals` / `==`"*). These are the audit's PASS/FAIL checklist.
+   - **Baseline-correct references** — for every *systemic* pattern (authz on two-ended operations,
+     output encoding, outbound-HTTP hardening, mass-assignment filtering…), find the ONE place the
+     codebase does it RIGHT and name it (e.g. *"`MoveDocumentController` authorizes BOTH source
+     (ActionMove) and destination (ActionNew) — the correct two-call shape"*). Every sibling that
+     deviates from the baseline is a finding. This is the most precise variant technique.
+   - **Variant families** — the codebase's repeated shapes (controller-per-operation,
+     converter-per-type, handler-per-resource). For each, ENUMERATE THE CONCRETE MEMBER LIST by
+     grepping (e.g. every `Move*Controller`/`Copy*Controller`/`Restore*Controller`; every
+     `IPropertyValueConverter`; every outbound `HttpClient` call site). Bake the full member list
+     into the prompt so the audit agent checks each, not just the first.
+   - **False-positive carve-outs** — target-specific patterns that LOOK like bugs but are intended
+     or safe HERE, each with its justification (e.g. *"`NotFound → not-denied` in permission
+     authorizers is deliberate existence-hiding, not fail-open"*; *"NPoco `Where<T>(lambda)`
+     parameterizes — not SQLi"*; *"`Guid.ToString()` concatenated into SQL cannot inject"*). These
+     drive precision AND are handed to the validation stage so it does not refute real findings.
+   - **Advisory classes** — the recurring vulnerability classes from THIS project's CVE/advisory
+     history (predictors of present variants).
+   Stop-conditions for this step: do not finish until — every systemic pattern has a named
+   baseline-correct reference; every variant family has its concrete member list enumerated; every
+   high-risk surface has at least one invariant; and the carve-out list covers the obvious
+   intended-design exceptions a naive scanner would flag.
 
 ## OUTPUT (produce all of the following)
 
@@ -94,6 +122,29 @@ building the map and writing the field instructions that a later agent will foll
 A structured profile: languages, frameworks (with versions if pinned), entry points,
 trust boundaries, untrusted-input sources, dangerous sinks, dependency-risk notes,
 historical bug classes, and an explicit `residual_unknowns` list.
+
+### A2. `ground_truth.json` (the depth+precision artifact from METHOD step 8)
+A single JSON object the downstream stages consume. Shape:
+```json
+{
+  "global": {
+    "fp_carveouts": ["<target-specific 'do not flag' rule + its justification>"],
+    "advisory_classes": ["<recurring vuln class from this project's history>"],
+    "dependency_risks": [{"name": "<pkg>", "version": "<pinned>", "note": "<advisory/why>"}]
+  },
+  "focuses": {
+    "<audit-focus-slug>": {
+      "invariants": [{"location": "file:line or Class.Method", "expected": "<property that MUST hold>", "how_to_check": "<concrete check>"}],
+      "baseline_correct": [{"pattern": "<systemic pattern>", "reference_impl": "file/Class", "why_correct": "<one line>"}],
+      "variant_families": [{"pattern_id": "<short id>", "root_cause": "<one line>", "members": ["file/Class", "..."]}],
+      "fp_carveouts": ["<focus-specific carve-out + justification>"]
+    }
+  }
+}
+```
+Use the SAME focus-slug keys as the `audit_<slug>.md` files. This file is best-effort structured
+extraction; the authoritative copy of every item is ALSO baked into the prose of each audit prompt
+(sections below). If you cannot fill a field, use an empty list — never omit the audit-prompt prose.
 
 ### B. A set of **complementary** custom audit prompts (do not produce one monolith)
 Decide the split from the **archetype** (step 1) and the architecture you actually found — not
@@ -135,6 +186,17 @@ the **scope + prohibited techniques verbatim**, the discovered tech stack and at
 the working method, the required per-finding format, the required deliverables, and the
 anti-false-positive / variant-hunting constraints. Fill every slot with target-specific
 content — no generic filler, no placeholders left unresolved.
+
+Critically, fill the four GROUND-TRUTH sections of the template with the real, enumerated content
+from METHOD step 8 — they are the difference between a generic and a target-specific prompt, and
+they must NOT be left empty or generic:
+- **INVARIANT CHECKLIST** — the real `location → expected → how-to-check` triples for this focus.
+- **BASELINE-CORRECT REFERENCES** — the named known-good implementation per systemic pattern.
+- **VARIANT FAMILIES** — each family with its CONCRETE enumerated member list (real file/class names
+  you found by grepping), and the instruction to log one VARIANT_HUNT_LOG row per member.
+- **FALSE-POSITIVE CARVE-OUTS** — the target-specific do-not-flag list with justifications.
+A prompt whose ground-truth sections are empty or could be pasted onto another project unchanged
+has FAILED the specificity self-check below — rewrite it with real enumerated names before emitting.
 
 If `TARGET_TYPE = source_and_live`, each generated prompt must instruct the audit agent to
 treat findings as **hypotheses** and to emit a separate `live_verification_plan` (safe,

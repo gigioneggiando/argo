@@ -1,0 +1,21 @@
+{
+  "program_name": "Mock Program",
+  "audit_focus": "dependencies",
+  "generated_at": "2026-01-01T00:00:00+00:00",
+  "findings": [
+    {
+      "id": "DEP-001",
+      "title": "Pinned vulnerable dependency left-pad 1.0.0",
+      "severity": "Low",
+      "confidence": "Confirmed",
+      "cwe": "CWE-937",
+      "owasp": "A06:2021 - Vulnerable and Outdated Components",
+      "affected": ["package.json:5"],
+      "vulnerable_flow": "package.json pins left-pad 1.0.0 which has advisory GHSA-XXXX.",
+      "why_vulnerable": "GHSA-XXXX affects <1.3.0; fixed in 1.3.0.",
+      "exploit_scenario": "Reachable only if the vulnerable API is called; verify usage.",
+      "impact": "Denial of service in the affected code path.",
+      "recommended_fix": "Bump left-pad to >= 1.3.0."
+    }
+  ]
+}

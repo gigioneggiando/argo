@@ -73,6 +73,35 @@ For each finding, emit a `live_verification_plan`: the minimal, in-scope, non-de
 {% for c in historical_bug_classes %}- {{ c }}
 {% endfor %}
 
+## INVARIANT CHECKLIST (verify EACH against the code; report PASS / FAIL / UNKNOWN with evidence)
+{# Concrete, recon-extracted security invariants: a named location, the property that MUST hold,
+   and how to check it. Turns open-ended hunting into closed-ended verification. #}
+{% for inv in invariant_checklist|default([]) %}- **{{ inv.location }}** — MUST: {{ inv.expected }}  ·  CHECK: {{ inv.how_to_check }}
+{% endfor %}
+A FAIL here is a finding. An UNKNOWN is a residual-unknown question, not a silent skip.
+
+## BASELINE-CORRECT REFERENCES (diff every sibling against the known-good implementation)
+{# For each systemic pattern, the one place the codebase does it RIGHT. Every other member of the
+   family is a finding if it deviates. This is the single most precise variant-hunting technique. #}
+{% for ref in baseline_correct_references|default([]) %}- Pattern **{{ ref.pattern }}** — known-correct: `{{ ref.reference_impl }}` ({{ ref.why_correct }}). Compare every sibling to it; deviation = finding.
+{% endfor %}
+
+## VARIANT FAMILIES (enumerate ALL members — do NOT stop at the first hit)
+{# The controller-per-operation / converter-per-type / handler-per-X shape means one bug recurs
+   across tens of files. Recon lists the concrete family members; you verify and report EACH,
+   even at Medium, because the root-cause fix closes them all at once. #}
+{% for fam in variant_families|default([]) %}### Family: {{ fam.pattern_id }} — {{ fam.root_cause }}
+Members to check (one row per member in VARIANT_HUNT_LOG, verdict 🟢 safe / 🟡 unsure / 🔴 vulnerable):
+{% for m in fam.members|default([]) %}  - `{{ m }}`
+{% endfor %}{% endfor %}
+
+## FALSE-POSITIVE CARVE-OUTS (do NOT flag these — they are intended/safe in THIS codebase)
+{# Recon-extracted, target-specific. Reporting one of these is a precision failure; it also
+   teaches the validator what NOT to second-guess. If you believe a carve-out is actually wrong,
+   you must defeat its stated justification with explicit code evidence before reporting. #}
+{% for co in fp_carveouts|default([]) %}- {{ co }}
+{% endfor %}
+
 ## METHOD
 
 1. Map the in-scope subsystems and their entry points.
@@ -81,9 +110,14 @@ For each finding, emit a `live_verification_plan`: the minimal, in-scope, non-de
 4. For auth/authz focus: build a permission matrix of intended vs *enforced* access for
    high-risk operations; trace identifiers from request → authorization decision → data access.
 5. Grep globally for the dangerous sinks and risky patterns relevant to this focus.
-6. Search for variants of every confirmed pattern.
-7. Correlate individual findings into realistic exploit chains.
-8. Note missing test coverage around the security invariants you relied on.
+6. Walk the **INVARIANT CHECKLIST**: verify each invariant, record PASS/FAIL/UNKNOWN with file:line evidence.
+7. Walk each **VARIANT FAMILY**: diff every listed member against its **baseline-correct reference**; record a
+   `VARIANT_HUNT_LOG` row per member (🟢/🟡/🔴). Do not stop at the first hit; report every 🔴 (and 🟡 as
+   needs-runtime-verification), even at Medium — they share one root-cause fix.
+8. Apply the **FALSE-POSITIVE CARVE-OUTS**: do not report a carve-out unless you can defeat its justification
+   with explicit code evidence (then say which carve-out and why it does not hold here).
+9. Correlate individual findings into realistic exploit chains.
+10. Note missing test coverage around the security invariants you relied on.
 
 ## REQUIRED PER-FINDING FORMAT (every finding, no omissions)
 
@@ -108,7 +142,11 @@ For each finding, emit a `live_verification_plan`: the minimal, in-scope, non-de
 
 1) `SECURITY_AUDIT_REPORT__{{ audit_focus_slug }}.md`
 2) `SECURITY_FINDINGS__{{ audit_focus_slug }}.json`  (conforming to findings_schema.json)
-{% for d in extra_deliverables %}{{ loop.index + 2 }}) {{ d }}
+3) `VARIANT_HUNT_LOG__{{ audit_focus_slug }}.md` — one table per VARIANT FAMILY, one row per member
+   (member · baseline-diff result · verdict 🟢/🟡/🔴 · file:line), plus the INVARIANT CHECKLIST results
+   table (location · PASS/FAIL/UNKNOWN · evidence). This is the coverage forcing-function: it must list
+   EVERY family member and EVERY invariant, not only the ones that turned into findings.
+{% for d in extra_deliverables %}{{ loop.index + 3 }}) {{ d }}
 {% endfor %}
 
 Also include: an inventory of what you reviewed, the highest-risk areas, a "fix first"

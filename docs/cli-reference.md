@@ -19,7 +19,9 @@ Everywhere below, `argo` ≡ `python -m argo.cli`.
 | `ingest` | 1 | brief + repo → `scope.json` (+ read-only repo copy) |
 | `recon` | 2 | `scope.json` + repo → `repo_profile.json` + custom prompts |
 | `run` | 3 | per-focus findings JSON |
-| `validate` | 4 | dedup + adversarial validation → `validated_findings.json` |
+| `sca` | SCA | dependency manifests → known-vuln pins as a `dependencies` focus (opt-out; no-op without manifests) |
+| `validate` | 4 | dedup + adversarial validation (downgrade-don't-delete) → `validated_findings.json` |
+| `runtime` | RUNTIME | **opt-in** sandboxed runtime verification: build the target in an egress-blocked, loopback-only container and probe ONLY the local instance (never live hosts) → `runtime_results.json`. See [runtime-verification-study.md](runtime-verification-study.md) |
 | `report` | 5 | `REPORT.md` + DRAFT submissions |
 | `pipeline` | 1–5 | the whole chain; **stops before any submission** |
 | `fix` | 6 (opt-in) | propose + **verify** a patch per confirmed finding (applies? compiles? no new errors?); never touches the target |
@@ -34,6 +36,7 @@ There is intentionally **no `submit` command** — submission is a manual human 
 argo ingest   --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--run RUN_ID]
 argo recon    --run RUN_ID
 argo run      --run RUN_ID
+argo sca      --run RUN_ID
 argo validate --run RUN_ID
 argo report   --run RUN_ID
 argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--dry-run] [--smoke]
@@ -89,7 +92,10 @@ argo quality  [--program P] [--runs-dir DIR]
 | Flag | Meaning |
 |---|---|
 | `--research / --no-research` | Stage-0 **web OSINT/threat-intel** before recon (CVEs, advisories, project security history → injected into recon). **On by default.** The only networked stage; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)). `--no-research` → fully offline. |
-| `--dry-run` | run ingest + recon, then **stop before any audit**. The prompt-quality feedback loop: inspect the generated prompts before paying to run them. |
+| `--sca / --no-sca` | software-composition analysis of dependency manifests (known-vuln pins) between audit and validate. **On by default**; emits a `dependencies` focus. No-op when the repo has no manifests. |
+| `--runtime` (+ `--runtime-image` / `--runtime-run-cmd`) | **opt-in, default off.** Sandboxed runtime verification after validate: builds the target into an egress-blocked, loopback-only container and probes ONLY the local instance to confirm/refute findings. Needs Docker + a launcher recipe + a `runs/<id>/runtime_probe_plan.json`; gracefully skips otherwise. Never touches the program's live hosts. |
+| `--critic-passes N` | completeness-critic re-passes per audit focus (the depth lever — re-audits each focus for missed variant-family members / unverified invariants, looping until dry). **Default 1**; `0` disables. |
+| `--dry-run` | run ingest + recon, then **stop before any audit**. The prompt-quality feedback loop: inspect the generated prompts (incl. the ground-truth sections) before paying to run them. |
 | `--smoke` | de-risked **real** end-to-end check: cheapest models, one audit focus, low budget + short timeout + tight caps. Defaults `--brief`/`--repo` to the bundled fixtures (and forces `--no-research`). See [headless-runner.md](headless-runner.md#the---smoke-run). |
 
 ## `fix`-only options (Phase 6 remediation)

@@ -122,6 +122,13 @@ class PipelineConfig:
     # (session-limit / rate-limit / 429), the same call is transparently retried on the next backend
     # (e.g. ["codex"] => Claude -> Codex). A walled backend is skipped for the rest of the run.
     runner_fallbacks: list[str] = field(default_factory=list)
+    # Multi-account Claude: CLAUDE_CONFIG_DIR for THIS headless runner (selects which logged-in
+    # account it uses). ``claude_accounts`` is an ordered list of such dirs — the headless backend
+    # becomes an account-fallback chain (limits are PER-ACCOUNT, so account A -> account B doubles
+    # capacity before falling through to runner_fallbacks). Set up each dir once with
+    # ``CLAUDE_CONFIG_DIR=<dir> claude login``.
+    claude_config_dir: str | None = None
+    claude_accounts: list[str] = field(default_factory=list)
     max_parallel_audits: int = 3        # concurrency cap for Stage 3 / Stage 4 fan-out
 
     # Codex backend (runner == "codex"). One model for all stages (Codex isn't tiered per stage

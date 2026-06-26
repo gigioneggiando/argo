@@ -113,3 +113,30 @@ def test_build_runner_wraps_in_fallback(tmp_path):
         assert isinstance(chained, FallbackRunner) and len(chained._runners) == 2
     finally:
         ledger.close()
+
+
+def test_build_runner_multi_account_claude_chain(tmp_path):
+    from argo.ledger import Ledger
+    from argo.runner import HeadlessClaudeRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="headless", claude_accounts=["/acct/a", "/acct/b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 2
+        assert all(isinstance(x, HeadlessClaudeRunner) for x in r._runners)
+        assert [x.config.claude_config_dir for x in r._runners] == ["/acct/a", "/acct/b"]
+    finally:
+        ledger.close()
+
+
+def test_build_runner_accounts_then_backend_fallback(tmp_path):
+    from argo.ledger import Ledger
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="headless", claude_accounts=["/a", "/b"],
+                             runner_fallbacks=["codex"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 3   # acctA -> acctB -> codex
+        assert r._runners[2].config.runner == "codex"
+    finally:
+        ledger.close()

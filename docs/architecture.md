@@ -119,6 +119,9 @@ Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`
   retried on the next backend (each picking its own per-stage model), so a long Opus run that walls
   on the Claude session limit mid-`validate` self-heals onto Codex instead of degrading. A walled
   backend is disabled for the rest of the run (circuit breaker); a non-retryable error propagates.
+  The chain can mix backends **and Claude accounts**: `--claude-accounts dirA,dirB` builds one
+  `HeadlessClaudeRunner` per `CLAUDE_CONFIG_DIR` (limits are per-account), so account A → account B →
+  `--fallback codex` — the runner injects `CLAUDE_CONFIG_DIR` per `claude` invocation.
 
 The real backends launch the CLI through `AgentRunner._exec`, a **cancellable** subprocess: a pump
 thread runs `communicate` while the main thread polls `self.cancel_event` (set by the orchestrator

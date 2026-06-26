@@ -120,7 +120,8 @@ class AgentRunner(ABC):
         self.cancel_event = None
 
     # ---------------------------------------------------------------- cancellable subprocess
-    def _exec(self, cmd: list[str], *, prompt: str, cwd, timeout: float) -> subprocess.CompletedProcess:
+    def _exec(self, cmd: list[str], *, prompt: str, cwd, timeout: float,
+              env: dict | None = None) -> subprocess.CompletedProcess:
         """Run a backend CLI as a **cancellable** subprocess: if ``self.cancel_event`` fires (the
         user hit Cancel mid-stage) or the timeout elapses, kill the whole process **tree** and raise.
 
@@ -133,7 +134,7 @@ class AgentRunner(ABC):
         proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", cwd=str(cwd),
-            creationflags=creationflags, preexec_fn=preexec)
+            env=env, creationflags=creationflags, preexec_fn=preexec)
         box: dict = {}
 
         def _pump():
@@ -359,8 +360,13 @@ class HeadlessClaudeRunner(AgentRunner):
         cmd = self._build_cmd(model=model, repo_dir=repo_dir, allowed=allowed,
                               disallowed=disallowed, session_budget_usd=session_budget_usd)
         timeout = timeout_s or self.config.session_timeout_s
+        # Multi-account: point this invocation at a specific Claude credential store so an
+        # account-fallback can switch accounts (limits are per-account). See build_runner.
+        env = None
+        if self.config.claude_config_dir:
+            env = {**os.environ, "CLAUDE_CONFIG_DIR": str(self.config.claude_config_dir)}
         try:
-            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout)
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
             raise RunnerError(
                 f"claude session timed out after {timeout}s "
@@ -792,8 +798,11 @@ def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner
 
 
 def build_runner(config: PipelineConfig, ledger: Ledger) -> AgentRunner:
-    primary = _build_one(config, ledger, config.runner)
-    if not config.runner_fallbacks:
-        return primary
-    chain = [primary] + [_build_one(config, ledger, n) for n in config.runner_fallbacks]
-    return FallbackRunner(config, ledger, chain)
+    # Multi-account Claude: one headless runner per account credential-dir (limits are per-account).
+    if config.runner == "headless" and config.claude_accounts:
+        chain = [HeadlessClaudeRunner(config.with_overrides(claude_config_dir=d), ledger)
+                 for d in config.claude_accounts]
+    else:
+        chain = [_build_one(config, ledger, config.runner)]
+    chain += [_build_one(config, ledger, n) for n in config.runner_fallbacks]
+    return chain[0] if len(chain) == 1 else FallbackRunner(config, ledger, chain)

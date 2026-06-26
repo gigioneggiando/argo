@@ -41,6 +41,7 @@ def _build_config(
     codex_oss: bool = False,
     codex_local_provider: Optional[str] = None,
     fallback: Optional[str] = None,
+    claude_accounts: Optional[str] = None,
 ) -> PipelineConfig:
     cfg = PipelineConfig(
         runner=runner,
@@ -63,6 +64,9 @@ def _build_config(
     if fallback:
         names = [n.strip() for n in fallback.split(",") if n.strip()]
         cfg = cfg.with_overrides(runner_fallbacks=names)
+    if claude_accounts:
+        dirs = [d.strip() for d in claude_accounts.split(",") if d.strip()]
+        cfg = cfg.with_overrides(claude_accounts=dirs)
     return cfg
 
 
@@ -87,6 +91,11 @@ SessionBudgetOpt = typer.Option(None, "--session-budget",
 FallbackOpt = typer.Option(None, "--fallback",
                            help="comma-separated fallback backends used when the primary hits a "
                                 "session/rate limit, e.g. --fallback codex (Claude -> Codex)")
+ClaudeAccountsOpt = typer.Option(
+    None, "--claude-accounts",
+    help="comma-separated CLAUDE_CONFIG_DIR paths to chain across (multi-account; limits are "
+         "per-account). Set up each once with `CLAUDE_CONFIG_DIR=<dir> claude login`. "
+         "e.g. --claude-accounts ~/.claude,~/.claude-b (account A -> account B -> --fallback)")
 RunIdArg = typer.Option(..., "--run", help="existing RUN_ID under --runs-dir")
 
 
@@ -274,12 +283,14 @@ def pipeline(
     session_budget: Optional[float] = SessionBudgetOpt,
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
+    claude_accounts: Optional[str] = ClaudeAccountsOpt,
 ):
     """Run stages 1-5 and STOP at human-review drafts. Never submits."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
                         timeout=timeout, max_turns=max_turns, session_budget=session_budget,
                         codex_model=codex_model, codex_oss=codex_oss,
-                        codex_local_provider=codex_local_provider, fallback=fallback)
+                        codex_local_provider=codex_local_provider, fallback=fallback,
+                        claude_accounts=claude_accounts)
     cfg = cfg.with_overrides(sca_enabled=sca, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd)
     if critic_passes is not None:

@@ -300,6 +300,21 @@ cleanly to the heterogeneous artifact types.
 Codex OS sandbox); cost is authoritative for Claude and token-estimated for Codex. Full details in
 **[docs/backends.md](docs/backends.md)**.
 
+**Resilience — multi-account & multi-backend fallback.** Backends and accounts chain transparently:
+when one hits a **session/rate limit (429)** the same call is retried on the next (a per-run circuit
+breaker disables the walled one; a non-retryable error propagates). Since limits are **per-account**,
+two logged-in Claude accounts double your capacity before falling through to Codex:
+
+```bash
+# account A -> account B -> Codex, all transparent on a 429
+python -m argo.cli pipeline --repo <url> --calibration \
+  --claude-accounts ~/.claude,~/.claude-b --fallback codex
+# set up the 2nd account once:  CLAUDE_CONFIG_DIR=~/.claude-b claude login
+```
+Codex multi-account works the same way (`--codex-accounts ~/.codex,~/.codex-b`, via `CODEX_HOME`).
+So a long Opus run that used to wall on the Claude limit mid-`validate` now self-heals to the next
+account/backend instead of degrading.
+
 Per-stage Claude defaults (overridable per-run; Codex uses one model for all stages):
 
 ```

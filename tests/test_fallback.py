@@ -140,3 +140,33 @@ def test_build_runner_accounts_then_backend_fallback(tmp_path):
         assert r._runners[2].config.runner == "codex"
     finally:
         ledger.close()
+
+
+def test_build_runner_multi_account_codex_chain(tmp_path):
+    from argo.ledger import Ledger
+    from argo.runner import CodexRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="codex", codex_accounts=["/cdx/a", "/cdx/b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 2
+        assert all(isinstance(x, CodexRunner) for x in r._runners)
+        assert [x.config.codex_home for x in r._runners] == ["/cdx/a", "/cdx/b"]
+    finally:
+        ledger.close()
+
+
+def test_build_runner_mixed_claude_and_codex_accounts(tmp_path):
+    from argo.ledger import Ledger
+    from argo.runner import HeadlessClaudeRunner, CodexRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="headless", claude_accounts=["/cl/a", "/cl/b"],
+                             runner_fallbacks=["codex"], codex_accounts=["/cx/a", "/cx/b"])
+        r = build_runner(cfg, ledger)
+        # claude A -> claude B -> codex A -> codex B  (the codex fallback also expands per-account)
+        assert len(r._runners) == 4
+        assert [type(x).__name__ for x in r._runners] == \
+            ["HeadlessClaudeRunner", "HeadlessClaudeRunner", "CodexRunner", "CodexRunner"]
+    finally:
+        ledger.close()

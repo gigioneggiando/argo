@@ -8,7 +8,7 @@ construction, and the subprocess error paths with crafted inputs and fakes (stil
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/ -q          # 184 tests (incl. the HTTP API + UI serving on the mock runner)
+python -m pytest tests/ -q          # 186 tests (incl. the HTTP API + UI serving on the mock runner)
 ```
 
 `pytest.ini` pins `--basetemp=.pytest_tmp` so the read-only repo copies the pipeline creates do
@@ -33,7 +33,7 @@ not trip Windows' global temp rotation.
 | `test_cancel.py` | **C1 mid-stage cancellation**: `AgentRunner._exec` runs a real subprocess, kills it **promptly** when the cancel_event fires (not after the full sleep) and on timeout, returns a CompletedProcess on success; the orchestrator turns a mid-stage `RunnerCancelled` into a cancelled run (status.json) |
 | `test_runtime.py` | **R1–R4 runtime verification**: the safety validators (`assert_loopback_only` rejects external/scope hosts + protocol-relative; `validate_probe_plan` caps request count, body size, and read-only methods unless opted in), the stage's graceful-skip gating, a **Docker-gated end-to-end sealed-sandbox proof** (`--network=none` app container + a probe container sharing its loopback namespace), **R2** (`_generate_plan` LLM-proposes a plan, `_interpret` returns verdicts, full `run()` generates-then-skips without a recipe), **R3** (`_resolve_launcher` picks explicit config / argo-runtime.json / repo Dockerfile; `_dockerfile_expose` parses the port), **R2-auth** (`auth` login step is loopback-checked; login POST exempt from the read-only gate but probe POST still blocked), and **R4** (the report renders a finding's `runtime` verdict + evidence, and omits the block when absent — golden report stays stable) |
 | `test_uplift.py` | the **precision/depth uplift**: recon captures `ground_truth.json`; the **SCA** dependency stage flows a `dependencies` finding into the validated set (and `--no-sca` suppresses it); the **completeness-critic** re-pass adds nothing-but-duplicates in mock and spends extra sessions; **drift-repair** keeps a malformed finding (flagged `schema_repair_failed`) instead of dropping it; `_format_ground_truth` surfaces carve-outs + baseline-correct refs to the validator |
-| `test_fallback.py` | **resilience**: `FallbackRunner` retries a session/rate-limited (429) call on the next backend (Claude→Codex→local), propagates non-retryable errors immediately, a circuit breaker skips a walled backend for the rest of the run, and each backend selects its own per-stage model; `build_runner` wraps a chain only when `--fallback` is set |
+| `test_fallback.py` | **resilience**: `FallbackRunner` retries a session/rate-limited (429) call on the next backend (Claude→Codex→local), propagates non-retryable errors immediately, a circuit breaker skips a walled backend for the rest of the run, and each backend selects its own per-stage model; the chain mixes backends AND accounts (`--claude-accounts` via CLAUDE_CONFIG_DIR, `--codex-accounts` via CODEX_HOME); `build_runner` wraps a chain only when fallbacks/accounts are set |
 | `test_codex.py` | the **Codex backend**: the sandbox-mapping guardrails (audit stage is `-s workspace-write` + offline, **never** a `danger-*` escape; only `research` gets network), `--oss`/model flags, token parsing + cost estimation, `build_runner` dispatch, CLI/API config passthrough |
 
 ## The two zero-cost modes

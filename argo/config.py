@@ -129,6 +129,10 @@ class PipelineConfig:
     # ``CLAUDE_CONFIG_DIR=<dir> claude login``.
     claude_config_dir: str | None = None
     claude_accounts: list[str] = field(default_factory=list)
+    # Multi-account Codex: same idea via CODEX_HOME (default ~/.codex). ``codex_accounts`` is an
+    # ordered list of CODEX_HOME dirs -> the codex backend becomes an account-fallback chain.
+    codex_home: str | None = None
+    codex_accounts: list[str] = field(default_factory=list)
     max_parallel_audits: int = 3        # concurrency cap for Stage 3 / Stage 4 fan-out
 
     # Codex backend (runner == "codex"). One model for all stages (Codex isn't tiered per stage

@@ -474,8 +474,14 @@ class CodexRunner(AgentRunner):
         last_msg = Path(work_dir) / ".codex_last_message.txt"
         cmd = self._build_codex_cmd(model=model, policy=policy, last_msg_file=last_msg)
         timeout = timeout_s or self.config.session_timeout_s
+        # Multi-account: point this invocation at a specific Codex config home (CODEX_HOME) so an
+        # account-fallback can switch Codex accounts (limits are per-account). See build_runner.
+        env = None
+        if self.config.codex_home:
+            env = {**os.environ,
+                   "CODEX_HOME": os.path.abspath(os.path.expanduser(str(self.config.codex_home)))}
         try:
-            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout)
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
             raise RunnerError(f"codex session timed out after {timeout}s (stage={stage}, "
                               f"run_id={run_id}, label={label})") from exc
@@ -800,12 +806,20 @@ def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner
     raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', or 'mock')")
 
 
+def _expand_backend(config: PipelineConfig, ledger: Ledger, name: str) -> list[AgentRunner]:
+    """One backend name -> one or more runners. Multi-account backends expand to one runner per
+    credential dir (limits are per-account): Claude via CLAUDE_CONFIG_DIR, Codex via CODEX_HOME."""
+    if name == "headless" and config.claude_accounts:
+        return [HeadlessClaudeRunner(config.with_overrides(claude_config_dir=d), ledger)
+                for d in config.claude_accounts]
+    if name == "codex" and config.codex_accounts:
+        return [CodexRunner(config.with_overrides(codex_home=d), ledger)
+                for d in config.codex_accounts]
+    return [_build_one(config, ledger, name)]
+
+
 def build_runner(config: PipelineConfig, ledger: Ledger) -> AgentRunner:
-    # Multi-account Claude: one headless runner per account credential-dir (limits are per-account).
-    if config.runner == "headless" and config.claude_accounts:
-        chain = [HeadlessClaudeRunner(config.with_overrides(claude_config_dir=d), ledger)
-                 for d in config.claude_accounts]
-    else:
-        chain = [_build_one(config, ledger, config.runner)]
-    chain += [_build_one(config, ledger, n) for n in config.runner_fallbacks]
+    chain = _expand_backend(config, ledger, config.runner)
+    for n in config.runner_fallbacks:
+        chain += _expand_backend(config, ledger, n)
     return chain[0] if len(chain) == 1 else FallbackRunner(config, ledger, chain)

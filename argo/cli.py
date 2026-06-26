@@ -42,6 +42,7 @@ def _build_config(
     codex_local_provider: Optional[str] = None,
     fallback: Optional[str] = None,
     claude_accounts: Optional[str] = None,
+    codex_accounts: Optional[str] = None,
 ) -> PipelineConfig:
     cfg = PipelineConfig(
         runner=runner,
@@ -67,6 +68,9 @@ def _build_config(
     if claude_accounts:
         dirs = [d.strip() for d in claude_accounts.split(",") if d.strip()]
         cfg = cfg.with_overrides(claude_accounts=dirs)
+    if codex_accounts:
+        dirs = [d.strip() for d in codex_accounts.split(",") if d.strip()]
+        cfg = cfg.with_overrides(codex_accounts=dirs)
     return cfg
 
 
@@ -96,6 +100,11 @@ ClaudeAccountsOpt = typer.Option(
     help="comma-separated CLAUDE_CONFIG_DIR paths to chain across (multi-account; limits are "
          "per-account). Set up each once with `CLAUDE_CONFIG_DIR=<dir> claude login`. "
          "e.g. --claude-accounts ~/.claude,~/.claude-b (account A -> account B -> --fallback)")
+CodexAccountsOpt = typer.Option(
+    None, "--codex-accounts",
+    help="comma-separated CODEX_HOME paths to chain across (multi-account Codex; limits are "
+         "per-account). Set up each once with `CODEX_HOME=<dir> codex login`. "
+         "e.g. --codex-accounts ~/.codex,~/.codex-b")
 RunIdArg = typer.Option(..., "--run", help="existing RUN_ID under --runs-dir")
 
 
@@ -284,13 +293,14 @@ def pipeline(
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
+    codex_accounts: Optional[str] = CodexAccountsOpt,
 ):
     """Run stages 1-5 and STOP at human-review drafts. Never submits."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
                         timeout=timeout, max_turns=max_turns, session_budget=session_budget,
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
-                        claude_accounts=claude_accounts)
+                        claude_accounts=claude_accounts, codex_accounts=codex_accounts)
     cfg = cfg.with_overrides(sca_enabled=sca, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd)
     if critic_passes is not None:

@@ -81,6 +81,28 @@ def test_each_backend_picks_its_own_model():
     assert f.models[0] == PipelineConfig(runner="codex").model_for("validate")
 
 
+class _Always429(__import__("argo.runner", fromlist=["AgentRunner"]).AgentRunner):
+    """A real AgentRunner whose every session raises a retryable session-limit error."""
+    def _invoke(self, **kwargs):
+        raise RunnerError("You've hit your session limit · resets later")
+
+
+def test_full_pipeline_self_heals_onto_fallback(env):
+    """End-to-end: a primary backend that ALWAYS 429s -> the whole pipeline transparently runs on
+    the (mock) fallback and completes. Proves no data loss + automatic recovery across the wall."""
+    from conftest import BRIEF, REPO
+    from argo.orchestrator import run_pipeline
+    from argo.runner import MockClaudeRunner
+
+    ctx = env()
+    primary = _Always429(ctx.config, ctx.ledger)
+    fallback = MockClaudeRunner(ctx.config, ctx.ledger)
+    ctx.runner = FallbackRunner(ctx.config, ctx.ledger, [primary, fallback])
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    assert (ctx.run_dir / "REPORT.md").is_file()                 # the run completed via the fallback
+    assert (ctx.run_dir / "validated_findings.json").is_file()
+
+
 def test_build_runner_wraps_in_fallback(tmp_path):
     from argo.ledger import Ledger
     ledger = Ledger(tmp_path / "l.sqlite")

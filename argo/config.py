@@ -35,6 +35,7 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
     "research": SONNET, # opt-out Stage-0 web OSINT / threat intel (feeds recon)
     "sca": OPUS,        # dependency / software-composition analysis (manifest -> known-vuln deps)
     "runtime": SONNET,  # R2: propose loopback probe plans + interpret results (offline, validated)
+    "live": SONNET,     # L2: propose in-scope live probe plans + interpret results (offline, validated)
 }
 
 #: Default per-stage wall-clock overrides (seconds). Recon now does deep ground-truth extraction

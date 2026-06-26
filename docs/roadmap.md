@@ -280,7 +280,7 @@ guardrails — today **no code execution** is a hard rule. The design constraint
   (a distinct opt-in mode) so the default tool stays static-only. Until then, Argo emits the
   `live_verification_plan` text for a human to run.
 
-### Phase 10 — Live target interaction (opt-in, scope-locked) — ◑ L1 DONE (read-only)
+### Phase 10 — Live target interaction (opt-in, scope-locked) — ◑ L1+L2 DONE (read-only)
 > Full safety model in **[guardrails.md §2c](guardrails.md#2c-the-opt-in-live-exception-the-live-stage-in-scope-hosts-only)**.
 > The deliberate, heavily-gated relaxation of the "never a live host" rule, for **authorized**
 > bug-bounty engagements whose RoE permit automated interaction. The live analog of Phase 9's runtime
@@ -304,8 +304,14 @@ and audit-logged, and the default tool remains 100% offline against the program'
   `argo/stages/live.py`; config `live_enabled`/`live_allow_writes`/`live_max_requests`/
   `live_min_request_interval_s`/`live_request_timeout_s`/`live_max_payload_bytes` (all off/conservative
   by default). Tests: `tests/test_live.py` (gates + executor against an in-scope loopback server).
-- [ ] **L2 — LLM-proposed live probe plan** (the model writes the plan from the run's findings; same
-  deterministic validators gate it before any request — mirrors Phase-9 R2). Still read-only.
+- **L2 — LLM-proposed live probe plan — ✅ DONE.** With no hand-written plan, an **offline** LLM
+  session (`stages/live._generate_plan`, prompt `06_live_probe_prompt.md`) writes a plan from the
+  validated findings — using **absolute in-scope URLs** (the inverse of R2's loopback-relative paths) —
+  then the **same** deterministic gates run before any request; a second offline session
+  (`_interpret`, `07_live_interpret_prompt.md`) judges each finding `live_confirmed/refuted/inconclusive`
+  from the observations and attaches a `validation.live` block to `validated_findings.json`. Both
+  sessions are network-free (`stage="live"` gets no network tools); only the fixed executor reaches the
+  host. Still read-only. Mock-runner tested end-to-end (generate→gate→execute→interpret→attach).
 - [ ] **L3 — state-changing probes** behind the **second** opt-in (`--allow-writes` / `live_allow_writes`)
   for deeper confirmations, with extra care (non-destructive only; honor `prohibited_techniques`).
 - [ ] _Later:_ surface live verdicts in `REPORT.md` (as Phase-9 R4 did for runtime), and an authenticated

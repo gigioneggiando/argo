@@ -169,6 +169,69 @@ def test_oversized_plan_rejected_before_any_request(env, loopback_server):
     assert not (ctx.run_dir / "live_audit_log.jsonl").exists()   # nothing was sent
 
 
+# ------------------------------------------------------------ L2: LLM propose / interpret (offline)
+_ONE_FINDING = {"findings": [{
+    "id": "MOCK-1", "title": "anon admin endpoint", "severity": "High", "affected": ["a.cs:1"],
+    "vulnerable_flow": "x", "why_vulnerable": "y", "exploit_scenario": "z"}]}
+
+
+def test_l2_generate_plan_uses_inscope_host(env):
+    ctx = env()                                                 # mock runner
+    ctx.run_dir.mkdir(parents=True, exist_ok=True)
+    ctx.validated_findings_path.write_text(json.dumps(_ONE_FINDING), encoding="utf-8")
+    scope = SimpleNamespace(program_name="t", prohibited_techniques=["no DoS"],
+                            in_scope=[SimpleNamespace(asset="api.acme.com", type="api")],
+                            out_of_scope=[])
+    plan = live._generate_plan(ctx, scope)
+    assert plan and plan[0]["finding_id"] == "MOCK-1"
+    assert plan[0]["requests"][0]["url"].startswith("https://api.acme.com/")
+    # the generated plan must survive the in-scope scope-lock
+    from argo.guardrails import assert_inscope_only
+    assert_inscope_only(plan, _scope(in_scope=(("api.acme.com", "api"),)))
+    assert (ctx.run_dir / "live_probe_plan.json").is_file()
+
+
+def test_l2_generate_plan_no_inscope_host_skips(env):
+    ctx = env()
+    ctx.run_dir.mkdir(parents=True, exist_ok=True)
+    ctx.validated_findings_path.write_text(json.dumps(_ONE_FINDING), encoding="utf-8")
+    scope = SimpleNamespace(program_name="t", prohibited_techniques=["no DoS"],
+                            in_scope=[SimpleNamespace(asset="repo.git", type="source_repo")],
+                            out_of_scope=[])
+    assert live._generate_plan(ctx, scope) is None             # no web/api host -> nothing to probe
+
+
+def test_l2_interpret(env):
+    ctx = env()
+    ctx.run_dir.mkdir(parents=True, exist_ok=True)
+    results = {"findings": [{"finding_id": "MOCK-1", "requests": [
+        {"method": "GET", "url": "https://api.acme.com/x", "status": 200,
+         "body_snippet": "secret", "expect_met": True}]}]}
+    verdicts = live._interpret(ctx, results)
+    assert verdicts.get("MOCK-1", {}).get("live_verdict") == "live_confirmed"
+
+
+def test_l2_run_end_to_end_generates_executes_attaches(env, loopback_server):
+    """No hand-written plan: run() LLM-generates an in-scope plan, the gates pass, the fixed executor
+    hits the in-scope loopback server, interpret judges it, and the verdict is attached to the finding."""
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
+    ctx.run_dir.mkdir(parents=True, exist_ok=True)
+    ctx.scope_path.write_text(json.dumps({
+        "program_name": "t", "platform": "t", "target_type": "source_and_live",
+        "in_scope": [{"asset": f"http://{loopback_server}", "type": "web"}],
+        "out_of_scope": [], "prohibited_techniques": ["no DoS"],
+        "safe_harbor": True, "automation_allowed": True}), encoding="utf-8")
+    ctx.validated_findings_path.write_text(json.dumps(_ONE_FINDING), encoding="utf-8")
+
+    out = live.run(ctx)                                         # no plan file -> L2 generates one
+    assert out is not None
+    results = json.loads(out.read_text(encoding="utf-8"))
+    assert results["findings"][0]["requests"][0]["status"] == 200
+    doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8"))
+    assert doc["findings"][0]["validation"]["live"]["verdict"] == "live_confirmed"
+    assert (ctx.run_dir / "live_audit_log.jsonl").is_file()
+
+
 def test_executor_blocked_when_out_of_scope(env, loopback_server):
     ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
     _write_scope(ctx, loopback_server)                           # only loopback_server is in-scope

@@ -2,9 +2,14 @@
 
 `argo live` (the opt-in, default-off live stage — see
 [guardrails §2c](../guardrails.md#2c-the-opt-in-live-exception-the-live-stage-in-scope-hosts-only))
-reads a **hand-written** `runs/<RUN_ID>/live_probe_plan.json` and makes the requests in it against the
-program's **live in-scope hosts** to confirm findings. It is the live analog of the runtime probe plan,
-but pointed at the real target — so it is gated hard. Copy `live-probe-plan.example.json` and edit it.
+makes bounded requests against the program's **live in-scope hosts** to confirm findings. It is the
+live analog of the runtime probe plan, but pointed at the real target — so it is gated hard.
+
+The plan can be **hand-written** (this file) at `runs/<RUN_ID>/live_probe_plan.json`, **or** — if you
+omit it — Argo's **L2** mode has an offline LLM generate one from the run's validated findings and then
+interpret the results (the same hard gates below apply either way). Hand-write it when you want full
+control over exactly what is sent; otherwise just run `argo live` and let L2 propose the plan. To
+hand-write one, copy `live-probe-plan.example.json` and edit it.
 
 ## Format
 

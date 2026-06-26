@@ -24,8 +24,12 @@ import time
 import urllib.error
 import urllib.request
 
-from ..context import RunContext
-from ..guardrails import assert_inscope_only, assert_live_authorized, validate_probe_plan
+from ..config import ARTIFACT_TOOLS
+from ..context import RunContext, collect_output_files
+from ..guardrails import (assert_inscope_only, assert_live_authorized, validate_probe_plan,
+                          assert_prohibited_present)
+from ..rendering import fill_placeholders, with_artifact_contract
+from ..runner import RunnerError
 
 
 def _log(msg: str) -> None:
@@ -86,23 +90,162 @@ def _execute(ctx: RunContext, plan: list[dict]) -> tuple[dict, list[dict]]:
     return results, audit
 
 
+# --------------------------------------------------------------------- L2: LLM propose / interpret
+def _findings_for_prompt(ctx: RunContext) -> list[dict]:
+    """The validated findings, trimmed to what a live-probe author needs."""
+    vf = ctx.validated_findings_path
+    if not vf.is_file():
+        return []
+    try:
+        doc = json.loads(vf.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    keep = ("id", "title", "severity", "affected", "vulnerable_flow", "why_vulnerable",
+            "exploit_scenario")
+    return [{k: f.get(k) for k in keep if f.get(k) is not None} for f in doc.get("findings", [])]
+
+
+def _inscope_web_assets(scope) -> list[str]:
+    return [a.asset for a in getattr(scope, "in_scope", []) if getattr(a, "type", None) in ("web", "api")]
+
+
+def _generate_plan(ctx: RunContext, scope) -> list | None:
+    """L2: an OFFLINE LLM 'propose' session designs an in-scope-only live probe plan from the validated
+    findings (read-only repo, NO network tools — only the executor later touches the network). The plan
+    is validated by the same hard gates before any request. Returns the parsed plan, or None."""
+    cfg = ctx.config
+    findings = _findings_for_prompt(ctx)
+    if not findings:
+        _log("no validated findings to generate live probes for; skipping")
+        return None
+    hosts = _inscope_web_assets(scope)
+    if not hosts:
+        _log("scope has no in-scope web/api host; nothing to probe live")
+        return None
+    state_note = ("State-changing methods are permitted but use them ONLY for non-destructive "
+                  "confirmations." if cfg.live_allow_writes
+                  else "ONLY GET/HEAD/OPTIONS are permitted — no writes.")
+    template = (ctx.assets_dir / "06_live_probe_prompt.md").read_text(encoding="utf-8")
+    rendered = fill_placeholders(template, {
+        "PROGRAM_NAME": scope.program_name, "REPO_PATH": str(ctx.repo_dir.resolve()),
+        "IN_SCOPE_HOSTS": "\n".join(f"- {h}" for h in hosts),
+        "OUT_OF_SCOPE": "\n".join(f"- {x}" for x in scope.out_of_scope) or "- (none listed)",
+        "PROHIBITED_TECHNIQUES": "\n".join(f"- {p}" for p in scope.prohibited_techniques),
+        "FINDINGS_JSON": json.dumps(findings, indent=2),
+        "MAX_REQUESTS": str(cfg.live_max_requests),
+        "METHOD_HINT": "GET/HEAD/OPTIONS" if not cfg.live_allow_writes
+                       else "GET/HEAD/OPTIONS, and POST/PUT only if non-destructive",
+        "STATE_CHANGING_NOTE": state_note})
+    assert_prohibited_present(rendered, scope.prohibited_techniques)
+    prompt = with_artifact_contract(rendered, artifacts=[{
+        "type": "probe_plan", "filename": "live_probe_plan.json", "schema": None,
+        "desc": "the in-scope-only live probe plan (list of {finding_id, requests})"}])
+    work = ctx.work_dir("live", "propose")
+    try:
+        result = ctx.runner.run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
+                                model=cfg.model_for("live"), stage="live", run_id=ctx.run_id,
+                                repo_dir=ctx.repo_dir, allowed_tools=ARTIFACT_TOOLS, label="live-propose")
+        files = collect_output_files(result, "live_probe_plan.json")
+    except RunnerError as exc:
+        _log(f"live probe-plan generation failed ({exc}); skipping")
+        return None
+    if not files:
+        _log("live probe-plan generation produced no file; skipping")
+        return None
+    try:
+        plan = json.loads(files[0].read_text(encoding="utf-8"))
+        plan = plan.get("plan", plan) if isinstance(plan, dict) else plan
+    except (OSError, ValueError) as exc:
+        _log(f"generated live probe plan is not valid JSON ({exc}); skipping")
+        return None
+    if isinstance(plan, list) and plan:
+        (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
+        _log(f"LLM generated a live probe plan for {len(plan)} finding(s)")
+        return plan
+    _log("LLM proposed no in-scope probeable findings")
+    return None
+
+
+def _interpret(ctx: RunContext, results: dict) -> dict:
+    """L2: an OFFLINE LLM 'interpret' session judges each finding live_confirmed/refuted/inconclusive
+    from the observed responses. Returns {finding_id: verdict}; empty on failure (falls back to expect_met)."""
+    probe_findings = []
+    for f in results.get("findings", []):
+        probe_findings.append({"finding_id": f.get("finding_id"), "requests": [
+            {"method": r.get("method"), "url": r.get("url"), "status": r.get("status"),
+             "body_snippet": (r.get("body_snippet") or "")[:600], "expect_met": r.get("expect_met")}
+            for r in f.get("requests", []) if "skipped" not in r]})
+    if not probe_findings:
+        return {}
+    template = (ctx.assets_dir / "07_live_interpret_prompt.md").read_text(encoding="utf-8")
+    rendered = fill_placeholders(template, {"PROBE_FINDINGS_JSON": json.dumps(probe_findings, indent=2)})
+    prompt = with_artifact_contract(rendered, artifacts=[{
+        "type": "live_verdicts", "filename": "live_verdicts.json", "schema": None,
+        "desc": "per-finding live verdicts"}])
+    work = ctx.work_dir("live", "interpret")
+    try:
+        result = ctx.runner.run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
+                                model=ctx.config.model_for("live"), stage="live", run_id=ctx.run_id,
+                                repo_dir=None, allowed_tools=ARTIFACT_TOOLS, label="live-interpret")
+        files = collect_output_files(result, "live_verdicts.json")
+        if not files:
+            return {}
+        doc = json.loads(files[0].read_text(encoding="utf-8"))
+    except (RunnerError, OSError, ValueError) as exc:
+        _log(f"interpretation failed ({exc}); falling back to expectation matching")
+        return {}
+    return {v.get("finding_id"): v for v in doc.get("verdicts", []) if v.get("finding_id")}
+
+
+def _attach_to_findings(ctx: RunContext, results: dict, verdicts: dict) -> None:
+    """Merge a per-finding ``live`` evidence block into validated_findings.json (best-effort)."""
+    vf = ctx.validated_findings_path
+    if not vf.is_file():
+        return
+    try:
+        doc = json.loads(vf.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    by_id = {f.get("finding_id"): f for f in results.get("findings", [])}
+    for finding in doc.get("findings", []):
+        ev = by_id.get(finding.get("id"))
+        if not ev:
+            continue
+        v = verdicts.get(finding.get("id"))
+        if v:
+            verdict, evidence = v.get("live_verdict", "live_inconclusive"), v.get("evidence")
+        else:
+            any_met = any(r.get("expect_met") for r in ev.get("requests", []))
+            verdict, evidence = ("live_confirmed" if any_met else "live_inconclusive"), None
+        finding.setdefault("validation", {})["live"] = {
+            "verdict": verdict, "evidence": evidence, "probes": ev.get("requests", [])}
+    vf.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+
+
 def run(ctx: RunContext):
     cfg = ctx.config
     if not cfg.live_enabled:
         return None
     plan_path = ctx.run_dir / "live_probe_plan.json"
-    if not plan_path.is_file():
-        _log("no live_probe_plan.json (L1 expects a hand-written plan); skipping")
+    has_plan = plan_path.is_file()
+    if not has_plan and not ctx.validated_findings_path.is_file():
+        _log("no live_probe_plan.json and no validated findings to generate from; skipping")
         return None
     scope = ctx.load_scope()
-    try:
-        plan = json.loads(plan_path.read_text(encoding="utf-8"))
-        plan = plan.get("plan", plan) if isinstance(plan, dict) else plan
-        if not isinstance(plan, list):
-            raise ValueError("live probe plan must be a list of {finding_id, requests:[...]}")
-    except (OSError, ValueError) as exc:
-        _log(f"invalid live probe plan ({exc}); skipping")
-        return None
+    if has_plan:
+        try:
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan = plan.get("plan", plan) if isinstance(plan, dict) else plan
+            if not isinstance(plan, list):
+                raise ValueError("live probe plan must be a list of {finding_id, requests:[...]}")
+        except (OSError, ValueError) as exc:
+            _log(f"invalid live probe plan ({exc}); skipping")
+            return None
+    else:
+        # L2: no hand-written plan -> generate one with the LLM (offline, validated by the gates below).
+        plan = _generate_plan(ctx, scope)
+        if not plan:
+            return None
 
     # ---- HARD GATES (any failure aborts; nothing is sent) -------------------------------------
     assert_live_authorized(scope)                               # RoE authorizes live interaction
@@ -116,10 +259,19 @@ def run(ctx: RunContext):
          f"({'read-only' if not cfg.live_allow_writes else 'WRITES ENABLED'}); every request is audit-logged")
     results, audit = _execute(ctx, plan)
 
+    # L2: LLM interprets the observations into per-finding verdicts (falls back to expect_met).
+    verdicts = _interpret(ctx, results)
+    if verdicts:
+        results["verdicts"] = list(verdicts.values())
+
     (ctx.run_dir / "live_audit_log.jsonl").write_text(
         "\n".join(json.dumps(a) for a in audit) + ("\n" if audit else ""), encoding="utf-8")
     out = ctx.run_dir / "live_results.json"
     out.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    met = sum(1 for f in results["findings"] for r in f.get("requests", []) if r.get("expect_met"))
-    _log(f"{len(audit)} live request(s) made; {met} met expectation -> {out.name} (+ live_audit_log.jsonl)")
+    _attach_to_findings(ctx, results, verdicts)
+    confirmed = sum(1 for v in verdicts.values() if v.get("live_verdict") == "live_confirmed") \
+        if verdicts else sum(1 for f in results["findings"]
+                             for r in f.get("requests", []) if r.get("expect_met"))
+    _log(f"{len(audit)} live request(s) made; {confirmed} finding(s) live-confirmed "
+         f"-> {out.name} (+ live_audit_log.jsonl)")
     return out

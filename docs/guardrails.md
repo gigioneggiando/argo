@@ -102,9 +102,11 @@ target is the in-scope host instead of loopback — so the validators are **inve
   only (GET/HEAD/OPTIONS) unless `live_allow_writes` (a deliberate **second** opt-in, `--allow-writes`)
   is set; total request count, body size, and rate (`live_min_request_interval_s`) are capped. An
   oversized plan is **rejected whole** (fail-loud, no silent truncation), honoring "no DoS".
-- **No model execution primitive** — a hand-written plan (L1) is run by a **fixed** stdlib executor,
-  not a model shell; the model never gets a network tool. (LLM plan generation is L2, still gated by
-  the same deterministic validators.)
+- **No model execution primitive** — the plan (hand-written, L1; or LLM-generated, L2) is run by a
+  **fixed** stdlib executor, not a model shell; the model never gets a network tool. In L2 the propose
+  and interpret sessions are **offline** (read-only repo, no network — `stage="live"` gets no network
+  tools, exactly like the audit stages); only the executor touches the network, and only after the
+  same deterministic gates (`assert_inscope_only` + `validate_probe_plan`) pass on the generated plan.
 - **Full accountability** — every request is written to `runs/<id>/live_audit_log.jsonl`
   (timestamp, method, URL, status, size); results land in `live_results.json`.
 - **Best-effort + off-by-default** — skips silently when disabled or no plan exists; any gate failure

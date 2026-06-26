@@ -545,6 +545,8 @@ class MockClaudeRunner(ClaudeRunner):
             return self._sca(work_dir, label)
         if stage == "runtime":
             return self._runtime(work_dir, label)
+        if stage == "live":
+            return self._live(work_dir, label, prompt)
         handler = {
             "ingest": self._ingest,
             "recon": self._recon,
@@ -652,6 +654,36 @@ class MockClaudeRunner(ClaudeRunner):
             {"finding_id": "MOCK-1", "note": "mock probe",
              "requests": [{"method": "GET", "path": "/status", "expect": {"status": [200]}}]}]),
             encoding="utf-8")
+        return self._envelope(self._manifest(
+            [{"type": "probe_plan", "path": out.name, "status": "ok"}]))
+
+    def _live(self, work_dir: Path, label, prompt: str) -> dict:
+        """Mock L2 live sessions: 'propose' emits an in-scope absolute-URL probe plan (host parsed
+        from the prompt's IN-SCOPE HOSTS list so it passes the scope-lock); 'interpret' emits verdicts."""
+        if "interpret" in (label or ""):
+            out = work_dir / "live_verdicts.json"
+            out.write_text(json.dumps({"verdicts": [
+                {"finding_id": "MOCK-1", "live_verdict": "live_confirmed",
+                 "evidence": "200 to anonymous caller", "rationale": "endpoint requires no auth"}]}),
+                encoding="utf-8")
+            return self._envelope(self._manifest(
+                [{"type": "live_verdicts", "path": out.name, "status": "ok"}]))
+        raw = "example.com"
+        if "IN-SCOPE HOSTS" in prompt:
+            for line in prompt.split("IN-SCOPE HOSTS", 1)[1].splitlines():
+                s = line.strip()
+                if s.startswith("- "):
+                    raw = s[2:].strip()
+                    break
+        scheme = "https"
+        if "://" in raw:
+            scheme, raw = raw.split("://", 1)
+        host = raw.split("/", 1)[0]
+        out = work_dir / "live_probe_plan.json"
+        out.write_text(json.dumps([
+            {"finding_id": "MOCK-1", "note": "mock live probe",
+             "requests": [{"method": "GET", "url": f"{scheme}://{host}/status",
+                           "expect": {"status": [200]}}]}]), encoding="utf-8")
         return self._envelope(self._manifest(
             [{"type": "probe_plan", "path": out.name, "status": "ok"}]))
 

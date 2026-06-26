@@ -216,7 +216,8 @@ def live(run: str = RunIdArg,
     Hard rails: refuses unless the scope's RoE authorize it (automation_allowed, safe_harbor, declared
     prohibited_techniques); every request must target an in-scope asset (out-of-scope/unknown hosts are
     blocked); read-only by default; total/rate/size caps; every request is written to an audit log.
-    Reads a hand-written runs/<id>/live_probe_plan.json. AUTHORIZED USE ONLY - your responsibility."""
+    Uses a hand-written runs/<id>/live_probe_plan.json if present; otherwise (L2) an offline LLM session
+    generates one from the validated findings, gated by the same validators. AUTHORIZED USE ONLY."""
     if not confirm:
         _emit({"run_id": run, "live_results": None,
                "refused": "live testing requires --i-have-authorization (the program's rules must "

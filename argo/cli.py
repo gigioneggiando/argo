@@ -40,6 +40,7 @@ def _build_config(
     codex_model: Optional[str] = None,
     codex_oss: bool = False,
     codex_local_provider: Optional[str] = None,
+    fallback: Optional[str] = None,
 ) -> PipelineConfig:
     cfg = PipelineConfig(
         runner=runner,
@@ -59,6 +60,9 @@ def _build_config(
         cfg = cfg.calibrated()            # audit -> Opus
     if audit_model:
         cfg = cfg.with_stage_model("audit", audit_model)
+    if fallback:
+        names = [n.strip() for n in fallback.split(",") if n.strip()]
+        cfg = cfg.with_overrides(runner_fallbacks=names)
     return cfg
 
 
@@ -80,6 +84,9 @@ TimeoutOpt = typer.Option(None, "--timeout", help="per-session wall-clock cap (s
 MaxTurnsOpt = typer.Option(None, "--max-turns", help="per-session turn tripwire (orchestrator-side)")
 SessionBudgetOpt = typer.Option(None, "--session-budget",
                                 help="per-session USD cap (native --max-budget-usd)")
+FallbackOpt = typer.Option(None, "--fallback",
+                           help="comma-separated fallback backends used when the primary hits a "
+                                "session/rate limit, e.g. --fallback codex (Claude -> Codex)")
 RunIdArg = typer.Option(..., "--run", help="existing RUN_ID under --runs-dir")
 
 
@@ -266,13 +273,13 @@ def pipeline(
     timeout: Optional[int] = TimeoutOpt, max_turns: Optional[int] = MaxTurnsOpt,
     session_budget: Optional[float] = SessionBudgetOpt,
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
-    codex_local_provider: Optional[str] = CodexProviderOpt,
+    codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
 ):
     """Run stages 1-5 and STOP at human-review drafts. Never submits."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
                         timeout=timeout, max_turns=max_turns, session_budget=session_budget,
                         codex_model=codex_model, codex_oss=codex_oss,
-                        codex_local_provider=codex_local_provider)
+                        codex_local_provider=codex_local_provider, fallback=fallback)
     cfg = cfg.with_overrides(sca_enabled=sca, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd)
     if critic_passes is not None:

@@ -69,6 +69,7 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | Field | Default | Meaning |
 |---|---|---|
 | `runner` | `headless` | `headless` (Claude Code) · `codex` (Codex CLI / OpenAI / OSS) · `mock` — see [backends.md](backends.md) |
+| `runner_fallbacks` | `--fallback` | ordered fallback backends (e.g. `--fallback codex`) — when the primary hits a **retryable** session/rate-limit (429), the same call is transparently retried on the next backend (`FallbackRunner`), with a per-run circuit breaker. Each backend selects its own model for the stage. |
 | `codex_model` / `codex_oss` / `codex_local_provider` | `None` / `False` / `None` | (runner=codex) model id; open-source provider toggle; `ollama`/`lmstudio`. Codex cost is **token-estimated** (`MODEL_PRICING`), not authoritative |
 | `excerpt_context_lines` | 40 | ± lines of source attached around each cited `file:line` in Stage 4 |
 | `excerpt_max_bytes` | 60000 | hard cap on total excerpt bytes per finding |

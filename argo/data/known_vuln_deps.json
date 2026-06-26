@@ -20,6 +20,26 @@
     {"ecosystem": "pypi", "name": "pyyaml", "max": "5.3.1", "severity": "High", "cwe": "CWE-502",
      "advisory": "PyYAML < 5.4 — arbitrary code execution via full_load/unsafe load (CVE-2020-14343)", "fixed": "5.4"},
     {"ecosystem": "pypi", "name": "jinja2", "max": "2.11.2", "severity": "Medium", "cwe": "CWE-1333",
-     "advisory": "Jinja2 < 2.11.3 — ReDoS (CVE-2020-28493)", "fixed": "2.11.3"}
+     "advisory": "Jinja2 < 2.11.3 — ReDoS (CVE-2020-28493)", "fixed": "2.11.3"},
+    {"ecosystem": "npm", "name": "handlebars", "max": "4.7.6", "severity": "High", "cwe": "CWE-1321",
+     "advisory": "handlebars < 4.7.7 — prototype pollution / RCE (CVE-2021-23369, CVE-2021-23383)", "fixed": "4.7.7"},
+    {"ecosystem": "npm", "name": "node-fetch", "max": "2.6.6", "severity": "Medium", "cwe": "CWE-918",
+     "advisory": "node-fetch < 2.6.7 — SSRF / information exposure on redirect (CVE-2022-0235)", "fixed": "2.6.7"},
+    {"ecosystem": "npm", "name": "jquery", "max": "3.4.1", "severity": "Medium", "cwe": "CWE-79",
+     "advisory": "jQuery < 3.5.0 — XSS via htmlPrefilter (CVE-2020-11022, CVE-2020-11023)", "fixed": "3.5.0"},
+    {"ecosystem": "npm", "name": "ws", "max": "7.4.5", "severity": "High", "cwe": "CWE-400",
+     "advisory": "ws < 7.4.6 — ReDoS in header parsing (CVE-2021-32640)", "fixed": "7.4.6"},
+    {"ecosystem": "pypi", "name": "requests", "max": "2.19.1", "severity": "Medium", "cwe": "CWE-200",
+     "advisory": "requests < 2.20.0 — credential leak on redirect to a different host (CVE-2018-18074)", "fixed": "2.20.0"},
+    {"ecosystem": "pypi", "name": "urllib3", "max": "1.24.1", "severity": "Medium", "cwe": "CWE-20",
+     "advisory": "urllib3 < 1.24.2 — CRLF injection / improper cert validation (CVE-2019-11324, CVE-2019-11236)", "fixed": "1.24.3"},
+    {"ecosystem": "pypi", "name": "cryptography", "max": "3.3.1", "severity": "High", "cwe": "CWE-787",
+     "advisory": "cryptography < 3.3.2 — OpenSSL buffer overflow in Fernet (CVE-2020-36242)", "fixed": "3.3.2"},
+    {"ecosystem": "maven", "name": "jackson-databind", "max": "2.9.10.7", "severity": "High", "cwe": "CWE-502",
+     "advisory": "jackson-databind < 2.9.10.8 — polymorphic deserialization RCE gadgets (multiple CVEs)", "fixed": "2.12.7.1+"},
+    {"ecosystem": "maven", "name": "snakeyaml", "max": "1.25", "severity": "High", "cwe": "CWE-502",
+     "advisory": "SnakeYAML < 1.26 — unsafe constructor RCE / billion-laughs (CVE-2017-18640, CVE-2022-1471)", "fixed": "2.0"},
+    {"ecosystem": "maven", "name": "commons-collections", "max": "3.2.1", "severity": "Critical", "cwe": "CWE-502",
+     "advisory": "commons-collections 3.2.1 — InvokerTransformer deserialization RCE gadget (CVE-2015-7501)", "fixed": "3.2.2"}
   ]
 }

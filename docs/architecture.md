@@ -114,6 +114,11 @@ Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`
   open-source model (Ollama / LM Studio). See [backends.md](backends.md).
 - **`MockClaudeRunner`** — writes fixture files into the scratch dir and returns a synthetic
   manifest. Zero tokens; used by the whole test suite.
+- **`FallbackRunner`** (resilience, `--fallback codex`) — wraps an ordered chain of the above. When
+  the primary backend hits a **retryable** session/rate-limit (429), the same call is transparently
+  retried on the next backend (each picking its own per-stage model), so a long Opus run that walls
+  on the Claude session limit mid-`validate` self-heals onto Codex instead of degrading. A walled
+  backend is disabled for the rest of the run (circuit breaker); a non-retryable error propagates.
 
 The real backends launch the CLI through `AgentRunner._exec`, a **cancellable** subprocess: a pump
 thread runs `communicate` while the main thread polls `self.cancel_event` (set by the orchestrator

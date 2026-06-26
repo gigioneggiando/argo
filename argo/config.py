@@ -118,6 +118,10 @@ class PipelineConfig:
 
     # Execution.
     runner: str = "headless"            # "headless" (Claude Code) | "codex" (Codex CLI) | "mock"
+    # Resilience: ordered fallback backends. When the primary runner hits a retryable limit
+    # (session-limit / rate-limit / 429), the same call is transparently retried on the next backend
+    # (e.g. ["codex"] => Claude -> Codex). A walled backend is skipped for the rest of the run.
+    runner_fallbacks: list[str] = field(default_factory=list)
     max_parallel_audits: int = 3        # concurrency cap for Stage 3 / Stage 4 fan-out
 
     # Codex backend (runner == "codex"). One model for all stages (Codex isn't tiered per stage

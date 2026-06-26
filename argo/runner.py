@@ -719,11 +719,81 @@ class MockClaudeRunner(ClaudeRunner):
             [{"type": "verdict", "path": out.name, "status": "ok"}]))
 
 
+#: Error-message hints that mark a session failure as RETRYABLE on another backend (vs a real
+#: deterministic failure that should propagate). Matched case-insensitively against the RunnerError.
+_RETRYABLE_HINTS = ("session limit", "rate limit", "rate_limit", "api_error_status=429", " 429",
+                    "overloaded", "quota", "too many requests", "insufficient_quota")
+
+
+def _is_retryable(exc: Exception) -> bool:
+    s = str(exc).lower()
+    return any(h in s for h in _RETRYABLE_HINTS)
+
+
+class FallbackRunner(AgentRunner):
+    """Chains backends for resilience: on a RETRYABLE limit (session/rate-limit/429) the SAME call is
+    retried on the next backend (e.g. Claude -> Codex -> local). The model is recomputed per backend
+    (each child has its own config), and a backend that hits its limit is disabled for the rest of
+    the run (circuit breaker) so we don't re-hit the wall on every subsequent call. A non-retryable
+    error propagates immediately."""
+
+    def __init__(self, config: PipelineConfig, ledger: Ledger, runners: list[AgentRunner]):
+        self._runners = runners                       # primary first; set BEFORE super().__init__
+        self._disabled: set[int] = set()
+        self._fb_lock = threading.Lock()
+        super().__init__(config, ledger)
+
+    @property                                         # propagate the orchestrator's cancel_event
+    def cancel_event(self):
+        return self._runners[0].cancel_event if self._runners else None
+
+    @cancel_event.setter
+    def cancel_event(self, ev):
+        for r in getattr(self, "_runners", []):
+            r.cancel_event = ev
+
+    def run(self, **kwargs) -> LLMResult:
+        last_exc: Exception | None = None
+        stage = kwargs.get("stage")
+        for i, r in enumerate(self._runners):
+            with self._fb_lock:
+                if i in self._disabled:
+                    continue
+            kw = dict(kwargs)
+            if stage is not None:                     # each backend picks its own model for the stage
+                kw["model"] = r.config.model_for(stage)
+            try:
+                return r.run(**kw)
+            except RunnerError as exc:
+                last_exc = exc
+                if not _is_retryable(exc):
+                    raise
+                with self._fb_lock:
+                    self._disabled.add(i)
+                if i + 1 < len(self._runners):
+                    print(f"[runner] backend #{i} ({r.config.runner}) hit a retryable limit; "
+                          f"falling back to #{i + 1} ({self._runners[i + 1].config.runner})",
+                          file=sys.stderr)
+        raise last_exc if last_exc else RunnerError("all fallback backends exhausted")
+
+    def _invoke(self, **kwargs):                      # never used — run() delegates whole calls
+        raise NotImplementedError("FallbackRunner delegates whole run() calls to child runners")
+
+
+def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner:
+    cfg = config if config.runner == name else config.with_overrides(runner=name)
+    if name == "mock":
+        return MockClaudeRunner(cfg, ledger)
+    if name == "headless":
+        return HeadlessClaudeRunner(cfg, ledger)
+    if name == "codex":
+        return CodexRunner(cfg, ledger)
+    raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', or 'mock')")
+
+
 def build_runner(config: PipelineConfig, ledger: Ledger) -> AgentRunner:
-    if config.runner == "mock":
-        return MockClaudeRunner(config, ledger)
-    if config.runner == "headless":
-        return HeadlessClaudeRunner(config, ledger)
-    if config.runner == "codex":
-        return CodexRunner(config, ledger)
-    raise ValueError(f"unknown runner {config.runner!r} (expected 'headless', 'codex', or 'mock')")
+    primary = _build_one(config, ledger, config.runner)
+    if not config.runner_fallbacks:
+        return primary
+    chain = [primary] + [_build_one(config, ledger, n) for n in config.runner_fallbacks]
+    return FallbackRunner(config, ledger, chain)

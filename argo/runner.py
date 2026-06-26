@@ -364,7 +364,10 @@ class HeadlessClaudeRunner(AgentRunner):
         # account-fallback can switch accounts (limits are per-account). See build_runner.
         env = None
         if self.config.claude_config_dir:
-            env = {**os.environ, "CLAUDE_CONFIG_DIR": str(self.config.claude_config_dir)}
+            # Normalize to a native absolute path (expanduser handles ~; a bash-style /c/.. path
+            # the launched CLI cannot resolve is made absolute). Pass via CLAUDE_CONFIG_DIR.
+            cfg_dir = os.path.abspath(os.path.expanduser(str(self.config.claude_config_dir)))
+            env = {**os.environ, "CLAUDE_CONFIG_DIR": cfg_dir}
         try:
             proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path

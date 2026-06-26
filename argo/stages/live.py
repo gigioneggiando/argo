@@ -19,50 +19,136 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import random
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from ..config import ARTIFACT_TOOLS
 from ..context import RunContext, collect_output_files
 from ..guardrails import (assert_inscope_only, assert_live_authorized, assert_live_write_policy,
-                          validate_probe_plan, assert_prohibited_present)
+                          validate_probe_plan, assert_prohibited_present,
+                          inscope_matchers, host_in_scope, host_of)
 from ..rendering import fill_placeholders, with_artifact_contract
 from ..runner import RunnerError
+
+_SAFE_METHODS = ("GET", "HEAD", "OPTIONS")              # idempotent: safe to retry + follow redirects
+_TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 504})
+_SNIPPET_BYTES = 4096
+#: Response headers worth keeping as evidence for the interpret stage (security posture / proof).
+_EVIDENCE_HEADERS = ("content-type", "location", "www-authenticate", "set-cookie", "server",
+                     "access-control-allow-origin", "access-control-allow-credentials",
+                     "x-frame-options", "content-security-policy", "strict-transport-security",
+                     "x-content-type-options", "cache-control", "retry-after")
 
 
 def _log(msg: str) -> None:
     print(f"[live] {msg}", file=sys.stderr)
 
 
-def _send(opener, req: dict, cfg) -> tuple[dict, dict]:
-    url = str(req.get("url") or req.get("path"))
-    method = str(req.get("method", "GET")).upper()
-    data = req.get("body")
-    body = data.encode("utf-8") if isinstance(data, str) else None
-    r = urllib.request.Request(url, data=body, method=method, headers=req.get("headers") or {})
-    rec = {"method": method, "url": url, "expect": req.get("expect")}
-    # Audit entry: minimal + accountable (method/url/status/size). Read requests omit headers/body so
-    # secrets aren't logged; STATE-CHANGING requests (L3) record the body — a mutation MUST be fully
-    # accountable (the body is the action), and a write payload is the analyst's own, not a secret leak.
-    audit = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "method": method, "url": url}
-    if method not in ("GET", "HEAD", "OPTIONS") and data is not None:
-        audit["body"] = str(data)[:1000]
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Never auto-follow: returning None hands the 3xx response back so WE decide whether the redirect
+    target is still in-scope before following it (urllib's default would silently chase off-host)."""
+
+    def redirect_request(self, *a, **k):
+        return None
+
+
+def _build_opener():
+    return urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()), _NoRedirect())
+
+
+def _evidence_headers(headers) -> dict:
+    if not headers:
+        return {}
+    low = {k.lower(): v for k, v in dict(headers).items()}
+    return {k: low[k] for k in _EVIDENCE_HEADERS if k in low}
+
+
+def _retry_after(headers) -> float | None:
+    if not headers:
+        return None
+    ra = dict({k.lower(): v for k, v in dict(headers).items()}).get("retry-after")
     try:
-        with opener.open(r, timeout=cfg.live_request_timeout_s) as resp:
-            snippet = resp.read(2048).decode("utf-8", "replace")
-            rec.update(status=resp.status, body_snippet=snippet)
-            audit.update(status=resp.status, bytes=len(snippet))
+        return min(float(ra), 30.0) if ra is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _exchange(opener, method, url, headers, body, cfg):
+    """One HTTP exchange, NO redirect following. -> (status, resp_headers, snippet, error)."""
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    try:
+        with opener.open(req, timeout=cfg.live_request_timeout_s) as resp:
+            return resp.status, resp.headers, resp.read(_SNIPPET_BYTES).decode("utf-8", "replace"), None
     except urllib.error.HTTPError as e:
-        snippet = e.read(2048).decode("utf-8", "replace") if hasattr(e, "read") else ""
-        rec.update(status=e.code, body_snippet=snippet)
-        audit.update(status=e.code)
-    except Exception as e:                                   # network error, DNS, timeout, ...
-        rec.update(status=None, error=str(e)[:300])
-        audit.update(error=str(e)[:200])
+        snippet = e.read(_SNIPPET_BYTES).decode("utf-8", "replace") if hasattr(e, "read") else ""
+        return e.code, (e.headers or {}), snippet, None
+    except Exception as e:                                  # network error, DNS, timeout, TLS, ...
+        return None, {}, "", str(e)[:300]
+
+
+def _send(opener, req: dict, cfg, in_scope) -> tuple[dict, dict]:
+    """Send one probe with: a tool-identifying UA, transient-error retries (idempotent methods ONLY),
+    and a manual redirect guard that re-validates each hop is in-scope (never chasing off-host, and
+    never re-following a write). Captures status + evidence headers + redirect chain."""
+    method = str(req.get("method", "GET")).upper()
+    url = str(req.get("url") or req.get("path"))
+    data = req.get("body")
+    headers = {"User-Agent": cfg.live_user_agent, **(req.get("headers") or {})}
+    idempotent = method in _SAFE_METHODS
+    rec = {"method": method, "url": url, "expect": req.get("expect")}
+    audit = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "method": method, "url": url}
+    if not idempotent and data is not None:                 # L3: a mutation's body is fully audited
+        audit["body"] = str(data)[:1000]
+
+    cur_method, cur_url = method, url
+    cur_body = data.encode("utf-8") if isinstance(data, str) else None
+    chain: list[dict] = []
+    status = snippet = err = None
+    resp_headers = {}
+    for hop in range(cfg.live_max_redirects + 1):
+        attempts = (cfg.live_max_retries + 1) if cur_method in _SAFE_METHODS else 1
+        for attempt in range(attempts):
+            status, resp_headers, snippet, err = _exchange(opener, cur_method, cur_url, headers, cur_body, cfg)
+            transient = err is not None or (status in _TRANSIENT_STATUS)
+            if not transient or attempt == attempts - 1:
+                break
+            ra = _retry_after(resp_headers) if status == 429 else None
+            time.sleep(ra if ra is not None else min(0.5 * 2 ** attempt + random.uniform(0, 0.2), 5.0))
+        # redirect guard — follow only for idempotent methods, only while in-scope
+        if status in (301, 302, 303, 307, 308) and cur_method in _SAFE_METHODS:
+            loc = _evidence_headers(resp_headers).get("location")
+            if not loc or hop == cfg.live_max_redirects:
+                if loc:
+                    chain.append({"status": status, "location": loc, "followed": False, "reason": "max_redirects"})
+                break
+            nxt = urllib.parse.urljoin(cur_url, loc)
+            if not in_scope(host_of(nxt)):
+                chain.append({"status": status, "location": nxt, "followed": False, "reason": "out_of_scope"})
+                rec["redirect_out_of_scope"] = nxt          # a real signal (e.g. redirect to login/SSO)
+                break
+            chain.append({"status": status, "location": nxt, "followed": True})
+            cur_url = nxt
+            if status == 303:                               # 303 -> always GET, drop body
+                cur_method, cur_body = "GET", None
+            continue
+        break
+
+    if chain:
+        rec["redirect_chain"] = chain
+    if err is not None:
+        rec.update(status=None, error=err)
+        audit["error"] = err
+    else:
+        rec.update(status=status, body_snippet=snippet, response_headers=_evidence_headers(resp_headers))
+        audit.update(status=status, bytes=len(snippet or ""))
+
     ex = req.get("expect") or {}
-    ok = True
+    ok = err is None
     if "status" in ex:
         want = ex["status"]
         ok = ok and rec.get("status") in (want if isinstance(want, list) else [want])
@@ -72,24 +158,35 @@ def _send(opener, req: dict, cfg) -> tuple[dict, dict]:
     return rec, audit
 
 
-def _execute(ctx: RunContext, plan: list[dict]) -> tuple[dict, list[dict]]:
+def _execute(ctx: RunContext, plan: list[dict], scope) -> tuple[dict, list[dict]]:
     cfg = ctx.config
+    matchers = inscope_matchers(scope)
+    in_scope = lambda h: host_in_scope(h, matchers)         # redirect-guard predicate
     results: dict = {"findings": []}
     audit: list[dict] = []
     sent = 0
     for entry in plan:
-        opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        opener = _build_opener()                            # per-finding cookie jar (carries a session)
         fr = {"finding_id": entry.get("finding_id"), "requests": []}
         for req in entry.get("requests", []):
             if sent >= cfg.live_max_requests:
                 fr["requests"].append({"skipped": "live_max_requests cap reached"})
                 continue
             sent += 1
-            rec, alog = _send(opener, req, cfg)
+            rec, alog = _send(opener, req, cfg, in_scope)
             fr["requests"].append(rec)
             audit.append(alog)
-            time.sleep(cfg.live_min_request_interval_s)         # rate cap (anti-DoS)
+            time.sleep(cfg.live_min_request_interval_s)     # rate cap (anti-DoS)
+            # B: differential probing — run the control baseline and attach it for the interpret stage.
+            ctrl = req.get("control")
+            if isinstance(ctrl, dict) and sent < cfg.live_max_requests:
+                sent += 1
+                crec, calog = _send(opener, ctrl, cfg, in_scope)
+                calog["role"] = "control"
+                rec["control"] = {k: crec.get(k) for k in
+                                  ("method", "url", "status", "body_snippet", "response_headers")}
+                audit.append(calog)
+                time.sleep(cfg.live_min_request_interval_s)
         results["findings"].append(fr)
     return results, audit
 
@@ -176,12 +273,28 @@ def _generate_plan(ctx: RunContext, scope) -> list | None:
 def _interpret(ctx: RunContext, results: dict) -> dict:
     """L2: an OFFLINE LLM 'interpret' session judges each finding live_confirmed/refuted/inconclusive
     from the observed responses. Returns {finding_id: verdict}; empty on failure (falls back to expect_met)."""
+    def _slim(r: dict) -> dict:
+        out = {"method": r.get("method"), "url": r.get("url"), "status": r.get("status"),
+               "body_snippet": (r.get("body_snippet") or "")[:600], "expect_met": r.get("expect_met")}
+        if r.get("response_headers"):
+            out["response_headers"] = r["response_headers"]
+        if r.get("redirect_chain"):
+            out["redirect_chain"] = r["redirect_chain"]
+        if r.get("redirect_out_of_scope"):
+            out["redirect_out_of_scope"] = r["redirect_out_of_scope"]
+        if r.get("error"):
+            out["error"] = r["error"]
+        if r.get("control"):                                # B: the baseline to compare the test against
+            c = r["control"]
+            out["control"] = {"status": c.get("status"),
+                              "body_snippet": (c.get("body_snippet") or "")[:600],
+                              "response_headers": c.get("response_headers")}
+        return out
+
     probe_findings = []
     for f in results.get("findings", []):
         probe_findings.append({"finding_id": f.get("finding_id"), "requests": [
-            {"method": r.get("method"), "url": r.get("url"), "status": r.get("status"),
-             "body_snippet": (r.get("body_snippet") or "")[:600], "expect_met": r.get("expect_met")}
-            for r in f.get("requests", []) if "skipped" not in r]})
+            _slim(r) for r in f.get("requests", []) if "skipped" not in r]})
     if not probe_findings:
         return {}
     template = (ctx.assets_dir / "07_live_interpret_prompt.md").read_text(encoding="utf-8")
@@ -266,7 +379,7 @@ def run(ctx: RunContext):
     targets = sorted({str(r.get("url") or r.get("path")) for e in plan for r in e.get("requests", [])})
     _log(f"[WARNING] LIVE: probing {len(targets)} in-scope URL(s) "
          f"({'read-only' if not cfg.live_allow_writes else 'WRITES ENABLED'}); every request is audit-logged")
-    results, audit = _execute(ctx, plan)
+    results, audit = _execute(ctx, plan, scope)
 
     # L2: LLM interprets the observations into per-finding verdicts (falls back to expect_met).
     verdicts = _interpret(ctx, results)

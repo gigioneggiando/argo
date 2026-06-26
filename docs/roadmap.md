@@ -319,6 +319,14 @@ and audit-logged, and the default tool remains 100% offline against the program'
   and each mutation's **body is recorded** in the audit log. The propose prompt (06) is hardened for
   writes (no DELETE, prefer a throwaway benign value, declare `expect`). Tests in `tests/test_live.py`
   (DELETE blocked, write cap, writes-without-opt-in blocked, body audited, run aborts on DELETE).
+- **Executor hardening — ✅ DONE.** The live runner was strengthened for robustness + precision:
+  a tool-identifying `User-Agent`; a **redirect guard** that never auto-follows (each `3xx` is
+  re-validated in-scope before following, off-host redirects recorded not chased, writes never
+  re-followed); **idempotent-only retries** with backoff honoring `Retry-After` (writes never retried);
+  **response-header + redirect-chain evidence** capture; and **differential `control` probing** (a
+  baseline request per probe, gated like any request, so the interpret stage judges the *difference* —
+  the biggest false-positive cut for access-control findings). Config: `live_max_retries`,
+  `live_max_redirects`, `live_user_agent`. Tests in `tests/test_live.py`.
 - [ ] _Later:_ surface live verdicts in `REPORT.md` (as Phase-9 R4 did for runtime), and an authenticated
   live session (cookie/login step) reusing the runtime probe's auth-step shape.
 

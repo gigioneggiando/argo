@@ -67,6 +67,7 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `live_allow_writes` | `argo live --allow-writes` | **second** opt-in: permit **non-destructive** state-changing methods POST/PUT/PATCH (default read-only GET/HEAD/OPTIONS). **DELETE is never allowed.** A mutation's body is recorded in the audit log |
 | `live_max_writes` | `argo live --max-writes` | (L3) separate cap on state-changing requests, enforced by `assert_live_write_policy` (default 5) |
 | `live_max_requests` / `live_min_request_interval_s` / `live_request_timeout_s` / `live_max_payload_bytes` | `--max-requests` / `--min-interval` | anti-DoS caps (total count / rate / per-request timeout / body size); an oversized plan is rejected whole |
+| `live_max_retries` / `live_max_redirects` / `live_user_agent` | — | executor robustness: retry transient errors (timeout/`5xx`/`429`) for **idempotent methods only**; follow at most N redirects, **each re-validated in-scope** (off-host redirects recorded, never chased); identify the tool via a `User-Agent` |
 
 ## Other fields
 

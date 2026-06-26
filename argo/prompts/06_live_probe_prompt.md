@@ -49,7 +49,13 @@ FINDINGS TO PROBE (confirm/refute each where an HTTP signal is observable):
    and the response shape that distinguishes vulnerable vs safe.
 2. Express the expectation precisely: the status code(s) and/or a `body_contains` token that proves the
    issue (e.g. an anonymous endpoint returning `200` with sensitive fields it should not expose).
-3. If a finding needs an authenticated session, **omit it** in L2 (anonymous, read-only probes only).
+3. **Differential confirmation (strongly preferred for access-control / authz).** A bare `200` is weak
+   evidence — a login page, a generic handler, or a WAF can also return `200`. Add a **`control`**
+   request to the probe: a baseline that *should* behave differently, so the finding is confirmed by the
+   **difference**, not an absolute. Typical controls: the SAME endpoint that *should* be denied (expect
+   `401/403`), a known-protected sibling, or a non-existent route (expect `404`). The control must also
+   be an in-scope, read-only request. If test == control, it is **not** confirmed.
+4. If a finding needs an authenticated session, **omit it** in L2 (anonymous, read-only probes only).
 
 ## OUTPUT — `live_probe_plan.json`
 
@@ -60,10 +66,15 @@ A JSON **array**, one entry per finding you can probe on an in-scope host:
     "finding_id": "<id from FINDINGS_JSON>",
     "note": "<one line: what this probe demonstrates>",
     "requests": [
-      {"method": "GET", "url": "https://<in-scope-host>/exact/route", "headers": {},
-       "expect": {"status": [200], "body_contains": ["<token proving the issue>"]}}
+      {"method": "GET", "url": "https://<in-scope-host>/admin/users", "headers": {},
+       "expect": {"status": [200], "body_contains": ["<token proving the issue>"]},
+       "control": {"method": "GET", "url": "https://<in-scope-host>/should-be-denied",
+                   "expect": {"status": [401, 403]}}}
     ]
   }
 ]
 ```
-Emit ONLY this file. If no finding has a safe, in-scope, observable probe, emit `[]`.
+The `control` field is OPTIONAL but recommended for access-control findings — it is a baseline request
+run alongside the probe so the verdict can be judged on the **difference**. Omit it for findings where a
+single response is already decisive. Emit ONLY this file. If no finding has a safe, in-scope, observable
+probe, emit `[]`.

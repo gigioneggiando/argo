@@ -36,6 +36,15 @@ A JSON **array** of entries, one per finding you want to confirm:
 - **`headers`** / **`body`** are optional (body is size-capped, never logged to the audit trail).
 - **`expect`** is optional: `status` (int or list) and `body_contains` (list of substrings). When set,
   the result is marked `expect_met` so you can see at a glance whether the finding was confirmed.
+- **`control`** is an optional sibling request (same shape) run as a **baseline** so a finding is judged
+  on the *difference* (e.g. test `/admin` returns `200` while control `/should-be-denied` returns `403`).
+  Strongly recommended for access-control findings — it is the biggest false-positive cut. The control
+  is scope-locked and capped like any request.
+
+The executor also: sends a tool-identifying `User-Agent`; **re-validates every redirect is in-scope**
+before following (an off-host redirect is recorded, never chased) and records the redirect chain;
+**retries** transient errors (timeout / `5xx` / `429`) for read methods only (never a write); and
+captures security-relevant **response headers** as evidence.
 
 ## Hard gates (all enforced in code, before anything is sent)
 

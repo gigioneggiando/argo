@@ -188,6 +188,9 @@ class PipelineConfig:
     live_min_request_interval_s: float = 1.0       # rate cap between live requests (anti-DoS)
     live_request_timeout_s: int = 15               # per-request timeout
     live_max_payload_bytes: int = 4096             # cap request body size
+    live_max_retries: int = 2                       # retry transient errors (timeout/conn/5xx/429) — idempotent reqs ONLY
+    live_max_redirects: int = 3                     # follow at most N redirects (idempotent only), each re-validated in-scope
+    live_user_agent: str = "Argo-live/1.0 (authorized security testing)"  # identifies the tool to the target
     runtime_mount_source: bool = True   # mount the isolated source copy at /src:ro (build-at-run
                                         # model). Set False for a self-contained PRE-BUILT image.
     runtime_build_timeout_s: int = 1800  # R3: max seconds to docker-build a recipe/repo Dockerfile

@@ -110,6 +110,21 @@ def test_live_enabled_without_plan_returns_none(env):
 # ------------------------------------------------------------ executor (loopback server, in-scope)
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == "/redirect-out":                # 302 off-host (out of scope)
+            self.send_response(302)
+            self.send_header("Location", "https://evil.com/x")
+            self.end_headers()
+            return
+        if self.path == "/redirect-in":                 # 302 to an in-scope path
+            self.send_response(302)
+            self.send_header("Location", "/landing")
+            self.end_headers()
+            return
+        if self.path == "/denied":                      # a control baseline that should be forbidden
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(b"forbidden")
+            return
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"hello-from-live")
@@ -295,6 +310,64 @@ def test_l3_audit_records_body_for_writes(env, loopback_server):
     assert results["findings"][0]["requests"][0]["expect_met"] is True
     audit = json.loads((ctx.run_dir / "live_audit_log.jsonl").read_text(encoding="utf-8").strip())
     assert audit["method"] == "POST" and audit["body"] == "{\"k\":\"v\"}"   # mutation fully recorded
+
+
+# ------------------------------------------------------------ robustness: redirects + differential
+def _run_one(ctx, loopback_server, request):
+    _write_scope(ctx, loopback_server)
+    (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps([
+        {"finding_id": "F1", "requests": [request]}]), encoding="utf-8")
+    out = live.run(ctx)
+    return json.loads(out.read_text(encoding="utf-8"))["findings"][0]["requests"][0]
+
+
+def test_redirect_out_of_scope_not_followed(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
+    rec = _run_one(ctx, loopback_server, {"method": "GET", "url": f"http://{loopback_server}/redirect-out"})
+    assert rec["status"] == 302                                  # we stopped at the redirect
+    assert rec["redirect_out_of_scope"].startswith("https://evil.com")
+    assert rec["redirect_chain"][0]["followed"] is False and rec["redirect_chain"][0]["reason"] == "out_of_scope"
+
+
+def test_redirect_in_scope_followed(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
+    rec = _run_one(ctx, loopback_server, {"method": "GET", "url": f"http://{loopback_server}/redirect-in"})
+    assert rec["status"] == 200 and "hello-from-live" in rec["body_snippet"]   # followed in-scope hop
+    assert any(h["followed"] for h in rec["redirect_chain"])
+
+
+def test_user_agent_and_evidence_headers_captured(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
+    rec = _run_one(ctx, loopback_server, {"method": "GET", "url": f"http://{loopback_server}/",
+                                          "expect": {"status": 200}})
+    assert "response_headers" in rec                             # evidence headers attached
+    assert ctx.config.live_user_agent.startswith("Argo-live")
+
+
+def test_differential_control_attached(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
+    rec = _run_one(ctx, loopback_server, {
+        "method": "GET", "url": f"http://{loopback_server}/admin", "expect": {"status": 200},
+        "control": {"method": "GET", "url": f"http://{loopback_server}/denied",
+                    "expect": {"status": [403]}}})
+    assert rec["status"] == 200                                  # the (mock) probe
+    assert rec["control"]["status"] == 403                       # the baseline differs -> a real signal
+    # both requests are audit-logged; the control entry is tagged
+    audit = [json.loads(x) for x in
+             (ctx.run_dir / "live_audit_log.jsonl").read_text(encoding="utf-8").strip().splitlines()]
+    assert len(audit) == 2 and any(a.get("role") == "control" for a in audit)
+
+
+def test_control_request_is_scope_locked(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
+    _write_scope(ctx, loopback_server)
+    (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps([
+        {"finding_id": "F1", "requests": [
+            {"method": "GET", "url": f"http://{loopback_server}/x",
+             "control": {"method": "GET", "url": "https://evil.com/baseline"}}]}]), encoding="utf-8")
+    with pytest.raises(LiveScopeError):                          # the nested control is gated too
+        live.run(ctx)
+    assert not (ctx.run_dir / "live_audit_log.jsonl").exists()
 
 
 def test_l3_delete_in_run_aborts_before_sending(env, loopback_server):

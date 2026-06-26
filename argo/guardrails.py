@@ -188,8 +188,14 @@ def _probe_host(path_or_url: str) -> str | None:
 
 
 def _entry_requests(entry: dict) -> list[dict]:
-    """All HTTP requests in a plan entry: the optional ``auth`` login step + the probe requests."""
-    reqs = list(entry.get("requests", []))
+    """All HTTP requests in a plan entry that the gates must check: each probe request, any nested
+    ``control`` baseline request (live differential probing), and the optional ``auth`` login step.
+    Including controls here means they are scope-locked / method-checked / counted like any request."""
+    reqs: list[dict] = []
+    for r in entry.get("requests", []):
+        reqs.append(r)
+        if isinstance(r.get("control"), dict):
+            reqs.append(r["control"])
     if isinstance(entry.get("auth"), dict):
         reqs.append(entry["auth"])
     return reqs
@@ -299,6 +305,20 @@ def _host_in_scope(host: str, matchers: list[tuple[str, str]]) -> bool:
         if kind == "wild" and (host == val or host.endswith("." + val)):
             return True
     return False
+
+
+# Public wrappers for the live executor's dynamic redirect guard (a redirect target must still be
+# in-scope before we follow it — the inverse of trusting urllib's auto-follow).
+def inscope_matchers(scope) -> list[tuple[str, str]]:
+    return _inscope_matchers(scope)
+
+
+def host_in_scope(host: str, matchers: list[tuple[str, str]]) -> bool:
+    return _host_in_scope(str(host).lower(), matchers)
+
+
+def host_of(url: str) -> str:
+    return _host_of(url)
 
 
 def assert_live_authorized(scope) -> None:

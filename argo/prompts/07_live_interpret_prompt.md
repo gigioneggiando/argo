@@ -15,8 +15,15 @@ FINDINGS + THEIR LIVE PROBE OBSERVATIONS (status codes + body snippets from the 
 ```
 
 Note: a probe's `expect_met` is a crude string/status match — do not trust it blindly; re-judge from
-the actual `status` + `body_snippet`. A live target may sit behind a WAF/CDN, a generic error page, or
-a rate limiter — treat ambiguous responses conservatively.
+the actual evidence:
+- **`control`** (when present) is a baseline run alongside the probe. Confirm a finding on the
+  **difference** between the probe and its control — if they behave the same, it is NOT confirmed (e.g.
+  both return `200` because everything hits the same login page).
+- **`response_headers`** are often the real proof (e.g. `access-control-allow-origin: *` with
+  credentials, a missing `set-cookie` HttpOnly/Secure flag, `www-authenticate`, a permissive CSP).
+- **`redirect_chain` / `redirect_out_of_scope`**: a redirect to a login/SSO page means the endpoint is
+  protected → **inconclusive/refuted**, not confirmed. A live target may also sit behind a WAF/CDN or a
+  rate limiter — treat ambiguous responses conservatively.
 
 ---
 

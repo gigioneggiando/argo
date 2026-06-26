@@ -6,7 +6,12 @@
         "method": "GET",
         "url": "https://api.example.com/v1/admin/users",
         "headers": {"Accept": "application/json"},
-        "expect": {"status": [401, 403], "body_contains": []}
+        "expect": {"status": [200]},
+        "control": {
+          "method": "GET",
+          "url": "https://api.example.com/v1/admin/settings",
+          "expect": {"status": [401, 403]}
+        }
       },
       {
         "method": "GET",

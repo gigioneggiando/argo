@@ -113,8 +113,18 @@ target is the in-scope host instead of loopback — so the validators are **inve
   and interpret sessions are **offline** (read-only repo, no network — `stage="live"` gets no network
   tools, exactly like the audit stages); only the executor touches the network, and only after the
   same deterministic gates (`assert_inscope_only` + `validate_probe_plan`) pass on the generated plan.
-- **Full accountability** — every request is written to `runs/<id>/live_audit_log.jsonl`
-  (timestamp, method, URL, status, size); results land in `live_results.json`.
+- **Hardened executor** — the fixed runner (a) sends a tool-identifying `User-Agent`
+  (`live_user_agent`); (b) **never auto-follows redirects** — a custom handler hands each `3xx` back so
+  the executor **re-validates the redirect target is in-scope** before following (an off-host redirect
+  is recorded, never chased — closing the gap where urllib would silently leave scope), and writes are
+  never re-followed; (c) **retries transient errors** (timeout / connection reset / `5xx` / `429` with
+  `Retry-After`) for **idempotent methods only** — a write is never retried (no double-mutation);
+  (d) captures security-relevant **response headers** + the redirect chain as evidence; (e) supports a
+  **differential `control`** request per probe (run as a baseline; nested controls are gated exactly
+  like any request via `_entry_requests`) so the interpret stage judges the *difference*, cutting
+  false positives on access-control findings.
+- **Full accountability** — every request (probe + control) is written to `runs/<id>/live_audit_log.jsonl`
+  (timestamp, method, URL, status, size; a mutation's body); results land in `live_results.json`.
 - **Best-effort + off-by-default** — skips silently when disabled or no plan exists; any gate failure
   aborts the stage and sends nothing.
 - Tests: `test_live.py` (RoE gate accept/refuse; in-scope accept; out-of-scope/unknown/loopback/

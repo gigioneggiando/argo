@@ -102,6 +102,12 @@ target is the in-scope host instead of loopback — so the validators are **inve
   only (GET/HEAD/OPTIONS) unless `live_allow_writes` (a deliberate **second** opt-in, `--allow-writes`)
   is set; total request count, body size, and rate (`live_min_request_interval_s`) are capped. An
   oversized plan is **rejected whole** (fail-loud, no silent truncation), honoring "no DoS".
+- **State-changing policy (L3)** — when writes are opted in, `guardrails.assert_live_write_policy(...)`
+  adds extra rails on top of the method allowlist: **DELETE is never permitted** (destructive ops are
+  out of bounds for an automated confirmation probe, even in write mode), and state-changing requests
+  (POST/PUT/PATCH) are capped **separately** by `live_max_writes` so a flood of mutations is impossible.
+  Read requests omit headers/body from the audit log (so secrets aren't logged); a **state-changing
+  request records its body** in `live_audit_log.jsonl` — a mutation must be fully accountable.
 - **No model execution primitive** — the plan (hand-written, L1; or LLM-generated, L2) is run by a
   **fixed** stdlib executor, not a model shell; the model never gets a network tool. In L2 the propose
   and interpret sessions are **offline** (read-only repo, no network — `stage="live"` gets no network

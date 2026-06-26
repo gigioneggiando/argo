@@ -259,6 +259,16 @@ class LiveScopeError(GuardrailError):
     Live testing may ONLY touch the program's in-scope assets — never anything else."""
 
 
+class LiveWriteError(GuardrailError):
+    """A live probe violates the L3 state-changing policy: a destructive method (DELETE) on a live host,
+    or more state-changing requests than the separate write cap allows."""
+
+
+#: Methods never permitted against a LIVE host, even when writes are opted in — too destructive for an
+#: automated confirmation probe (a finding is confirmed by *observing*, not by deleting real data).
+_LIVE_DESTRUCTIVE_METHODS = frozenset({"DELETE"})
+
+
 def _host_of(url: str) -> str:
     s = (url or "").strip()
     if "://" in s:
@@ -330,6 +340,34 @@ def assert_inscope_only(probe_plan: list[dict], scope) -> None:
                 if t and len(t) > 3 and t in blob:
                     raise LiveScopeError(
                         f"live probe matches out-of-scope token {t!r} (finding {entry.get('finding_id')!r})")
+
+
+def assert_live_write_policy(probe_plan: list[dict], *, allow_writes: bool, max_writes: int) -> None:
+    """L3 state-changing policy on a LIVE host (extra rails beyond ``validate_probe_plan``):
+
+    * **DELETE is never permitted**, even with writes enabled — destructive operations are out of bounds
+      for an automated confirmation probe.
+    * State-changing requests (POST/PUT/PATCH) are allowed only when ``allow_writes`` and are capped
+      **separately** by ``max_writes`` — so even in write mode you cannot fire a flood of mutations.
+    """
+    writes = 0
+    for entry in probe_plan:
+        for req in _entry_requests(entry):
+            method = str(req.get("method", "GET")).upper()
+            if method in _LIVE_DESTRUCTIVE_METHODS:
+                raise LiveWriteError(
+                    f"live probe uses {method} (finding {entry.get('finding_id')!r}); destructive methods "
+                    f"are never permitted on a live host, even with writes enabled")
+            if method in _STATE_CHANGING_METHODS:
+                if not allow_writes:
+                    raise LiveWriteError(
+                        f"live probe uses state-changing method {method!r} but writes are not enabled "
+                        f"(finding {entry.get('finding_id')!r}); pass --allow-writes to opt in")
+                writes += 1
+    if writes > max_writes:
+        raise LiveWriteError(
+            f"live probe plan has {writes} state-changing request(s), exceeding the write cap of "
+            f"{max_writes} (raise --max-writes / live_max_writes if intended)")
 
 
 # ------------------------------------------------------------------------- scope filter

@@ -26,8 +26,8 @@ import urllib.request
 
 from ..config import ARTIFACT_TOOLS
 from ..context import RunContext, collect_output_files
-from ..guardrails import (assert_inscope_only, assert_live_authorized, validate_probe_plan,
-                          assert_prohibited_present)
+from ..guardrails import (assert_inscope_only, assert_live_authorized, assert_live_write_policy,
+                          validate_probe_plan, assert_prohibited_present)
 from ..rendering import fill_placeholders, with_artifact_contract
 from ..runner import RunnerError
 
@@ -43,8 +43,12 @@ def _send(opener, req: dict, cfg) -> tuple[dict, dict]:
     body = data.encode("utf-8") if isinstance(data, str) else None
     r = urllib.request.Request(url, data=body, method=method, headers=req.get("headers") or {})
     rec = {"method": method, "url": url, "expect": req.get("expect")}
-    # Audit entry: minimal + accountable (method/url/status/size) — no headers/body so secrets aren't logged.
+    # Audit entry: minimal + accountable (method/url/status/size). Read requests omit headers/body so
+    # secrets aren't logged; STATE-CHANGING requests (L3) record the body — a mutation MUST be fully
+    # accountable (the body is the action), and a write payload is the analyst's own, not a secret leak.
     audit = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "method": method, "url": url}
+    if method not in ("GET", "HEAD", "OPTIONS") and data is not None:
+        audit["body"] = str(data)[:1000]
     try:
         with opener.open(r, timeout=cfg.live_request_timeout_s) as resp:
             snippet = resp.read(2048).decode("utf-8", "replace")
@@ -122,9 +126,12 @@ def _generate_plan(ctx: RunContext, scope) -> list | None:
     if not hosts:
         _log("scope has no in-scope web/api host; nothing to probe live")
         return None
-    state_note = ("State-changing methods are permitted but use them ONLY for non-destructive "
-                  "confirmations." if cfg.live_allow_writes
-                  else "ONLY GET/HEAD/OPTIONS are permitted — no writes.")
+    state_note = (
+        f"State-changing methods (POST/PUT/PATCH) are permitted but ONLY for NON-DESTRUCTIVE "
+        f"confirmations, at most {cfg.live_max_writes} in total. DELETE is NEVER permitted. Prefer "
+        f"creating a single throwaway/benign value over modifying real data, and never delete, "
+        f"overwrite, or corrupt anything. Each write must carry an `expect` that proves the issue."
+        if cfg.live_allow_writes else "ONLY GET/HEAD/OPTIONS are permitted — no writes.")
     template = (ctx.assets_dir / "06_live_probe_prompt.md").read_text(encoding="utf-8")
     rendered = fill_placeholders(template, {
         "PROGRAM_NAME": scope.program_name, "REPO_PATH": str(ctx.repo_dir.resolve()),
@@ -253,6 +260,8 @@ def run(ctx: RunContext):
     validate_probe_plan(plan, max_requests=cfg.live_max_requests,
                         max_payload_bytes=cfg.live_max_payload_bytes,
                         allow_state_changing=cfg.live_allow_writes)   # read-only + caps
+    assert_live_write_policy(plan, allow_writes=cfg.live_allow_writes,
+                             max_writes=cfg.live_max_writes)          # L3: DELETE blocked + write cap
 
     targets = sorted({str(r.get("url") or r.get("path")) for e in plan for r in e.get("requests", [])})
     _log(f"[WARNING] LIVE: probing {len(targets)} in-scope URL(s) "

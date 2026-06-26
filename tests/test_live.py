@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from argo.guardrails import (assert_inscope_only, assert_live_authorized,
-                             LiveNotAuthorizedError, LiveScopeError, RuntimeProbeError)
+from argo.guardrails import (assert_inscope_only, assert_live_authorized, assert_live_write_policy,
+                             LiveNotAuthorizedError, LiveScopeError, LiveWriteError, RuntimeProbeError)
 from argo.stages import live
 
 
@@ -114,6 +114,13 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"hello-from-live")
 
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        self.rfile.read(length)
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"created")
+
     def log_message(self, *a):
         pass
 
@@ -123,8 +130,12 @@ def loopback_server():
     srv = HTTPServer(("127.0.0.1", 0), _Handler)
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    yield f"127.0.0.1:{srv.server_address[1]}"
-    srv.shutdown()
+    try:
+        yield f"127.0.0.1:{srv.server_address[1]}"
+    finally:
+        srv.shutdown()
+        srv.server_close()          # release the socket immediately
+        t.join(timeout=2)           # don't leave a worker thread lingering into later tests
 
 
 def _write_scope(ctx, host):
@@ -242,3 +253,57 @@ def test_executor_blocked_when_out_of_scope(env, loopback_server):
     with pytest.raises(LiveScopeError):                          # scope-lock aborts before any request
         live.run(ctx)
     assert not (ctx.run_dir / "live_audit_log.jsonl").exists()   # nothing was sent
+
+
+# ------------------------------------------------------------ L3: state-changing write policy
+def _post(url, n=1):
+    return [{"finding_id": "F1", "requests": [
+        {"method": "POST", "url": url, "body": "{\"k\":\"v\"}"} for _ in range(n)]}]
+
+
+def test_l3_delete_never_allowed_even_with_writes():
+    plan = [{"finding_id": "F1", "requests": [{"method": "DELETE", "url": "https://api.acme.com/x"}]}]
+    with pytest.raises(LiveWriteError):
+        assert_live_write_policy(plan, allow_writes=True, max_writes=5)
+
+
+def test_l3_writes_blocked_without_optin():
+    with pytest.raises(LiveWriteError):
+        assert_live_write_policy(_post("https://api.acme.com/x"), allow_writes=False, max_writes=5)
+
+
+def test_l3_writes_within_cap_ok():
+    assert_live_write_policy(_post("https://api.acme.com/x", n=3), allow_writes=True, max_writes=5)
+
+
+def test_l3_write_cap_enforced():
+    with pytest.raises(LiveWriteError):
+        assert_live_write_policy(_post("https://api.acme.com/x", n=6), allow_writes=True, max_writes=5)
+
+
+def test_l3_audit_records_body_for_writes(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0, live_allow_writes=True)
+    _write_scope(ctx, loopback_server)
+    (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps([
+        {"finding_id": "F1", "requests": [
+            {"method": "POST", "url": f"http://{loopback_server}/x", "body": "{\"k\":\"v\"}",
+             "expect": {"status": 200, "body_contains": ["created"]}}]}]), encoding="utf-8")
+
+    out = live.run(ctx)
+    assert out is not None
+    results = json.loads(out.read_text(encoding="utf-8"))
+    assert results["findings"][0]["requests"][0]["expect_met"] is True
+    audit = json.loads((ctx.run_dir / "live_audit_log.jsonl").read_text(encoding="utf-8").strip())
+    assert audit["method"] == "POST" and audit["body"] == "{\"k\":\"v\"}"   # mutation fully recorded
+
+
+def test_l3_delete_in_run_aborts_before_sending(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0, live_allow_writes=True)
+    _write_scope(ctx, loopback_server)
+    (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps([
+        {"finding_id": "F1", "requests": [{"method": "DELETE", "url": f"http://{loopback_server}/x"}]}]),
+        encoding="utf-8")
+
+    with pytest.raises(LiveWriteError):
+        live.run(ctx)
+    assert not (ctx.run_dir / "live_audit_log.jsonl").exists()

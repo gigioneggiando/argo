@@ -64,7 +64,8 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `runtime_build_timeout_s` | — | R3: max seconds to docker-build a recipe/repo Dockerfile (default 1800) |
 | `runtime_max_requests` / `runtime_min_request_interval_s` / `runtime_max_payload_bytes` / `runtime_allow_state_changing` | — | anti-DoS caps + read-only-by-default method gate enforced by `guardrails.validate_probe_plan` |
 | `live_enabled` | `argo live --i-have-authorization` | ⚠️ **opt-in, default off, AUTHORIZED USE ONLY.** Bounded **read-only** requests to the program's **in-scope** hosts to confirm findings. RoE-gated (`assert_live_authorized`: automation/safe-harbor/prohibited), in-scope-only (`assert_inscope_only`: out-of-scope/unknown/loopback blocked), capped + audit-logged. See [guardrails §2c](guardrails.md#2c-the-opt-in-live-exception-the-live-stage-in-scope-hosts-only) |
-| `live_allow_writes` | `argo live --allow-writes` | **second** opt-in: permit state-changing methods (default read-only GET/HEAD/OPTIONS) |
+| `live_allow_writes` | `argo live --allow-writes` | **second** opt-in: permit **non-destructive** state-changing methods POST/PUT/PATCH (default read-only GET/HEAD/OPTIONS). **DELETE is never allowed.** A mutation's body is recorded in the audit log |
+| `live_max_writes` | `argo live --max-writes` | (L3) separate cap on state-changing requests, enforced by `assert_live_write_policy` (default 5) |
 | `live_max_requests` / `live_min_request_interval_s` / `live_request_timeout_s` / `live_max_payload_bytes` | `--max-requests` / `--min-interval` | anti-DoS caps (total count / rate / per-request timeout / body size); an oversized plan is rejected whole |
 
 ## Other fields

@@ -30,7 +30,9 @@ A JSON **array** of entries, one per finding you want to confirm:
 - **`url`** must be an **absolute URL** whose host is a **registered in-scope web/api asset**. Relative
   paths, out-of-scope hosts, unknown hosts, and loopback are all **rejected before any request is sent**.
 - **`method`** is **read-only** (GET/HEAD/OPTIONS) unless you pass `--allow-writes` (a deliberate second
-  opt-in). Honor the program's `prohibited_techniques` (no DoS, no scanning if forbidden).
+  opt-in). With writes on, only **non-destructive** POST/PUT/PATCH are allowed — **DELETE is never
+  permitted**, state-changing requests are capped separately (`--max-writes`, default 5), and each
+  mutation's body is recorded in the audit log. Honor the program's `prohibited_techniques`.
 - **`headers`** / **`body`** are optional (body is size-capped, never logged to the audit trail).
 - **`expect`** is optional: `status` (int or list) and `body_contains` (list of substrings). When set,
   the result is marked `expect_met` so you can see at a glance whether the finding was confirmed.
@@ -48,7 +50,8 @@ A JSON **array** of entries, one per finding you want to confirm:
 ```bash
 argo live --run <RUN_ID> --i-have-authorization
 # read-only by default; conservative caps. Tune with:
-#   --max-requests N   --min-interval SECONDS   --allow-writes (second opt-in)
+#   --max-requests N   --min-interval SECONDS
+#   --allow-writes (second opt-in; POST/PUT/PATCH only, never DELETE)   --max-writes N
 ```
 
 Outputs land in the run dir: `live_results.json` (per-request status + body snippet + `expect_met`)

@@ -280,7 +280,7 @@ guardrails — today **no code execution** is a hard rule. The design constraint
   (a distinct opt-in mode) so the default tool stays static-only. Until then, Argo emits the
   `live_verification_plan` text for a human to run.
 
-### Phase 10 — Live target interaction (opt-in, scope-locked) — ◑ L1+L2 DONE (read-only)
+### Phase 10 — Live target interaction (opt-in, scope-locked) — ✅ L1–L3 DONE
 > Full safety model in **[guardrails.md §2c](guardrails.md#2c-the-opt-in-live-exception-the-live-stage-in-scope-hosts-only)**.
 > The deliberate, heavily-gated relaxation of the "never a live host" rule, for **authorized**
 > bug-bounty engagements whose RoE permit automated interaction. The live analog of Phase 9's runtime
@@ -312,8 +312,13 @@ and audit-logged, and the default tool remains 100% offline against the program'
   from the observations and attaches a `validation.live` block to `validated_findings.json`. Both
   sessions are network-free (`stage="live"` gets no network tools); only the fixed executor reaches the
   host. Still read-only. Mock-runner tested end-to-end (generate→gate→execute→interpret→attach).
-- [ ] **L3 — state-changing probes** behind the **second** opt-in (`--allow-writes` / `live_allow_writes`)
-  for deeper confirmations, with extra care (non-destructive only; honor `prohibited_techniques`).
+- **L3 — state-changing probes — ✅ DONE.** Behind the **second** opt-in (`--allow-writes` /
+  `live_allow_writes`), POST/PUT/PATCH are permitted for **non-destructive** confirmations only, with
+  extra rails (`guardrails.assert_live_write_policy`): **DELETE is never allowed** even in write mode,
+  state-changing requests are capped **separately** by `live_max_writes` (`--max-writes`, default 5),
+  and each mutation's **body is recorded** in the audit log. The propose prompt (06) is hardened for
+  writes (no DELETE, prefer a throwaway benign value, declare `expect`). Tests in `tests/test_live.py`
+  (DELETE blocked, write cap, writes-without-opt-in blocked, body audited, run aborts on DELETE).
 - [ ] _Later:_ surface live verdicts in `REPORT.md` (as Phase-9 R4 did for runtime), and an authenticated
   live session (cookie/login step) reusing the runtime probe's auth-step shape.
 

@@ -183,6 +183,7 @@ class PipelineConfig:
     # NEVER touches out-of-scope or non-in-scope hosts. Authorized-use only (your responsibility).
     live_enabled: bool = False
     live_allow_writes: bool = False                # default read-only (GET/HEAD/OPTIONS); writes = 2nd opt-in
+    live_max_writes: int = 5                        # L3: separate cap on state-changing reqs (DELETE always blocked)
     live_max_requests: int = 30                    # hard total cap (anti-DoS)
     live_min_request_interval_s: float = 1.0       # rate cap between live requests (anti-DoS)
     live_request_timeout_s: int = 15               # per-request timeout

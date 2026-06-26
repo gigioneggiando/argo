@@ -204,8 +204,10 @@ def live(run: str = RunIdArg,
              help="REQUIRED acknowledgement that the program's rules of engagement authorize live "
                   "interaction and that you accept responsibility. Without it, live is refused."),
          allow_writes: bool = typer.Option(False, "--allow-writes",
-             help="SECOND opt-in: permit state-changing methods (POST/PUT/PATCH/DELETE). "
-                  "Default is read-only (GET/HEAD/OPTIONS)."),
+             help="SECOND opt-in: permit NON-DESTRUCTIVE state-changing methods (POST/PUT/PATCH). "
+                  "DELETE is never allowed. Default is read-only (GET/HEAD/OPTIONS)."),
+         max_writes: int = typer.Option(5, "--max-writes",
+             help="(--allow-writes) separate cap on state-changing requests"),
          max_requests: int = typer.Option(30, "--max-requests", help="hard total request cap (anti-DoS)"),
          rate: float = typer.Option(1.0, "--min-interval",
              help="minimum seconds between live requests (anti-DoS rate cap)"),
@@ -224,7 +226,7 @@ def live(run: str = RunIdArg,
                           "permit it and you accept responsibility)."})
         raise typer.Exit(code=2)
     cfg = _build_config(runner, None, False, None, 3, runs_dir, scenario).with_overrides(
-        live_enabled=True, live_allow_writes=allow_writes,
+        live_enabled=True, live_allow_writes=allow_writes, live_max_writes=max_writes,
         live_max_requests=max_requests, live_min_request_interval_s=rate)
     ctx = build_context(cfg, run)
     path = do_live(ctx)

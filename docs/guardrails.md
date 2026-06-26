@@ -7,16 +7,20 @@ guardrail to the exact place it is enforced, so a reviewer can verify it is real
 
 Stage 5 stops at DRAFT bundles; submission is a manual human action.
 
-- There is **no submission code path** anywhere — `grep` finds no `requests`/`urllib`/`socket`/
-  `http` client in the tree.
+- There is **no submission code path** anywhere — no finding/report is ever transmitted. The only
+  HTTP client in the tree is the **gated live-probe executor** (`stages/live.py`, §2c): it makes
+  read-only, in-scope verification requests, never a submission, and is **off by default**.
 - `stages/report.py` writes `submission_drafts/<id>.md` files, each opening with
   `# DRAFT - NOT SUBMITTED`.
 - The CLI exposes **no `submit` command** (`tests/test_pipeline.py::test_cli_has_no_submit_command`).
 
-## 2. Never contact, scan, or exercise a live host (any stage)
+## 2. Never contact, scan, or exercise a live host (except the opt-in, gated `live` stage)
 
-Holds even for `source_and_live` targets — live steps against the program's hosts exist only as
-text plans a human runs.
+Every stage of the **default** pipeline is fully offline against the program's hosts: even for
+`source_and_live` targets, live steps exist only as text plans a human runs. The **one** way Argo
+itself touches a live in-scope host is the **opt-in `live` stage (§2c)** — default **off**, gated by
+an explicit authorization acknowledgement, scope-locked to in-scope assets, capped, and audit-logged.
+With `live` disabled (the default), the absolute "never a live host" rule below holds in full.
 
 - `config.NETWORK_TOOLS` lists every network/sub-agent tool (`Bash`, `WebFetch`, `WebSearch`,
   `Task`, …). `guardrails.enforce_session_tools()` **strips** them from any session's allowlist
@@ -78,6 +82,37 @@ extended to the probe layer:
   fails the run) when disabled, Docker absent, no launcher recipe, or no probe plan. Full design:
   [runtime-verification-study.md](runtime-verification-study.md).
 
+### 2c. ⚠️ The opt-in live exception: the `live` stage (in-scope hosts only)
+
+This is the **one** capability that, by design, contacts the program's **real, live in-scope host** —
+a deliberate, heavily-gated relaxation of §2 for **authorized** bug-bounty engagements whose rules of
+engagement permit automated interaction. **Off by default** (`live_enabled=False`); the standalone
+`argo live` command additionally requires the explicit `--i-have-authorization` acknowledgement.
+It is the live analog of the runtime sandbox: same propose→validate→execute→interpret shape, but the
+target is the in-scope host instead of loopback — so the validators are **inverted and tightened**:
+
+- **RoE authorization gate** — `guardrails.assert_live_authorized(scope)` **refuses** unless the scope
+  authorizes it: `automation_allowed` is true, `safe_harbor` is not explicitly false, and
+  `prohibited_techniques` is non-empty (no touching a live host without declared hard limits).
+- **In-scope-only scope-lock** — `guardrails.assert_inscope_only(plan, scope)` requires every request
+  to use an **absolute URL whose host is a registered in-scope web/api asset**; out-of-scope, unknown,
+  *and loopback* hosts are all **hard-blocked** (careful wildcard matching, no `*.acme.com` overmatch).
+  A violation **aborts before any request is sent**.
+- **Read-only + anti-DoS caps** — `guardrails.validate_probe_plan(...)` allows **read-only** methods
+  only (GET/HEAD/OPTIONS) unless `live_allow_writes` (a deliberate **second** opt-in, `--allow-writes`)
+  is set; total request count, body size, and rate (`live_min_request_interval_s`) are capped. An
+  oversized plan is **rejected whole** (fail-loud, no silent truncation), honoring "no DoS".
+- **No model execution primitive** — a hand-written plan (L1) is run by a **fixed** stdlib executor,
+  not a model shell; the model never gets a network tool. (LLM plan generation is L2, still gated by
+  the same deterministic validators.)
+- **Full accountability** — every request is written to `runs/<id>/live_audit_log.jsonl`
+  (timestamp, method, URL, status, size); results land in `live_results.json`.
+- **Best-effort + off-by-default** — skips silently when disabled or no plan exists; any gate failure
+  aborts the stage and sends nothing.
+- Tests: `test_live.py` (RoE gate accept/refuse; in-scope accept; out-of-scope/unknown/loopback/
+  relative reject; wildcard no-overmatch; oversized-plan rejection; executor + audit log against a
+  loopback server the test scope declares in-scope).
+
 ## 3. Repo mounted read-only to every session; the pipeline never patches
 
 - The session **cwd is a separate writable scratch dir**, never the repo. The repo is exposed
@@ -128,4 +163,5 @@ extended to the probe layer:
 
 They do not vouch for finding quality — that is the job of the audit and validation prompts.
 They guarantee the pipeline stays inside the authorized envelope: source-static only, read-only,
-no live contact, no submission.
+no submission, and **no live contact unless you explicitly opt into the gated `live` stage** (§2c),
+which itself stays scope-locked, read-only-by-default, capped, and audit-logged.

@@ -280,6 +280,37 @@ guardrails — today **no code execution** is a hard rule. The design constraint
   (a distinct opt-in mode) so the default tool stays static-only. Until then, Argo emits the
   `live_verification_plan` text for a human to run.
 
+### Phase 10 — Live target interaction (opt-in, scope-locked) — ◑ L1 DONE (read-only)
+> Full safety model in **[guardrails.md §2c](guardrails.md#2c-the-opt-in-live-exception-the-live-stage-in-scope-hosts-only)**.
+> The deliberate, heavily-gated relaxation of the "never a live host" rule, for **authorized**
+> bug-bounty engagements whose RoE permit automated interaction. The live analog of Phase 9's runtime
+> sandbox: same propose→validate→execute→interpret shape, but the target is the **real in-scope host**
+> instead of loopback — so the validators are **inverted and tightened**. **Off by default**, and the
+> `argo live` command additionally requires an explicit `--i-have-authorization` acknowledgement.
+
+Goal: let the agent do **bounded live recon/verification** against the program's in-scope assets to
+**confirm findings and cut false positives** — exactly the edge a human researcher gets from touching
+the target — without ever leaving the authorized envelope. Why it's a separate, gated mode (not the
+default): it crosses the single hardest standing guardrail, so it stays opt-in, scope-locked, capped,
+and audit-logged, and the default tool remains 100% offline against the program's hosts.
+
+- **L1 — read-only live recon — ✅ DONE.** Hand-written `runs/<id>/live_probe_plan.json` →
+  RoE-authorization gate (`assert_live_authorized`: `automation_allowed` + `safe_harbor` + declared
+  `prohibited_techniques`) → **in-scope-only scope-lock** (`assert_inscope_only`: absolute URL whose
+  host is a registered in-scope asset; out-of-scope/unknown/loopback hard-blocked; no wildcard
+  overmatch) → read-only methods + anti-DoS caps (`validate_probe_plan`, oversized plan rejected whole)
+  → a **fixed stdlib executor** (not a model shell) runs it with a rate cap, writing `live_results.json`
+  + a full `live_audit_log.jsonl`. CLI: `argo live --run <id> --i-have-authorization`. Stage:
+  `argo/stages/live.py`; config `live_enabled`/`live_allow_writes`/`live_max_requests`/
+  `live_min_request_interval_s`/`live_request_timeout_s`/`live_max_payload_bytes` (all off/conservative
+  by default). Tests: `tests/test_live.py` (gates + executor against an in-scope loopback server).
+- [ ] **L2 — LLM-proposed live probe plan** (the model writes the plan from the run's findings; same
+  deterministic validators gate it before any request — mirrors Phase-9 R2). Still read-only.
+- [ ] **L3 — state-changing probes** behind the **second** opt-in (`--allow-writes` / `live_allow_writes`)
+  for deeper confirmations, with extra care (non-destructive only; honor `prohibited_techniques`).
+- [ ] _Later:_ surface live verdicts in `REPORT.md` (as Phase-9 R4 did for runtime), and an authenticated
+  live session (cookie/login step) reusing the runtime probe's auth-step shape.
+
 ## Deferred-feature backlog — feasibility & implementation plan (code-audited 2026-06-18)
 
 ### G. Gemini backend — ⬜ BACKLOG (blocked by Google's CLI migration, investigated 2026-06-26)

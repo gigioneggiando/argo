@@ -248,6 +248,90 @@ def validate_probe_plan(probe_plan: list[dict], *, max_requests: int, max_payloa
             f"probe plan has {total} requests, exceeding the cap of {max_requests} (anti-DoS)")
 
 
+# --------------------------------------------------------------- LIVE testing (opt-in, gated)
+class LiveNotAuthorizedError(GuardrailError):
+    """The program's rules of engagement do not authorize live interaction (automation not allowed,
+    safe-harbor explicitly absent, or no prohibited-techniques limits declared)."""
+
+
+class LiveScopeError(GuardrailError):
+    """A live probe targets a host that is NOT an in-scope asset (or matches an out-of-scope token).
+    Live testing may ONLY touch the program's in-scope assets — never anything else."""
+
+
+def _host_of(url: str) -> str:
+    s = (url or "").strip()
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    return s.split("/", 1)[0].split("@")[-1].split("?")[0].rsplit(":", 1)[0].strip("[]").lower()
+
+
+def _inscope_matchers(scope) -> list[tuple[str, str]]:
+    """(kind, value) host matchers from the scope's web/api in-scope assets. 'wild' => *.base."""
+    out: list[tuple[str, str]] = []
+    for a in getattr(scope, "in_scope", []):
+        if getattr(a, "type", None) not in ("web", "api"):
+            continue
+        raw = a.asset.strip().lower()
+        host = _host_of(raw) if "://" in raw else raw.split("/", 1)[0]
+        host = host.split("?")[0].rsplit(":", 1)[0].strip()
+        if host.startswith("*."):
+            out.append(("wild", host[2:]))
+        elif host:
+            out.append(("exact", host))
+    return out
+
+
+def _host_in_scope(host: str, matchers: list[tuple[str, str]]) -> bool:
+    for kind, val in matchers:
+        if kind == "exact" and host == val:
+            return True
+        if kind == "wild" and (host == val or host.endswith("." + val)):
+            return True
+    return False
+
+
+def assert_live_authorized(scope) -> None:
+    """Hard gate before ANY live interaction: the program's RoE must authorize it."""
+    if not getattr(scope, "automation_allowed", False):
+        raise LiveNotAuthorizedError(
+            "live testing refused: scope.automation_allowed is not true — the program does not permit "
+            "automated interaction. Enable it only if the program's rules explicitly allow automation.")
+    if getattr(scope, "safe_harbor", None) is False:
+        raise LiveNotAuthorizedError("live testing refused: scope.safe_harbor is explicitly false.")
+    if not getattr(scope, "prohibited_techniques", None):
+        raise LiveNotAuthorizedError(
+            "live testing refused: scope.prohibited_techniques is empty — refusing to touch a live host "
+            "without explicit hard limits (e.g. 'no DoS', 'no automated scanning').")
+
+
+def assert_inscope_only(probe_plan: list[dict], scope) -> None:
+    """Hard gate: every live probe must use an ABSOLUTE URL whose host is an in-scope asset, and must
+    not match any out-of-scope token. The inverse of ``assert_loopback_only`` — here loopback/anything
+    that is not an explicit in-scope asset is REJECTED."""
+    matchers = _inscope_matchers(scope)
+    if not matchers:
+        raise LiveScopeError("scope declares no in-scope web/api host — nothing is authorized to probe")
+    oos = [_normalize(x) for x in getattr(scope, "out_of_scope", []) if x]
+    for entry in probe_plan:
+        for req in _entry_requests(entry):
+            target = str(req.get("url") or req.get("path") or "")
+            if "://" not in target:
+                raise LiveScopeError(
+                    f"live probe must use an absolute URL to an in-scope host (finding "
+                    f"{entry.get('finding_id')!r}); got {target!r}")
+            host = _host_of(target)
+            if not _host_in_scope(host, matchers):
+                raise LiveScopeError(
+                    f"live probe targets {host!r}, which is NOT an in-scope asset (finding "
+                    f"{entry.get('finding_id')!r}) — refusing to touch it")
+            blob = _normalize(target)
+            for t in oos:
+                if t and len(t) > 3 and t in blob:
+                    raise LiveScopeError(
+                        f"live probe matches out-of-scope token {t!r} (finding {entry.get('finding_id')!r})")
+
+
 # ------------------------------------------------------------------------- scope filter
 def out_of_scope_match(affected: list[str], out_of_scope: list[str]) -> str | None:
     """Code-side scope filter, independent of the LLM verdict.

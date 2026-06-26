@@ -55,10 +55,13 @@ Argo is for **authorized** security review — your own code, bug-bounty program
 CTFs, or research. Three constraints are enforced in the orchestrator, not left to the prompts:
 
 1. **Never auto-submit.** The pipeline stops at drafts; submission is always a human action.
-2. **Never contact live hosts**, even for `source_and_live` targets. Analysis is static, on the
-   source. For live targets, verification steps exist only as a text plan that you run yourself,
-   inside the program rules (no DoS, no scanning). This static-only stance is *by design*, and is
-   what keeps Argo a SAST rather than a DAST.
+2. **Never contact live hosts by default**, even for `source_and_live` targets — analysis is static,
+   on the source, and live verification steps are emitted as a text plan you run yourself inside the
+   program rules (no DoS, no scanning). The **one** opt-in exception is the gated `argo live` stage
+   (default **off**, requires `--i-have-authorization`): for **authorized** engagements it makes
+   bounded, **in-scope-only**, read-only, capped, audit-logged requests to confirm findings — every
+   request scope-locked to a registered in-scope asset (out-of-scope/unknown hosts hard-blocked).
+   See [guardrails §2c](docs/guardrails.md#2c-the-opt-in-live-exception-the-live-stage-in-scope-hosts-only).
 3. **Read-only repo** in every session: the pipeline never patches anything.
 
 Additionally, prohibited techniques declared in scope (e.g. "no DoS") are propagated into every

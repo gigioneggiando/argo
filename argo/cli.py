@@ -19,7 +19,7 @@ from typing import Optional
 import typer
 
 from .config import OPUS, PipelineConfig
-from .orchestrator import (build_context, do_audit, do_ingest, do_recon, do_report,
+from .orchestrator import (build_context, do_audit, do_ingest, do_live, do_recon, do_report,
                            do_runtime, do_sca, do_validate, new_run_id, run_pipeline)
 
 app = typer.Typer(add_completion=False, help="Argo — authorized source-static bug-bounty audits.")
@@ -196,6 +196,38 @@ def runtime(run: str = RunIdArg,
     ctx = build_context(cfg, run)
     path = do_runtime(ctx)
     _emit({"run_id": run, "runtime_results": str(path) if path else None})
+
+
+@app.command()
+def live(run: str = RunIdArg,
+         confirm: bool = typer.Option(False, "--i-have-authorization",
+             help="REQUIRED acknowledgement that the program's rules of engagement authorize live "
+                  "interaction and that you accept responsibility. Without it, live is refused."),
+         allow_writes: bool = typer.Option(False, "--allow-writes",
+             help="SECOND opt-in: permit state-changing methods (POST/PUT/PATCH/DELETE). "
+                  "Default is read-only (GET/HEAD/OPTIONS)."),
+         max_requests: int = typer.Option(30, "--max-requests", help="hard total request cap (anti-DoS)"),
+         rate: float = typer.Option(1.0, "--min-interval",
+             help="minimum seconds between live requests (anti-DoS rate cap)"),
+         runner: str = RunnerOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """[WARNING] OPT-IN LIVE testing of the program's IN-SCOPE hosts (L1, read-only).
+
+    A FIXED executor makes BOUNDED, IN-SCOPE-ONLY HTTP requests to the live target to confirm findings.
+    Hard rails: refuses unless the scope's RoE authorize it (automation_allowed, safe_harbor, declared
+    prohibited_techniques); every request must target an in-scope asset (out-of-scope/unknown hosts are
+    blocked); read-only by default; total/rate/size caps; every request is written to an audit log.
+    Reads a hand-written runs/<id>/live_probe_plan.json. AUTHORIZED USE ONLY - your responsibility."""
+    if not confirm:
+        _emit({"run_id": run, "live_results": None,
+               "refused": "live testing requires --i-have-authorization (the program's rules must "
+                          "permit it and you accept responsibility)."})
+        raise typer.Exit(code=2)
+    cfg = _build_config(runner, None, False, None, 3, runs_dir, scenario).with_overrides(
+        live_enabled=True, live_allow_writes=allow_writes,
+        live_max_requests=max_requests, live_min_request_interval_s=rate)
+    ctx = build_context(cfg, run)
+    path = do_live(ctx)
+    _emit({"run_id": run, "live_results": str(path) if path else None})
 
 
 @app.command()

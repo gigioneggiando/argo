@@ -175,6 +175,17 @@ class PipelineConfig:
     runtime_min_request_interval_s: float = 0.2   # rate cap between probes (anti-DoS)
     runtime_max_payload_bytes: int = 8192   # cap request body size (anti-DoS)
     runtime_allow_state_changing: bool = False    # default: read-only probes (GET/HEAD/OPTIONS)
+
+    # --- LIVE testing of in-scope hosts (opt-in, heavily gated; see docs ⚠️ WARNING) -------------
+    # OFF by default. When on, a FIXED executor makes BOUNDED, IN-SCOPE-ONLY, read-only HTTP requests
+    # to the program's live in-scope assets (scope-locked + RoE-gated + capped + fully audit-logged).
+    # NEVER touches out-of-scope or non-in-scope hosts. Authorized-use only (your responsibility).
+    live_enabled: bool = False
+    live_allow_writes: bool = False                # default read-only (GET/HEAD/OPTIONS); writes = 2nd opt-in
+    live_max_requests: int = 30                    # hard total cap (anti-DoS)
+    live_min_request_interval_s: float = 1.0       # rate cap between live requests (anti-DoS)
+    live_request_timeout_s: int = 15               # per-request timeout
+    live_max_payload_bytes: int = 4096             # cap request body size
     runtime_mount_source: bool = True   # mount the isolated source copy at /src:ro (build-at-run
                                         # model). Set False for a self-contained PRE-BUILT image.
     runtime_build_timeout_s: int = 1800  # R3: max seconds to docker-build a recipe/repo Dockerfile

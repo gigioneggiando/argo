@@ -1,0 +1,18 @@
+[
+  {
+    "finding_id": "AUTHZ-001",
+    "requests": [
+      {
+        "method": "GET",
+        "url": "https://api.example.com/v1/admin/users",
+        "headers": {"Accept": "application/json"},
+        "expect": {"status": [401, 403], "body_contains": []}
+      },
+      {
+        "method": "GET",
+        "url": "https://api.example.com/v1/health",
+        "expect": {"status": 200, "body_contains": ["ok"]}
+      }
+    ]
+  }
+]

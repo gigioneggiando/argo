@@ -12,7 +12,7 @@ from .context import RunContext
 from .ledger import Ledger
 from .progress import ProgressReporter
 from .runner import RunnerCancelled, build_runner
-from .stages import audit, ingest, recon, report, research, runtime, sca, validate
+from .stages import audit, ingest, live, recon, report, research, runtime, sca, validate
 
 
 class PipelineCancelled(RuntimeError):
@@ -58,6 +58,10 @@ def do_validate(ctx: RunContext):
 
 def do_runtime(ctx: RunContext):
     return runtime.run(ctx)
+
+
+def do_live(ctx: RunContext):
+    return live.run(ctx)
 
 
 def do_report(ctx: RunContext):

@@ -1,0 +1,181 @@
+"""L1 live-testing safety core: RoE authorization gate + in-scope-only scope-lock + stage gating.
+The gate tests touch no network; the one executor test runs a loopback server that the test scope
+explicitly declares in-scope (so the scope-lock authorizes it) to prove caps + audit log work."""
+
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from types import SimpleNamespace
+
+import pytest
+
+from argo.guardrails import (assert_inscope_only, assert_live_authorized,
+                             LiveNotAuthorizedError, LiveScopeError, RuntimeProbeError)
+from argo.stages import live
+
+
+def _scope(in_scope=(("api.acme.com", "api"),), oos=("legacy.acme.com",),
+           automation_allowed=True, safe_harbor=True, prohibited=("no DoS",)):
+    return SimpleNamespace(
+        in_scope=[SimpleNamespace(asset=a, type=t) for a, t in in_scope],
+        out_of_scope=list(oos),
+        automation_allowed=automation_allowed,
+        safe_harbor=safe_harbor,
+        prohibited_techniques=list(prohibited))
+
+
+# ------------------------------------------------------------ RoE authorization gate
+def test_authorized_when_roe_permit():
+    assert_live_authorized(_scope())                              # no raise
+
+
+def test_refused_when_automation_not_allowed():
+    for val in (False, None):
+        with pytest.raises(LiveNotAuthorizedError):
+            assert_live_authorized(_scope(automation_allowed=val))
+
+
+def test_refused_when_safe_harbor_explicitly_false():
+    with pytest.raises(LiveNotAuthorizedError):
+        assert_live_authorized(_scope(safe_harbor=False))
+
+
+def test_refused_when_no_prohibited_techniques():
+    with pytest.raises(LiveNotAuthorizedError):
+        assert_live_authorized(_scope(prohibited=()))
+
+
+# ------------------------------------------------------------ in-scope-only scope-lock
+def test_inscope_absolute_url_ok():
+    plan = [{"finding_id": "F1", "requests": [
+        {"method": "GET", "url": "https://api.acme.com/v1/users"}]}]
+    assert_inscope_only(plan, _scope())                           # no raise
+
+
+def test_inscope_wildcard_subdomain_ok():
+    plan = [{"finding_id": "F1", "requests": [
+        {"method": "GET", "url": "https://app.acme.com/health"}]}]
+    assert_inscope_only(plan, _scope(in_scope=(("*.acme.com", "web"),)))
+
+
+def test_inscope_wildcard_does_not_overmatch():
+    plan = [{"finding_id": "F1", "requests": [
+        {"method": "GET", "url": "https://acme.com.evil.net/x"}]}]
+    with pytest.raises(LiveScopeError):
+        assert_inscope_only(plan, _scope(in_scope=(("*.acme.com", "web"),)))
+
+
+def test_rejects_unknown_host():
+    plan = [{"finding_id": "F1", "requests": [{"method": "GET", "url": "https://evil.com/x"}]}]
+    with pytest.raises(LiveScopeError):
+        assert_inscope_only(plan, _scope())
+
+
+def test_rejects_out_of_scope_host():
+    plan = [{"finding_id": "F1", "requests": [
+        {"method": "GET", "url": "https://legacy.acme.com/x"}]}]
+    with pytest.raises(LiveScopeError):
+        assert_inscope_only(plan, _scope(in_scope=(("*.acme.com", "web"),)))
+
+
+def test_rejects_relative_path_no_host():
+    plan = [{"finding_id": "F1", "requests": [{"method": "GET", "path": "/v1/users"}]}]
+    with pytest.raises(LiveScopeError):
+        assert_inscope_only(plan, _scope())
+
+
+def test_rejects_loopback_for_live():
+    plan = [{"finding_id": "F1", "requests": [{"method": "GET", "url": "http://127.0.0.1/x"}]}]
+    with pytest.raises(LiveScopeError):
+        assert_inscope_only(plan, _scope())
+
+
+def test_no_inscope_hosts_refuses():
+    plan = [{"finding_id": "F1", "requests": [{"method": "GET", "url": "https://api.acme.com/x"}]}]
+    with pytest.raises(LiveScopeError):
+        assert_inscope_only(plan, _scope(in_scope=(("repo.git", "source_repo"),)))
+
+
+# ------------------------------------------------------------ stage gating (no network)
+def test_live_off_by_default_returns_none(env):
+    ctx = env()                                                   # live_enabled defaults False
+    assert live.run(ctx) is None
+
+
+def test_live_enabled_without_plan_returns_none(env):
+    ctx = env(live_enabled=True)
+    assert live.run(ctx) is None                                 # no live_probe_plan.json -> skip
+
+
+# ------------------------------------------------------------ executor (loopback server, in-scope)
+class _Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"hello-from-live")
+
+    def log_message(self, *a):
+        pass
+
+
+@pytest.fixture
+def loopback_server():
+    srv = HTTPServer(("127.0.0.1", 0), _Handler)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    yield f"127.0.0.1:{srv.server_address[1]}"
+    srv.shutdown()
+
+
+def _write_scope(ctx, host):
+    ctx.run_dir.mkdir(parents=True, exist_ok=True)
+    ctx.scope_path.write_text(json.dumps({
+        "program_name": "test", "platform": "test", "target_type": "source_and_live",
+        "in_scope": [{"asset": host, "type": "web"}],
+        "out_of_scope": [], "prohibited_techniques": ["no DoS"],
+        "safe_harbor": True, "automation_allowed": True}), encoding="utf-8")
+
+
+def test_executor_makes_requests_and_audits(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
+    _write_scope(ctx, loopback_server)
+    (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps([
+        {"finding_id": "F1", "requests": [
+            {"method": "GET", "url": f"http://{loopback_server}/a",
+             "expect": {"status": 200, "body_contains": ["hello-from-live"]}},
+            {"method": "GET", "url": f"http://{loopback_server}/b", "expect": {"status": 404}}]}]),
+        encoding="utf-8")
+
+    out = live.run(ctx)
+    assert out is not None
+    results = json.loads(out.read_text(encoding="utf-8"))
+    reqs = results["findings"][0]["requests"]
+    assert reqs[0]["status"] == 200 and reqs[0]["expect_met"] is True
+    assert reqs[1]["status"] == 200 and reqs[1]["expect_met"] is False   # expected 404, got 200
+    audit = (ctx.run_dir / "live_audit_log.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(audit) == 2 and all(json.loads(a)["status"] == 200 for a in audit)
+
+
+def test_oversized_plan_rejected_before_any_request(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0, live_max_requests=2)
+    _write_scope(ctx, loopback_server)
+    (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps([
+        {"finding_id": "F1", "requests": [
+            {"method": "GET", "url": f"http://{loopback_server}/{i}"} for i in range(5)]}]),
+        encoding="utf-8")
+
+    with pytest.raises(RuntimeProbeError):                       # anti-DoS: reject whole plan, fail loud
+        live.run(ctx)
+    assert not (ctx.run_dir / "live_audit_log.jsonl").exists()   # nothing was sent
+
+
+def test_executor_blocked_when_out_of_scope(env, loopback_server):
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
+    _write_scope(ctx, loopback_server)                           # only loopback_server is in-scope
+    (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps([
+        {"finding_id": "F1", "requests": [{"method": "GET", "url": "https://evil.com/x"}]}]),
+        encoding="utf-8")
+
+    with pytest.raises(LiveScopeError):                          # scope-lock aborts before any request
+        live.run(ctx)
+    assert not (ctx.run_dir / "live_audit_log.jsonl").exists()   # nothing was sent

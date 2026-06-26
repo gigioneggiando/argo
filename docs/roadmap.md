@@ -282,6 +282,24 @@ guardrails — today **no code execution** is a hard rule. The design constraint
 
 ## Deferred-feature backlog — feasibility & implementation plan (code-audited 2026-06-18)
 
+### G. Gemini backend — ⬜ BACKLOG (blocked by Google's CLI migration, investigated 2026-06-26)
+Adding Gemini as a 3rd provider in the `AgentRunner`/`FallbackRunner` chain (alongside Claude +
+Codex). **Investigated and parked** — findings so the next attempt doesn't re-investigate:
+- **The API key WORKS** — a raw `generativelanguage.googleapis.com/.../generateContent` call returns
+  HTTP 200 with clean JSON + `usageMetadata` (tokens for cost). An AI-Studio key (new `AQ.Ab8…`
+  format) is fine.
+- **The `gemini` CLI (v0.49) is broken for us** — `gemini -p -o json` returns a persistent **503**
+  across models; it routes to the deprecated Code Assist / Antigravity path (Google cut the free
+  Code-Assist tier **2026-06-18** and is migrating users to **Antigravity / Antigravity CLI**).
+- **Architecture implication:** the working path (raw API) is **text-only** — no agentic tools, so it
+  cannot do Argo's agentic **audit/recon** (which need repo grep/read). It *could* serve the
+  **text-reasoning stages** (`validate` — excerpts are already inlined; `sca`) as a fallback, which is
+  exactly where session limits wall.
+- **Two ways to revisit:** (A) build a raw-API `GeminiRunner` (HTTP, text-only) wired in as a
+  fallback for `validate`/`sca` only — inherently safe (no tools = no network/mutation to strip);
+  (B) wait for the `gemini`/Antigravity CLI to stabilize, then wrap it like `CodexRunner` (agentic).
+- Either way it slots into the existing `_expand_backend`/`FallbackRunner` (e.g. `--fallback codex,gemini`).
+
 Each item below was verified against the current code (exact files, functions, signatures, and
 blockers). Effort is **S/M/L**; "paper value" rates how much it strengthens the research artifact.
 **Recommended order: the evaluation block (A) first — it is what the paper's results section needs;

@@ -87,6 +87,9 @@ CalibrationOpt = typer.Option(False, "--calibration", help="run audit on Opus (a
 BudgetOpt = typer.Option(None, "--budget", help="HARD per-run USD ceiling; aborts further sessions")
 ParallelOpt = typer.Option(3, "--parallel", help="max concurrent audit/validate sessions")
 RunsDirOpt = typer.Option(Path("runs"), "--runs-dir", help="root dir for run artifacts")
+AttributionOpt = typer.Option(True, "--attribution/--no-attribution",
+    help="append a 'Produced by Argo' provenance footer to REPORT.md / drafts / fix report "
+         "(default on; --no-attribution to opt out). Attribution only — never changes any license.")
 ScenarioOpt = typer.Option("happy", "--scenario", help="mock fixtures scenario (runner=mock)")
 TimeoutOpt = typer.Option(None, "--timeout", help="per-session wall-clock cap (seconds)")
 MaxTurnsOpt = typer.Option(None, "--max-turns", help="per-session turn tripwire (orchestrator-side)")
@@ -248,8 +251,10 @@ def validate(run: str = RunIdArg, runner: str = RunnerOpt,
 def report(run: str = RunIdArg, runner: str = RunnerOpt,
            audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
            budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
-           runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
-    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+           runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+           attribution: bool = AttributionOpt):
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
+                        ).with_overrides(attribution=attribution)
     ctx = build_context(cfg, run)
     path = do_report(ctx)
     _emit({"run_id": run, "report": str(path), "drafts_dir": str(ctx.drafts_dir)})
@@ -273,11 +278,13 @@ def fix(run: str = RunIdArg,
                                            "(one extra model session per patch; needs verify on)"),
         runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
         calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
-        parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+        parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+        attribution: bool = AttributionOpt):
     """Phase 6 (opt-in): propose a reviewable patch per confirmed finding and VERIFY each on an
     ISOLATED COPY (applies? compiles? no new errors?). Never modifies the target repo."""
     from .fixes import generate_fixes
-    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
+                        ).with_overrides(attribution=attribution)
     ctx = build_context(cfg, run)
     ids = {s.strip() for s in only.split(",") if s.strip()} if only else None
     report = generate_fixes(ctx, verify=not no_verify, docker=docker, build_cmd=build_cmd,
@@ -329,6 +336,7 @@ def pipeline(
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
     codex_accounts: Optional[str] = CodexAccountsOpt,
+    attribution: bool = AttributionOpt,
 ):
     """Run stages 1-5 and STOP at human-review drafts. Never submits."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
@@ -337,7 +345,8 @@ def pipeline(
                         codex_local_provider=codex_local_provider, fallback=fallback,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts)
     cfg = cfg.with_overrides(sca_enabled=sca, runtime_enabled=runtime,
-                             runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd)
+                             runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
+                             attribution=attribution)
     if critic_passes is not None:
         cfg = cfg.with_overrides(audit_critic_passes=critic_passes)
     if smoke:

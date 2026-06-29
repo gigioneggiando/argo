@@ -77,7 +77,7 @@ def run(ctx: RunContext) -> Path:
 
     report_md = _render_report(ctx, scope, survivors, dropped, resubmissions,
                                total_cost, n_calls)
-    sig = attribution_footer(ctx.run_id)   # mandatory Argo provenance (always on; see argo/branding.py)
+    sig = attribution_footer(ctx.run_id) if ctx.config.attribution else ""   # Argo provenance (default on)
     report_path = ctx.run_dir / "REPORT.md"
     report_path.write_text(report_md + sig, encoding="utf-8")
 

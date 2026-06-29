@@ -5,8 +5,9 @@ submission draft, fix report, or remediation PR was produced by **Argo**. It is 
 does NOT change the target's or Argo's license, and Argo is not claimed as an author of the target's
 own code (the fixes are proposals).
 
-The footer ships with the tool and is **mandatory** (no toggle): the same Argo signature appears on
-every user's audit artifacts, not just locally.
+The footer ships with the tool and is **on by default**, so the same Argo signature appears on every
+user's audit artifacts (not just locally). It can be turned off with ``--no-attribution`` /
+``PipelineConfig(attribution=False)`` for anyone who doesn't want it.
 """
 
 from __future__ import annotations

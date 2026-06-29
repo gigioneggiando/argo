@@ -252,12 +252,13 @@ def generate_fixes(ctx: RunContext, *, verify: bool = True, docker: str | None =
         "verify_enabled": verify,
         "fixes": fixes,
     }
-    # Mandatory provenance for remediation PRs: drop these trailers into the PR body / commit message so
-    # the patches are attributable to Argo (the .diff bytes stay untouched, so `git apply` is unaffected).
-    report["attribution"] = {
-        "generated_with": attribution_trailer(),
-        "coauthored_by": coauthored_by(),
-    }
+    if ctx.config.attribution:
+        # Provenance for remediation PRs: drop these trailers into the PR body / commit message so the
+        # patches are attributable to Argo (the .diff bytes stay untouched, so `git apply` is unaffected).
+        report["attribution"] = {
+            "generated_with": attribution_trailer(),
+            "coauthored_by": coauthored_by(),
+        }
     if re_audit:
         ran = [f for f in fixes if (f.get("verify") or {}).get("re_audit", {}).get("ran")]
         confirmed = sum(1 for f in ran

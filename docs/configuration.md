@@ -80,6 +80,7 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `codex_model` / `codex_oss` / `codex_local_provider` | `None` / `False` / `None` | (runner=codex) model id; open-source provider toggle; `ollama`/`lmstudio`. Codex cost is **token-estimated** (`MODEL_PRICING`), not authoritative |
 | `excerpt_context_lines` | 40 | ± lines of source attached around each cited `file:line` in Stage 4 |
 | `excerpt_max_bytes` | 60000 | hard cap on total excerpt bytes per finding |
+| `attribution` | `--attribution / --no-attribution` | append a "Produced by **Argo**" provenance footer to `REPORT.md` / drafts + an attribution block to `fixes_report.json` (with `Generated-with:` / `Co-authored-by:` trailers for remediation PRs). **Default on** for every user; opt out with `--no-attribution`. Attribution only — never changes any license. See [`argo/branding.py`](../argo/branding.py). |
 | `runs_dir` | `runs` | root dir for run artifacts |
 | `prompts_dir` | `argo/prompts` | the version-pinned assets |
 | `ledger_path` | `argo/ledger.sqlite` | the cost + findings ledger |

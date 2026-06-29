@@ -191,6 +191,11 @@ class PipelineConfig:
     live_max_retries: int = 2                       # retry transient errors (timeout/conn/5xx/429) — idempotent reqs ONLY
     live_max_redirects: int = 3                     # follow at most N redirects (idempotent only), each re-validated in-scope
     live_user_agent: str = "Argo-live/1.0 (authorized security testing)"  # identifies the tool to the target
+
+    # "Produced by Argo" provenance footer on human-facing audit artifacts (REPORT.md, drafts) + an
+    # attribution block in fixes_report.json. Default ON (same signature for every user); set False
+    # (--no-attribution) to opt out. Attribution only — never changes any license.
+    attribution: bool = True
     runtime_mount_source: bool = True   # mount the isolated source copy at /src:ro (build-at-run
                                         # model). Set False for a self-contained PRE-BUILT image.
     runtime_build_timeout_s: int = 1800  # R3: max seconds to docker-build a recipe/repo Dockerfile

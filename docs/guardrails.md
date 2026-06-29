@@ -12,6 +12,9 @@ Stage 5 stops at DRAFT bundles; submission is a manual human action.
   read-only, in-scope verification requests, never a submission, and is **off by default**.
 - `stages/report.py` writes `submission_drafts/<id>.md` files, each opening with
   `# DRAFT - NOT SUBMITTED`.
+- **Provenance.** Human-facing artifacts (`REPORT.md`, drafts) carry a "Produced by **Argo**" footer
+  (`branding.attribution_footer`, toggle `attribution`, default on) so a reviewer can see the output is
+  AI-assisted — attribution only, no license change, and not a claim of authorship over the target code.
 - The CLI exposes **no `submit` command** (`tests/test_pipeline.py::test_cli_has_no_submit_command`).
 
 ## 2. Never contact, scan, or exercise a live host (except the opt-in, gated `live` stage)

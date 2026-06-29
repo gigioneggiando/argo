@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from ..branding import attribution_footer
 from ..context import RunContext
 from ..ranking import confidence_rank, severity_rank
 
@@ -76,8 +77,9 @@ def run(ctx: RunContext) -> Path:
 
     report_md = _render_report(ctx, scope, survivors, dropped, resubmissions,
                                total_cost, n_calls)
+    sig = attribution_footer(ctx.run_id) if ctx.config.attribution else ""
     report_path = ctx.run_dir / "REPORT.md"
-    report_path.write_text(report_md, encoding="utf-8")
+    report_path.write_text(report_md + sig, encoding="utf-8")
 
     # --- submission drafts (confirmed only), marked DRAFT ----------------------------
     ctx.drafts_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +87,7 @@ def run(ctx: RunContext) -> Path:
     for f in survivors:
         if _verdict(f) == "confirmed":
             draft = _render_draft(ctx, scope, f)
-            (ctx.drafts_dir / f"{f.get('id', 'finding')}.md").write_text(draft, encoding="utf-8")
+            (ctx.drafts_dir / f"{f.get('id', 'finding')}.md").write_text(draft + sig, encoding="utf-8")
             n_drafts += 1
 
     print(f"[report] REPORT.md + {n_drafts} draft(s); {len(survivors)} survivor(s); "

@@ -19,6 +19,7 @@ import re
 import sys
 from pathlib import Path
 
+from .branding import attribution_trailer, coauthored_by
 from .config import ARTIFACT_TOOLS
 from .context import RunContext, collect_output_files
 from .runner import RunnerError
@@ -251,6 +252,13 @@ def generate_fixes(ctx: RunContext, *, verify: bool = True, docker: str | None =
         "verify_enabled": verify,
         "fixes": fixes,
     }
+    if ctx.config.attribution:
+        # Provenance for remediation PRs: drop these trailers into the PR body / commit message so the
+        # patches are attributable to Argo (the .diff bytes stay untouched, so `git apply` is unaffected).
+        report["attribution"] = {
+            "generated_with": attribution_trailer(),
+            "coauthored_by": coauthored_by(),
+        }
     if re_audit:
         ran = [f for f in fixes if (f.get("verify") or {}).get("re_audit", {}).get("ran")]
         confirmed = sum(1 for f in ran

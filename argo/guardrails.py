@@ -91,12 +91,24 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
+def _json_ascii_escaped(text: str) -> str:
+    """The JSON ``ensure_ascii=True`` form of a string: every non-ASCII char becomes a ``\\uXXXX``
+    escape, exactly as it is stored in scope.json. Lets the prohibited-technique check match a needle
+    against a haystack that embeds the *raw* scope-file text (where the char is escaped, not literal)."""
+    return text.encode("ascii", "backslashreplace").decode("ascii")
+
+
 def assert_prohibited_present(rendered_prompt: str, prohibited_techniques: list[str]) -> None:
     """Fail if any prohibited technique is missing from the rendered prompt text.
 
     The scope's prohibited techniques must be propagated *verbatim* into every prompt that
     is sent to a model. If the scope lists none, that is itself suspicious for a real
     bug-bounty program, so we require at least one.
+
+    A prohibited technique counts as present if EITHER its literal form OR its JSON-ascii-escaped
+    form appears: a prompt that embeds the raw scope.json text carries non-ASCII chars (em dashes,
+    accents — common in non-English briefs) as ``\\uXXXX`` escapes, while the parsed list carries the
+    real char. Without this the check would spuriously fail on any non-ASCII prohibited technique.
     """
     if not prohibited_techniques:
         raise PromptGuardrailError(
@@ -105,7 +117,8 @@ def assert_prohibited_present(rendered_prompt: str, prohibited_techniques: list[
             "Populate prohibited_techniques in scope.json."
         )
     haystack = _normalize(rendered_prompt)
-    missing = [p for p in prohibited_techniques if _normalize(p) not in haystack]
+    missing = [p for p in prohibited_techniques
+               if _normalize(p) not in haystack and _normalize(_json_ascii_escaped(p)) not in haystack]
     if missing:
         raise PromptGuardrailError(
             "Rendered prompt is missing required prohibited techniques (guardrail): "

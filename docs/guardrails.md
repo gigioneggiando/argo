@@ -144,7 +144,11 @@ target is the in-scope host instead of loopback — so the validators are **inve
 
 - `guardrails.assert_prohibited_present(text, prohibited)` raises `PromptGuardrailError` if any
   prohibited technique is missing from a rendered prompt — **and rejects an empty list**, since a
-  real program always has hard limits.
+  real program always has hard limits. A technique counts as present in **either** its literal form
+  **or** its JSON-`\uXXXX`-escaped form, so a non-ASCII constraint (an em dash or accented word —
+  common in non-English briefs) is matched whether the prompt embeds it as the raw scope.json text
+  (escaped) or as the parsed string (literal); without this the check spuriously failed on any
+  non-ASCII prohibited technique.
 - Enforced at every prompt boundary:
   - `stages/recon.py` — on the rendered meta-prompt, and `assert_audit_prompt_wellformed()` on
     **each generated audit prompt** (must also carry the template's RoE sections and "Do NOT

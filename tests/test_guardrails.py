@@ -1,5 +1,7 @@
 """Guardrails enforced in code (not just prompts)."""
 
+import json
+
 import pytest
 
 from argo.config import NETWORK_TOOLS, MUTATION_TOOLS
@@ -82,6 +84,19 @@ def test_ensure_prohibited_present_noop_when_all_present():
 def test_prohibited_empty_list_is_rejected():
     with pytest.raises(PromptGuardrailError):
         assert_prohibited_present("anything", [])
+
+
+def test_prohibited_present_matches_json_escaped_nonascii():
+    # A non-ASCII prohibited technique (em dash) embedded via the RAW scope.json text appears as a
+    # \uXXXX escape (json ensure_ascii=True), while the parsed list carries the real char. The check
+    # must still see it as present — this is the bug that crashed validate on a non-English brief.
+    proh = ["No fuzzing loops — only minimal, bounded probes"]
+    prompt_with_raw_scope = "SCOPE:\n" + json.dumps({"prohibited_techniques": proh})  # -> —
+    assert "\\u2014" in prompt_with_raw_scope                  # sanity: the haystack is escaped
+    assert_prohibited_present(prompt_with_raw_scope, proh)     # must NOT raise
+    # and a genuinely missing one still fails
+    with pytest.raises(PromptGuardrailError):
+        assert_prohibited_present(prompt_with_raw_scope, ["No DELETE — destructive operations"])
 
 
 def test_audit_prompt_wellformed_requires_anchors():

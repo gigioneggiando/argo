@@ -19,17 +19,11 @@ def test_trailers():
     assert coauthored_by().startswith("Co-authored-by: Argo <")
 
 
-def test_report_carries_footer_when_enabled(env):
-    ctx = env(attribution=True)
+def test_report_always_carries_footer(env):
+    # Attribution is MANDATORY (no toggle): every Argo report + draft is signed, for every user.
+    ctx = env()
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
     md = (ctx.run_dir / "REPORT.md").read_text(encoding="utf-8")
     assert "Produced by **Argo**" in md and __version__ in md
-    # confirmed-finding drafts carry it too
     drafts = list(ctx.drafts_dir.glob("*.md"))
     assert drafts and all("Produced by **Argo**" in d.read_text(encoding="utf-8") for d in drafts)
-
-
-def test_report_has_no_footer_when_disabled(env):
-    ctx = env(attribution=False)                       # the default in tests
-    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
-    assert "Produced by **Argo**" not in (ctx.run_dir / "REPORT.md").read_text(encoding="utf-8")

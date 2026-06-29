@@ -8,7 +8,7 @@ construction, and the subprocess error paths with crafted inputs and fakes (stil
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/ -q          # 222 tests (incl. the HTTP API + UI serving on the mock runner)
+python -m pytest tests/ -q          # 221 tests (incl. the HTTP API + UI serving on the mock runner)
 ```
 
 `pytest.ini` pins `--basetemp=.pytest_tmp` so the read-only repo copies the pipeline creates do

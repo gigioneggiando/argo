@@ -42,7 +42,6 @@ def env(tmp_path):
         # (a dedicated test opts back in with audit_critic_passes=1). Same spirit as research-off.
         cfg_overrides.setdefault("audit_critic_passes", 0)
         cfg_overrides.setdefault("sca_enabled", False)   # SCA adds a stage/call; opt in per-test
-        cfg_overrides.setdefault("attribution", False)   # keep REPORT.md byte-stable; opt in per-test
         cfg = PipelineConfig(
             runner="mock",
             runs_dir=tmp_path / "runs",

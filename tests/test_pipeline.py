@@ -107,7 +107,11 @@ def test_report_matches_golden(env):
     ctx = env()
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)   # golden = the 5-stage core
     produced = (ctx.run_dir / "REPORT.md").read_text(encoding="utf-8")
-    assert produced == GOLDEN.read_text(encoding="utf-8")
+    # The mandatory Argo provenance footer is appended to every report (version may bump); compare the
+    # report body against the golden, and assert the footer is present.
+    body, sep, _footer = produced.partition("\n\n---\n*Produced by **Argo**")
+    assert sep and "AI-assisted" in _footer            # footer always present
+    assert body == GOLDEN.read_text(encoding="utf-8")
 
 
 def test_findings_files_schema_conformant(env):

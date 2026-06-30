@@ -547,6 +547,8 @@ class MockClaudeRunner(ClaudeRunner):
             return self._runtime(work_dir, label)
         if stage == "live":
             return self._live(work_dir, label, prompt)
+        if stage == "corroborate":
+            return self._corroborate(work_dir, label, prompt)
         handler = {
             "ingest": self._ingest,
             "recon": self._recon,
@@ -706,6 +708,24 @@ class MockClaudeRunner(ClaudeRunner):
             {"type": "research_brief", "path": "research_brief.md", "status": "ok"},
             {"type": "threat_intel", "path": "threat_intel.json", "status": "ok"},
         ]))
+
+    def _corroborate(self, work_dir: Path, label, prompt: str) -> dict:
+        """Mock corroboration: emit a per-finding verdict. A fixture
+        ``<scenario>/corroborate/<finding_id>.json`` (if present) drives the verdict so tests can
+        exercise design_accepted / fixed_upstream; otherwise default to ``corroborated``."""
+        fid = label or "MOCK-1"
+        out = work_dir / f"corroboration_{fid}.json"
+        src = self.scenario_dir / "corroborate" / f"{fid}.json"
+        if src.is_file():
+            self._copy(src, out)
+        else:
+            out.write_text(json.dumps({
+                "finding_id": fid, "verdict": "corroborated",
+                "rationale": "(mock) no contradicting docs or newer fixing commit found.",
+                "evidence_urls": [], "fix_commit": None, "doc_url": None,
+                "adjusted_severity": None}, indent=2), encoding="utf-8")
+        return self._envelope(self._manifest(
+            [{"type": "corroboration", "path": out.name, "status": "ok"}]))
 
     def _remediate(self, work_dir: Path, label, prompt: str, repo_dir) -> dict:
         """Emit a real, applyable unified diff: read the finding's primary file (READ-ONLY) and

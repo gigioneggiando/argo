@@ -2,7 +2,7 @@
 
 The pipeline is **orchestration-only glue** around five reusable prompt assets. The security
 logic lives in the prompts (`argo/prompts/`); this code ingests a program, sequences the
-five stages, and produces a reviewable report. It never writes audit logic itself.
+stages, and produces a reviewable report. It never writes audit logic itself.
 
 See [diagrams/pipeline_flow.svg](diagrams/pipeline_flow.svg) for the visual flow.
 
@@ -10,7 +10,7 @@ See [diagrams/pipeline_flow.svg](diagrams/pipeline_flow.svg) for the visual flow
 
 ```
 argo/
-  cli.py            Typer CLI: ingest / recon / run / validate / report / pipeline
+  cli.py            Typer CLI: ingest / recon / run / validate / corroborate / report / pipeline
   orchestrator.py   wiring: build a RunContext, generate run IDs, drive the stages
   config.py         PipelineConfig: per-stage models, tool allowlists, budgets, caps
   context.py        RunContext (paths + scope loading + budget guard) + artifact collection
@@ -32,7 +32,7 @@ argo/
   verify.py         Phase-6 patch verification on an ISOLATED COPY (applies? compiles? no new errors?)
   benchmark.py      Phase-7 eval: score findings P/R/F1 vs labeled suites (by archetype / CWE) + A/B
   stages/
-    ingest.py  research.py  recon.py  audit.py  sca.py  validate.py  runtime.py  report.py
+    ingest.py  research.py  recon.py  audit.py  sca.py  validate.py  corroborate.py  runtime.py  report.py
   verify.py         Phase-6 isolated-copy build/compile check (reused by the runtime sandbox)
   prompts/          the assets, version-pinned (sha256 recorded per run)
 
@@ -52,16 +52,17 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | Stage | Entry point | Reads | Writes |
 |---|---|---|---|
 | 1 Ingest | `stages/ingest.run` | brief (or **none** → local review), repo (folder or URL) | `scope.json`, `meta.json` (incl. pinned `repo_commit`), read-only `repo/`. No brief ⇒ a source-only scope is **synthesized** from the folder (zero-token, no LLM call). |
-| 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, the ONLY networked stage; no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
+| 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
 | SCA | `stages/sca.run` | `repo/` dependency manifests, `scope.json` | `findings/dependencies.json` — **opt-out** software-composition analysis (known-vuln pinned deps); a no-op if no manifests |
 | 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json`, **`ground_truth.json`** | `validated_findings.json` |
+| CORROBORATE | `stages/corroborate.run` | `validated_findings.json` (+ optional `--docs-url`, scope links, repo URL) | `validated_findings.json` rewritten with a per-finding `corroboration` block + a `fixed_upstream` appendix — **opt-out web OSINT** (the 2nd networked stage, with research). Cross-checks each finding against the project's **docs** and the repo's **VCS history** to downgrade documented-by-design findings and exclude already-patched ones. Best-effort; never the live in-scope hosts |
 | RUNTIME | `stages/runtime.run` | `validated_findings.json`, `repo/` (+ optional hand-written `runtime_probe_plan.json`) | `runtime_results.json` + per-finding `runtime` verdict — **opt-in**, sandboxed. **R2:** an LLM proposes the probe plan (gated by the loopback/anti-DoS validators) and interprets the observations into confirmed/refuted/inconclusive. No-op unless enabled + Docker + recipe |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
-`pipeline` runs 1→5 (SCA between audit and validate, on by default; or 1→2 with `--dry-run`) and
-**stops before any submission**.
+`pipeline` runs 1→5 (SCA between audit and validate, corroborate after validate — both on by
+default; or 1→2 with `--dry-run`) and **stops before any submission**.
 
 ## Precision + depth uplift (ground-truth recon → enumerate → downgrade-don't-delete)
 

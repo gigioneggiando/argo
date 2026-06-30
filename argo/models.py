@@ -15,6 +15,11 @@ TargetType = Literal["source_only", "source_and_live"]
 Severity = Literal["Critical", "High", "Medium", "Low", "Informational"]
 Confidence = Literal["Confirmed", "High", "Medium", "Low"]
 Verdict = Literal["confirmed", "refuted", "needs_runtime_verification", "out_of_scope"]
+# Corroboration cross-checks a surviving finding against the project's own docs + the repo's VCS
+# history. ``corroborated`` = still real / reinforced; ``design_accepted`` = documented as intended
+# (downgrade to accepted-risk, keep with a note); ``fixed_upstream`` = already patched in a newer
+# commit/release (move to an appendix, do not report as active); ``unknown`` = could not determine.
+CorroborationVerdict = Literal["corroborated", "design_accepted", "fixed_upstream", "unknown"]
 
 
 # --------------------------------------------------------------------------- scope
@@ -63,6 +68,18 @@ class Validation(BaseModel):
     live_verification_plan: Optional[str] = None
 
 
+class Corroboration(BaseModel):
+    """External cross-check of a finding against the project's docs + the repo's VCS history."""
+
+    model_config = ConfigDict(extra="allow")
+    verdict: CorroborationVerdict
+    rationale: Optional[str] = None
+    evidence_urls: list[str] = Field(default_factory=list)   # docs pages, commit/PR/release/advisory URLs
+    fix_commit: Optional[str] = None        # commit SHA / PR / release tag that fixed it (fixed_upstream)
+    doc_url: Optional[str] = None           # the doc page that documents the behavior (design_accepted)
+    adjusted_severity: Optional[Severity] = None   # optional downgrade (e.g. design_accepted -> Low)
+
+
 class Finding(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -84,6 +101,7 @@ class Finding(BaseModel):
     live_verification_plan: Optional[str] = None
     dedup_key: Optional[str] = None
     validation: Optional[Validation] = None
+    corroboration: Optional[Corroboration] = None
     # Orchestrator bookkeeping (not in schema, allowed via extra="allow"):
     source_focus: Optional[str] = None
 

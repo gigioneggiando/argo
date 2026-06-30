@@ -1,7 +1,7 @@
 # `argo/` — the orchestrator
 
 Orchestration-only glue around the five reusable prompt assets in `argo/prompts/`. The
-security logic lives in the prompts; this package ingests a program, runs the five stages, and
+security logic lives in the prompts; this package ingests a program, runs the stages, and
 produces a human-review bundle. **It never submits and never touches a live host.**
 
 ## Documentation

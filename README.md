@@ -21,6 +21,7 @@ resubmission tracking), not the whole tool — see [Two modes](#-two-modes-gener
 - 🔎 **Threat-informed audit** — opt-out Stage-0 web OSINT (CVEs, advisories, history) feeds recon.
 - 🧠 **Archetype-driven prompts** — classifies the software, then writes custom audit prompts for it.
 - 🛡️ **Adversarial validation** — a second model tries to *refute* each finding before it survives.
+- 🌐 **Docs + history corroboration** — opt-out cross-check of each finding against the project's docs and the repo's VCS history (downgrades by-design, excludes already-fixed).
 - 🔌 **Multi-backend** — Claude / Codex / OpenAI / local-OSS, same pipeline (see [docs/backends.md](docs/backends.md)).
 - 🩹 **Opt-in remediation** — proposes a patch per finding and **verifies it compiles** on an isolated copy.
 - 💬 **Interrogation chat** — ask *"why didn't you find X?"* with full context ([worked example](docs/chat-example.md)).
@@ -33,7 +34,7 @@ resubmission tracking), not the whole tool — see [Two modes](#-two-modes-gener
 
 ## 🪪 Two modes: general audit and bug bounty
 
-Argo runs in two modes over the **same** five-stage engine:
+Argo runs in two modes over the **same** multi-stage engine:
 
 | | **General code audit** (default) | **Bug-bounty triage** |
 |---|---|---|
@@ -109,7 +110,7 @@ argo/
   cli.py
   models.py            # pydantic models for scope + findings
   runner.py            # AgentRunner interface (Claude headless · Codex · mock)
-  stages/{ingest,research,recon,audit,validate,report}.py
+  stages/{ingest,research,recon,audit,sca,validate,corroborate,runtime,live,report}.py
   research.py·fixes.py·verify.py·benchmark.py·chat.py·costs.py·archetype.py
   prompts/             # the assets, version-controlled in git
   ledger.py            # SQLite findings + cost ledger
@@ -236,7 +237,7 @@ panel. See [docs/ui.md](docs/ui.md) and [docs/api.md](docs/api.md).
 program forbids automation, raises a flag that forbids any live interaction for the whole run.
 Clones/copies the repo into the run dir, read-only.
 
-**0 — Research** *(opt-out, the only networked stage)*. From the brief, links, and program name it
+**0 — Research** *(opt-out, one of two networked stages)*. From the brief, links, and program name it
 does **public web OSINT** (CVEs, advisories, the project's security history) and writes
 `research_brief.md` + `threat_intel.json`, injected into recon so the audit is threat-targeted. Never
 touches the program's live in-scope hosts; `--no-research` keeps the run fully offline.
@@ -264,6 +265,16 @@ context — now **ground-truth-aware** (the carve-outs + baseline-correct refs a
 **Downgrade-don't-delete:** `refuted` is reserved for findings provably contradicted by code (or
 matching a carve-out); anything merely uncertain is **kept** as `needs_runtime_verification` with a
 concrete question. Drops `out_of_scope`; keeps `confirmed` and `needs_runtime_verification`.
+
+**CORROBORATE — Docs + history cross-check** *(opt-out, networked; after validate)*. For each
+surviving finding, cross-checks it against the project's **own documentation** and the source repo's
+**VCS history** (commits, releases, advisories) over public web OSINT — using `--docs-url`/scope
+links + the repo URL if given, else searching for them. A finding the docs describe as **intended**
+is downgraded to `design_accepted` (kept, flagged); one already **patched in a newer commit** is
+moved to `fixed_upstream` (kept in a report appendix, never silently deleted); the rest stay
+`corroborated`. Best-effort and never touches the live in-scope hosts; `--no-corroborate` skips it.
+This is the automated form of the two false-positive modes vendors push back on most: "already
+fixed" and "documented by design".
 
 **RUNTIME — Runtime verification** *(opt-in, sandboxed; default off)*. Builds the OSS target from
 the cloned source into an **ephemeral, egress-blocked, loopback-only** container (`--network=none`)

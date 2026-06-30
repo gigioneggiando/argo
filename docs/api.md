@@ -48,7 +48,7 @@ Whitelisted artifact names: `scope`, `repo_profile`, `research_brief`, `threat_i
 `synthesis_notes`, `validated_findings`, `report`, `meta`, `status`, `brief`, `fixes_report`.
 
 `POST /runs` accepts `"research": true|false` (default **true**) — the Stage-0 web-OSINT step that
-runs before recon (the only networked stage; never the live in-scope hosts; see
+runs before recon (one of two networked stages, with corroborate; never the live in-scope hosts; see
 [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)). When on,
 `research` appears in the run's `stages` timeline and produces the `research_brief` / `threat_intel`
 artifacts; `research: false` keeps the run fully offline.

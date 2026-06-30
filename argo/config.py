@@ -36,6 +36,7 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
     "sca": OPUS,        # dependency / software-composition analysis (manifest -> known-vuln deps)
     "runtime": SONNET,  # R2: propose loopback probe plans + interpret results (offline, validated)
     "live": SONNET,     # L2: propose in-scope live probe plans + interpret results (offline, validated)
+    "corroborate": SONNET,  # post-validation cross-check vs project docs + repo VCS history (networked)
 }
 
 #: Default per-stage wall-clock overrides (seconds). Recon now does deep ground-truth extraction
@@ -160,6 +161,19 @@ class PipelineConfig:
     # Software-composition analysis: read dependency manifests and flag pinned versions with known
     # advisories. Emits a synthetic `dependencies` focus that joins the normal validate+report flow.
     sca_enabled: bool = True
+
+    # --- Corroboration (opt-out, networked; runs AFTER validate, BEFORE runtime/live) -------------
+    # ON by default. For each surviving finding, cross-checks it against the project's own DOCS and
+    # the source repo's VCS HISTORY (commits / releases / advisories) over public web OSINT, to
+    # CONFIRM or DISCARD it: a finding the docs describe as intended -> downgraded to design_accepted;
+    # one already patched in a newer commit -> moved to fixed_upstream (kept in an appendix, never
+    # silently deleted). Best-effort: a failure never fails the run. Uses the same scope forbidden-
+    # live-hosts rail as research (repo host + docs are public OSINT; live in-scope hosts are not).
+    corroborate_enabled: bool = True
+    # Curated documentation URLs to ground the cross-check (additive to the scope's reference_links +
+    # source repo). If empty, the stage searches the web for the project's official docs + repo.
+    doc_links: list[str] = field(default_factory=list)
+    corroborate_max_searches: int = 8   # soft cap on web searches per finding (in-prompt guidance)
 
     # --- Runtime verification (opt-in, sandboxed; see docs/runtime-verification-study.md) ---------
     # OFF by default. When on, build the OSS target from the cloned source into an EPHEMERAL,

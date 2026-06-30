@@ -19,8 +19,8 @@ from typing import Optional
 import typer
 
 from .config import OPUS, PipelineConfig
-from .orchestrator import (build_context, do_audit, do_ingest, do_live, do_recon, do_report,
-                           do_runtime, do_sca, do_validate, new_run_id, run_pipeline)
+from .orchestrator import (build_context, do_audit, do_corroborate, do_ingest, do_live, do_recon,
+                           do_report, do_runtime, do_sca, do_validate, new_run_id, run_pipeline)
 
 app = typer.Typer(add_completion=False, help="Argo — authorized source-static bug-bounty audits.")
 
@@ -248,6 +248,25 @@ def validate(run: str = RunIdArg, runner: str = RunnerOpt,
 
 
 @app.command()
+def corroborate(run: str = RunIdArg,
+                docs_url: Optional[list[str]] = typer.Option(
+                    None, "--docs-url",
+                    help="documentation URL to ground corroboration (repeatable); omit to web-search"),
+                runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+                calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+                parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """Cross-check each surviving finding against the project's docs + the repo's VCS history
+    (commits/releases/advisories) over public web OSINT, to confirm or discard it (downgrade
+    by-design, move already-fixed to an appendix). Networked, best-effort. Rewrites
+    validated_findings.json in place."""
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
+                        ).with_overrides(doc_links=list(docs_url or []))
+    ctx = build_context(cfg, run)
+    path = do_corroborate(ctx)
+    _emit({"run_id": run, "validated_findings": str(path)})
+
+
+@app.command()
 def report(run: str = RunIdArg, runner: str = RunnerOpt,
            audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
            budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
@@ -317,6 +336,15 @@ def pipeline(
              "short timeout + tight caps. Defaults --brief/--repo to the bundled fixtures."),
     sca: bool = typer.Option(True, "--sca/--no-sca",
                              help="software-composition analysis of dependency manifests (on by default)"),
+    corroborate: bool = typer.Option(
+        True, "--corroborate/--no-corroborate",
+        help="after validation, cross-check each finding against the project's docs + the repo's "
+             "VCS history (commits/releases/advisories) over public web OSINT, to confirm or discard "
+             "it (downgrade by-design, exclude already-fixed). On by default; networked, best-effort."),
+    docs_url: Optional[list[str]] = typer.Option(
+        None, "--docs-url",
+        help="documentation URL to ground corroboration (repeatable). If omitted, the stage searches "
+             "the web for the project's official docs."),
     critic_passes: Optional[int] = typer.Option(
         None, "--critic-passes",
         help="completeness-critic re-passes per audit focus (depth lever; default 1, 0 disables)"),
@@ -346,6 +374,7 @@ def pipeline(
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts)
     cfg = cfg.with_overrides(sca_enabled=sca, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
+                             corroborate_enabled=corroborate, doc_links=list(docs_url or []),
                              attribution=attribution)
     if critic_passes is not None:
         cfg = cfg.with_overrides(audit_critic_passes=critic_passes)
@@ -355,6 +384,7 @@ def pipeline(
         cfg = cfg.with_overrides(runner=runner, codex_model=codex_model, codex_oss=codex_oss,
                                  codex_local_provider=codex_local_provider)
         research = False                                   # a cheap smoke stays fully offline
+        cfg = cfg.with_overrides(corroborate_enabled=False)  # ...and skips the networked cross-check
         if brief is None:
             brief = Path("tests/fixtures/brief.txt")       # bundled tiny fixture
         if repo is None:
@@ -363,6 +393,7 @@ def pipeline(
         raise typer.BadParameter("--repo is required (a local folder path or a git URL)")
     if brief is None:
         research = False     # local/personal review: no program context to web-research, stay offline
+        cfg = cfg.with_overrides(corroborate_enabled=False)  # ...and no networked corroboration
     ctx = build_context(cfg, run or new_run_id())
     summary = run_pipeline(ctx, brief, repo, dry_run=dry_run, research_enabled=research,
                            links_path=links)

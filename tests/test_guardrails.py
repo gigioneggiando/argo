@@ -44,9 +44,15 @@ def test_research_stage_keeps_osint_but_not_shell():
     assert_no_network_tools(allowed, stage="research")  # no raise
 
 
-def test_only_research_gets_network():
-    """Every non-research stage stays fully offline: OSINT tools are stripped and assertion fires."""
-    for stage in ("ingest", "recon", "audit", "validate", "report", "remediate", "chat", None):
+def test_only_networked_stages_get_network():
+    """Exactly two stages may reach the network (research + corroborate); every other stage stays
+    fully offline: OSINT tools are stripped and the pre-launch assertion fires."""
+    for stage in ("research", "corroborate"):           # networked: OSINT kept, no raise
+        allowed, _ = enforce_session_tools(["Read", "WebSearch", "WebFetch"], stage=stage)
+        assert "WebSearch" in allowed and "WebFetch" in allowed
+        assert_no_network_tools(["Read", "WebFetch"], stage=stage)   # no raise
+    for stage in ("ingest", "recon", "audit", "sca", "validate", "runtime", "live",
+                  "report", "remediate", "chat", None):
         allowed, _ = enforce_session_tools(["Read", "WebSearch", "WebFetch"], stage=stage)
         assert "WebSearch" not in allowed and "WebFetch" not in allowed
         with pytest.raises(LiveInteractionForbiddenError):

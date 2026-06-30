@@ -19,9 +19,11 @@ from dataclasses import dataclass
 
 from .config import ALWAYS_DISALLOWED, MUTATION_TOOLS, NETWORK_TOOLS, OSINT_TOOLS
 
-#: The single stage permitted read-only public web OSINT (search + fetch). It never receives the
-#: repo and must never reach the program's live in-scope hosts (enforced in the prompt + by scope).
-_OSINT_STAGE = "research"
+#: Stages permitted read-only public web OSINT (search + fetch). They never receive the repo on a
+#: writable basis and must never reach the program's live in-scope hosts (enforced in the prompt +
+#: by scope). ``research`` (Stage-0 threat intel) and ``corroborate`` (post-validation cross-check
+#: of findings against project docs + the repo's VCS history) are the only two networked stages.
+_OSINT_STAGES = frozenset({"research", "corroborate"})
 
 
 @dataclass(frozen=True)
@@ -30,12 +32,12 @@ class SessionPolicy:
     for "no network except research, repo never writable". Each runner translates it into its own
     CLI dialect: the Claude runner into ``--allowedTools``/``--disallowedTools``; the Codex runner
     into sandbox flags (``-s workspace-write`` + an opt-in ``network_access``)."""
-    network: bool                 # may reach the network (public OSINT) — ONLY the research stage
+    network: bool                 # may reach the network (public OSINT) — research/corroborate only
     repo_writable: bool = False   # the target repo is ALWAYS read-only, every backend, every stage
 
 
 def session_policy(stage: str | None) -> SessionPolicy:
-    return SessionPolicy(network=(stage == _OSINT_STAGE), repo_writable=False)
+    return SessionPolicy(network=(stage in _OSINT_STAGES), repo_writable=False)
 
 
 class GuardrailError(RuntimeError):
@@ -61,22 +63,24 @@ def enforce_session_tools(requested_allowed: list[str], *,
     to *disallowed*. This is the structural guarantee behind "never touch live hosts" and
     "repo is read-only": there is simply no code path that can enable such a tool.
 
-    The single exception is ``stage == "research"``: it may keep the **OSINT** tools
-    (``WebSearch``/``WebFetch``) for public threat-intel — but still loses the shell,
-    sub-agent, and mutation tools. Every other stage stays fully offline.
+    The exceptions are the networked stages (``research``/``corroborate``): they may keep the
+    **OSINT** tools (``WebSearch``/``WebFetch``) for public threat-intel and doc/history
+    cross-checking — but still lose the shell, sub-agent, and mutation tools. Every other stage
+    stays fully offline.
     """
-    permit_osint = stage == _OSINT_STAGE
+    permit_osint = stage in _OSINT_STAGES
     forbidden = (NETWORK_TOOLS | MUTATION_TOOLS) - (OSINT_TOOLS if permit_osint else frozenset())
     allowed = [t for t in requested_allowed if t not in forbidden]
-    # Belt-and-suspenders: explicitly disallow the forbidden set every time (minus OSINT for research).
+    # Belt-and-suspenders: explicitly disallow the forbidden set every time (minus OSINT when permitted).
     disallowed = sorted(set(ALWAYS_DISALLOWED) - (OSINT_TOOLS if permit_osint else frozenset()))
     return allowed, disallowed
 
 
 def assert_no_network_tools(allowed: list[str], *, stage: str | None = None) -> None:
-    """Hard assertion used right before a session launches. For the ``research`` stage the OSINT
-    tools (WebSearch/WebFetch) are permitted; the shell/sub-agent tools never are."""
-    permit_osint = stage == _OSINT_STAGE
+    """Hard assertion used right before a session launches. For the networked stages
+    (research/corroborate) the OSINT tools (WebSearch/WebFetch) are permitted; the shell/sub-agent
+    tools never are."""
+    permit_osint = stage in _OSINT_STAGES
     forbidden = NETWORK_TOOLS - (OSINT_TOOLS if permit_osint else frozenset())
     leaked = sorted(set(allowed) & forbidden)
     if leaked:

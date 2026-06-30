@@ -33,6 +33,10 @@ def _verdict(f: dict) -> str:
     return (f.get("validation") or {}).get("verdict", "")
 
 
+def _corr_verdict(f: dict) -> str:
+    return (f.get("corroboration") or {}).get("verdict", "")
+
+
 def _repo_residual_unknowns(ctx: RunContext) -> list[str]:
     if not ctx.repo_profile_path.exists():
         return []
@@ -51,6 +55,7 @@ def run(ctx: RunContext) -> Path:
     doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8"))
     survivors: list[dict] = doc.get("findings", [])
     dropped: list[dict] = doc.get("dropped", [])
+    fixed_upstream: list[dict] = doc.get("fixed_upstream", [])
     survivors = sorted(
         survivors,
         key=lambda f: (-severity_rank(_eff_sev(f)), -confidence_rank(_eff_conf(f)), f.get("id", "")),
@@ -76,7 +81,7 @@ def run(ctx: RunContext) -> Path:
         )
 
     report_md = _render_report(ctx, scope, survivors, dropped, resubmissions,
-                               total_cost, n_calls)
+                               total_cost, n_calls, fixed_upstream)
     sig = attribution_footer(ctx.run_id) if ctx.config.attribution else ""   # Argo provenance (default on)
     report_path = ctx.run_dir / "REPORT.md"
     report_path.write_text(report_md + sig, encoding="utf-8")
@@ -85,7 +90,8 @@ def run(ctx: RunContext) -> Path:
     ctx.drafts_dir.mkdir(parents=True, exist_ok=True)
     n_drafts = 0
     for f in survivors:
-        if _verdict(f) == "confirmed":
+        # Don't draft a submission for something corroboration found to be vendor-documented by design.
+        if _verdict(f) == "confirmed" and _corr_verdict(f) != "design_accepted":
             draft = _render_draft(ctx, scope, f)
             (ctx.drafts_dir / f"{f.get('id', 'finding')}.md").write_text(draft + sig, encoding="utf-8")
             n_drafts += 1
@@ -103,7 +109,9 @@ def _counts_by_severity(findings: list[dict]) -> dict[str, int]:
     return counts
 
 
-def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_calls) -> str:
+def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_calls,
+                   fixed_upstream=None) -> str:
+    fixed_upstream = fixed_upstream or []
     counts = _counts_by_severity(survivors)
     confirmed = [f for f in survivors if _verdict(f) == "confirmed"]
     nrv = [f for f in survivors if _verdict(f) == "needs_runtime_verification"]
@@ -187,6 +195,20 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
         L.append("_None._")
     L.append("")
 
+    # Fixed upstream (corroboration appendix — kept, not silently deleted)
+    if fixed_upstream:
+        L.append("## Already fixed upstream (excluded from active findings)")
+        L.append("")
+        L.append("Corroboration found these already patched in a newer commit/release than the "
+                 "audited revision. Listed for the record; do not report as active:")
+        for f in fixed_upstream:
+            corr = f.get("corroboration") or {}
+            ref = corr.get("fix_commit") or "commit unspecified"
+            ev = corr.get("evidence_urls") or []
+            tail = f" ({ev[0]})" if ev else ""
+            L.append(f"- `{f.get('id')}` {f.get('title')} ({f.get('cwe')}) - fixed in `{ref}`{tail}")
+        L.append("")
+
     # Resubmission guard
     if resubmissions:
         L.append("## (!) Possible resubmissions (seen in a prior run for this program)")
@@ -230,6 +252,19 @@ def _finding_section(f: dict) -> list[str]:
         line = f"**Runtime verification.** `{rt.get('verdict', 'runtime_inconclusive')}` ({booted})."
         if rt.get("evidence"):
             line += f" Evidence: {rt.get('evidence')}"
+        L.append(line)
+        L.append("")
+    corr = f.get("corroboration") or {}
+    if corr.get("verdict") and corr.get("verdict") != "corroborated":
+        note = {"design_accepted": "Vendor-documented design decision / accepted risk",
+                "fixed_upstream": "Already fixed upstream",
+                "unknown": "Corroboration inconclusive"}.get(corr["verdict"], corr["verdict"])
+        line = f"**Corroboration.** {note}. {corr.get('rationale', '')}".rstrip()
+        ev = corr.get("evidence_urls") or []
+        if corr.get("doc_url"):
+            line += f" Docs: {corr['doc_url']}"
+        elif ev:
+            line += f" Evidence: {ev[0]}"
         L.append(line)
         L.append("")
     L.append(f"**Recommended fix (guidance only).** {f.get('recommended_fix', '')}")

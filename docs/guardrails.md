@@ -43,26 +43,32 @@ the Claude runner via the tool allow/deny lists above; the **Codex** runner via 
 (`-s workspace-write`, network re-enabled only for `research`, never a `danger-*` escape). The Codex
 mapping is re-validated in `tests/test_codex.py` — see [backends.md](backends.md#the-guardrails-are-backend-neutral-enforced-per-backend).
 
-### 2a. The one bounded exception: the `research` stage (OSINT only)
+### 2a. The bounded exception: the OSINT stages `research` + `corroborate`
 
-Stage 0 (`stages/research.py`, opt-out via `--research/--no-research`, **on by default**) is the
-**only** stage allowed any network access, and only the **OSINT subset** — `WebSearch` + `WebFetch`
-(`config.OSINT_TOOLS`). It is for *public* threat intelligence (CVEs, advisories, the source repo,
-docs) that makes the later static audit smarter — the same category as `git clone` fetching source.
+Exactly **two** stages are allowed any network access, and only the **OSINT subset** — `WebSearch` +
+`WebFetch` (`config.OSINT_TOOLS`, gated by `guardrails._OSINT_STAGES`): Stage 0
+(`stages/research.py`, `--research/--no-research`, **on by default**) for *public* threat
+intelligence before the audit, and the post-validation `corroborate` stage
+(`stages/corroborate.py`, `--corroborate/--no-corroborate`, **on by default**) which cross-checks
+each surviving finding against the project's **docs** and the repo's **VCS history**. Both read the
+same category of *public* source as `git clone`; neither touches the bug-bounty target itself.
 
 The boundary is enforced, not just prompted:
 
-- `enforce_session_tools(..., stage="research")` permits **only** `WebSearch`/`WebFetch`; it still
-  strips `Bash`, `Task`/`Agent`, `BashOutput`, `KillShell`, and all mutation tools. Every **other**
-  stage (and `stage=None`) still loses the OSINT tools entirely — proven by
-  `test_guardrails.py::test_only_research_gets_network`.
-- The research session is given **no repo** (`repo_dir=None`) — the networked session never sees the
-  code; the code-seeing sessions never get the network. Two disjoint capabilities.
-- It must **never** touch the program's **live in-scope hosts** (web/api/mobile assets): those are
-  injected into the prompt as an explicit *FORBIDDEN LIVE HOSTS* denylist. Research reads public
-  third-party sources only — never the bug-bounty target itself.
-- Best-effort: a research failure never aborts the run (recon just proceeds without the brief).
-- `--no-research` (CLI) / `research: false` (API) keeps a run **100% offline**, exactly as before.
+- `enforce_session_tools(..., stage="research"|"corroborate")` permits **only**
+  `WebSearch`/`WebFetch`; it still strips `Bash`, `Task`/`Agent`, `BashOutput`, `KillShell`, and all
+  mutation tools. Every **other** stage (and `stage=None`) still loses the OSINT tools entirely —
+  proven by `test_guardrails.py::test_only_networked_stages_get_network`.
+- Both networked sessions are given **no repo** (`repo_dir=None`) — the networked session never sees
+  the code (corroborate receives the relevant code as read-only *excerpts in the prompt*); the
+  code-seeing sessions never get the network. Two disjoint capabilities.
+- They must **never** touch the program's **live in-scope hosts** (web/api/mobile assets): those are
+  injected into the prompt as an explicit *FORBIDDEN LIVE HOSTS* denylist. They read public
+  third-party sources (advisories, docs, the public source repo) only.
+- Best-effort: a failure in either never aborts the run (recon proceeds without the brief; corroborate
+  leaves the finding `unknown`).
+- `--no-research` / `--no-corroborate` (CLI) keeps those stages off; a brief-less local review and
+  `--smoke` force both off for a **100% offline** run.
 
 ### 2b. The other bounded exception: the `runtime` stage (loopback-only sandbox)
 

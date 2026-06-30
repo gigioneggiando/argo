@@ -1,6 +1,6 @@
 # Backends (model providers)
 
-Argo runs the same five-stage pipeline on a **swappable agent backend**, so a user can run it with
+Argo runs the same multi-stage pipeline on a **swappable agent backend**, so a user can run it with
 whatever they already have — **Claude Code**, the **Codex CLI** (OpenAI), or a **local / open-source**
 model — without changing the audit logic. This also makes Argo a vehicle for **cross-model
 comparison** in the study: identical prompts and pipeline, different model, measured side by side.

@@ -52,7 +52,7 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
   The Code-to-audit field also has an **⬆ Upload .zip** button (C3): the zip is safely extracted
   server-side (path-traversal + zip-bomb guarded) and its path fills the field. The
   **Web research (Stage 0)** toggle (default **On**) runs the opt-out web-OSINT pass before recon
-  (the only networked step; never the live in-scope hosts); **Off** keeps the run fully offline.
+  (one of two networked steps, with corroborate; never the live in-scope hosts); **Off** keeps the run fully offline.
   The **runner** selector offers **Mock** (free) · **Claude** · **Codex** (with a Codex model +
   local/OSS provider field, shown when Codex is picked — see [backends.md](backends.md)). The model
   inputs are **pickers** populated from `GET /models` (Claude opus/sonnet/haiku; Codex examples + the

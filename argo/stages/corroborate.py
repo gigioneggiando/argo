@@ -28,7 +28,7 @@ from pathlib import Path
 from ..config import RESEARCH_TOOLS
 from ..context import BudgetExceeded, RunContext, collect_output_files
 from ..models import Corroboration, Finding
-from ..rendering import fill_placeholders, with_artifact_contract
+from ..rendering import design_context_block, fill_placeholders, with_artifact_contract
 from ..runner import RunnerError
 from .validate import _build_excerpts
 
@@ -82,6 +82,10 @@ def _build_prompt(ctx: RunContext, scope, finding: Finding) -> str:
         "FORBIDDEN_HOSTS": _bullets(live, "(none listed in scope)"),
         "FINDING_ID": finding.id,
     })
+    if scope.accepted_risks and scope.accepted_risks.strip():
+        # If the maintainers' accepted-by-design list already covers this finding, that alone is
+        # enough to return design_accepted (no doc search needed).
+        rendered = rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks)
     return with_artifact_contract(
         rendered,
         artifacts=[{

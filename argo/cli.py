@@ -109,6 +109,11 @@ CodexAccountsOpt = typer.Option(
          "per-account). Set up each once with `CODEX_HOME=<dir> codex login`. "
          "e.g. --codex-accounts ~/.codex,~/.codex-b")
 RunIdArg = typer.Option(..., "--run", help="existing RUN_ID under --runs-dir")
+AcceptedRisksOpt = typer.Option(
+    None, "--accepted-risks", exists=True,
+    help="file describing intended / accepted-by-design behaviors (the vendor's threat model / "
+         "known-limitations). Injected into audit + validate + corroborate so those behaviors are "
+         "not reported as vulnerabilities. Additive; never inferred from the brief.")
 
 
 def _emit(obj: dict) -> None:
@@ -126,6 +131,7 @@ def ingest(
         None, "--links", exists=True,
         help="curated reference links file (one http(s) URL per line; '#' comments ok). "
              "Additive to extracted links; the --repo code is NOT a reference link."),
+    accepted_risks: Optional[Path] = AcceptedRisksOpt,
     run: Optional[str] = typer.Option(None, "--run", help="run id (generated if omitted)"),
     runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
     calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
@@ -133,7 +139,7 @@ def ingest(
 ):
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
     ctx = build_context(cfg, run or new_run_id())
-    scope = do_ingest(ctx, brief, repo, links_path=links)
+    scope = do_ingest(ctx, brief, repo, links_path=links, accepted_risks_path=accepted_risks)
     _emit({"run_id": ctx.run_id, "scope": str(ctx.scope_path),
            "program": scope.program_name, "target_type": scope.target_type})
 
@@ -345,6 +351,7 @@ def pipeline(
         None, "--docs-url",
         help="documentation URL to ground corroboration (repeatable). If omitted, the stage searches "
              "the web for the project's official docs."),
+    accepted_risks: Optional[Path] = AcceptedRisksOpt,
     critic_passes: Optional[int] = typer.Option(
         None, "--critic-passes",
         help="completeness-critic re-passes per audit focus (depth lever; default 1, 0 disables)"),
@@ -396,7 +403,7 @@ def pipeline(
         cfg = cfg.with_overrides(corroborate_enabled=False)  # ...and no networked corroboration
     ctx = build_context(cfg, run or new_run_id())
     summary = run_pipeline(ctx, brief, repo, dry_run=dry_run, research_enabled=research,
-                           links_path=links)
+                           links_path=links, accepted_risks_path=accepted_risks)
     summary["smoke"] = smoke
     _emit(summary)
 

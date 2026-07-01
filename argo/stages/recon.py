@@ -27,7 +27,7 @@ from ..guardrails import (
 from ..knowledge import format_for_prompt
 
 _RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-0 brief so it can't dominate the recon prompt
-from ..rendering import fill_placeholders, with_artifact_contract
+from ..rendering import ensure_design_context_present, fill_placeholders, with_artifact_contract
 from ..runner import RunnerError
 
 
@@ -157,6 +157,9 @@ def run(ctx: RunContext) -> list[Path]:
             # Deterministically re-insert any prohibited technique the model paraphrased away
             # (only ever ADDS the scope's own constraints) before the hard gate below.
             text = ensure_prohibited_present(text, scope.prohibited_techniques)
+            # And guarantee the impact-discipline + accepted-by-design context is present, so the
+            # audit doesn't over-claim (IMDS-style) or flag intended behaviors as bugs.
+            text = ensure_design_context_present(text, scope.accepted_risks)
             # Guardrail: a generated prompt that lost the RoE / prohibited techniques fails here.
             assert_audit_prompt_wellformed(text, scope.prohibited_techniques)
             # Normalize the filename so the model's `audit-foo.md` is picked up by audit's

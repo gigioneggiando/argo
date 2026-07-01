@@ -49,6 +49,56 @@ def render_audit_template(ctx: dict, prompts_dir: Path) -> str:
     return JINJA_ENV.from_string(text).render(**ctx)
 
 
+# --------------------------------------------------- design context / impact discipline
+#: Idempotency sentinel: the deterministic injector skips a prompt that already carries the block.
+_DESIGN_CONTEXT_MARKER = "## DESIGN CONTEXT & IMPACT DISCIPLINE"
+
+
+def design_context_block(accepted_risks: str | None = None) -> str:
+    """Runtime-injected section that (1) enforces impact discipline on EVERY audit/validation
+    (report proven impact, not reflexive escalation — the 'IMDS-angle' over-claim), and (2), when
+    provided, lists the target's accepted-by-design behaviors so they are not reported as bugs.
+
+    Single source of truth for both #3 (impact discipline) and #1 (design context); injected into
+    the audit prompts (via recon) and the validate/corroborate prompts."""
+    lines = [
+        _DESIGN_CONTEXT_MARKER,
+        "",
+        "**Impact discipline — report PROVEN impact, not reflexive escalation.**",
+        "- Claim only the impact you can support from the code and the target's actual deployment. "
+        "Separate PROVEN impact from SPECULATIVE escalation, and label speculation as such.",
+        "- Do NOT assert reachability of cloud metadata / IMDS (e.g. `169.254.169.254`), internal "
+        "services, or credential theft for an SSRF unless the code or deployment topology actually "
+        "shows it is reachable. Absent that evidence, describe it as a *theoretical* escalation, "
+        "not confirmed impact, and do not inflate severity on its basis.",
+        "- A capability available only to a trusted, authenticated ADMINISTRATOR is usually the "
+        "product's intended trust boundary, not a vulnerability, unless it crosses a privilege or "
+        "tenancy boundary the design does not intend. Treat \"an admin can do an admin thing\" as by "
+        "design.",
+        "- Prefer under-claiming to over-claiming: an honest \"needs verification\" beats a confident "
+        "wrong impact.",
+    ]
+    if accepted_risks and accepted_risks.strip():
+        lines += [
+            "",
+            "**Accepted-by-design behaviors for THIS target — do NOT report these as vulnerabilities.**",
+            "The maintainers consider the following intentional / accepted risk. If a finding matches "
+            "one of these, do not raise it as a bug; if you must mention it, mark it explicitly as "
+            "accepted-by-design (not a vulnerability):",
+            "",
+            accepted_risks.strip(),
+        ]
+    return "\n".join(lines)
+
+
+def ensure_design_context_present(text: str, accepted_risks: str | None = None) -> str:
+    """Idempotently append :func:`design_context_block` to a prompt (only ADDS; never rewrites),
+    skipping if the block's marker is already present. Mirrors ``ensure_prohibited_present``."""
+    if _DESIGN_CONTEXT_MARKER in text:
+        return text
+    return text.rstrip() + "\n\n" + design_context_block(accepted_risks) + "\n"
+
+
 # ----------------------------------------------------------------- artifact contract
 def with_artifact_contract(
     prompt: str,

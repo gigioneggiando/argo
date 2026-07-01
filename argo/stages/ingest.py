@@ -256,7 +256,7 @@ def _asset_versions(assets_dir: Path) -> list[AssetVersion]:
 
 
 def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: bool | None = None,
-        links_path: Path | None = None) -> Scope:
+        links_path: Path | None = None, accepted_risks_path: Path | None = None) -> Scope:
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
     is_url = _is_url(repo) if repo_is_url is None else repo_is_url
 
@@ -316,6 +316,14 @@ def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: boo
         _log(f"--links: {stats['user_added']} added, {n_skipped} skipped (malformed), "
              f"{stats['deduped']} duplicate(s) ignored, {stats['dropped_repo']} dropped "
              f"(== --repo); {stats['extracted_added']} extracted link(s) kept")
+
+    # Accepted-risk / design context (out-of-band file): the vendor's intended behaviors / known
+    # limitations, injected downstream so they aren't re-reported as bugs. Additive; never inferred.
+    if accepted_risks_path is not None:
+        risks_text = Path(accepted_risks_path).read_text(encoding="utf-8").strip()
+        if risks_text:
+            raw["accepted_risks"] = risks_text
+            _log(f"--accepted-risks: loaded {len(risks_text)} chars of design context")
 
     validate_scope(raw, ctx.assets_dir)            # schema gate
     scope = Scope.model_validate(raw)

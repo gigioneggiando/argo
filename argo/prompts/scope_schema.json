@@ -62,6 +62,10 @@
     "program_brief_raw": {
       "type": "string",
       "description": "Original unparsed brief text, kept for audit trail and for the synthesis stage."
+    },
+    "accepted_risks": {
+      "type": "string",
+      "description": "Free-text description of intended / accepted-by-design security behaviors for this target (the vendor's threat model / known-limitations). Injected into audit + validate + corroborate so behaviors the maintainers consider intentional are not reported as vulnerabilities. Usually supplied out-of-band (--accepted-risks), not extracted from the brief."
     }
   }
 }

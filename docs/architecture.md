@@ -51,7 +51,7 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 
 | Stage | Entry point | Reads | Writes |
 |---|---|---|---|
-| 1 Ingest | `stages/ingest.run` | brief (or **none** → local review), repo (folder or URL) | `scope.json`, `meta.json` (incl. pinned `repo_commit`), read-only `repo/`. No brief ⇒ a source-only scope is **synthesized** from the folder (zero-token, no LLM call). |
+| 1 Ingest | `stages/ingest.run` | brief (or **none** → local review), repo (folder or URL), optional `--links` / `--accepted-risks` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`. No brief ⇒ a source-only scope is **synthesized** from the folder (zero-token, no LLM call). |
 | 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
@@ -63,6 +63,15 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 
 `pipeline` runs 1→5 (SCA between audit and validate, corroborate after validate — both on by
 default; or 1→2 with `--dry-run`) and **stops before any submission**.
+
+**Design context + impact discipline (cross-cutting).** `rendering.design_context_block` is injected
+into every audit prompt (deterministically, via `recon.ensure_design_context_present`, alongside the
+prohibited-technique repair) and into the validate + corroborate prompts. It (a) enforces **impact
+discipline** — report *proven* impact, not reflexive escalation (no asserting IMDS/cloud-metadata
+reachability for an SSRF without evidence; "an admin can do an admin thing" is by design) — and (b),
+when `--accepted-risks` supplied `scope.accepted_risks`, lists the vendor's intended behaviors so
+they are not raised as bugs. This suppresses the two hardest false-positive modes at the source,
+complementing corroborate (which catches the documented/already-fixed cases after the fact).
 
 ## Precision + depth uplift (ground-truth recon → enumerate → downgrade-don't-delete)
 

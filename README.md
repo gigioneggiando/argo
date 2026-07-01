@@ -22,6 +22,7 @@ resubmission tracking), not the whole tool — see [Two modes](#-two-modes-gener
 - 🧠 **Archetype-driven prompts** — classifies the software, then writes custom audit prompts for it.
 - 🛡️ **Adversarial validation** — a second model tries to *refute* each finding before it survives.
 - 🌐 **Docs + history corroboration** — opt-out cross-check of each finding against the project's docs and the repo's VCS history (downgrades by-design, excludes already-fixed).
+- 🎯 **Design-aware & impact-disciplined** — inject the vendor's accepted-by-design behaviors (`--accepted-risks`) + an anti-over-claim rule (no reflexive IMDS/SSRF escalation) so intended behavior isn't reported and impact isn't inflated.
 - 🔌 **Multi-backend** — Claude / Codex / OpenAI / local-OSS, same pipeline (see [docs/backends.md](docs/backends.md)).
 - 🩹 **Opt-in remediation** — proposes a patch per finding and **verifies it compiles** on an isolated copy.
 - 💬 **Interrogation chat** — ask *"why didn't you find X?"* with full context ([worked example](docs/chat-example.md)).
@@ -235,7 +236,16 @@ panel. See [docs/ui.md](docs/ui.md) and [docs/api.md](docs/api.md).
 
 **1 — Ingest.** Parses the brief into `scope.json`, validated against `scope_schema.json`. If the
 program forbids automation, raises a flag that forbids any live interaction for the whole run.
-Clones/copies the repo into the run dir, read-only.
+Clones/copies the repo into the run dir, read-only. `--accepted-risks FILE` records the vendor's
+**intended / accepted-by-design behaviors** (their threat model / known-limitations) into the scope,
+to be injected downstream so those behaviors are not re-reported as bugs.
+
+**Design context + impact discipline** *(cross-cutting, always on)*. Every audit prompt (and the
+validate/corroborate prompts) carries an injected block that (a) enforces **impact discipline** —
+report *proven* impact, not reflexive escalation, e.g. don't assert cloud-metadata/IMDS reachability
+for an SSRF without evidence, and treat "an admin can do an admin thing" as by design — and (b) when
+`--accepted-risks` is given, lists those behaviors so the model doesn't raise them. This attacks the
+two hardest false-positive modes directly at the source, before a finding is even written.
 
 **0 — Research** *(opt-out, one of two networked stages)*. From the brief, links, and program name it
 does **public web OSINT** (CVEs, advisories, the project's security history) and writes

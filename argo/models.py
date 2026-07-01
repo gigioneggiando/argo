@@ -48,6 +48,11 @@ class Scope(BaseModel):
     special_notes: Optional[str] = None
     reference_links: list[str] = Field(default_factory=list)
     program_brief_raw: Optional[str] = None
+    # Free-text description of intended / accepted-by-design security behaviors for this target
+    # (the vendor's threat model / known-limitations). Injected into audit + validate + corroborate
+    # so behaviors the maintainers consider intentional are not reported as vulnerabilities. Sourced
+    # from --accepted-risks (and, over time, from vendor replies / prior design_accepted verdicts).
+    accepted_risks: Optional[str] = None
 
     @property
     def source_repo_assets(self) -> list[InScopeAsset]:

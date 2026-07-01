@@ -18,7 +18,7 @@ from ..context import BudgetExceeded, RunContext, collect_output_files
 from ..guardrails import assert_prohibited_present, out_of_scope_match
 from ..models import Finding, Validation
 from ..ranking import confidence_rank, dedup_key, severity_rank, split_ref
-from ..rendering import fill_placeholders, with_artifact_contract
+from ..rendering import design_context_block, fill_placeholders, with_artifact_contract
 from ..runner import RunnerError
 
 _KEEP_VERDICTS = {"confirmed", "needs_runtime_verification"}
@@ -155,6 +155,13 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         "GROUND_TRUTH": _format_ground_truth(ground_truth, finding.source_focus),
     })
     assert_prohibited_present(rendered, scope.prohibited_techniques)  # guardrail
+
+    # Impact discipline (no reflexive IMDS-style escalation) + accepted-by-design context: a finding
+    # matching a stated accepted risk should be refuted-as-out-of-scope rather than confirmed.
+    rendered = (rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
+                "If this finding matches an accepted-by-design behavior listed above, return verdict "
+                "`out_of_scope` with a rationale that names the accepted risk (it is intended, not a "
+                "vulnerability).")
 
     prompt = with_artifact_contract(
         rendered,

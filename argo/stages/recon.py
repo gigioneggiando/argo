@@ -28,6 +28,7 @@ from ..knowledge import format_for_prompt
 
 _RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-0 brief so it can't dominate the recon prompt
 from ..rendering import ensure_design_context_present, fill_placeholders, with_artifact_contract
+from ..checklists import detect_crypto, detect_native, ensure_coverage_checklist_present
 from ..runner import RunnerError
 
 
@@ -135,6 +136,12 @@ def run(ctx: RunContext) -> list[Path]:
 
     ctx.prompts_out_dir.mkdir(parents=True, exist_ok=True)
 
+    # Cheap repo signals that gate the mandatory coverage checklist injected into every audit prompt
+    # (memory-safety for native code; crypto-primitive quality when crypto is present). Detected
+    # deterministically so the lens can't be dropped by the recon model's focus choices.
+    native = detect_native(ctx.repo_dir)
+    has_crypto = detect_crypto(ctx.repo_dir)
+
     prompt_paths: list[Path] = []
     for f in files:
         if f.name == "repo_profile.json":
@@ -160,6 +167,9 @@ def run(ctx: RunContext) -> list[Path]:
             # And guarantee the impact-discipline + accepted-by-design context is present, so the
             # audit doesn't over-claim (IMDS-style) or flag intended behaviors as bugs.
             text = ensure_design_context_present(text, scope.accepted_risks)
+            # Guarantee the mandatory coverage lenses (memory-safety / resource-exhaustion /
+            # crypto-primitive + one-finding-per-root-cause) reach the audit regardless of the focus.
+            text = ensure_coverage_checklist_present(text, native=native, has_crypto=has_crypto)
             # Guardrail: a generated prompt that lost the RoE / prohibited techniques fails here.
             assert_audit_prompt_wellformed(text, scope.prohibited_techniques)
             # Normalize the filename so the model's `audit-foo.md` is picked up by audit's

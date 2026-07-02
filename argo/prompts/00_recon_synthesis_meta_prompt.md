@@ -164,6 +164,12 @@ and moderation lookups — use it as a toolkit, not a straitjacket):
   hand-rolled network packets, supply-chain of runtime downloads).
 - **library / SDK / framework** — public-API contract & insecure defaults · parsing &
   deserialization · crypto, resource-safety (ReDoS, allocation) & injection passthrough.
+- **firmware / embedded / protocol** — untrusted-input **memory safety** (packet/frame parsing,
+  reassembly, buffer-pool lifecycle: OOB r/w, integer over/underflow, UAF) · **protocol
+  state-machine integrity** (sequence/ACK/handshake validation, spoofable connection matching,
+  predictable ISN, replay) · **management surface & crypto** (unauthenticated reserved commands,
+  and the crypto primitives themselves — MAC length/coverage, key provisioning, constant-time,
+  CSPRNG).
 - **CLI / desktop** — input & file/path handling · privilege/process/IPC · update mechanism &
   local secrets.
 - **agent / LLM / MCP** — prompt & tool-trust boundaries (direct/indirect prompt injection,
@@ -173,8 +179,18 @@ and moderation lookups — use it as a toolkit, not a straitjacket):
 - **data / ML pipeline** — ingestion & deserialization (pickle/model files) · transform/execution
   (UDF/notebook code-exec, query injection) · access control & model/dataset supply-chain.
 
-For any archetype not listed (smart-contract, firmware, infra-as-code, …) derive the equivalent
+For any archetype not listed (smart-contract, infra-as-code, …) derive the equivalent
 partition from its real risk shapes and say how you chose.
+
+**Two coverage rules that override the default split (they close recurring recall gaps):**
+- **Dedicated crypto-primitive focus.** If the target implements or wraps cryptography (HMAC/MAC,
+  cipher, KDF, RNG used for security, key handling — e.g. a `crypto/` dir or `hmac`/`sha`/`aes`
+  files), allocate a focus that reviews the primitives THEMSELVES — tag length & coverage, key
+  provisioning/defaults, constant-time comparison, CSPRNG, replay/freshness — not just where crypto
+  is called. This is separate from the auth-flow focus.
+- **Resource-exhaustion / availability lens.** Every focus must sweep for unbounded work and
+  fixed-capacity exhaustion (pools, queues, half-open state, recursion, missing timeouts) reachable
+  from untrusted input — availability is in scope even when memory stays safe.
 
 Each generated prompt MUST name the **archetype** in its Context block and instruct the audit
 agent NOT to treat the target as a generic web/CRUD app when it is not — carry the project's own

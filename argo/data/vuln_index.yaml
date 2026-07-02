@@ -32,9 +32,22 @@ library_sdk:
   - {cwe: CWE-1188, name: Insecure default,                note: a footgun default (verification off, permissive parser) a caller inherits}
   - {cwe: CWE-502, name: Deserialization / parsing,        note: parsers that instantiate types or recurse on hostile input}
   - {cwe: CWE-1333, name: ReDoS / algorithmic complexity,  note: regexes and parsers with super-linear worst case on attacker input}
+  - {cwe: CWE-787, name: Memory safety (native libs),      note: OOB read/write, integer over/underflow, UAF/double-free when parsing attacker-controlled length/offset/count (C/C++/native)}
   - {cwe: CWE-327, name: Crypto misuse,                    note: weak primitives, static IV/nonce, non-constant-time comparison}
+  - {cwe: CWE-326, name: Weak/short MAC or key,            note: truncated auth tags, short/hardcoded/zero-default keys, MAC not covering all authenticated bytes, weak KDF}
+  - {cwe: CWE-294, name: Missing replay/freshness,         note: authenticated messages with no counter/nonce/timestamp; sender-elected integrity that fails open}
   - {cwe: CWE-89,  name: Injection passthrough,            note: helpers that build queries/commands/paths from caller data unsanitized}
   - {cwe: CWE-400, name: Resource exhaustion,              note: unbounded allocation/recursion from a size/count field}
+
+firmware:
+  - {cwe: CWE-787, name: Out-of-bounds write,              note: memcpy/array-index from an attacker-controlled length/offset/count in a frame/packet parser or reassembly path}
+  - {cwe: CWE-125, name: Out-of-bounds read,               note: reading header/length fields before validating the minimum frame size}
+  - {cwe: CWE-190, name: Integer overflow / underflow,     note: signed/unsigned & width-truncation in length/offset math; size_t underflow on `length - header`}
+  - {cwe: CWE-416, name: Use-after-free / double-free,     note: packet/buffer-pool lifecycle — free-then-use, double-ownership, refcount errors}
+  - {cwe: CWE-306, name: Unauthenticated management surface, note: reserved/management commands (reboot, memory peek/poke, route/clock set) with no auth on the delivery path}
+  - {cwe: CWE-330, name: Predictable / weak randomness,    note: sequence numbers, nonces, tokens from rand()/clock seeds instead of a CSPRNG}
+  - {cwe: CWE-770, name: Resource / connection exhaustion, note: fixed connection pools, half-open state, shared static queues exhausted by unauthenticated frames}
+  - {cwe: CWE-294, name: Protocol replay / weak integrity, note: CRC-as-trust, missing replay window, truncated/uncovered MAC, sender-elected integrity that fails open}
 
 cli_desktop:
   - {cwe: CWE-78,  name: OS command / argument injection,  note: argv/env/config interpolated into a shell or exec}
@@ -70,5 +83,6 @@ general:
   - {cwe: CWE-200, name: Sensitive-data exposure,          note: secrets/PII via logs, errors, debug dumps, verbose responses}
   - {cwe: CWE-285, name: Improper authorization,           note: checks declared but not enforced on every path}
   - {cwe: CWE-20,  name: Improper input validation,        note: missing length/type/allow-list before a sink}
+  - {cwe: CWE-400, name: Resource exhaustion / DoS,        note: unbounded allocation/recursion/connection or session state from an attacker-controlled size/count; fixed pools with no cap; missing timeouts}
   - {cwe: CWE-489, name: Leftover debug / test code,       note: backdoors, hard-coded credentials, debug endpoints}
   - {cwe: CWE-1104, name: Outdated / vulnerable deps,      note: pinned versions with known advisories (cross-reference manually)}

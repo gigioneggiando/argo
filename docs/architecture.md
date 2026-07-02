@@ -25,6 +25,8 @@ argo/
   chat.py           Phase-3 interactive analyst over a completed run (read-only repo; test-gen;
                     B1: re-validates a user-proposed candidate finding via validate._validate_one)
   knowledge.py      Phase-4 vuln-class index loader (data/vuln_index.yaml) injected into recon
+  checklists.py     Phase-4 mandatory coverage checklist injected into every audit prompt (memory-
+                    safety / resource-exhaustion / crypto lenses, gated on repo signals) + P1 rule
   costs.py          Phase-8 cost analytics from the ledger (by model / stage / run / archetype)
   quality.py        A2 quality report: triager accept-rate (ledger) paired with benchmark recall
   archetype.py      canonical software archetypes + normalizer (captured per run into meta.json)
@@ -70,8 +72,17 @@ prohibited-technique repair) and into the validate + corroborate prompts. It (a)
 discipline** — report *proven* impact, not reflexive escalation (no asserting IMDS/cloud-metadata
 reachability for an SSRF without evidence; "an admin can do an admin thing" is by design) — and (b),
 when `--accepted-risks` supplied `scope.accepted_risks`, lists the vendor's intended behaviors so
-they are not raised as bugs. This suppresses the two hardest false-positive modes at the source,
-complementing corroborate (which catches the documented/already-fixed cases after the fact).
+they are not raised as bugs. It also enforces **severity symmetry** — a finding that defeats a
+security mechanism the project itself ships (auth/MAC/crypto/security-RNG/replay/access-control) is
+rated by the property it breaks, not downgraded to "informational hardening". This suppresses the two
+hardest false-positive modes at the source, complementing corroborate (which catches the
+documented/already-fixed cases after the fact).
+
+**Mandatory coverage checklist (cross-cutting, recall).** `checklists.ensure_coverage_checklist_present`
+is injected right after the design-context block into every audit prompt. Gated on `detect_native` /
+`detect_crypto` over the repo, it guarantees a memory-safety (native), resource-exhaustion (always), and
+crypto-primitive (crypto present) sweep plus the one-finding-per-root-cause rule — so those lenses can't
+be dropped by the recon model's focus choices. See [prompt-synthesis.md](prompt-synthesis.md).
 
 ## Precision + depth uplift (ground-truth recon → enumerate → downgrade-don't-delete)
 

@@ -70,6 +70,33 @@ BASELINE-CORRECT REFERENCES, VARIANT FAMILIES, FALSE-POSITIVE CARVE-OUTS) plus a
 forcing-function. Recon emits a non-fatal warning (`recon._warn_shallow_prompts`) if a generated
 prompt is missing any of the four — a regression-to-generic signal.
 
+## Mandatory coverage checklist (recall + anti-drop)
+
+The archetype-keyed vuln index (`data/vuln_index.yaml`, via `knowledge.format_for_prompt`) is injected
+into recon as **advisory** reference. That is necessary but not sufficient: a recon model can still fail
+to propagate a lens into the prompts it emits. A real run showed exactly this — the audit foci were
+transport / framing / services, and it missed a 32-bit-truncated MAC and a zero-default HMAC key because
+no focus reviewed the crypto *primitives*, and it under-rated real crypto/protocol weaknesses that were
+then dropped from the shortlist. Two mechanisms close that gap:
+
+- **Deterministic per-prompt coverage checklist** (`checklists.ensure_coverage_checklist_present`,
+  injected by recon right after the design-context block, mirroring `ensure_prohibited_present`). Gated
+  on cheap repo signals (`detect_native`, `detect_crypto`), it appends a `## MANDATORY COVERAGE
+  CHECKLIST` to **every** audit prompt with: an always-on **resource-exhaustion / availability** lens
+  (CWE-400/770); a **memory-safety** lens for native code (CWE-787/125/190/191/416); a **crypto-
+  primitive** lens when crypto is present (tag length & coverage, key provisioning/defaults, constant-
+  time, CSPRNG, replay); and the **one-finding-per-root-cause** reporting rule (P1 — never bundle two
+  distinct defects, which is how they get under-rated and dropped).
+- **Severity symmetry** in the design-context block (`rendering.design_context_block`, P2): the
+  counterpart to the anti-over-claim rule — a finding that *defeats a security mechanism the project
+  itself ships* (auth, MAC, crypto, security-RNG, replay, access control) is rated by the property it
+  breaks, and must NOT be downgraded to "informational hardening" just because exploitation needs
+  on-path access or a partial trust model.
+
+The vuln index itself was also strengthened for native/protocol targets: a new `firmware` archetype
+section (memory-safety, protocol-state, management-surface, weak-RNG, exhaustion) and expanded
+`library_sdk` crypto/memory entries, plus a resource-exhaustion class in `general`.
+
 ## Quality controls inside the meta-prompt
 
 - **Each generated prompt must name the archetype** in its Context and warn the auditor not to

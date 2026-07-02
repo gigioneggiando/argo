@@ -77,6 +77,13 @@ def design_context_block(accepted_risks: str | None = None) -> str:
         "design.",
         "- Prefer under-claiming to over-claiming: an honest \"needs verification\" beats a confident "
         "wrong impact.",
+        "- Severity symmetry (the counterpart to the rule above — do NOT UNDER-claim either). When a "
+        "finding DEFEATS a security mechanism the project itself ships or documents — authentication, "
+        "a MAC/HMAC, encryption, access control, randomness used for security, or replay protection — "
+        "rate it by the security property it breaks. Do NOT downgrade a real cryptographic, "
+        "authentication, or memory-safety weakness to \"informational hardening\" merely because "
+        "exploitation needs on-path/adjacent access or the trust model is only partial. A weak-but-"
+        "shipped defense that fails is a vulnerability, not a nice-to-have.",
     ]
     if accepted_risks and accepted_risks.strip():
         lines += [

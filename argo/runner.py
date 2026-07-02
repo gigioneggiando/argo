@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -549,11 +550,12 @@ class MockClaudeRunner(ClaudeRunner):
             return self._live(work_dir, label, prompt)
         if stage == "corroborate":
             return self._corroborate(work_dir, label, prompt)
+        if stage == "validate":
+            return self._validate(work_dir, label, prompt)
         handler = {
             "ingest": self._ingest,
             "recon": self._recon,
             "audit": self._audit,
-            "validate": self._validate,
         }.get(stage)
         if handler is None:
             raise RunnerError(f"MockClaudeRunner has no handler for stage {stage!r}")
@@ -710,20 +712,32 @@ class MockClaudeRunner(ClaudeRunner):
         ]))
 
     def _corroborate(self, work_dir: Path, label, prompt: str) -> dict:
-        """Mock corroboration: emit a per-finding verdict. A fixture
+        """Mock corroboration: emit a verdict per finding. A fixture
         ``<scenario>/corroborate/<finding_id>.json`` (if present) drives the verdict so tests can
-        exercise design_accepted / fixed_upstream; otherwise default to ``corroborated``."""
+        exercise design_accepted / fixed_upstream; otherwise default to ``corroborated``. Handles both
+        the legacy per-finding session and the batched ``corroborations.json`` session."""
+        def _corr_for(fid: str) -> dict:
+            src = self.scenario_dir / "corroborate" / f"{fid}.json"
+            if src.is_file():
+                return json.loads(src.read_text(encoding="utf-8"))
+            return {"finding_id": fid, "verdict": "corroborated",
+                    "rationale": "(mock) no contradicting docs or newer fixing commit found.",
+                    "evidence_urls": [], "fix_commit": None, "doc_url": None, "adjusted_severity": None}
+
+        if work_dir.name.startswith("batch-"):
+            ids: list[str] = []
+            for m in re.findall(r'"finding_id"\s*:\s*"([^"]+)"', prompt):
+                if re.match(r"^[A-Za-z0-9][\w.#-]*$", m) and m not in ids:
+                    ids.append(m)
+            out = work_dir / "corroborations.json"
+            out.write_text(json.dumps({"corroborations": [_corr_for(f) for f in ids]}, indent=2),
+                           encoding="utf-8")
+            return self._envelope(self._manifest(
+                [{"type": "corroborations", "path": out.name, "status": "ok"}]))
+
         fid = label or "MOCK-1"
         out = work_dir / f"corroboration_{fid}.json"
-        src = self.scenario_dir / "corroborate" / f"{fid}.json"
-        if src.is_file():
-            self._copy(src, out)
-        else:
-            out.write_text(json.dumps({
-                "finding_id": fid, "verdict": "corroborated",
-                "rationale": "(mock) no contradicting docs or newer fixing commit found.",
-                "evidence_urls": [], "fix_commit": None, "doc_url": None,
-                "adjusted_severity": None}, indent=2), encoding="utf-8")
+        out.write_text(json.dumps(_corr_for(fid), indent=2), encoding="utf-8")
         return self._envelope(self._manifest(
             [{"type": "corroboration", "path": out.name, "status": "ok"}]))
 
@@ -771,15 +785,31 @@ class MockClaudeRunner(ClaudeRunner):
             reply += "\n\nGenerated files: test_generated_sample.py"
         return self._envelope(reply)
 
-    def _validate(self, work_dir: Path, label) -> dict:
-        finding_id = work_dir.name  # work/validate/<finding_id>
+    def _validate(self, work_dir: Path, label, prompt: str = "") -> dict:
         verdicts = json.loads(
             (self.scenario_dir / "validate" / "verdicts.json").read_text(encoding="utf-8"))
-        verdict = verdicts.get(finding_id, verdicts.get("_default"))
-        if verdict is None:
-            raise RunnerError(f"mock verdict fixture missing for {finding_id!r} and no _default")
-        verdict = dict(verdict)
-        verdict.setdefault("finding_id", finding_id)
+
+        def _verdict_for(fid: str) -> dict:
+            v = verdicts.get(fid, verdicts.get("_default"))
+            if v is None:
+                raise RunnerError(f"mock verdict fixture missing for {fid!r} and no _default")
+            v = dict(v)
+            v.setdefault("finding_id", fid)
+            return v
+
+        if work_dir.name.startswith("batch-"):   # batched validate: emit verdicts.json for all ids
+            ids: list[str] = []
+            for m in re.findall(r'"finding_id"\s*:\s*"([^"]+)"', prompt):
+                if re.match(r"^[A-Za-z0-9][\w.#-]*$", m) and m not in ids:  # skip "..."/"<finding_id>"
+                    ids.append(m)
+            rows = [_verdict_for(fid) for fid in ids]
+            out = work_dir / "verdicts.json"
+            out.write_text(json.dumps({"verdicts": rows}, indent=2), encoding="utf-8")
+            return self._envelope(self._manifest(
+                [{"type": "verdicts", "path": out.name, "status": "ok"}]))
+
+        finding_id = work_dir.name  # legacy per-finding path: work/validate/<finding_id>
+        verdict = _verdict_for(finding_id)
         out = work_dir / f"verdict_{finding_id}.json"
         out.write_text(json.dumps(verdict, indent=2), encoding="utf-8")
         return self._envelope(self._manifest(

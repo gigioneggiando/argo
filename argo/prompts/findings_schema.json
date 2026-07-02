@@ -30,6 +30,8 @@
           "exploit_scenario": { "type": "string" },
           "impact": { "type": "string" },
           "recommended_fix": { "type": "string", "description": "Guidance only; pipeline does not patch." },
+          "threat_model_class": { "type": "string", "description": "OPTIONAL. One of: real_bug (holds regardless of trust model) | broken_mechanism (defeats a security control the project itself ships) | by_design (intended within the stated trust model)." },
+          "affected_build_config": { "type": "string", "description": "OPTIONAL. The build/config the finding applies to (e.g. 'default' vs a specific hardening flag). Empty if not config-dependent." },
           "action_plan": { "type": "string" },
           "missing_tests": { "type": "string" },
           "variants": { "type": "string", "description": "Where similar patterns may exist + where the author checked" },

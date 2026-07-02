@@ -51,7 +51,7 @@ def test_research_stage_on_by_default(env):
     intel = json.loads(ctx.threat_intel_path.read_text(encoding="utf-8"))
     assert "suspected_vuln_classes" in intel
     # the research call is logged as its own stage, before recon
-    assert ctx.ledger.run_call_count(ctx.run_id) == 9   # 8 core + 1 research
+    assert ctx.ledger.run_call_count(ctx.run_id) == 6   # 5 core + 1 research (validate batched to 1)
     stages = [json.loads(l)["stage"] for l in
               (ctx.run_dir / "llm_log.jsonl").read_text(encoding="utf-8").strip().splitlines()]
     assert "research" in stages and stages.index("research") < stages.index("recon")
@@ -97,7 +97,7 @@ def test_no_research_keeps_run_offline(env):
     ctx = env()
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
     assert not ctx.research_brief_path.exists()
-    assert ctx.ledger.run_call_count(ctx.run_id) == 8
+    assert ctx.ledger.run_call_count(ctx.run_id) == 5   # ingest+recon+audit(2)+validate(1 batch)
     stages = [json.loads(l)["stage"] for l in
               (ctx.run_dir / "llm_log.jsonl").read_text(encoding="utf-8").strip().splitlines()]
     assert "research" not in stages
@@ -228,10 +228,10 @@ def test_oversized_findings_no_truncation(env, make_scenario):
 def test_cost_calls_logged(env):
     ctx = env()
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
-    # ingest(1) + recon(1) + audit(2) + validate(4) = 8 calls
-    assert ctx.ledger.run_call_count(ctx.run_id) == 8
+    # ingest(1) + recon(1) + audit(2) + validate(1 batch) = 5 calls
+    assert ctx.ledger.run_call_count(ctx.run_id) == 5
     lines = (ctx.run_dir / "llm_log.jsonl").read_text(encoding="utf-8").strip().splitlines()
-    assert len(lines) == 8
+    assert len(lines) == 5
     rec = json.loads(lines[0])
     assert {"stage", "model", "prompt_sha256", "cost_usd"} <= rec.keys()
 

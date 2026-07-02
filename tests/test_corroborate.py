@@ -44,11 +44,11 @@ def test_corroborate_runs_after_validate_before_report(env):
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
     stages = [json.loads(l)["stage"] for l in
               (ctx.run_dir / "llm_log.jsonl").read_text(encoding="utf-8").strip().splitlines()]
-    # 8 core + 3 corroborate (one per survivor)
-    assert stages.count("corroborate") == 3
+    # 5 core + 1 corroborate (survivors batched into one session)
+    assert stages.count("corroborate") == 1
     assert max(i for i, s in enumerate(stages) if s == "validate") \
         < min(i for i, s in enumerate(stages) if s == "corroborate")
-    assert ctx.ledger.run_call_count(ctx.run_id) == 11
+    assert ctx.ledger.run_call_count(ctx.run_id) == 6
 
 
 # --------------------------------------------------------------------------- fixed_upstream

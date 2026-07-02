@@ -58,6 +58,8 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `max_parallel_audits` | `--parallel` | concurrency cap for Stage 3 / Stage 4 fan-out (default 3) |
 | `max_focuses` | (set by `--smoke`) | cap the audit fan-out to the first N focuses; truncation is logged |
 | `audit_critic_passes` | `--critic-passes` | completeness-critic re-passes per audit focus (depth lever; default 1, 0 disables; loops until a pass adds nothing) |
+| `validate_batch_size` | — | findings per adversarial-validation session (default 8). Collapses the one-session-per-finding fan-out — the main driver of session/rate-limit cost — with no precision loss (each finding is judged independently in the shared session). `1` = legacy per-finding path (also used by chat/B1 re-validate). |
+| `corroborate_batch_size` | — | survivors per corroboration session (default 8), same batching rationale for the networked docs/VCS cross-check. |
 | `sca_enabled` | `--sca / --no-sca` | run the software-composition (dependency) stage between audit and validate (default on) |
 | `runtime_enabled` | `--runtime` | **opt-in** sandboxed runtime verification after validate (default **off**) — build the target into an egress-blocked, loopback-only container and probe ONLY the local instance; see [runtime-verification-study.md](runtime-verification-study.md) |
 | `runtime_image` / `runtime_run_cmd` / `runtime_port` | `--runtime-image` / `--runtime-run-cmd` / `--runtime-port` | explicit launcher (highest priority). **R3** also auto-resolves an `argo-runtime.json` recipe or the repo's own `Dockerfile` when these are unset |

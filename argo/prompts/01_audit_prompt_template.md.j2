@@ -133,6 +133,8 @@ Members to check (one row per member in VARIANT_HUNT_LOG, verdict 🟢 safe / �
 - Realistic exploit scenario
 - Impact
 - Recommended fix (guidance only — do not implement)
+- `threat_model_class`: exactly one of `real_bug` (holds regardless of the trust model) · `broken_mechanism` (defeats a security control the project itself ships — auth/MAC/crypto/access-control/RNG/replay) · `by_design` (intended within the stated trust model). Report `real_bug`/`broken_mechanism`; `by_design` only as an explicit hardening note.
+- `affected_build_config`: which build/config it applies to (e.g. `default`, or a specific hardening flag); empty if not config-dependent.
 - Concrete action plan
 - Missing tests
 - Whether similar variants likely exist elsewhere (and where you checked)

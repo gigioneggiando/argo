@@ -136,6 +136,12 @@ class PipelineConfig:
     codex_home: str | None = None
     codex_accounts: list[str] = field(default_factory=list)
     max_parallel_audits: int = 3        # concurrency cap for Stage 3 / Stage 4 fan-out
+    # Efficiency: validate/corroborate historically span ONE session per finding, which is ~90% of a
+    # run's sessions and the main driver of rate-limit exhaustion. Batching groups N findings into a
+    # single session that judges each INDEPENDENTLY (no precision loss — same model, same adversarial
+    # rules), cutting session count ~Nx. 1 = the legacy per-finding path (kept for chat/B1 re-validate).
+    validate_batch_size: int = 8        # findings per adversarial-validation session
+    corroborate_batch_size: int = 8     # findings per corroboration session
 
     # Codex backend (runner == "codex"). One model for all stages (Codex isn't tiered per stage
     # the way Claude is). codex_model=None lets the Codex CLI use its own configured default model.

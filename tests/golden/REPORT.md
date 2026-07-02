@@ -9,7 +9,7 @@
 - Target type: source_and_live
 - Generated at: 2026-06-16T12:00:00+00:00
 - Models: audit=claude-sonnet-4-6, ingest=claude-sonnet-4-6, recon=claude-opus-4-8, report=claude-sonnet-4-6, validate=claude-opus-4-8
-- LLM cost: $0.0000 over 8 call(s)
+- LLM cost: $0.0000 over 5 call(s)
 
 ## Executive summary
 

@@ -201,6 +201,84 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
     return Validation.model_validate(data)
 
 
+def _chunk(items: list, n: int) -> list[list]:
+    n = max(1, n)
+    return [items[i:i + n] for i in range(0, len(items), n)]
+
+
+_VALID_VERDICTS = {"confirmed", "refuted", "needs_runtime_verification", "out_of_scope"}
+
+
+def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Finding],
+                    ground_truth: dict | None = None) -> dict[str, Validation]:
+    """Adversarially validate a GROUP of findings in ONE session (each judged independently) —
+    the efficiency path that collapses the per-finding fan-out. Returns {finding_id: Validation};
+    any finding missing from the model's output or a failed session -> needs_runtime_verification
+    (never silently dropped)."""
+    items = []
+    for f in batch:
+        items.append({
+            "finding_id": f.id,
+            "finding": f.model_dump(exclude_none=True),
+            "code_excerpts": _build_excerpts(
+                ctx.repo_dir, f.affected,
+                ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes),
+            "ground_truth": _format_ground_truth(ground_truth, f.source_focus),
+        })
+    template = (ctx.assets_dir / "02b_adversarial_validation_batch_prompt.md").read_text(encoding="utf-8")
+    rendered = fill_placeholders(template, {
+        "FINDINGS_BATCH": json.dumps(items, indent=2),
+        "REPO_PATH": str(ctx.repo_dir.resolve()),
+        "TARGET_TYPE": scope.target_type,
+        "SCOPE_JSON": scope_json_text,
+    })
+    assert_prohibited_present(rendered, scope.prohibited_techniques)  # guardrail
+    rendered = (rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
+                "If a finding matches an accepted-by-design behavior listed above, return verdict "
+                "`out_of_scope` for it with a rationale that names the accepted risk.")
+    prompt = with_artifact_contract(rendered, artifacts=[{
+        "type": "verdicts", "filename": "verdicts.json", "schema": None,
+        "desc": "a JSON object {\"verdicts\": [...]} with ONE adversarial verdict per finding_id in the batch",
+    }])
+    ids = [f.id for f in batch]
+    try:
+        result = ctx.runner.run(
+            prompt=prompt, run_dir=ctx.run_dir,
+            work_dir=ctx.work_dir("validate", "batch-" + ids[0]),   # fresh, isolated context
+            model=ctx.config.model_for("validate"), stage="validate",
+            run_id=ctx.run_id, repo_dir=ctx.repo_dir,               # READ-ONLY
+            allowed_tools=ARTIFACT_TOOLS, label="validate-batch-" + ids[0])
+    except RunnerError as exc:
+        _log(f"batch {ids[0]}+{len(ids) - 1}: validation session failed ({exc}); "
+             f"flagging {len(ids)} finding(s) for human review")
+        return {fid: Validation(verdict="needs_runtime_verification",
+                                rationale=f"validation session failed: {exc}") for fid in ids}
+    out: dict[str, Validation] = {}
+    for fp in collect_output_files(result, "verdicts*.json"):
+        try:
+            doc = json.loads(fp.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        rows = doc.get("verdicts") if isinstance(doc, dict) else (doc if isinstance(doc, list) else [])
+        for row in rows or []:
+            fid = row.get("finding_id") if isinstance(row, dict) else None
+            if fid not in ids or fid in out:
+                continue
+            if row.get("verdict") not in _VALID_VERDICTS:
+                out[fid] = Validation(verdict="needs_runtime_verification",
+                                      rationale=f"unrecognized verdict {row.get('verdict')!r}")
+                continue
+            try:
+                out[fid] = Validation.model_validate(row)
+            except Exception:  # noqa: BLE001 — a malformed row must never crash the stage
+                out[fid] = Validation(verdict="needs_runtime_verification",
+                                      rationale="verdict row failed schema validation")
+    for fid in ids:  # any finding the model omitted: keep for a human, never auto-drop
+        out.setdefault(fid, Validation(verdict="needs_runtime_verification",
+                                       rationale="no verdict returned for this finding in the batch"))
+    return out
+
+
 # --------------------------------------------------------------------------- entry
 def run(ctx: RunContext) -> Path:
     scope = ctx.load_scope()
@@ -260,15 +338,24 @@ def run(ctx: RunContext) -> Path:
             _log(f"budget reached; {len(to_validate) - len(launch)} finding(s) left unvalidated ({exc})")
             break
 
-    max_workers = max(1, min(ctx.config.max_parallel_audits, len(launch) or 1))
     verdicts: dict[str, Validation] = {}
     if launch:
+        bs = ctx.config.validate_batch_size
+        batches = _chunk(launch, bs)
+        max_workers = max(1, min(ctx.config.max_parallel_audits, len(batches)))
+        _log(f"validating {len(launch)} finding(s) in {len(batches)} session(s) "
+             f"(batch size {max(1, bs)}, {max_workers} parallel)")
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futs = {ex.submit(_validate_one, ctx, scope, scope_json_text, f, ground_truth): f
-                    for f in launch}
-            for fut in as_completed(futs):
-                f = futs[fut]
-                verdicts[f.id] = fut.result()
+            if bs <= 1:                       # legacy per-finding path (single-finding prompt)
+                futs = {ex.submit(_validate_one, ctx, scope, scope_json_text, b[0], ground_truth): b
+                        for b in batches}
+                for fut in as_completed(futs):
+                    verdicts[futs[fut][0].id] = fut.result()
+            else:
+                futs = [ex.submit(_validate_batch, ctx, scope, scope_json_text, b, ground_truth)
+                        for b in batches]
+                for fut in as_completed(futs):
+                    verdicts.update(fut.result())
 
     for f in launch:
         f.validation = verdicts[f.id]

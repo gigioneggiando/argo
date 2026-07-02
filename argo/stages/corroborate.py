@@ -95,6 +95,80 @@ def _build_prompt(ctx: RunContext, scope, finding: Finding) -> str:
     )
 
 
+def _build_batch_prompt(ctx: RunContext, scope, batch: list[Finding]) -> str:
+    template = (ctx.assets_dir / "08b_corroborate_batch_prompt.md").read_text(encoding="utf-8")
+    items = [{
+        "finding_id": f.id,
+        "finding": f.model_dump(exclude_none=True),
+        "code_excerpts": _build_excerpts(
+            ctx.repo_dir, f.affected,
+            ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes),
+    } for f in batch]
+    live = [a.asset.strip() for a in scope.in_scope
+            if a.type in _LIVE_ASSET_TYPES and a.asset.strip()]
+    rendered = fill_placeholders(template, {
+        "MAX_SEARCHES": str(ctx.config.corroborate_max_searches),
+        "REPO_REF": _repo_ref(ctx, scope),
+        "FINDINGS_BATCH": json.dumps(items, indent=2),
+        "DOC_LINKS": _bullets(ctx.config.doc_links,
+                              "(none provided — search the web for the official documentation)"),
+        "REPO_URL": _repo_url(scope),
+        "REFERENCE_LINKS": _bullets(scope.reference_links, "(none provided)"),
+        "FORBIDDEN_HOSTS": _bullets(live, "(none listed in scope)"),
+    })
+    if scope.accepted_risks and scope.accepted_risks.strip():
+        rendered = rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks)
+    return with_artifact_contract(rendered, artifacts=[{
+        "type": "corroborations", "filename": "corroborations.json", "schema": None,
+        "desc": "a JSON object {\"corroborations\": [...]} with ONE verdict per finding_id in the batch",
+    }])
+
+
+def _coerce_corroboration(row: dict) -> Corroboration:
+    if row.get("verdict") not in _VALID_VERDICTS:
+        row = {**row, "verdict": "unknown"}
+    row = {k: v for k, v in row.items() if k != "finding_id"}   # not part of the model
+    try:
+        return Corroboration.model_validate(row)
+    except Exception:  # noqa: BLE001 — a malformed row must never crash a best-effort stage
+        return Corroboration(verdict="unknown", rationale="corroboration row failed schema validation")
+
+
+def _corroborate_batch(ctx: RunContext, scope, batch: list[Finding]) -> dict[str, Corroboration]:
+    """Corroborate a GROUP of findings in ONE networked session. Returns {finding_id: Corroboration};
+    any finding missing/failed -> unknown (best-effort, never fails the run)."""
+    ids = [f.id for f in batch]
+    try:
+        result = ctx.runner.run(
+            prompt=_build_batch_prompt(ctx, scope, batch),
+            run_dir=ctx.run_dir,
+            work_dir=ctx.work_dir("corroborate", "batch-" + ids[0]),
+            model=ctx.config.model_for("corroborate"),
+            stage="corroborate", run_id=ctx.run_id,
+            repo_dir=None,                                       # networked session never mounts the repo
+            allowed_tools=RESEARCH_TOOLS,
+            label="corroborate-batch-" + ids[0])
+        files = collect_output_files(result, "corroborations*.json")
+    except RunnerError as exc:
+        return {fid: Corroboration(verdict="unknown",
+                                   rationale=f"corroboration session failed: {exc}") for fid in ids}
+    out: dict[str, Corroboration] = {}
+    for fp in files:
+        try:
+            doc = json.loads(fp.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        rows = doc.get("corroborations") if isinstance(doc, dict) else (doc if isinstance(doc, list) else [])
+        for row in rows or []:
+            fid = row.get("finding_id") if isinstance(row, dict) else None
+            if fid in ids and fid not in out:
+                out[fid] = _coerce_corroboration(row)
+    for fid in ids:
+        out.setdefault(fid, Corroboration(verdict="unknown",
+                                          rationale="no verdict returned for this finding in the batch"))
+    return out
+
+
 def _corroborate_one(ctx: RunContext, scope, finding: Finding) -> Corroboration:
     try:
         result = ctx.runner.run(
@@ -145,11 +219,20 @@ def run(ctx: RunContext) -> Path:
 
     verdicts: dict[str, Corroboration] = {}
     if launch:
-        max_workers = max(1, min(ctx.config.max_parallel_audits, len(launch)))
+        bs = ctx.config.corroborate_batch_size
+        batches = [launch[i:i + max(1, bs)] for i in range(0, len(launch), max(1, bs))]
+        max_workers = max(1, min(ctx.config.max_parallel_audits, len(batches)))
+        _log(f"corroborating {len(launch)} finding(s) in {len(batches)} session(s) "
+             f"(batch size {max(1, bs)})")
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            futs = {ex.submit(_corroborate_one, ctx, scope, f): f for f in launch}
-            for fut in as_completed(futs):
-                verdicts[futs[fut].id] = fut.result()
+            if bs <= 1:
+                futs = {ex.submit(_corroborate_one, ctx, scope, b[0]): b for b in batches}
+                for fut in as_completed(futs):
+                    verdicts[futs[fut][0].id] = fut.result()
+            else:
+                futs = [ex.submit(_corroborate_batch, ctx, scope, b) for b in batches]
+                for fut in as_completed(futs):
+                    verdicts.update(fut.result())
 
     kept: list[Finding] = []
     fixed_upstream: list[dict] = []

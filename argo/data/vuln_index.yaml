@@ -83,6 +83,8 @@ general:
   - {cwe: CWE-200, name: Sensitive-data exposure,          note: secrets/PII via logs, errors, debug dumps, verbose responses}
   - {cwe: CWE-285, name: Improper authorization,           note: checks declared but not enforced on every path}
   - {cwe: CWE-20,  name: Improper input validation,        note: missing length/type/allow-list before a sink}
-  - {cwe: CWE-400, name: Resource exhaustion / DoS,        note: unbounded allocation/recursion/connection or session state from an attacker-controlled size/count; fixed pools with no cap; missing timeouts}
+  - {cwe: CWE-400, name: Resource exhaustion / DoS,        note: unbounded allocation/recursion/connection or session state from an attacker-controlled size/count; fixed pools with no cap; missing timeouts; CENSUS every untrusted-driven collection, not just one}
+  - {cwe: CWE-248, name: Panic / abort DoS (memory-safe),  note: unwrap/expect/unreachable/index/overflow/parse reachable from untrusted input crashes the process; census every panic point}
+  - {cwe: CWE-532, name: Secrets in logs / sinks,          note: passwords/tokens/keys/SASL written to logs, telemetry, error messages, caches, or crash reports}
   - {cwe: CWE-489, name: Leftover debug / test code,       note: backdoors, hard-coded credentials, debug endpoints}
   - {cwe: CWE-1104, name: Outdated / vulnerable deps,      note: pinned versions with known advisories (cross-reference manually)}

@@ -82,11 +82,17 @@ then dropped from the shortlist. Two mechanisms close that gap:
 - **Deterministic per-prompt coverage checklist** (`checklists.ensure_coverage_checklist_present`,
   injected by recon right after the design-context block, mirroring `ensure_prohibited_present`). Gated
   on cheap repo signals (`detect_native`, `detect_crypto`), it appends a `## MANDATORY COVERAGE
-  CHECKLIST` to **every** audit prompt with: an always-on **resource-exhaustion / availability** lens
-  (CWE-400/770); a **memory-safety** lens for native code (CWE-787/125/190/191/416); a **crypto-
-  primitive** lens when crypto is present (tag length & coverage, key provisioning/defaults, constant-
-  time, CSPRNG, replay); and the **one-finding-per-root-cause** reporting rule (P1 — never bundle two
-  distinct defects, which is how they get under-rated and dropped).
+  CHECKLIST` to **every** audit prompt with: a **variant-family CENSUS** rule (always — the #1 recall
+  miss is reporting one instance of an enumerable class and moving on, so census EVERY member: every
+  untrusted-driven collection, every OS sink, every panic point, every URL fetch); an always-on
+  **resource-exhaustion / availability** lens (CWE-400/770); a **secrets-in-sinks** lens (CWE-532 —
+  credentials into logs/telemetry/errors); an **outbound-request / SSRF** lens (CWE-918/601 — destination
+  validation + per-hop redirect re-validation + zero-click); a **memory-safety** lens for native code
+  (CWE-787/125/…) OR, for memory-safe languages, a **panic/abort census** (CWE-248/617 — every
+  `unwrap`/`expect`/index/overflow/`unreachable!`/busy-loop reachable from untrusted input, plus every
+  `unsafe`/FFI escape hatch); a **crypto-primitive** lens when crypto is present; and the
+  **one-finding-per-root-cause** rule (P1). The census + panic lens were added after two cross-checks
+  (libcsp, halloy) showed Argo finds the *theme* but under-enumerates *variant families*.
 - **Severity symmetry** in the design-context block (`rendering.design_context_block`, P2): the
   counterpart to the anti-over-claim rule — a finding that *defeats a security mechanism the project
   itself ships* (auth, MAC, crypto, security-RNG, replay, access control) is rated by the property it

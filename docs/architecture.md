@@ -86,7 +86,8 @@ documented/already-fixed cases after the fact).
 
 **Mandatory coverage checklist (cross-cutting, recall).** `checklists.ensure_coverage_checklist_present`
 is injected right after the design-context block into every audit prompt. Gated on `detect_native` /
-`detect_crypto` over the repo, it guarantees a memory-safety (native), resource-exhaustion (always), and
+`detect_crypto` over the repo, it guarantees a variant-family census (always), memory-safety (native) or
+panic/abort census (memory-safe), secrets-in-sinks + SSRF lenses, resource-exhaustion (always), and
 crypto-primitive (crypto present) sweep plus the one-finding-per-root-cause rule — so those lenses can't
 be dropped by the recon model's focus choices. See [prompt-synthesis.md](prompt-synthesis.md).
 

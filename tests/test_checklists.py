@@ -39,12 +39,18 @@ def test_block_is_gated_by_signals():
     assert "Cryptographic primitive quality" in both
     assert "resource exhaustion" in both.lower()             # always-on lens
     assert "ONE finding = ONE root cause" in both            # P1 reporting discipline
+    assert "Variant-family CENSUS" in both                   # R5 always-on
+    assert "Secrets & credentials in sinks" in both          # R6 always-on
+    assert "SSRF" in both                                    # R8 always-on
+    assert "Panic / abort census" not in both                # native -> memory-safety, not panic-census
 
     neither = coverage_checklist_block(native=False, has_crypto=False)
     assert "Memory safety on untrusted input" not in neither  # off-target lens omitted
     assert "Cryptographic primitive quality" not in neither
     assert "resource exhaustion" in neither.lower()           # still present
     assert "ONE finding = ONE root cause" in neither
+    assert "Variant-family CENSUS" in neither                 # R5 always-on
+    assert "Panic / abort census" in neither                 # R7 memory-safe -> panic census
 
     native_only = coverage_checklist_block(native=True, has_crypto=False)
     assert "Memory safety on untrusted input" in native_only

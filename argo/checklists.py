@@ -90,10 +90,30 @@ def coverage_checklist_block(*, native: bool, has_crypto: bool) -> str:
         "- Classify each: a real bug regardless of trust model / a defeat of a security mechanism the "
         "project itself ships / an intended-by-design behavior.",
         "",
+        "**Variant-family CENSUS — always (the #1 recall miss: reporting one instance and moving on):**",
+        "- When a finding is an instance of an ENUMERABLE class, do NOT stop at one example — mechanically "
+        "ENUMERATE EVERY sibling in the codebase and report or explicitly clear each. In particular census: "
+        "(1) every collection/map/queue/`Vec` mutated by an untrusted-input handler (is each one bounded?); "
+        "(2) every OS/desktop sink that untrusted text reaches — logs, clipboard, notifications, filesystem "
+        "paths, URL/link opening, terminal escapes (is each escaped/validated?); (3) every panic/abort point "
+        "reachable from untrusted input; (4) every outbound fetch of an attacker-influenced URL. Finding the "
+        "class but only 1 of N members is the most common coverage gap — list N.",
+        "",
         "**Availability & resource exhaustion (CWE-400/770/834/1284) — always:**",
-        "- Unbounded allocation, recursion, or per-connection/per-session state driven by an "
+        "- Unbounded allocation, recursion, or per-connection/per-session/per-collection state driven by an "
         "attacker-controlled size/count field; fixed pools/queues with no cap or backpressure; "
-        "half-open/handshake state that survives; missing timeouts; amplification.",
+        "half-open/handshake state that survives; missing timeouts; amplification. Census EVERY server/peer-"
+        "driven collection, not just the obvious one.",
+        "",
+        "**Secrets & credentials in sinks (CWE-532/522/200) — always:**",
+        "- Trace credentials/secrets/tokens (passwords, API keys, auth/SASL, session tokens) to every "
+        "logging, telemetry, error-message, cache, and outbound-request sink. Secrets must not be written to "
+        "logs or sent to an attacker-influenced destination.",
+        "",
+        "**Outbound requests / SSRF (CWE-918/601) — if the target fetches URLs or makes outbound requests:**",
+        "- For EACH fetch of an attacker-influenced URL (link previews, avatar/icon/metadata URLs, webhooks, "
+        "update checks): is the destination validated (loopback / link-local / internal / cloud-metadata "
+        "blocked)? are REDIRECTS re-validated per hop? is it zero-click (auto-fetched) vs user-initiated?",
     ]
     if native:
         lines += [
@@ -104,6 +124,17 @@ def coverage_checklist_block(*, native: bool, has_crypto: bool) -> str:
             "signed/unsigned and width-truncation integer bugs, `size_t` underflow on `length - header`, "
             "missing minimum-length guards, and buffer lifecycle (use-after-free / double-free / "
             "double-ownership in any pool or refcount scheme).",
+        ]
+    else:
+        lines += [
+            "",
+            "**Panic / abort census (CWE-248/617/770/835/407/190) — memory-safe language:**",
+            "- The language prevents most memory corruption, so the crown-jewel DoS is a PANIC / abort / hang "
+            "reachable from untrusted input. Enumerate EVERY such point: `unwrap`/`expect`/`unreachable!`/"
+            "`todo!`/`panic!`/`assert!`, slice/array index `[]`, division/remainder by zero, integer "
+            "add/sub/mul that can overflow (panics in debug), `.parse().unwrap()`, time/`Instant`+`Duration` "
+            "arithmetic, unbounded recursion, and infinite/busy loops on a closed or empty stream. Also audit "
+            "every escape-hatch (`unsafe` block / FFI / reflection) reachable from untrusted input.",
         ]
     if has_crypto:
         lines += [

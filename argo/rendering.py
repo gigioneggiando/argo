@@ -84,6 +84,24 @@ def design_context_block(accepted_risks: str | None = None) -> str:
         "authentication, or memory-safety weakness to \"informational hardening\" merely because "
         "exploitation needs on-path/adjacent access or the trust model is only partial. A weak-but-"
         "shipped defense that fails is a vulnerability, not a nice-to-have.",
+        "- BUT first confirm the mechanism is CURRENT and relied upon. A control the project documents or "
+        "treats as deprecated, legacy, off-by-default, vestigial, or kept only for backward "
+        "compatibility (and that maintainers may intend to remove) is NOT a live security boundary — "
+        "defects in it are low-value hardening notes, not vulnerabilities. When unsure whether a "
+        "mechanism is load-bearing, say so rather than assuming it is.",
+        "- Purpose-is-the-feature. A component whose DOCUMENTED PURPOSE *is* the flagged behavior — a "
+        "debug/management memory read/write primitive (peek/poke), a \"run arbitrary command/query\" "
+        "feature, an eval/exec surface behind an intended privilege — is working as designed, not a "
+        "vulnerability. Report it only as a hardening note, and only if it crosses a privilege/tenancy "
+        "boundary the design does not intend; never inflate \"the feature does what it says\" to "
+        "Critical/High.",
+        "- Trusted-bus / embedded threat models. On a system whose stated model is a trusted bus or no "
+        "network-level authentication (common in firmware, industrial, avionics, automotive, and "
+        "embedded protocols), the ABSENCE of authentication on management / command / memory-access "
+        "functions is typically BY DESIGN — maintainers get these reports constantly and reject them. "
+        "Lead with memory-safety and stability defects (out-of-bounds, use-after-free, double-free, "
+        "integer/overflow, unbounded copies): they hold regardless of the trust model and are what such "
+        "maintainers actually action.",
     ]
     if accepted_risks and accepted_risks.strip():
         lines += [

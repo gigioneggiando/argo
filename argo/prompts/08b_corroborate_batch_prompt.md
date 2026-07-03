@@ -18,7 +18,11 @@ Handle each finding on its own evidence — do not let one finding's verdict inf
   under FORBIDDEN LIVE HOSTS). Reading the public source repo and docs is fine; touching the running
   application is not. No forms, no payloads, no exploitation.
 - Be conservative: only `fixed_upstream` with a **specific** commit/PR/release you actually found; only
-  `design_accepted` with a **specific doc page**. When in doubt, `unknown` — never invent a citation.
+  `design_accepted` with a **specific doc page** OR a **specific issue/PR/discussion where a maintainer
+  rejected the same/similar report as intended** ("by design", "wontfix", "known", "not a
+  vulnerability"). When in doubt, `unknown` — never invent a citation.
+- Search the **issue tracker, PRs, and discussions** (open AND closed), not only docs/commits — a
+  behavior repeatedly reported and dismissed as intended is strong `design_accepted` evidence.
 - Keep it bounded: roughly **{{MAX_SEARCHES}} web searches PER FINDING** is plenty.
 
 ## CONTEXT

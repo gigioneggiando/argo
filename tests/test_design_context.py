@@ -44,6 +44,9 @@ def test_block_conditional_and_idempotent():
     base = design_context_block()
     assert "169.254.169.254" in base and "Accepted-by-design" not in base   # discipline only
     assert "Severity symmetry" in base                                       # P2: don't under-claim either
+    assert "Purpose-is-the-feature" in base                                  # peek/poke = the feature
+    assert "Trusted-bus" in base                                             # embedded no-auth is by design
+    assert "deprecated, legacy" in base                                      # vestigial mechanism qualifier
     withrisks = design_context_block("- X is intended.")
     assert "Accepted-by-design" in withrisks and "X is intended" in withrisks
     once = ensure_design_context_present("PROMPT BODY", "- X is intended.")

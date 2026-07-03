@@ -27,7 +27,12 @@ already fixed, and reporting a documented "by design" decision as a vulnerabilit
 - Read public information only. No forms, no payloads, no exploitation.
 - Be conservative. Only claim `fixed_upstream` with a **specific** commit/PR/release reference you
   actually found. Only claim `design_accepted` with a **specific doc page** that documents the
-  behavior as intended. When in doubt, return `unknown` — never invent a citation.
+  behavior as intended, **or a specific issue/PR/discussion where a maintainer rejected the same or a
+  similar report as intended** ("by design", "wontfix", "won't change", "known", "not a
+  vulnerability"). When in doubt, return `unknown` — never invent a citation.
+- Search the project's **issue tracker, pull requests, and discussions** (open AND closed), not only
+  docs and commits: maintainers of the same behavior being reported repeatedly and dismissed as
+  intended is strong `design_accepted` evidence (cite the issue/PR/discussion URL).
 - Keep it bounded: roughly **{{MAX_SEARCHES}} web searches** for this finding is plenty.
 
 ## THE FINDING

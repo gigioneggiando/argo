@@ -74,7 +74,13 @@ reachability for an SSRF without evidence; "an admin can do an admin thing" is b
 when `--accepted-risks` supplied `scope.accepted_risks`, lists the vendor's intended behaviors so
 they are not raised as bugs. It also enforces **severity symmetry** — a finding that defeats a
 security mechanism the project itself ships (auth/MAC/crypto/security-RNG/replay/access-control) is
-rated by the property it breaks, not downgraded to "informational hardening". This suppresses the two
+rated by the property it breaks, not downgraded to "informational hardening" — **qualified by three
+by-design priors** learned from real vendor replies: (a) a defect in a *deprecated / legacy / vestigial*
+mechanism is a low-value hardening note, not a vuln; (b) *purpose-is-the-feature* — a component whose
+documented purpose IS the flagged behavior (a memory peek/poke primitive, an eval surface behind an
+intended privilege) is by design; (c) on *trusted-bus / embedded* threat models the absence of
+authentication on management functions is typically by design, so lead with memory-safety/stability.
+Corroborate additionally mines the issue tracker for prior "by design / wontfix" verdicts. This suppresses the two
 hardest false-positive modes at the source, complementing corroborate (which catches the
 documented/already-fixed cases after the fact).
 

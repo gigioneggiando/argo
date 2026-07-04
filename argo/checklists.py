@@ -114,6 +114,17 @@ def coverage_checklist_block(*, native: bool, has_crypto: bool) -> str:
         "- For EACH fetch of an attacker-influenced URL (link previews, avatar/icon/metadata URLs, webhooks, "
         "update checks): is the destination validated (loopback / link-local / internal / cloud-metadata "
         "blocked)? are REDIRECTS re-validated per hop? is it zero-click (auto-fetched) vs user-initiated?",
+        "",
+        "**Substitute-then-parse sinks — census BOTH failure modes (CWE-88/78/74/1284 + CWE-248):**",
+        "- Whenever untrusted input is STRING-SUBSTITUTED into a command / argv template / query / path / "
+        "format string and the result is THEN parsed, split, or tokenized (e.g. interpolate a value then "
+        "`shell_words::split` / `Command`, build a query string then parse it, join a path then normalize), "
+        "report BOTH defects, not just the one you notice first: (a) INJECTION — the substituted value "
+        "crosses a token/argument/statement boundary it shouldn't (argument injection, command injection, "
+        "query/template injection), because substitution happened BEFORE tokenization; AND (b) the "
+        "PANIC/error — the post-substitution parse/split fails on a hostile value (unbalanced quote, bad "
+        "escape) and is `unwrap()`ed/asserted. Catching only the panic and missing the injection (or vice "
+        "versa) at the same sink is a recurring one-finding-per-root-cause miss.",
     ]
     if native:
         lines += [

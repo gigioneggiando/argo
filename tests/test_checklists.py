@@ -42,6 +42,7 @@ def test_block_is_gated_by_signals():
     assert "Variant-family CENSUS" in both                   # R5 always-on
     assert "Secrets & credentials in sinks" in both          # R6 always-on
     assert "SSRF" in both                                    # R8 always-on
+    assert "Substitute-then-parse" in both                   # legba: injection AND panic at the same sink
     assert "Panic / abort census" not in both                # native -> memory-safety, not panic-census
 
     neither = coverage_checklist_block(native=False, has_crypto=False)

@@ -105,6 +105,20 @@ then dropped from the shortlist. Two mechanisms close that gap:
   Without this, validate discounted a fully wire-reachable arbitrary-file-write / cross-instance
   message-forgery finding (`FileSystemTransport`) to Medium purely because the transport itself is
   niche, even though its own write-up had already proven full reachability and impact.
+- **Config/deser→exec is a finding, not by-design** in the design-context block (added after the legba
+  cross-check): the "purpose-is-the-feature" carve-out covers only the OPERATOR directly invoking an
+  exec/command/eval feature through its intended channel — NOT the same capability reached silently via
+  a DATA artifact the design doesn't imply is executable (a shareable recipe/config/template, or a
+  DESERIALIZED saved-state file that reconstructs the feature). This closed a real miss: Argo's validate
+  repeatedly DROPPED legba's recipe→`cmd`-plugin RCE as out_of_scope ("the tool runs commands anyway")
+  while two independent second-opinion runs kept it — loading a shareable recipe that silently runs a
+  command is a config→exec trust-boundary crossing, distinct from the operator typing `--plugin cmd`.
+- **Substitute-then-parse dual-failure census** in the coverage checklist (added after the legba
+  cross-check): at any sink that string-substitutes untrusted input into a command/argv/query/path
+  template and THEN parses/splits it, census BOTH the INJECTION (the value crosses a token boundary
+  because substitution preceded tokenization) AND the PANIC (the post-substitution split is
+  `unwrap()`ed). Argo's legba audit caught only the `shell_words::split().unwrap()` panic and missed the
+  argument-injection at the same site.
 - **Recon scope-completeness census** in `00_recon_synthesis_meta_prompt.md` (added after the Rebus
   cross-check): before finalizing the audit-focus split, recon must confirm every top-level in-scope
   directory/module is assigned to at least one focus, and flag modules that compose with another

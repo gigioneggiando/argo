@@ -102,6 +102,15 @@ def design_context_block(accepted_risks: str | None = None) -> str:
         "Lead with memory-safety and stability defects (out-of-bounds, use-after-free, double-free, "
         "integer/overflow, unbounded copies): they hold regardless of the trust model and are what such "
         "maintainers actually action.",
+        "- Niche/opt-in component is NOT a severity dampener once it's reachable. A carve-out that says "
+        "\"this component is documented as dev/test-only\" or \"niche/uncommonly deployed\" answers "
+        "ONLY the question of whether to report the finding at all (weigh realistic reachability before "
+        "flagging) — it does NOT, by itself, justify downgrading severity once wire-reachability and "
+        "impact ARE confirmed. \"How commonly is this configuration chosen\" and \"how bad is it once "
+        "chosen\" are different axes: rate severity strictly by the confirmed impact (e.g. an arbitrary "
+        "file-write / cross-instance message-forgery primitive is High/Critical regardless of how niche "
+        "the enabling feature is), and use the niche/opt-in framing only in the exploit-scenario "
+        "preconditions, never as a severity multiplier.",
     ]
     if accepted_risks and accepted_risks.strip():
         lines += [

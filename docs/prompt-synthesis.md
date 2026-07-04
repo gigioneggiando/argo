@@ -98,6 +98,21 @@ then dropped from the shortlist. Two mechanisms close that gap:
   itself ships* (auth, MAC, crypto, security-RNG, replay, access control) is rated by the property it
   breaks, and must NOT be downgraded to "informational hardening" just because exploitation needs
   on-path access or a partial trust model.
+- **Niche/opt-in component severity** in the design-context block (added after the Rebus cross-check):
+  a carve-out noting a component is documented as dev/test-only or uncommonly deployed answers
+  *whether to report* a finding, not *how severe it is* once wire-reachability and impact are
+  confirmed — "how commonly is this chosen" and "how bad is it once chosen" are different axes.
+  Without this, validate discounted a fully wire-reachable arbitrary-file-write / cross-instance
+  message-forgery finding (`FileSystemTransport`) to Medium purely because the transport itself is
+  niche, even though its own write-up had already proven full reachability and impact.
+- **Recon scope-completeness census** in `00_recon_synthesis_meta_prompt.md` (added after the Rebus
+  cross-check): before finalizing the audit-focus split, recon must confirm every top-level in-scope
+  directory/module is assigned to at least one focus, and flag modules that compose with another
+  in-scope feature (e.g. an audit/logging step running inside the same pipeline as encryption) as
+  likely sites for a cross-feature defect. This closed a real miss: an independent second-opinion
+  scan on Rebus found that message auditing silently forwards decrypted plaintext when both
+  `EnableEncryption` and `EnableMessageAuditing` are configured — `Rebus/Auditing/` had never been
+  assigned to any of Argo's 4 audit foci in the first place.
 
 The vuln index itself was also strengthened for native/protocol targets: a new `firmware` archetype
 section (memory-safety, protocol-state, management-surface, weak-RNG, exhaustion) and expanded

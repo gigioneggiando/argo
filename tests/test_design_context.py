@@ -47,6 +47,7 @@ def test_block_conditional_and_idempotent():
     assert "Purpose-is-the-feature" in base                                  # peek/poke = the feature
     assert "Trusted-bus" in base                                             # embedded no-auth is by design
     assert "deprecated, legacy" in base                                      # vestigial mechanism qualifier
+    assert "Niche/opt-in component" in base                                  # rebus lesson: don't discount severity
     withrisks = design_context_block("- X is intended.")
     assert "Accepted-by-design" in withrisks and "X is intended" in withrisks
     once = ensure_design_context_present("PROMPT BODY", "- X is intended.")

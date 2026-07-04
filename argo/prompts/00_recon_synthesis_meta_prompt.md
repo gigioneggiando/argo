@@ -191,6 +191,14 @@ partition from its real risk shapes and say how you chose.
 - **Resource-exhaustion / availability lens.** Every focus must sweep for unbounded work and
   fixed-capacity exhaustion (pools, queues, half-open state, recursion, missing timeouts) reachable
   from untrusted input — availability is in scope even when memory stays safe.
+- **Scope-completeness census.** Before finalizing the split, list every top-level directory/module
+  the scope names as IN SCOPE and confirm EACH ONE is assigned to at least one focus (even a brief
+  "covered by focus X" line) — do not let a whole module (e.g. an auditing/logging layer, a metrics
+  module, an admin CLI) fall through the cracks simply because it didn't fit the default archetype
+  split. A module that composes with another in-scope feature (e.g. an audit/logging step that runs
+  inside the same pipeline as encryption or auth) is a likely site for a CROSS-FEATURE defect
+  (one feature silently undermining another's guarantee) — note these interactions explicitly when
+  assigning foci, don't just audit each module in isolation.
 
 Each generated prompt MUST name the **archetype** in its Context block and instruct the audit
 agent NOT to treat the target as a generic web/CRUD app when it is not — carry the project's own

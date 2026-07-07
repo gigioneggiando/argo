@@ -87,9 +87,12 @@ documented/already-fixed cases after the fact).
 **Mandatory coverage checklist (cross-cutting, recall).** `checklists.ensure_coverage_checklist_present`
 is injected right after the design-context block into every audit prompt. Gated on `detect_native` /
 `detect_crypto` over the repo, it guarantees a variant-family census (always), memory-safety (native) or
-panic/abort census (memory-safe), secrets-in-sinks + SSRF lenses, resource-exhaustion (always), and
-crypto-primitive (crypto present) sweep plus the one-finding-per-root-cause rule — so those lenses can't
-be dropped by the recon model's focus choices. See [prompt-synthesis.md](prompt-synthesis.md).
+panic/abort census (memory-safe), secrets-in-sinks + SSRF lenses, resource-exhaustion (always), a
+substitute-then-parse dual census (always), an **insecure-defaults / fail-open** lens (always — a
+configured-but-failed auth/policy component that silently falls back to permissive, or a default-open
+control API / metrics / pprof), and crypto-primitive (crypto present) sweep plus the
+one-finding-per-root-cause rule — so those lenses can't be dropped by the recon model's focus choices.
+See [prompt-synthesis.md](prompt-synthesis.md).
 
 ## Precision + depth uplift (ground-truth recon → enumerate → downgrade-don't-delete)
 
@@ -171,6 +174,13 @@ and an injectable `now` (for deterministic report output in tests). Exposes the 
 index **and** unions a scratch-dir glob, so a missing/partial manifest or a session that died
 mid-write still recovers whatever was written. The model's stdout JSON is used only for run
 metadata, never to carry artifacts.
+
+**Recon retry-on-partial (resilience).** A transient cutoff of the recon-synthesis session (the machine
+sleeping, a network blip, a model `stop_sequence`) can write `ground_truth.json` + `repo_profile.json`
+but not the per-focus `audit_*.md` prompts — which used to abort the whole run with "no audit prompts".
+Because the synthesis is read-only and idempotent, `stages/recon.run` now retries it (`_RECON_MAX_ATTEMPTS`)
+when the attempt produced no audit prompt, so a lost synthesis recovers automatically instead of needing
+a manual finisher.
 
 ### Scratch vs. canonical artifacts (why a file appears twice)
 

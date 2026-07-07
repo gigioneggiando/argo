@@ -125,6 +125,21 @@ def coverage_checklist_block(*, native: bool, has_crypto: bool) -> str:
         "PANIC/error — the post-substitution parse/split fails on a hostile value (unbalanced quote, bad "
         "escape) and is `unwrap()`ed/asserted. Catching only the panic and missing the injection (or vice "
         "versa) at the same sink is a recurring one-finding-per-root-cause miss.",
+        "",
+        "**Insecure defaults & FAIL-OPEN (CWE-1188/453/636/276/306/862) — config & access-control "
+        "defaults — always:**",
+        "- Enumerate every security-relevant DEFAULT and fallback the project ships and ask, for each, "
+        "whether it fails OPEN. Census in particular: (1) FAIL-OPEN ON LOAD/PARSE FAILURE — when an "
+        "authenticator / authorizer / TLS / crypto / policy component is CONFIGURED but fails to load, "
+        "returns null, or throws, does the code fall back to a PERMISSIVE default (allow-all / accept-all "
+        "/ plaintext / no-verify) instead of failing CLOSED? This fires precisely when the operator "
+        "BELIEVES security is enforced, so report it even when the happy path is secure. (2) DEFAULT-OPEN "
+        "SURFACE — does the shipped default leave a powerful surface (control/admin API, management/config "
+        "endpoint, metrics, pprof/debug) UNAUTHENTICATED or bound to all interfaces, especially under a "
+        "non-default auth mode (e.g. an exclude/allow list that silently skips the API, or auth that only "
+        "gates the data plane not the control plane)? (3) SURPRISING PERMISSIVE DEFAULT — is anonymous / "
+        "allow-all / no-encryption the default, and is that surprising given the project otherwise ships a "
+        "security feature? State the exact default value and the config that would harden it.",
     ]
     if native:
         lines += [

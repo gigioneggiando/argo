@@ -91,8 +91,15 @@ then dropped from the shortlist. Two mechanisms close that gap:
   (CWE-787/125/…) OR, for memory-safe languages, a **panic/abort census** (CWE-248/617 — every
   `unwrap`/`expect`/index/overflow/`unreachable!`/busy-loop reachable from untrusted input, plus every
   `unsafe`/FFI escape hatch); a **crypto-primitive** lens when crypto is present; and the
-  **one-finding-per-root-cause** rule (P1). The census + panic lens were added after two cross-checks
-  (libcsp, halloy) showed Argo finds the *theme* but under-enumerates *variant families*.
+  **one-finding-per-root-cause** rule (P1); an always-on **insecure-defaults / fail-open** lens
+  (CWE-1188/453/636/306/862 — enumerate every security-relevant default and ask whether it fails OPEN:
+  a configured-but-failed authenticator/authorizer/TLS component that silently falls back to
+  allow-all/accept-all/plaintext instead of failing closed, a default-open control API / metrics / pprof
+  under a non-default auth mode, or a surprising anonymous/allow-all default). The census + panic lens
+  were added after two cross-checks (libcsp, halloy) showed Argo finds the *theme* but under-enumerates
+  *variant families*; the fail-open lens was added after the moquette (fail-open on auth-class load) and
+  mediamtx (default `authHTTPExclude` leaving the control API unauthenticated) cross-checks, where the
+  blind second-opinion caught insecure-default gaps Argo's audit missed.
 - **Severity symmetry** in the design-context block (`rendering.design_context_block`, P2): the
   counterpart to the anti-over-claim rule — a finding that *defeats a security mechanism the project
   itself ships* (auth, MAC, crypto, security-RNG, replay, access control) is rated by the property it

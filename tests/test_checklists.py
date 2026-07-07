@@ -75,3 +75,12 @@ def test_coverage_checklist_in_every_audit_prompt(env):
         assert "MANDATORY COVERAGE CHECKLIST" in text
         assert "ONE finding = ONE root cause" in text
         assert "resource exhaustion" in text.lower()
+
+
+def test_fail_open_lens_always_present():
+    # The insecure-defaults / fail-open lens is an "always" lens (both native and memory-safe).
+    for native in (True, False):
+        block = coverage_checklist_block(native=native, has_crypto=False)
+        assert "Insecure defaults & FAIL-OPEN" in block
+        assert "FAIL-OPEN ON LOAD/PARSE FAILURE" in block
+        assert "DEFAULT-OPEN SURFACE" in block

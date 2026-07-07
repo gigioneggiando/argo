@@ -27,6 +27,10 @@ from ..guardrails import (
 from ..knowledge import format_for_prompt
 
 _RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-0 brief so it can't dominate the recon prompt
+# A transient cutoff of the recon-synthesis session (machine sleep, network blip, model stop_sequence)
+# can write ground_truth.json + repo_profile.json but NOT the per-focus audit_*.md prompts, which aborts
+# the whole run with "no audit prompts". The synthesis is read-only and idempotent, so retry it.
+_RECON_MAX_ATTEMPTS = 2
 from ..rendering import ensure_design_context_present, fill_placeholders, with_artifact_contract
 from ..checklists import detect_crypto, detect_native, ensure_coverage_checklist_present
 from ..runner import RunnerError
@@ -112,27 +116,41 @@ def run(ctx: RunContext) -> list[Path]:
     )
 
     work = ctx.work_dir("recon")
-    try:
-        result = ctx.runner.run(
-            prompt=prompt,
-            run_dir=ctx.run_dir,
-            work_dir=work,
-            model=ctx.config.model_for("recon"),
-            stage="recon",
-            run_id=ctx.run_id,
-            repo_dir=ctx.repo_dir,          # READ-ONLY repo access
-            allowed_tools=ARTIFACT_TOOLS,
-            label="recon-synthesis",
-        )
-        files = collect_output_files(result, "*")
-    except RunnerError as exc:
-        # Session died (e.g. timeout) but may have already written the artifacts to scratch.
-        # Recover them; the well-formedness guardrail below still gates every prompt.
-        files = sorted(p for p in work.glob("*") if p.is_file())
-        if not files:
-            raise
-        print(f"[recon] session failed ({exc}); recovered {len(files)} partial artifact(s) "
-              "from the scratch dir", file=sys.stderr)
+    files: list[Path] = []
+    last_exc: RunnerError | None = None
+    for attempt in range(1, _RECON_MAX_ATTEMPTS + 1):
+        try:
+            result = ctx.runner.run(
+                prompt=prompt,
+                run_dir=ctx.run_dir,
+                work_dir=work,
+                model=ctx.config.model_for("recon"),
+                stage="recon",
+                run_id=ctx.run_id,
+                repo_dir=ctx.repo_dir,          # READ-ONLY repo access
+                allowed_tools=ARTIFACT_TOOLS,
+                label="recon-synthesis" if attempt == 1 else f"recon-synthesis-retry-{attempt}",
+            )
+            files = collect_output_files(result, "*")
+        except RunnerError as exc:
+            # Session died (e.g. timeout / machine sleep) but may have already written artifacts to
+            # scratch. Recover them; the well-formedness guardrail below still gates every prompt.
+            last_exc = exc
+            files = sorted(p for p in work.glob("*") if p.is_file())
+            print(f"[recon] session failed ({exc}); recovered {len(files)} partial artifact(s) "
+                  "from the scratch dir", file=sys.stderr)
+
+        # A transient cutoff can write ground_truth.json + repo_profile.json but NOT the audit_*.md
+        # prompts, which would abort the whole run. If no audit prompt was produced, retry the
+        # synthesis (read-only, idempotent); otherwise proceed with what we have.
+        if any(_is_audit_prompt(f.name) for f in files):
+            break
+        if attempt < _RECON_MAX_ATTEMPTS:
+            print(f"[recon] attempt {attempt}/{_RECON_MAX_ATTEMPTS} produced no audit prompts "
+                  "(transient cutoff?); retrying recon-synthesis", file=sys.stderr)
+
+    if not files and last_exc is not None:
+        raise last_exc
 
     ctx.prompts_out_dir.mkdir(parents=True, exist_ok=True)
 

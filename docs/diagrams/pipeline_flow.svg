@@ -43,8 +43,9 @@
 <line x1="340" y1="570" x2="340" y2="608" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
 
 <rect x="190" y="610" width="300" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
-<text x="340" y="628" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#26215C">Stage 4 &#183; Validate</text>
-<text x="340" y="648" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534AB7">structural + semantic dedup, citation grounding, ground-truth check (downgrade-don't-delete)</text>
+<text x="340" y="623" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#26215C">Stage 4 &#183; Validate</text>
+<text x="340" y="640" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#534AB7">structural + semantic dedup, citation grounding,</text>
+<text x="340" y="654" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#534AB7">ground-truth check (downgrade-don't-delete)</text>
 <line x1="340" y1="666" x2="340" y2="704" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
 
 <rect x="190" y="706" width="300" height="56" rx="8" fill="#E6F7F2" stroke="#2A8C73" stroke-width="1" stroke-dasharray="4 3"/>

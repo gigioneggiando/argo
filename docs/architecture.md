@@ -58,13 +58,25 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
 | SCA | `stages/sca.run` | `repo/` dependency manifests, `scope.json` | `findings/dependencies.json` — **opt-out** software-composition analysis (known-vuln pinned deps); a no-op if no manifests |
-| 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json`, **`ground_truth.json`** | `validated_findings.json` — findings are **batched** (`validate_batch_size`, default 8) into shared sessions that judge each independently, collapsing the old one-session-per-finding fan-out |
+| 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json`, **`ground_truth.json`** | `validated_findings.json` — a **cross-focus semantic dedup** pass runs first (below), then findings are **batched** (`validate_batch_size`, default 8) into shared sessions that judge each independently, collapsing the old one-session-per-finding fan-out |
 | CORROBORATE | `stages/corroborate.run` | `validated_findings.json` (+ optional `--docs-url`, scope links, repo URL) | `validated_findings.json` rewritten with a per-finding `corroboration` block + a `fixed_upstream` appendix — **opt-out web OSINT** (the 2nd networked stage, with research). Cross-checks each finding against the project's **docs** and the repo's **VCS history** to downgrade documented-by-design findings and exclude already-patched ones. Best-effort; never the live in-scope hosts |
 | RUNTIME | `stages/runtime.run` | `validated_findings.json`, `repo/` (+ optional hand-written `runtime_probe_plan.json`) | `runtime_results.json` + per-finding `runtime` verdict — **opt-in**, sandboxed. **R2:** an LLM proposes the probe plan (gated by the loopback/anti-DoS validators) and interprets the observations into confirmed/refuted/inconclusive. No-op unless enabled + Docker + recipe |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
 `pipeline` runs 1→5 (SCA between audit and validate, corroborate after validate — both on by
 default; or 1→2 with `--dry-run`) and **stops before any submission**.
+
+**Why an "unknown"/uncertain verdict happened, not just that it did.** Both validate and corroborate
+are best-effort against session/backend failure: a validate session that dies leaves its findings
+`needs_runtime_verification`, and a corroborate session that dies leaves its findings `unknown` —
+survivors either way, never silently dropped. But that verdict looks IDENTICAL whether the model
+genuinely examined the finding and couldn't tell (a real quality signal) or the session never ran at
+all (a session-limit 429, every fallback backend exhausted — a pure tooling gap, not a finding-quality
+one). Both stages tag the latter with a specific rationale prefix and split the counts in their final
+summary line and in `validated_findings.json`'s `stats` (`survivors_not_actually_validated`,
+`unknown_due_to_infra_failure` / `unknown_genuine`), so a reader — or the paper-dataset export — isn't
+left guessing which one happened, and knows to just re-run `argo validate`/`argo corroborate <run_id>`
+once the session limit resets rather than distrust the audit.
 
 **Design context + impact discipline (cross-cutting).** `rendering.design_context_block` is injected
 into every audit prompt (deterministically, via `recon.ensure_design_context_present`, alongside the
@@ -119,6 +131,21 @@ switches from binary confirm/refute to **downgrade-don't-delete**: `refuted` is 
 `needs_runtime_verification` with a concrete question. Drift-repaired audit findings (see below) and
 SCA findings bypass adversarial refutation and are kept for human review.
 
+**Cross-focus semantic dedup** (`validate._semantic_dedup`) runs right after the structural
+`_merge()` and before the (much more expensive) adversarial fan-out. Structural dedup only collapses
+EXACT `(file, line, cwe)` matches, so the same root-cause bug independently reported by two different
+audit foci at two different call sites survives as two separate findings — seen in practice on a real
+run, where one "unvalidated config value reaches a division with no zero-guard" bug was reported
+**three times** by three different foci, each citing a different exact line. One extra cheap batched
+session (`prompts/02c_semantic_dedup_prompt.md`, summaries only — id/title/CWE/affected, no source
+excerpts) asks the model to cluster findings that describe the same underlying bug from different
+angles, conservatively (a missed duplicate just costs a little extra validation later; a wrong merge
+silently drops a real, distinct finding). Gated on `semantic_dedup_min_findings` (default 6 — skip the
+extra session for a small finding set) and `semantic_dedup_enabled` (default on); fails open (keeps
+every finding separate) on any session failure or malformed output. Folded-away duplicates are
+recorded in `validated_findings.json`'s `dropped` list with `reason: "duplicate_of:<primary_id>
+(semantic dedup)"`, never silently deleted.
+
 ## The `AgentRunner` abstraction
 
 Every LLM call goes through one interface, so guardrails and cost logging cannot be bypassed
@@ -150,6 +177,11 @@ Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`
   retried on the next backend (each picking its own per-stage model), so a long Opus run that walls
   on the Claude session limit mid-`validate` self-heals onto Codex instead of degrading. A walled
   backend is disabled for the rest of the run (circuit breaker); a non-retryable error propagates.
+  When a session-limit error's detail text carries a human-readable reset time (e.g. "You've hit your
+  session limit · resets 12:50am (Europe/Rome)"), `_extract_session_reset_hint` pulls it out into the
+  `RunnerError` message and the `llm_log.jsonl` row (`session_limit_reset_hint`) — so a human (or a
+  future resume script) can `grep` a run log for exactly when it is safe to retry, instead of hunting
+  down and re-reading the raw API error text.
   The chain can mix backends **and accounts** (`_expand_backend`): `--claude-accounts dirA,dirB`
   builds one `HeadlessClaudeRunner` per `CLAUDE_CONFIG_DIR` and `--codex-accounts` one `CodexRunner`
   per `CODEX_HOME` (limits are per-account), so e.g. `Claude-A → Claude-B → Codex-A → Codex-B`. The

@@ -4,7 +4,8 @@ backend (Claude -> Codex -> local), with a circuit breaker and per-backend model
 import pytest
 
 from argo.config import PipelineConfig
-from argo.runner import FallbackRunner, RunnerError, _is_retryable, build_runner
+from argo.runner import (FallbackRunner, RunnerError, _extract_session_reset_hint,
+                         _is_retryable, build_runner)
 
 
 class _Fake:
@@ -43,6 +44,17 @@ def test_is_retryable():
     assert _is_retryable(RunnerError("model overloaded"))
     assert not _is_retryable(RunnerError("findings file is not valid JSON"))
     assert not _is_retryable(RunnerError("codex CLI not found on PATH"))
+
+
+def test_extract_session_reset_hint():
+    # The real detail text seen in production (moquette + gguf-tools runs): a human/resume-script
+    # should be able to grep the run log for this instead of re-reading the raw API error text.
+    assert _extract_session_reset_hint(
+        "You've hit your session limit · resets 12:50am (Europe/Rome)") == "12:50am (Europe/Rome)"
+    assert _extract_session_reset_hint("You've hit your session limit · resets 5pm") == "5pm"
+    assert _extract_session_reset_hint("model overloaded, try again later") is None
+    assert _extract_session_reset_hint(None) is None
+    assert _extract_session_reset_hint("") is None
 
 
 def test_falls_back_on_retryable_limit():

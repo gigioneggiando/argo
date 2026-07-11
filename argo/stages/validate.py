@@ -23,6 +23,24 @@ from ..runner import RunnerError
 
 _KEEP_VERDICTS = {"confirmed", "needs_runtime_verification"}
 
+#: A survivor kept as "needs_runtime_verification" can mean the model made a genuine judgment call
+#: (a real, useful signal) or that it was never actually adversarially examined — a session/backend
+#: failure, a missing verdict, or the per-run budget being reached. These exact rationale prefixes
+#: mark the latter, letting the final summary report the split instead of one opaque survivor count.
+_INFRA_UNVALIDATED_RATIONALE_PREFIXES = (
+    "validation session failed:",
+    "validation session produced no verdict file",
+    "no verdict returned for this finding in the batch",
+    "not adversarially validated: per-run budget reached",
+    "unrecognized verdict ",
+)
+
+
+def _is_infra_unvalidated(f: Finding) -> bool:
+    v = f.validation
+    return bool(v and v.verdict == "needs_runtime_verification" and v.rationale
+                and v.rationale.startswith(_INFRA_UNVALIDATED_RATIONALE_PREFIXES))
+
 
 def _log(msg: str) -> None:
     print(f"[validate] {msg}", file=sys.stderr)
@@ -110,6 +128,84 @@ def _merge(findings: list[Finding]) -> list[Finding]:
     # Deterministic ordering for downstream sessions / output.
     merged.sort(key=lambda f: (-severity_rank(f.severity), -confidence_rank(f.confidence), f.id))
     return merged
+
+
+# --------------------------------------------------------------------------- semantic dedup
+def _summarize_for_dedup(f: Finding) -> dict:
+    return {"finding_id": f.id, "title": f.title, "cwe": f.cwe, "affected": f.affected,
+            "summary": (f.why_vulnerable or "")[:200]}
+
+
+def _semantic_dedup(ctx: RunContext, findings: list[Finding]) -> tuple[list[Finding], list[dict]]:
+    """Cluster near-duplicate findings (same root cause, different call site / audit focus) that
+    the structural ``dedup_key`` merge above cannot see — it only collapses EXACT (file, line, CWE)
+    matches, so the same bug reported by two foci at two different lines survives as two findings.
+    One extra cheap batched session (summaries only, no source excerpts) before the much more
+    expensive per-finding validate/corroborate fan-out. Fails open on any error: returns ``findings``
+    unchanged. Returns ``(deduped_findings, drop_records)``."""
+    if not ctx.config.semantic_dedup_enabled or len(findings) < ctx.config.semantic_dedup_min_findings:
+        return findings, []
+
+    by_id = {f.id: f for f in findings}
+    template = (ctx.assets_dir / "02c_semantic_dedup_prompt.md").read_text(encoding="utf-8")
+    rendered = fill_placeholders(template, {
+        "FINDINGS_SUMMARY": json.dumps([_summarize_for_dedup(f) for f in findings], indent=2),
+    })
+    prompt = with_artifact_contract(rendered, artifacts=[{
+        "type": "dedup_clusters", "filename": "dedup_clusters.json", "schema": None,
+        "desc": "clusters of finding_ids that describe the same underlying bug",
+    }])
+    try:
+        result = ctx.runner.run(
+            prompt=prompt, run_dir=ctx.run_dir,
+            work_dir=ctx.work_dir("validate", "semantic-dedup"),
+            model=ctx.config.model_for("validate"), stage="validate",
+            run_id=ctx.run_id, repo_dir=None,            # summaries only; no repo access needed
+            allowed_tools=ARTIFACT_TOOLS, label="validate-semantic-dedup")
+        files = collect_output_files(result, "dedup_clusters*.json")
+    except RunnerError as exc:
+        _log(f"semantic dedup skipped (session failed: {exc}); keeping all {len(findings)} finding(s) separate")
+        return findings, []
+    if not files:
+        _log("semantic dedup skipped (no output produced); keeping all findings separate")
+        return findings, []
+    try:
+        clusters = json.loads(files[0].read_text(encoding="utf-8")).get("clusters") or []
+    except (OSError, ValueError):
+        _log("semantic dedup skipped (malformed output); keeping all findings separate")
+        return findings, []
+
+    drop_of: dict[str, str] = {}         # duplicate_id -> primary_id
+    for cluster in clusters:
+        if not isinstance(cluster, dict):
+            continue
+        primary_id = cluster.get("primary_id")
+        if primary_id not in by_id or primary_id in drop_of:
+            continue                     # unknown, or already merged into someone else: skip cluster
+        for d in cluster.get("duplicate_ids") or []:
+            if d in by_id and d != primary_id and d not in drop_of:
+                drop_of[d] = primary_id
+
+    if not drop_of:
+        return findings, []
+
+    dropped: list[dict] = []
+    kept: list[Finding] = []
+    for f in findings:
+        primary_id = drop_of.get(f.id)
+        if primary_id is None:
+            kept.append(f)
+            continue
+        primary = by_id[primary_id]
+        for a in f.affected:
+            if a not in primary.affected:
+                primary.affected.append(a)
+        dropped.append({"id": f.id, "dedup_key": f.dedup_key, "title": f.title, "cwe": f.cwe,
+                        "severity": f.severity,
+                        "reason": f"duplicate_of:{primary_id} (semantic dedup)", "verdict": None})
+    _log(f"{len(findings)} finding(s) -> {len(kept)} after semantic dedup "
+         f"({len(dropped)} near-duplicate(s) collapsed)")
+    return kept, dropped
 
 
 # --------------------------------------------------------------------------- excerpts
@@ -289,8 +385,9 @@ def run(ctx: RunContext) -> Path:
     _assign_keys(raw_findings)
     merged = _merge(raw_findings)
     _log(f"{len(raw_findings)} raw -> {len(merged)} after dedup")
+    merged, semantic_dedup_dropped = _semantic_dedup(ctx, merged)
 
-    dropped: list[dict] = []
+    dropped: list[dict] = list(semantic_dedup_dropped)
     to_validate: list[Finding] = []
     survivors: list[Finding] = []
     for f in merged:
@@ -370,22 +467,31 @@ def run(ctx: RunContext) -> Path:
     survivors.sort(key=lambda f: (
         -severity_rank(_eff_sev(f)), -confidence_rank(_eff_conf(f)), f.id))
 
+    infra_unvalidated = sum(1 for f in survivors if _is_infra_unvalidated(f))
+
     out_doc = {
         "program_name": scope.program_name,
         "run_id": ctx.run_id,
         "generated_at": ctx.timestamp(),
         "stats": {
             "raw": len(raw_findings),
-            "after_dedup": len(merged),
+            "after_dedup": len(merged) + len(semantic_dedup_dropped),
+            "after_semantic_dedup": len(merged),
             "validated": len(launch),
             "survivors": len(survivors),
             "dropped": len(dropped),
+            "survivors_not_actually_validated": infra_unvalidated,
         },
         "findings": [f.model_dump(exclude_none=True) for f in survivors],
         "dropped": dropped,
     }
     ctx.validated_findings_path.write_text(json.dumps(out_doc, indent=2), encoding="utf-8")
-    _log(f"{len(survivors)} survivor(s), {len(dropped)} dropped -> {ctx.validated_findings_path.name}")
+    survivor_note = (
+        f"{len(survivors)} survivor(s) ({infra_unvalidated} not actually adversarially validated — "
+        f"session/backend failure or budget reached; re-run validate later if desired)"
+        if infra_unvalidated else f"{len(survivors)} survivor(s)"
+    )
+    _log(f"{survivor_note}, {len(dropped)} dropped -> {ctx.validated_findings_path.name}")
     return ctx.validated_findings_path
 
 

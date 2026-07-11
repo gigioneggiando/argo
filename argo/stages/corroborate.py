@@ -35,6 +35,23 @@ from .validate import _build_excerpts
 _LIVE_ASSET_TYPES = {"web", "api", "mobile"}
 _VALID_VERDICTS = {"corroborated", "design_accepted", "fixed_upstream", "unknown"}
 
+#: A "verdict": "unknown" can mean two very different things for a reader of the report: the model
+#: actually looked and could not tell (a real quality signal), or the session/backend never ran at
+#: all (a pure tooling gap — e.g. a session-limit 429, every backend exhausted). Both paths above set
+#: one of these exact rationale prefixes for the infra-failure case; this lets the run() summary below
+#: report the split explicitly instead of collapsing them into one opaque "unknown" count.
+_INFRA_FAILURE_RATIONALE_PREFIXES = (
+    "corroboration session failed:",
+    "corroboration session produced no verdict file",
+    "corroboration verdict was not valid JSON",
+    "no verdict returned for this finding in the batch",
+)
+
+
+def _is_infra_failure(corr: Corroboration) -> bool:
+    return (corr.verdict == "unknown" and bool(corr.rationale)
+            and corr.rationale.startswith(_INFRA_FAILURE_RATIONALE_PREFIXES))
+
 
 def _log(msg: str) -> None:
     print(f"[corroborate] {msg}", file=sys.stderr)
@@ -237,11 +254,14 @@ def run(ctx: RunContext) -> Path:
     kept: list[Finding] = []
     fixed_upstream: list[dict] = []
     counts = {"corroborated": 0, "design_accepted": 0, "fixed_upstream": 0, "unknown": 0}
+    infra_failure_unknown = 0
     for f in survivors:
         corr = verdicts.get(f.id)
         if corr is not None:
             f.corroboration = corr
             counts[corr.verdict] = counts.get(corr.verdict, 0) + 1
+            if corr.verdict == "unknown" and _is_infra_failure(corr):
+                infra_failure_unknown += 1
             if corr.verdict == "fixed_upstream":
                 fixed_upstream.append(f.model_dump(exclude_none=True))
                 _log(f"{f.id}: fixed_upstream ({corr.fix_commit or 'commit unspecified'}) -> appendix")
@@ -256,8 +276,20 @@ def run(ctx: RunContext) -> Path:
     stats["corroborated"] = counts
     stats["survivors"] = len(kept)
     stats["fixed_upstream"] = len(fixed_upstream)
+    # Split "unknown" so a reader (or a paper-dataset script) can tell "the model looked and
+    # couldn't tell" from "this was never actually examined" (session/backend failure) — collapsing
+    # both into one opaque count is exactly what made a session-limit outage look, at a glance, like
+    # a corroboration-quality problem in the gguf-tools run that first prompted this split.
+    stats["unknown_due_to_infra_failure"] = infra_failure_unknown
+    stats["unknown_genuine"] = counts["unknown"] - infra_failure_unknown
     ctx.validated_findings_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    unknown_breakdown = (
+        f"{counts['unknown']} unknown ({infra_failure_unknown} due to session/backend failure — "
+        f"re-run `argo corroborate {ctx.run_id}` once the limit resets; "
+        f"{counts['unknown'] - infra_failure_unknown} genuinely inconclusive)"
+        if infra_failure_unknown else f"{counts['unknown']} unknown"
+    )
     _log(f"{counts['corroborated']} corroborated, {counts['design_accepted']} design-accepted, "
-         f"{len(fixed_upstream)} fixed-upstream, {counts['unknown']} unknown "
+         f"{len(fixed_upstream)} fixed-upstream, {unknown_breakdown} "
          f"-> {len(kept)} active survivor(s)")
     return ctx.validated_findings_path

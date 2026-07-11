@@ -29,8 +29,8 @@ def test_full_pipeline_happy(env):
     ctx = env()
     summary = run_pipeline(ctx, BRIEF, str(REPO))
     vf = _validated(ctx)
-    assert vf["stats"] == {"raw": 6, "after_dedup": 5, "validated": 4,
-                           "survivors": 3, "dropped": 2}
+    assert vf["stats"] == {"raw": 6, "after_dedup": 5, "after_semantic_dedup": 5, "validated": 4,
+                           "survivors": 3, "dropped": 2, "survivors_not_actually_validated": 0}
     assert {f["id"] for f in vf["findings"]} == SURVIVORS
     assert {d["id"] for d in vf["dropped"]} == DROPPED
     # drafts: confirmed findings only, each marked DRAFT

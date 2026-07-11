@@ -142,6 +142,16 @@ class PipelineConfig:
     # rules), cutting session count ~Nx. 1 = the legacy per-finding path (kept for chat/B1 re-validate).
     validate_batch_size: int = 8        # findings per adversarial-validation session
     corroborate_batch_size: int = 8     # findings per corroboration session
+    # Cross-focus semantic dedup (Stage 4, before the adversarial fan-out): structural dedup
+    # (validate._merge) only collapses EXACT (file, line, cwe) matches, so the same root-cause bug
+    # reported by two different audit foci at two different call sites survives as two findings (seen
+    # on gguf-tools: a single "general.alignment=0 -> div-by-zero" bug reported 3x from 3 foci, each
+    # citing a different exact line). One extra cheap batched session clusters near-duplicates by
+    # meaning (title + explanation), not just by exact line — before the MUCH more expensive per-
+    # finding validate/corroborate fan-out. Skipped below the finding-count floor (not worth a session
+    # for a handful of findings); fails open (keeps every finding separate) on any error.
+    semantic_dedup_enabled: bool = True
+    semantic_dedup_min_findings: int = 6
 
     # Codex backend (runner == "codex"). One model for all stages (Codex isn't tiered per stage
     # the way Claude is). codex_model=None lets the Codex CLI use its own configured default model.

@@ -239,6 +239,7 @@ class AgentRunner(ABC):
             session_id=result.session_id,
             stop_reason=result.stop_reason,
         )
+        reset_hint = _extract_session_reset_hint(result.text) if result.is_error else None
         self._append_jsonl(run_dir, {
             "stage": stage,
             "label": label,
@@ -252,15 +253,17 @@ class AgentRunner(ABC):
             "stop_reason": result.stop_reason,
             "is_error": result.is_error,
             "api_error_status": result.api_error_status,
+            "session_limit_reset_hint": reset_hint,
         })
 
         # --- surface hard API errors LOUDLY (auth / rate-limit / overloaded) -----------
         # These carry api_error_status and cannot produce usable artifacts -> abort clearly.
         if result.is_error and result.api_error_status:
+            reset_suffix = f", session_limit_reset_hint={reset_hint!r}" if reset_hint else ""
             raise RunnerError(
                 f"claude session API error (stage={stage}, run_id={run_id}, label={label}): "
                 f"api_error_status={result.api_error_status!r}, stop_reason="
-                f"{result.stop_reason!r}, detail={result.text[:300]!r}")
+                f"{result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix}")
 
         # --- per-session caps (no native --max-turns in v2.1.178) ----------------------
         mt = self.config.session_max_turns
@@ -522,6 +525,7 @@ class MockClaudeRunner(ClaudeRunner):
         recon/{repo_profile.json, audit_*.md, synthesis_notes.md}
         audit/<slug>.findings.json
         validate/verdicts.json          # {finding_id: {...verdict...}, "_default": {...}}
+        validate/dedup_clusters.json    # optional: {"clusters": [{primary_id, duplicate_ids, reason}]}
 
     Failure scenarios are driven by sentinel files (see ``_audit`` / ``_recon``)."""
 
@@ -786,6 +790,21 @@ class MockClaudeRunner(ClaudeRunner):
         return self._envelope(reply)
 
     def _validate(self, work_dir: Path, label, prompt: str = "") -> dict:
+        if work_dir.name == "semantic-dedup":
+            # Optional fixture: validate/dedup_clusters.json, copied VERBATIM as the produced
+            # artifact (like _audit's fixture copy) — a test can drop deliberately malformed JSON
+            # in it to exercise the real code's fail-open parse-error path. Absent -> no-op
+            # (findings unchanged), so existing scenarios never need one just because they happen
+            # to cross the threshold.
+            fixture = self.scenario_dir / "validate" / "dedup_clusters.json"
+            out = work_dir / "dedup_clusters.json"
+            if fixture.is_file():
+                self._copy(fixture, out)
+            else:
+                out.write_text(json.dumps({"clusters": []}, indent=2), encoding="utf-8")
+            return self._envelope(self._manifest(
+                [{"type": "dedup_clusters", "path": out.name, "status": "ok"}]))
+
         verdicts = json.loads(
             (self.scenario_dir / "validate" / "verdicts.json").read_text(encoding="utf-8"))
 
@@ -825,6 +844,20 @@ _RETRYABLE_HINTS = ("session limit", "rate limit", "rate_limit", "api_error_stat
 def _is_retryable(exc: Exception) -> bool:
     s = str(exc).lower()
     return any(h in s for h in _RETRYABLE_HINTS)
+
+
+#: A session-limit error's detail text often carries a human-readable reset time (e.g. "You've hit
+#: your session limit · resets 12:50am (Europe/Rome)"). Extracting it means a human (or a future
+#: resume script) can `grep` a run log for exactly when it is safe to retry, instead of having to
+#: hunt down and re-read the raw API error text. Best-effort: no match -> None, never raises.
+_SESSION_RESET_RE = re.compile(r"resets?\s+([^·|\n\"]{3,40})", re.IGNORECASE)
+
+
+def _extract_session_reset_hint(text: str | None) -> str | None:
+    if not text:
+        return None
+    m = _SESSION_RESET_RE.search(text)
+    return m.group(1).strip().rstrip(".,;") if m else None
 
 
 class FallbackRunner(AgentRunner):

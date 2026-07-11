@@ -13,18 +13,21 @@ from argo.orchestrator import run_pipeline
 
 from conftest import BRIEF, REPO
 
+# Cite files that actually exist in the repo fixture (unique lines/CWEs so they don't STRUCTURALLY
+# merge with the happy findings) — citation grounding now drops findings whose primary file exists
+# nowhere in the repo, so a made-up path like "src/mod/a.py" would be dropped before semantic dedup.
 EXTRA_FINDINGS = [
     {
         "id": "EXTRA-001", "title": "Config value X never validated at its source",
         "severity": "Medium", "confidence": "High", "cwe": "CWE-20",
-        "affected": ["src/mod/a.py:10"],
+        "affected": ["src/api/orders.py:200"],
         "vulnerable_flow": "config X is read from the request with no bound", "why_vulnerable": "x",
         "exploit_scenario": "x", "impact": "x", "recommended_fix": "validate X at its source",
     },
     {
         "id": "EXTRA-002", "title": "Config value X used unsafely as a divisor downstream",
         "severity": "Medium", "confidence": "High", "cwe": "CWE-369",
-        "affected": ["src/mod/b.py:99"],
+        "affected": ["src/net/fetch.py:200"],
         "vulnerable_flow": "config X (unchecked) reaches a modulo with no zero-guard", "why_vulnerable": "x",
         "exploit_scenario": "x", "impact": "x", "recommended_fix": "validate X at its source",
     },
@@ -73,8 +76,8 @@ def test_semantic_dedup_collapses_a_cross_focus_duplicate(env, make_scenario):
 
     # the primary absorbs the duplicate's affected refs (union, like the structural merge does)
     primary = next(f for f in vf["findings"] if f["id"] == "EXTRA-001")
-    assert "src/mod/a.py:10" in primary["affected"]
-    assert "src/mod/b.py:99" in primary["affected"]
+    assert "src/api/orders.py:200" in primary["affected"]
+    assert "src/net/fetch.py:200" in primary["affected"]
 
 
 def test_semantic_dedup_skipped_below_threshold(env, make_scenario):

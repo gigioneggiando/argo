@@ -15,8 +15,9 @@ from pathlib import Path
 
 from ..config import ARTIFACT_TOOLS
 from ..context import BudgetExceeded, RunContext, collect_output_files
+from ..grounding import build_index, ground_finding
 from ..guardrails import assert_prohibited_present, out_of_scope_match
-from ..models import Finding, Validation
+from ..models import Finding, Grounding, Validation
 from ..ranking import confidence_rank, dedup_key, severity_rank, split_ref
 from ..rendering import design_context_block, fill_placeholders, with_artifact_contract
 from ..runner import RunnerError
@@ -208,6 +209,91 @@ def _semantic_dedup(ctx: RunContext, findings: list[Finding]) -> tuple[list[Find
     return kept, dropped
 
 
+# --------------------------------------------------------------------------- citation grounding
+_CONF_ORDER = ["Low", "Medium", "High", "Confirmed"]
+
+
+def _downgrade_confidence(c: str) -> str:
+    try:
+        i = _CONF_ORDER.index(c)
+    except ValueError:
+        return c
+    return _CONF_ORDER[max(0, i - 1)]
+
+
+def _ground_citations(ctx: RunContext, findings: list[Finding]) -> tuple[list[Finding], list[dict]]:
+    """Deterministic citation grounding (no LLM call). DROP a finding whose PRIMARY ``affected``
+    file exists nowhere in the repo (a hallucinated location — e.g. a bug carried over from a
+    different target); for a finding citing project-specific code SYMBOLS that appear nowhere in
+    the repo, attach a grounding note and downgrade confidence one notch (the adversarial validator
+    makes the final call, with the note surfaced in its excerpts). Fails open: on any error every
+    finding passes through unchanged. Returns ``(kept, drop_records)``."""
+    if not findings:
+        return findings, []
+    try:
+        index = build_index(ctx.repo_dir, findings)
+    except Exception as exc:  # noqa: BLE001 — grounding must never crash the stage
+        _log(f"citation grounding skipped ({exc}); keeping all findings")
+        return findings, []
+
+    kept: list[Finding] = []
+    dropped: list[dict] = []
+    n_downgraded = 0
+    for f in findings:
+        try:
+            res = ground_finding(index, f)
+        except Exception:  # noqa: BLE001 — never let one malformed finding crash the stage
+            f.grounding = Grounding(status="grounded")
+            kept.append(f)
+            continue
+        missing_files, missing_symbols = res["missing_files"], res["missing_symbols"]
+        primary = f.affected[0] if f.affected else ""
+        if primary and primary in missing_files:
+            f.grounding = Grounding(status="ungrounded", missing_files=missing_files,
+                                    missing_symbols=missing_symbols)
+            f.validation = Validation(
+                verdict="out_of_scope",
+                rationale=f"ungrounded citation: primary affected file '{primary}' does not exist "
+                          "in the repo under audit (likely mis-attributed from another target)")
+            dropped.append(_drop_record(f, "ungrounded_citation (primary file not in repo)"))
+            _log(f"{f.id}: dropped pre-validation (ungrounded citation: {primary} not in repo)")
+            continue
+        if missing_files or missing_symbols:
+            f.grounding = Grounding(status="ungrounded", missing_files=missing_files,
+                                    missing_symbols=missing_symbols)
+            f.confidence = _downgrade_confidence(f.confidence)
+            n_downgraded += 1
+            _log(f"{f.id}: ungrounded citation {missing_symbols or missing_files}; confidence "
+                 f"downgraded to {f.confidence}, flagged for the validator")
+        else:
+            f.grounding = Grounding(status="grounded")
+        kept.append(f)
+    if dropped or n_downgraded:
+        _log(f"citation grounding: {len(dropped)} dropped, {n_downgraded} downgraded")
+    return kept, dropped
+
+
+def _grounding_note(f: Finding) -> str:
+    """A prominent warning block, prepended to a finding's validation excerpts, when the
+    deterministic grounding pass found cited files/symbols that do not exist in this repo."""
+    g = f.grounding
+    if not g or g.status == "grounded":
+        return ""
+    parts: list[str] = []
+    if g.missing_symbols:
+        parts.append("code symbol(s) cited but NOT FOUND anywhere in this repo: "
+                     + ", ".join(g.missing_symbols))
+    if g.missing_files:
+        parts.append("file(s) cited but NOT FOUND in this repo: " + ", ".join(g.missing_files))
+    if not parts:
+        return ""
+    return ("!!! CITATION GROUNDING WARNING (deterministic pre-check) !!!\n"
+            + "\n".join(f"- {p}" for p in parts)
+            + "\nA citation that does not exist in THIS repo is strong evidence the finding was "
+              "mis-attributed (e.g. carried over from a different project). Weigh this heavily: "
+              "unless you can point to the real code here, refute it.\n\n")
+
+
 # --------------------------------------------------------------------------- excerpts
 def _build_excerpts(repo_dir: Path, affected: list[str], ctx_lines: int, max_bytes: int) -> str:
     chunks: list[str] = []
@@ -237,7 +323,7 @@ def _build_excerpts(repo_dir: Path, affected: list[str], ctx_lines: int, max_byt
 # --------------------------------------------------------------------------- per-finding
 def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding,
                   ground_truth: dict | None = None) -> Validation:
-    excerpts = _build_excerpts(
+    excerpts = _grounding_note(finding) + _build_excerpts(
         ctx.repo_dir, finding.affected,
         ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes,
     )
@@ -316,7 +402,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
         items.append({
             "finding_id": f.id,
             "finding": f.model_dump(exclude_none=True),
-            "code_excerpts": _build_excerpts(
+            "code_excerpts": _grounding_note(f) + _build_excerpts(
                 ctx.repo_dir, f.affected,
                 ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes),
             "ground_truth": _format_ground_truth(ground_truth, f.source_focus),
@@ -386,8 +472,9 @@ def run(ctx: RunContext) -> Path:
     merged = _merge(raw_findings)
     _log(f"{len(raw_findings)} raw -> {len(merged)} after dedup")
     merged, semantic_dedup_dropped = _semantic_dedup(ctx, merged)
+    merged, grounding_dropped = _ground_citations(ctx, merged)
 
-    dropped: list[dict] = list(semantic_dedup_dropped)
+    dropped: list[dict] = list(semantic_dedup_dropped) + list(grounding_dropped)
     to_validate: list[Finding] = []
     survivors: list[Finding] = []
     for f in merged:
@@ -475,8 +562,10 @@ def run(ctx: RunContext) -> Path:
         "generated_at": ctx.timestamp(),
         "stats": {
             "raw": len(raw_findings),
-            "after_dedup": len(merged) + len(semantic_dedup_dropped),
-            "after_semantic_dedup": len(merged),
+            "after_dedup": len(merged) + len(semantic_dedup_dropped) + len(grounding_dropped),
+            "after_semantic_dedup": len(merged) + len(grounding_dropped),
+            "grounding_dropped": len(grounding_dropped),
+            "after_grounding": len(merged),
             "validated": len(launch),
             "survivors": len(survivors),
             "dropped": len(dropped),

@@ -85,6 +85,18 @@ class Corroboration(BaseModel):
     adjusted_severity: Optional[Severity] = None   # optional downgrade (e.g. design_accepted -> Low)
 
 
+class Grounding(BaseModel):
+    """Deterministic citation-grounding result attached at the validate stage: which of a
+    finding's cited files / project-specific code symbols could NOT be found in the actual repo
+    under audit. ``ungrounded`` symbols downgrade confidence and are surfaced to the adversarial
+    validator; a missing primary file drops the finding pre-validation. See :mod:`argo.grounding`."""
+
+    model_config = ConfigDict(extra="allow")
+    status: Literal["grounded", "ungrounded"]
+    missing_files: list[str] = Field(default_factory=list)
+    missing_symbols: list[str] = Field(default_factory=list)
+
+
 class Finding(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -107,6 +119,7 @@ class Finding(BaseModel):
     dedup_key: Optional[str] = None
     validation: Optional[Validation] = None
     corroboration: Optional[Corroboration] = None
+    grounding: Optional[Grounding] = None
     # Orchestrator bookkeeping (not in schema, allowed via extra="allow"):
     source_focus: Optional[str] = None
 

@@ -58,7 +58,7 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
 | SCA | `stages/sca.run` | `repo/` dependency manifests, `scope.json` | `findings/dependencies.json` — **opt-out** software-composition analysis (known-vuln pinned deps); a no-op if no manifests |
-| 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json`, **`ground_truth.json`** | `validated_findings.json` — a **cross-focus semantic dedup** pass runs first (below), then findings are **batched** (`validate_batch_size`, default 8) into shared sessions that judge each independently, collapsing the old one-session-per-finding fan-out |
+| 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json`, **`ground_truth.json`** | `validated_findings.json` — a **cross-focus semantic dedup** then a deterministic **citation-grounding** pass run first (below), then findings are **batched** (`validate_batch_size`, default 8) into shared sessions that judge each independently, collapsing the old one-session-per-finding fan-out |
 | CORROBORATE | `stages/corroborate.run` | `validated_findings.json` (+ optional `--docs-url`, scope links, repo URL) | `validated_findings.json` rewritten with a per-finding `corroboration` block + a `fixed_upstream` appendix — **opt-out web OSINT** (the 2nd networked stage, with research). Cross-checks each finding against the project's **docs** and the repo's **VCS history** to downgrade documented-by-design findings and exclude already-patched ones. Best-effort; never the live in-scope hosts |
 | RUNTIME | `stages/runtime.run` | `validated_findings.json`, `repo/` (+ optional hand-written `runtime_probe_plan.json`) | `runtime_results.json` + per-finding `runtime` verdict — **opt-in**, sandboxed. **R2:** an LLM proposes the probe plan (gated by the loopback/anti-DoS validators) and interprets the observations into confirmed/refuted/inconclusive. No-op unless enabled + Docker + recipe |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
@@ -145,6 +145,23 @@ extra session for a small finding set) and `semantic_dedup_enabled` (default on)
 every finding separate) on any session failure or malformed output. Folded-away duplicates are
 recorded in `validated_findings.json`'s `dropped` list with `reason: "duplicate_of:<primary_id>
 (semantic dedup)"`, never silently deleted.
+
+**Citation grounding** (`validate._ground_citations`, `argo/grounding.py`) runs immediately after
+semantic dedup and before the adversarial fan-out — a **deterministic, zero-LLM** check that a
+finding's cited code actually exists in *this* repo. Motivated by a real precision miss: a ds4 report
+draft carried a `gguf_get_tensor` / `general.alignment=0` divide-by-zero that belongs to the SEPARATE
+`gguf-tools` repo (`gguf_get_tensor` exists nowhere in the ds4 tree) — nothing verified the citation
+before spending a validation session on it. One cheap repo pass builds a `RepoIndex` of every basename
+and every project-specific symbol any finding cites (a call `foo_bar(` or a backticked `` `foo_bar` ``,
+filtered to underscore/interior-capital identifiers ≥ 6 chars so stdlib calls like `read`/`len` are
+never mistaken for hallucinations). Then, per finding: if the **primary `affected` file** exists
+nowhere in the repo (a hallucinated location), it is **dropped** pre-validation (`reason:
+"ungrounded_citation ..."`) — the one unambiguous auto-drop; if a cited **symbol** is absent, the
+finding is **kept** but its confidence is downgraded one notch and a `grounding` block + a prominent
+`!!! CITATION GROUNDING WARNING !!!` are surfaced in the validator's excerpts, so the adversarial pass
+makes the final call with the evidence in hand. Conservative throughout: a symbol the index was not
+built to search is given the benefit of the doubt, and the whole pass fails open (every finding kept)
+on any error. Stats land in `validated_findings.json` (`grounding_dropped`, `after_grounding`).
 
 ## The `AgentRunner` abstraction
 

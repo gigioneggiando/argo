@@ -32,6 +32,7 @@ _RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-0 brief so it can't domina
 # the whole run with "no audit prompts". The synthesis is read-only and idempotent, so retry it.
 _RECON_MAX_ATTEMPTS = 2
 from ..rendering import ensure_design_context_present, fill_placeholders, with_artifact_contract
+from ..census import ensure_variant_census_present
 from ..checklists import (
     detect_crypto,
     detect_free_then_reparse,
@@ -198,6 +199,10 @@ def run(ctx: RunContext) -> list[Path]:
             # crypto-primitive + one-finding-per-root-cause) reach the audit regardless of the focus.
             text = ensure_coverage_checklist_present(
                 text, native=native, has_crypto=has_crypto, free_reparse=free_reparse)
+            # Turn the open-ended "census every sibling" lens into a closed-ended worksheet: inject the
+            # concrete extent (site count + files) of each pre-scanned defect family, so the auditor
+            # clears an enumerated list instead of rediscovering the family's spread.
+            text = ensure_variant_census_present(text, ctx.repo_dir)
             # Guardrail: a generated prompt that lost the RoE / prohibited techniques fails here.
             assert_audit_prompt_wellformed(text, scope.prohibited_techniques)
             # Normalize the filename so the model's `audit-foo.md` is picked up by audit's

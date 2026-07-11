@@ -27,6 +27,8 @@ argo/
   knowledge.py      Phase-4 vuln-class index loader (data/vuln_index.yaml) injected into recon
   checklists.py     Phase-4 mandatory coverage checklist injected into every audit prompt (memory-
                     safety / resource-exhaustion / crypto lenses, gated on repo signals) + P1 rule
+  census.py         Phase-4 cross-file variant-census worksheet: pre-scan defect families (free/copy/
+                    alloc sinks, panic points) and inject their concrete site+file extent per prompt
   costs.py          Phase-8 cost analytics from the ledger (by model / stage / run / archetype)
   quality.py        A2 quality report: triager accept-rate (ledger) paired with benchmark recall
   archetype.py      canonical software archetypes + normalizer (captured per run into meta.json)
@@ -110,6 +112,18 @@ where the re-parse can fail and leave a stale freed pointer); when a determinist
 (`detect_free_then_reparse` — a `free(x)` shortly followed by `&x` with no intervening `x = NULL`)
 actually hits in the target, that idiom is escalated to a HIGH-SIGNAL callout so the auditor can't skim
 past it. See [prompt-synthesis.md](prompt-synthesis.md).
+
+**Variant census worksheet (cross-file recall).** `census.ensure_variant_census_present` is injected
+right after the coverage checklist. The checklist's variant-census lens is open-ended ("enumerate every
+sibling"), and an open-ended instruction is exactly what a model under-executes — the #1 recall miss
+across the libcsp / halloy / ds4 cross-checks was reporting one member of an enumerable class and moving
+on. This module turns it into a **closed-ended worksheet**: a deterministic pre-scan (`census.scan_families`)
+enumerates the concrete extent of a few cheaply-detectable defect families — native `free`/copy/alloc
+sinks and memory-safe panic/abort points — and bakes the site count + file list of each into the prompt,
+so the auditor clears an enumerated checklist ("N `free()` sites across these 7 files; you reported 1 —
+account for the rest") instead of rediscovering the family's spread. Self-gating by what's in the tree
+(native families only on native files, panic only on `.rs`/`.go`), emitted only for families with ≥2
+members, and file-list-capped so a large tree can't bloat the prompt.
 
 ## Precision + depth uplift (ground-truth recon → enumerate → downgrade-don't-delete)
 

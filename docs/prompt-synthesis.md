@@ -107,6 +107,18 @@ then dropped from the shortlist. Two mechanisms close that gap:
   *variant families*; the fail-open lens was added after the moquette (fail-open on auth-class load) and
   mediamtx (default `authHTTPExclude` leaving the control API unauthenticated) cross-checks, where the
   blind second-opinion caught insecure-default gaps Argo's audit missed.
+- **Deterministic variant-census worksheet** (`census.ensure_variant_census_present`, injected by recon
+  right after the coverage checklist). The census lens above is open-ended ("enumerate every sibling"),
+  and an open-ended instruction is what a model under-executes — so this makes it closed-ended: a
+  lexical pre-scan (`census.scan_families`) enumerates the concrete extent of a few cheaply-detectable
+  defect families (native `free`/copy/alloc sinks with CWE-415/416/787/770, memory-safe `unwrap`/
+  `expect`/`panic!` points with CWE-248/617) and bakes each family's **site count + file list** into
+  the prompt as a `## VARIANT CENSUS WORKSHEET`. The auditor then clears an enumerated checklist ("N
+  `free()` sites across these 7 files; you reported 1 — account for the rest") instead of rediscovering
+  the family's spread. Self-gating by tree contents (native families only on native files, panic only
+  on `.rs`/`.go`), emitted only for families with ≥2 members, and file-list-capped. This is the
+  closed-ended counterpart to the open-ended census lens — same libcsp/halloy/ds4 under-enumeration
+  lesson, turned from an instruction into concrete ground truth.
 - **Severity symmetry** in the design-context block (`rendering.design_context_block`, P2): the
   counterpart to the anti-over-claim rule — a finding that *defeats a security mechanism the project
   itself ships* (auth, MAC, crypto, security-RNG, replay, access control) is rated by the property it

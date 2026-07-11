@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-authors = [{ name = "Luigi Colluto" }]
+authors = [{ name = "Luigi Colluto", email = "luigicolluto2006@gmail.com" }]
 keywords = ["security", "bug-bounty", "static-analysis", "llm", "audit"]
 classifiers = [
   "License :: OSI Approved :: Apache Software License",

@@ -32,7 +32,12 @@ _RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-0 brief so it can't domina
 # the whole run with "no audit prompts". The synthesis is read-only and idempotent, so retry it.
 _RECON_MAX_ATTEMPTS = 2
 from ..rendering import ensure_design_context_present, fill_placeholders, with_artifact_contract
-from ..checklists import detect_crypto, detect_native, ensure_coverage_checklist_present
+from ..checklists import (
+    detect_crypto,
+    detect_free_then_reparse,
+    detect_native,
+    ensure_coverage_checklist_present,
+)
 from ..runner import RunnerError
 
 
@@ -159,6 +164,10 @@ def run(ctx: RunContext) -> list[Path]:
     # deterministically so the lens can't be dropped by the recon model's focus choices.
     native = detect_native(ctx.repo_dir)
     has_crypto = detect_crypto(ctx.repo_dir)
+    # High-precision idiom pre-scan: at least one `free(x)` shortly followed by `&x` with no
+    # intervening `x = NULL` — the free-then-reparse / free-then-reuse double-free shape. When
+    # present, the native lens gets an extra HIGH-SIGNAL callout so the auditor can't skim past it.
+    free_reparse = native and detect_free_then_reparse(ctx.repo_dir)
 
     prompt_paths: list[Path] = []
     for f in files:
@@ -187,7 +196,8 @@ def run(ctx: RunContext) -> list[Path]:
             text = ensure_design_context_present(text, scope.accepted_risks)
             # Guarantee the mandatory coverage lenses (memory-safety / resource-exhaustion /
             # crypto-primitive + one-finding-per-root-cause) reach the audit regardless of the focus.
-            text = ensure_coverage_checklist_present(text, native=native, has_crypto=has_crypto)
+            text = ensure_coverage_checklist_present(
+                text, native=native, has_crypto=has_crypto, free_reparse=free_reparse)
             # Guardrail: a generated prompt that lost the RoE / prohibited techniques fails here.
             assert_audit_prompt_wellformed(text, scope.prohibited_techniques)
             # Normalize the filename so the model's `audit-foo.md` is picked up by audit's

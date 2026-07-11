@@ -81,7 +81,7 @@ then dropped from the shortlist. Two mechanisms close that gap:
 
 - **Deterministic per-prompt coverage checklist** (`checklists.ensure_coverage_checklist_present`,
   injected by recon right after the design-context block, mirroring `ensure_prohibited_present`). Gated
-  on cheap repo signals (`detect_native`, `detect_crypto`), it appends a `## MANDATORY COVERAGE
+  on cheap repo signals (`detect_native`, `detect_crypto`, `detect_free_then_reparse`), it appends a `## MANDATORY COVERAGE
   CHECKLIST` to **every** audit prompt with: a **variant-family CENSUS** rule (always — the #1 recall
   miss is reporting one instance of an enumerable class and moving on, so census EVERY member: every
   untrusted-driven collection, every OS sink, every panic point, every URL fetch); an always-on
@@ -90,7 +90,14 @@ then dropped from the shortlist. Two mechanisms close that gap:
   validation + per-hop redirect re-validation + zero-click); a **memory-safety** lens for native code
   (CWE-787/125/…) OR, for memory-safe languages, a **panic/abort census** (CWE-248/617 — every
   `unwrap`/`expect`/index/overflow/`unreachable!`/busy-loop reachable from untrusted input, plus every
-  `unsafe`/FFI escape hatch); a **crypto-primitive** lens when crypto is present; and the
+  `unsafe`/FFI escape hatch). The native memory-safety lens also names the **free-then-reparse /
+  free-then-reuse-without-nulling** double-free idiom (CWE-415/416 — `free(obj->field)` then a
+  `parse_into(&obj->field)` whose failing path leaves the freed pointer live for a later second free,
+  plus the `bool f(…, T *out)` helper that returns false without writing `*out`); when a deterministic
+  pre-scan (`detect_free_then_reparse` — a `free(x)` shortly followed by `&x` with no `x = NULL` in
+  between) actually hits in the target, a HIGH-SIGNAL callout is escalated into that lens. This idiom
+  lens was added after the ds4 cross-check, where all-but-one audit pass missed a `free(r->model)` /
+  `json_string(&r->model)` double-free Critical. A **crypto-primitive** lens when crypto is present; and the
   **one-finding-per-root-cause** rule (P1); an always-on **insecure-defaults / fail-open** lens
   (CWE-1188/453/636/306/862 — enumerate every security-relevant default and ask whether it fails OPEN:
   a configured-but-failed authenticator/authorizer/TLS component that silently falls back to

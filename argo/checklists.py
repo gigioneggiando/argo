@@ -15,6 +15,7 @@ constrains the model's own discovery.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 #: Idempotency sentinel — the injector skips a prompt that already carries the block.
@@ -70,12 +71,55 @@ def detect_crypto(repo_dir: Path) -> bool:
     return False
 
 
-def coverage_checklist_block(*, native: bool, has_crypto: bool) -> str:
+#: `free(EXPR)` capturing a plausible lvalue (a var, a struct member `a->b`/`a.b`, an element `a[i]`).
+_FREE_CALL_RE = re.compile(r"\bfree\s*\(\s*([A-Za-z_][A-Za-z0-9_.\[\]]*(?:->[A-Za-z_][A-Za-z0-9_.\[\]]*)*)\s*\)")
+#: How many lines after a `free()` to look for the tell-tale re-address of the freed lvalue.
+_FREE_REUSE_WINDOW = 4
+
+
+def detect_free_then_reparse(repo_dir: Path) -> bool:
+    """True if the native code contains the specific double-free / UAF idiom that a plain
+    memory-safety sweep tends to miss: ``free(x)`` followed shortly by ``&x`` (the address of the
+    just-freed lvalue passed into a function — typically a re-parse) with NO ``x = NULL`` in between.
+
+    This is exactly the shape of a real Critical that all-but-one audit pass missed: ``free(r->model)``
+    then ``json_string(&p, &r->model)`` where ``json_string`` can return false WITHOUT writing
+    ``r->model``, leaving it a dangling freed pointer that a later cleanup frees again. Deliberately
+    NARROW (requires the ``&x`` re-address, not a plain ``x = ...`` reassign, which is usually safe),
+    so it is high-signal and low-noise. Cheap: first match wins; caps the walk."""
+    try:
+        for p in _iter_repo_files(Path(repo_dir)):
+            if p.suffix.lower() not in _NATIVE_EXTS:
+                continue
+            try:
+                lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+            except OSError:
+                continue
+            for i, line in enumerate(lines):
+                m = _FREE_CALL_RE.search(line)
+                if not m:
+                    continue
+                expr = m.group(1)
+                addr = re.compile(r"&\s*" + re.escape(expr) + r"\b")
+                nulled = re.compile(re.escape(expr) + r"\s*=\s*(?:NULL|nullptr|0)\b")
+                for w in lines[i + 1:i + 1 + _FREE_REUSE_WINDOW]:
+                    if nulled.search(w):
+                        break                       # reset to NULL: this site is safe
+                    if addr.search(w):
+                        return True                 # freed lvalue re-addressed without nulling
+    except OSError:
+        pass
+    return False
+
+
+def coverage_checklist_block(*, native: bool, has_crypto: bool, free_reparse: bool = False) -> str:
     """The mandatory coverage lenses for a focus, gated by the detected signals.
 
     Always present: a resource-exhaustion / availability lens (R2) and the one-finding-per-root-cause
     reporting discipline (P1). Memory-safety (native) and crypto-primitive (crypto) lenses are added
-    only when they apply, so the checklist stays relevant and never dilutes with off-target classes."""
+    only when they apply, so the checklist stays relevant and never dilutes with off-target classes.
+    ``free_reparse`` (a deterministic pre-scan hit for the free-then-re-address double-free idiom)
+    escalates that specific idiom to a high-signal callout within the native lens."""
     lines = [
         _COVERAGE_MARKER,
         "",
@@ -150,7 +194,29 @@ def coverage_checklist_block(*, native: bool, has_crypto: bool) -> str:
             "signed/unsigned and width-truncation integer bugs, `size_t` underflow on `length - header`, "
             "missing minimum-length guards, and buffer lifecycle (use-after-free / double-free / "
             "double-ownership in any pool or refcount scheme).",
+            "- **free-then-reparse / free-then-reuse without nulling (CWE-415/416)** — a specific idiom a "
+            "generic lifecycle sweep misses: for EVERY `free(x)` (or a project free wrapper), check "
+            "whether `x` is set to NULL right after. If not, trace whether any later path can `free(x)` "
+            "AGAIN or dereference `x`. Watch especially for `free(obj->field); parse_into(&obj->field)` "
+            "where the re-parse can FAIL and leave `obj->field` holding the stale freed pointer, so a "
+            "later cleanup `free(obj->field)` double-frees. A SIBLING site that DOES null after free is "
+            "proof this one is an inconsistency, not design — census every free of a heap field reachable "
+            "from untrusted input, and report each unnulled one.",
+            "- **output parameter left unwritten on an error/false return (CWE-457/824/416)** — for EVERY "
+            "helper `bool f(..., T *out)` that can `return false`/error early, check it writes `*out` on "
+            "THAT path too. If it returns false WITHOUT writing `*out`, the caller keeps its previous "
+            "value; and if the caller had just `free()`d that variable expecting `f` to overwrite it, the "
+            "value is now a dangling freed pointer. (This is precisely how a non-string JSON value fed to "
+            "a `json_string(&out)` helper can leave a freed pointer live before a second free.)",
         ]
+        if free_reparse:
+            lines += [
+                "- **>>> HIGH-SIGNAL: a deterministic pre-scan already found at least one `free(x)` "
+                "followed by `&x` with no `x = NULL` in between in THIS repo.** That is the exact "
+                "free-then-re-address double-free shape above. Locate every such site, confirm whether the "
+                "re-address target is written on ALL return paths of the callee, and treat an unnulled one "
+                "reachable from untrusted input as a probable Critical until proven otherwise.",
+            ]
     else:
         lines += [
             "",
@@ -179,9 +245,12 @@ def coverage_checklist_block(*, native: bool, has_crypto: bool) -> str:
     return "\n".join(lines)
 
 
-def ensure_coverage_checklist_present(text: str, *, native: bool, has_crypto: bool) -> str:
+def ensure_coverage_checklist_present(text: str, *, native: bool, has_crypto: bool,
+                                      free_reparse: bool = False) -> str:
     """Idempotently append :func:`coverage_checklist_block` to a prompt (only ADDS; never rewrites),
     skipping if the marker is already present. Mirrors ``ensure_design_context_present``."""
     if _COVERAGE_MARKER in text:
         return text
-    return text.rstrip() + "\n\n" + coverage_checklist_block(native=native, has_crypto=has_crypto) + "\n"
+    return (text.rstrip() + "\n\n"
+            + coverage_checklist_block(native=native, has_crypto=has_crypto, free_reparse=free_reparse)
+            + "\n")

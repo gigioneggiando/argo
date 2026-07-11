@@ -6,6 +6,7 @@ prompt, gated on cheap repo signals — so the lenses that a recon model can dro
 from argo.checklists import (
     coverage_checklist_block,
     detect_crypto,
+    detect_free_then_reparse,
     detect_native,
     ensure_coverage_checklist_present,
 )
@@ -30,6 +31,52 @@ def test_detect_none(tmp_path):
     (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
     assert detect_native(tmp_path) is False
     assert detect_crypto(tmp_path) is False
+
+
+def test_detect_free_then_reparse_positive(tmp_path):
+    # free(x) then &x re-addressed a couple lines later, with no `x = NULL` between -> the idiom.
+    (tmp_path / "parse.c").write_text(
+        "void f(resp *r, parser *p) {\n"
+        "    free(r->model);\n"
+        "    if (!json_string(p, &r->model))\n"
+        "        return;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    assert detect_free_then_reparse(tmp_path) is True
+
+
+def test_detect_free_then_reparse_nulled_is_safe(tmp_path):
+    # Setting the freed lvalue to NULL before the re-address breaks the idiom -> not flagged.
+    (tmp_path / "safe.c").write_text(
+        "void f(resp *r, parser *p) {\n"
+        "    free(r->model);\n"
+        "    r->model = NULL;\n"
+        "    json_string(p, &r->model);\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    assert detect_free_then_reparse(tmp_path) is False
+
+
+def test_detect_free_then_reparse_ignores_non_native(tmp_path):
+    # Same shape in a .py file is not native code -> never a hit.
+    (tmp_path / "x.py").write_text("free(x)\ng(&x)\n", encoding="utf-8")
+    assert detect_free_then_reparse(tmp_path) is False
+
+
+def test_free_reparse_callout_gated(tmp_path):
+    # The high-signal callout only appears when the pre-scan flag is set, and only under native.
+    on = coverage_checklist_block(native=True, has_crypto=False, free_reparse=True)
+    assert "HIGH-SIGNAL" in on
+    assert "free(x)" in on
+    off = coverage_checklist_block(native=True, has_crypto=False, free_reparse=False)
+    assert "HIGH-SIGNAL" not in off
+    # the free-then-reparse lens bullet is always in the native block regardless of the flag
+    assert "free-then-reparse" in off
+    # non-native never carries the callout even if the flag is (spuriously) set
+    memsafe = coverage_checklist_block(native=False, has_crypto=False, free_reparse=True)
+    assert "HIGH-SIGNAL" not in memsafe
 
 
 def test_block_is_gated_by_signals():

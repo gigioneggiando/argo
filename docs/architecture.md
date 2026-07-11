@@ -98,13 +98,18 @@ documented/already-fixed cases after the fact).
 
 **Mandatory coverage checklist (cross-cutting, recall).** `checklists.ensure_coverage_checklist_present`
 is injected right after the design-context block into every audit prompt. Gated on `detect_native` /
-`detect_crypto` over the repo, it guarantees a variant-family census (always), memory-safety (native) or
-panic/abort census (memory-safe), secrets-in-sinks + SSRF lenses, resource-exhaustion (always), a
-substitute-then-parse dual census (always), an **insecure-defaults / fail-open** lens (always — a
-configured-but-failed auth/policy component that silently falls back to permissive, or a default-open
-control API / metrics / pprof), and crypto-primitive (crypto present) sweep plus the
-one-finding-per-root-cause rule — so those lenses can't be dropped by the recon model's focus choices.
-See [prompt-synthesis.md](prompt-synthesis.md).
+`detect_crypto` / `detect_free_then_reparse` over the repo, it guarantees a variant-family census
+(always), memory-safety (native) or panic/abort census (memory-safe), secrets-in-sinks + SSRF lenses,
+resource-exhaustion (always), a substitute-then-parse dual census (always), an **insecure-defaults /
+fail-open** lens (always — a configured-but-failed auth/policy component that silently falls back to
+permissive, or a default-open control API / metrics / pprof), and crypto-primitive (crypto present)
+sweep plus the one-finding-per-root-cause rule — so those lenses can't be dropped by the recon model's
+focus choices. The native memory-safety lens additionally calls out the **free-then-reparse /
+free-then-reuse-without-nulling** double-free idiom (`free(obj->field)` then `parse_into(&obj->field)`
+where the re-parse can fail and leave a stale freed pointer); when a deterministic pre-scan
+(`detect_free_then_reparse` — a `free(x)` shortly followed by `&x` with no intervening `x = NULL`)
+actually hits in the target, that idiom is escalated to a HIGH-SIGNAL callout so the auditor can't skim
+past it. See [prompt-synthesis.md](prompt-synthesis.md).
 
 ## Precision + depth uplift (ground-truth recon → enumerate → downgrade-don't-delete)
 

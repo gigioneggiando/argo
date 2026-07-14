@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo and disclosed as public pull requests. 7 projects, 26 PRs, 8 already merged.">
+<meta property="og:description" content="Real vulnerabilities found by Argo and disclosed as public pull requests. 7 projects, 27 PRs, 8 already merged.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -291,7 +291,7 @@
 
       <div class="stats" id="stats">
         <div class="stat"><div class="num accent" data-to="7">0</div><div class="lab">Projects</div></div>
-        <div class="stat"><div class="num" data-to="26">0</div><div class="lab">Public PRs</div></div>
+        <div class="stat"><div class="num" data-to="27">0</div><div class="lab">Public PRs</div></div>
         <div class="stat"><div class="num" data-to="8">0</div><div class="lab">Already merged</div></div>
         <div class="stat"><div class="num" data-to="4">0</div><div class="lab">Languages</div></div>
       </div>
@@ -417,7 +417,8 @@
       blurb:"A C implementation of the GGUF model-file format used by llama.cpp / ggml.",
       items:[
         {ref:"PR #31", s:"open", t:"heap overflow", title:"Fix an out-of-bounds write in the Q4_0/Q4_1 dequantizer's second block loop", url:"https://github.com/antirez/gguf-tools/pull/31"},
-        {ref:"PR #32", s:"open", t:"heap overflow", title:"Grow the split-mixtral tensor array instead of asserting (heap overflow on crafted models)", url:"https://github.com/antirez/gguf-tools/pull/32"}
+        {ref:"PR #32", s:"open", t:"heap overflow", title:"Grow the split-mixtral tensor array instead of asserting (heap overflow on crafted models)", url:"https://github.com/antirez/gguf-tools/pull/32"},
+        {ref:"PR #33", s:"open", t:"out-of-bounds read", title:"Bound tensor data offset/size against the mapping in gguf_get_tensor", url:"https://github.com/antirez/gguf-tools/pull/33"}
       ]
     },
     {

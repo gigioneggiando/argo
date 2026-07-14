@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests to open-source projects.">
+<meta property="og:title" content="Argo · Real-world findings">
+<meta property="og:description" content="Real vulnerabilities found by Argo and disclosed as public pull requests. 6 projects, 24 PRs, 8 already merged.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
+<script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<title>Argo · Real-world findings</title>
+<style>
+  :root {
+    --bg:#ECEEF0; --surface:#F6F7F8; --surface-2:#FFFFFF;
+    --ink:#191C22; --ink-soft:#464B54; --muted:#767C86; --line:#D6D9DE;
+    --accent:#A85D24; --accent-bright:#C1732E; --on-accent:#FFFFFF;
+    --good:#2F6B47; --good-bg:rgba(47,107,71,.10); --good-line:rgba(47,107,71,.32);
+    --pend:#4C6C8C; --pend-bg:rgba(76,108,140,.10); --pend-line:rgba(76,108,140,.30);
+    --shadow:0 1px 2px rgba(20,25,35,.05), 0 8px 30px rgba(20,25,35,.06);
+    --font-mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --maxw:1080px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#121419; --surface:#191C22; --surface-2:#20242C;
+      --ink:#E9EBEE; --ink-soft:#BABFC7; --muted:#868D98; --line:#2A2E37;
+      --accent:#D98A3D; --accent-bright:#EDA45A; --on-accent:#17120A;
+      --good:#5CA077; --good-bg:rgba(92,160,119,.13); --good-line:rgba(92,160,119,.30);
+      --pend:#7E9CBB; --pend-bg:rgba(126,156,187,.13); --pend-line:rgba(126,156,187,.28);
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.34);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#ECEEF0; --surface:#F6F7F8; --surface-2:#FFFFFF;
+    --ink:#191C22; --ink-soft:#464B54; --muted:#767C86; --line:#D6D9DE;
+    --accent:#A85D24; --accent-bright:#C1732E; --on-accent:#FFFFFF;
+    --good:#2F6B47; --good-bg:rgba(47,107,71,.10); --good-line:rgba(47,107,71,.32);
+    --pend:#4C6C8C; --pend-bg:rgba(76,108,140,.10); --pend-line:rgba(76,108,140,.30);
+    --shadow:0 1px 2px rgba(20,25,35,.05), 0 8px 30px rgba(20,25,35,.06);
+  }
+  :root[data-theme="dark"]{
+    --bg:#121419; --surface:#191C22; --surface-2:#20242C;
+    --ink:#E9EBEE; --ink-soft:#BABFC7; --muted:#868D98; --line:#2A2E37;
+    --accent:#D98A3D; --accent-bright:#EDA45A;
+    --good:#5CA077; --good-bg:rgba(92,160,119,.13); --good-line:rgba(92,160,119,.30);
+    --pend:#7E9CBB; --pend-bg:rgba(126,156,187,.13); --pend-line:rgba(126,156,187,.28);
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.34);
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--font-sans); line-height:1.5; overflow-x:clip;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+  a{color:inherit}
+  .mono{font-family:var(--font-mono)}
+  .eyebrow{
+    font-family:var(--font-mono); font-size:.72rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--muted);
+  }
+
+  /* Topbar */
+  header.top{
+    position:sticky; top:0; z-index:10;
+    background:color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter:saturate(1.4) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .top .wrap{display:flex; align-items:center; justify-content:space-between; height:58px; gap:16px}
+  .brand{display:flex; align-items:center; gap:10px; font-family:var(--font-mono); font-weight:600; letter-spacing:.02em}
+  .brand .eye{font-size:1.15rem; line-height:1}
+  .brand small{color:var(--muted); font-weight:400; letter-spacing:.1em; text-transform:uppercase; font-size:.66rem}
+  .top nav{display:flex; gap:6px; align-items:center}
+  .top nav a{
+    font-family:var(--font-mono); font-size:.78rem; text-decoration:none;
+    color:var(--ink-soft); padding:7px 11px; border-radius:8px; border:1px solid transparent;
+    transition:background .15s, border-color .15s, color .15s;
+  }
+  .top nav a:hover{color:var(--ink); background:var(--surface); border-color:var(--line)}
+  .top nav a.nav-cta{color:var(--accent); border-color:color-mix(in srgb,var(--accent) 42%, transparent)}
+  .top nav a.nav-cta:hover{color:var(--on-accent); background:var(--accent); border-color:var(--accent)}
+
+  /* Hero */
+  .hero{padding:72px 0 34px; position:relative; overflow:hidden}
+  .hero .glow{
+    position:absolute; inset:-40% 0 auto 0; height:520px; pointer-events:none; z-index:0;
+    background:radial-gradient(60% 60% at 78% 12%, color-mix(in srgb,var(--accent) 20%, transparent), transparent 70%);
+    opacity:.5;
+  }
+  .hero .inner{position:relative; z-index:1}
+  .hero-top{display:grid; grid-template-columns:1fr auto; gap:36px; align-items:center}
+  .hero-copy{min-width:0}
+  .hero-art{display:flex; justify-content:center; align-items:center}
+  .eye{width:clamp(200px,23vw,320px); height:auto; overflow:visible; display:block}
+  .eye .ring-out{fill:none; stroke:var(--line); stroke-width:1.5}
+  .eye .ticks{fill:none; stroke:var(--muted); stroke-width:7; stroke-dasharray:2 19; stroke-linecap:round; opacity:.45}
+  .eye .r1{fill:none; stroke:var(--line); stroke-width:1.5}
+  .eye .r2{fill:none; stroke:var(--muted); stroke-width:1.5; opacity:.6}
+  .eye .r3{fill:none; stroke:var(--accent); stroke-width:2; opacity:.85}
+  .eye .halo{fill:var(--accent); opacity:.12}
+  .eye .pupil{fill:var(--accent)}
+  .eye .glint{fill:var(--surface)}
+  .eye .iris{transform-box:fill-box; transform-origin:center; animation:breathe 6.5s ease-in-out infinite}
+  .eye .gaze{animation:gaze 11s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+  @keyframes gaze{
+    0%,20%{transform:translate(0,0)}
+    24%,42%{transform:translate(15px,-7px)}
+    46%,64%{transform:translate(-14px,5px)}
+    68%,86%{transform:translate(7px,11px)}
+    90%,100%{transform:translate(0,0)}
+  }
+  h1{
+    font-size:clamp(2.15rem,5.2vw,3.55rem); line-height:1.04; letter-spacing:-.02em;
+    font-weight:800; margin:.5rem 0 0; max-width:16ch; text-wrap:balance;
+  }
+  h1 em{font-style:normal; color:var(--accent)}
+  .lede{margin:20px 0 0; max-width:60ch; color:var(--ink-soft); font-size:1.06rem}
+  .lede code{font-family:var(--font-mono); font-size:.9em; background:var(--surface); padding:.1em .4em; border-radius:6px; border:1px solid var(--line)}
+
+  /* Stats */
+  .stats{
+    margin-top:38px; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px;
+  }
+  .stat{
+    background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    padding:18px 18px 15px; box-shadow:var(--shadow);
+  }
+  .stat .num{font-family:var(--font-mono); font-weight:600; font-size:clamp(1.8rem,4vw,2.4rem); letter-spacing:-.02em; font-variant-numeric:tabular-nums; line-height:1}
+  .stat .num.accent{color:var(--accent)}
+  .stat .lab{margin-top:8px; font-family:var(--font-mono); font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+
+  /* Scope note */
+  .notes{display:flex; flex-direction:column; gap:12px; margin:30px 0 6px}
+  .note{
+    display:grid; grid-template-columns:auto minmax(0,1fr); gap:14px; align-items:start;
+    background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:12px; padding:15px 18px; color:var(--ink-soft); font-size:.92rem;
+  }
+  .note b{color:var(--ink)}
+  .note.note-status{border-left-color:var(--pend)}
+  .notepill{font-family:var(--font-mono); font-size:.62rem; letter-spacing:.12em; text-transform:uppercase; padding:4px 9px; border-radius:999px; border:1px solid var(--accent); color:var(--accent); flex:0 0 auto; margin-top:1px}
+  .note.note-status .notepill{border-color:var(--pend); color:var(--pend)}
+  .note > span:last-child{min-width:0; overflow-wrap:anywhere}
+
+  /* Section head */
+  .sec-head{display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin:54px 0 18px; flex-wrap:wrap}
+  .sec-head h2{font-size:1.15rem; margin:0; letter-spacing:-.01em}
+  .sec-head .hint{font-family:var(--font-mono); font-size:.74rem; color:var(--muted)}
+
+  /* Case files */
+  .cases{display:flex; flex-direction:column; gap:20px}
+  .case{
+    background:var(--surface); border:1px solid var(--line); border-radius:16px;
+    box-shadow:var(--shadow); overflow:hidden;
+    opacity:0; transform:translateY(14px);
+  }
+  .case.in{opacity:1; transform:none; transition:opacity .5s ease, transform .5s ease}
+  .case-head{display:flex; align-items:flex-start; gap:16px; padding:20px 22px; border-bottom:1px solid var(--line); flex-wrap:wrap}
+  .case-title{display:flex; flex-direction:column; gap:6px; min-width:0; flex:1 1 260px}
+  .case-title .name{display:flex; align-items:center; gap:10px}
+  .case-title .name a{font-family:var(--font-mono); font-weight:600; font-size:1.08rem; text-decoration:none; color:var(--ink); letter-spacing:-.01em}
+  .case-title .name a:hover{color:var(--accent)}
+  .chip-lang{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-soft); background:var(--surface-2); border:1px solid var(--line); padding:3px 8px; border-radius:999px}
+  .case-title .blurb{color:var(--muted); font-size:.9rem; max-width:56ch}
+  .case-tally{display:flex; gap:8px; align-items:center; flex:0 0 auto; padding-top:2px}
+  .tally{font-family:var(--font-mono); font-size:.72rem; padding:5px 10px; border-radius:999px; border:1px solid var(--line); color:var(--ink-soft); white-space:nowrap}
+  .tally.good{color:var(--good); background:var(--good-bg); border-color:var(--good-line)}
+
+  ul.rows{list-style:none; margin:0; padding:6px 0}
+  .row{
+    display:grid; grid-template-columns:64px 1fr auto; align-items:center; gap:14px;
+    padding:12px 22px 12px 19px; border-left:3px solid transparent; text-decoration:none; color:inherit;
+    transition:background .14s;
+  }
+  .row + .row{border-top:1px solid var(--line)}
+  .row.merged{border-left-color:var(--good-line)}
+  .row.open{border-left-color:var(--pend-line)}
+  .row:hover{background:var(--surface-2)}
+  .row .ref{font-family:var(--font-mono); font-size:.82rem; color:var(--muted); font-variant-numeric:tabular-nums}
+  .row .main{min-width:0}
+  .row .ttl{font-size:.95rem; line-height:1.35}
+  .row .tags{margin-top:5px; display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .tag{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.03em; color:var(--muted); border:1px solid var(--line); border-radius:6px; padding:2px 7px}
+  .status{display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; padding:5px 10px; border-radius:999px; white-space:nowrap}
+  .status.merged{color:var(--good); background:var(--good-bg); border:1px solid var(--good-line)}
+  .status.open{color:var(--pend); background:var(--pend-bg); border:1px solid var(--pend-line)}
+  .status.issue{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
+  .status .dot{width:7px; height:7px; border-radius:50%; background:currentColor}
+  .row .go{font-family:var(--font-mono); color:var(--muted); font-size:1rem; transition:transform .14s, color .14s}
+  .row:hover .go{color:var(--accent); transform:translateX(3px)}
+  .rowend{display:flex; align-items:center; gap:12px}
+
+  /* Contribute & support */
+  #support{scroll-margin-top:74px}
+  .support{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); padding:22px 24px; display:flex; flex-direction:column}
+  .panel h3{margin:0 0 8px; font-size:1.05rem; letter-spacing:-.01em}
+  .panel p{margin:0 0 16px; color:var(--ink-soft); font-size:.92rem; max-width:46ch}
+  .linkrow{display:flex; flex-direction:column; margin-top:auto}
+  .linkrow a{font-family:var(--font-mono); font-size:.86rem; text-decoration:none; color:var(--ink-soft); padding:10px 0; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:12px; transition:color .14s}
+  .linkrow a:last-child{border-bottom:0}
+  .linkrow a:hover{color:var(--accent)}
+  .linkrow a .go{color:var(--muted); transition:transform .14s, color .14s}
+  .linkrow a:hover .go{color:var(--accent); transform:translateX(3px)}
+  .btns{display:flex; gap:12px; flex-wrap:wrap; margin-top:auto}
+  .btn{font-family:var(--font-mono); font-size:.85rem; text-decoration:none; padding:11px 16px; border-radius:10px; border:1px solid var(--line); color:var(--ink); background:var(--surface-2); display:inline-flex; align-items:center; gap:8px; transition:transform .12s, background .14s, border-color .14s, color .14s}
+  .btn:hover{transform:translateY(-1px)}
+  .btn.primary{background:var(--accent); color:var(--on-accent); border-color:var(--accent)}
+  .btn.primary:hover{background:var(--accent-bright); border-color:var(--accent-bright)}
+  .btn.ghost:hover{border-color:var(--accent); color:var(--accent)}
+  .btn .heart{font-size:.95em}
+
+  /* Footer */
+  footer{margin:70px 0 40px; padding-top:26px; border-top:1px solid var(--line); color:var(--muted); font-size:.86rem}
+  footer .frow{display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; align-items:flex-start}
+  footer a{color:var(--ink-soft); text-decoration:none; font-family:var(--font-mono); font-size:.8rem; border-bottom:1px solid transparent; transition:color .15s, border-color .15s}
+  footer a:hover{color:var(--accent); border-color:var(--accent)}
+  footer .links{display:flex; gap:18px; flex-wrap:wrap}
+  footer .fine{max-width:60ch; line-height:1.6}
+  .tagline-accent{color:var(--accent)}
+
+  a:focus-visible, .row:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:6px}
+
+  @media (max-width:720px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .hero{padding:52px 0 26px}
+    .row{grid-template-columns:52px 1fr; }
+    .rowend{grid-column:1 / -1; justify-content:flex-start; padding-left:52px}
+    .top nav a.hideable{display:none}
+    .support{grid-template-columns:1fr}
+    .hero-top{grid-template-columns:1fr}
+    .hero-art{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .case{opacity:1 !important; transform:none !important; transition:none}
+    .eye .iris, .eye .gaze{animation:none}
+    *{scroll-behavior:auto}
+  }
+</style>
+<style>
+  .theme-btn{font-family:var(--font-mono); font-size:.95rem; color:var(--ink-soft); background:transparent; border:1px solid transparent; padding:6px 10px; border-radius:8px; cursor:pointer; line-height:1; transition:background .15s, border-color .15s, color .15s}
+  .theme-btn:hover{color:var(--ink); background:var(--surface); border-color:var(--line)}
+  .theme-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><span class="eye">👁</span> argo <small>findings</small></div>
+    <nav>
+      <a class="hideable" href="https://github.com/gigioneggiando/argo" target="_blank" rel="noopener">Repository</a>
+      <a class="hideable" href="https://github.com/gigioneggiando/argo/wiki" target="_blank" rel="noopener">Wiki</a>
+      <a href="https://github.com/gigioneggiando/argo/discussions" target="_blank" rel="noopener">Discussions</a>
+      <a class="nav-cta" href="#support">Contribute</a>
+          <button id="themeToggle" class="theme-btn" type="button" aria-label="Toggle light or dark theme">&#9680;</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="glow"></div>
+    <div class="wrap inner">
+      <div class="hero-top">
+        <div class="hero-copy">
+          <div class="eyebrow">Argo · real-world validation</div>
+          <h1>Bugs found by <em>reading the code</em>, disclosed in the open.</h1>
+          <p class="lede">Every vulnerability below was surfaced by <strong>Argo</strong>, an LLM-native static auditor, then hand-verified and reported upstream as a public pull request. Follow any link to the fix itself.</p>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <svg class="eye" viewBox="0 0 340 340">
+            <circle class="ring-out" cx="170" cy="170" r="152"/>
+            <circle class="ticks" cx="170" cy="170" r="139"/>
+            <g class="iris">
+              <circle class="r1" cx="170" cy="170" r="107"/>
+              <circle class="r2" cx="170" cy="170" r="82"/>
+              <circle class="halo" cx="170" cy="170" r="50"/>
+              <circle class="r3" cx="170" cy="170" r="58"/>
+              <g class="gaze">
+                <circle class="pupil" cx="170" cy="170" r="29"/>
+                <circle class="glint" cx="158" cy="158" r="8"/>
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="stats" id="stats">
+        <div class="stat"><div class="num accent" data-to="6">0</div><div class="lab">Projects</div></div>
+        <div class="stat"><div class="num" data-to="24">0</div><div class="lab">Public PRs</div></div>
+        <div class="stat"><div class="num" data-to="8">0</div><div class="lab">Already merged</div></div>
+        <div class="stat"><div class="num" data-to="4">0</div><div class="lab">Languages</div></div>
+      </div>
+
+      <div class="notes">
+        <div class="note">
+          <span class="notepill">Scope</span>
+          <span>Only findings that are already <b>publicly disclosed</b> are listed, each linking to its upstream pull request. Findings still under coordinated (private) disclosure are omitted until they go public.</span>
+        </div>
+        <div class="note note-status">
+          <span class="notepill">Status</span>
+          <span>Recent access restrictions on the strongest security-capable models have made automated vulnerability detection harder for the moment, so new disclosures are paced down until the project resumes at full speed in <b>September 2026</b>.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Disclosures</h2>
+      <span class="hint" id="ordering">merged fixes first · then open review</span>
+    </div>
+    <div class="cases" id="cases"></div>
+  </div>
+
+  <div class="wrap" id="support">
+    <div class="sec-head">
+      <h2>Contribute &amp; support</h2>
+      <span class="hint">open to reports, PRs, and sponsors</span>
+    </div>
+    <div class="support">
+      <section class="panel">
+        <h3>Contribute</h3>
+        <p>Found a false positive, a bug Argo missed, or want to sharpen a prompt? Reports and pull requests are genuinely welcome, the false-positive and false-negative reports most of all.</p>
+        <div class="linkrow">
+          <a href="https://github.com/gigioneggiando/argo/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing guide <span class="go" aria-hidden="true">&#8594;</span></a>
+          <a href="https://github.com/gigioneggiando/argo/issues" target="_blank" rel="noopener">Open issues <span class="go" aria-hidden="true">&#8594;</span></a>
+          <a href="https://github.com/gigioneggiando/argo/discussions" target="_blank" rel="noopener">Discussions <span class="go" aria-hidden="true">&#8594;</span></a>
+        </div>
+      </section>
+      <section class="panel">
+        <h3>Support the work</h3>
+        <p>Argo is one of my solo, self-funded projects. Sponsorship covers the model bills the audits run on and keeps the work going.</p>
+        <div class="btns">
+          <a class="btn primary" href="https://github.com/sponsors/gigioneggiando" target="_blank" rel="noopener"><span class="heart" aria-hidden="true">&#9829;</span> Sponsor on GitHub</a>
+          <a class="btn ghost" href="https://ko-fi.com/gigioneggiando" target="_blank" rel="noopener">Ko-fi</a>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <footer>
+      <div class="frow">
+        <div class="fine">
+          <span class="tagline-accent mono">Produced by Argo.</span> Argo is detection-only and intended for authorized security review. Findings are AI-assisted and were human-verified before any disclosure. A vulnerability Argo reports about a project is always disclosed to that project through its own process.
+        </div>
+        <div class="links">
+          <a href="https://github.com/gigioneggiando/argo" target="_blank" rel="noopener">github/argo</a>
+          <a href="https://github.com/gigioneggiando/argo/wiki" target="_blank" rel="noopener">wiki</a>
+          <a href="https://github.com/gigioneggiando/argo/discussions" target="_blank" rel="noopener">discussions</a>
+        </div>
+      </div>
+    </footer>
+  </div>
+</main>
+
+<script>
+  const PROJECTS = [
+    {
+      name:"legba", lang:"Rust", upstream:"https://github.com/evilsocket/legba",
+      blurb:"A fast, modern credential brute-forcer and password sprayer.",
+      items:[
+        {ref:"PR #98",  s:"merged", t:"remote DoS", title:"Two remote-triggerable panics (DoS) from untrusted input", url:"https://github.com/evilsocket/legba/pull/98"},
+        {ref:"PR #99",  s:"merged", t:"unbounded alloc", title:"Bound two server-controlled allocations (Kerberos, AMQP) + Kerberos read timeout", url:"https://github.com/evilsocket/legba/pull/99"},
+        {ref:"PR #100", s:"merged", t:"remote DoS", title:"Cap the IRC banner read + add a read deadline", url:"https://github.com/evilsocket/legba/pull/100"},
+        {ref:"PR #101", s:"merged", t:"panic / DoS", title:"Avoid a panic on a multi-byte UTF-8 SMTP reply line", url:"https://github.com/evilsocket/legba/pull/101"},
+        {ref:"PR #102", s:"merged", t:"remote hang", title:"Add read/write timeouts to the RDP connection", url:"https://github.com/evilsocket/legba/pull/102"}
+      ]
+    },
+    {
+      name:"halloy", lang:"Rust", upstream:"https://github.com/squidowl/halloy",
+      blurb:"A modern IRC client.",
+      items:[
+        {ref:"PR #2149", s:"merged", t:"remote DoS ×3", title:"Harden against three remote-DoS issues (reported via private advisory)", url:"https://github.com/squidowl/halloy/pull/2149"}
+      ]
+    },
+    {
+      name:"libcsp", lang:"C", upstream:"https://github.com/libcsp/libcsp",
+      blurb:"The CubeSat Space Protocol: a small network stack used on spacecraft and embedded systems.",
+      items:[
+        {ref:"PR #992", s:"merged", t:"use-after-free", title:"Fix use-after-free in the CSP_PS service handler", url:"https://github.com/libcsp/libcsp/pull/992"}
+      ]
+    },
+    {
+      name:"moquette", lang:"Java", upstream:"https://github.com/moquette-io/moquette",
+      blurb:"A lightweight MQTT broker.",
+      items:[
+        {ref:"PR #959", s:"merged", t:"fail-open / DoS", title:"Guard the periodic expiration task so one failing entity can't disable all expirations", url:"https://github.com/moquette-io/moquette/pull/959"},
+        {ref:"PR #958", s:"open", t:"remote DoS", title:"Reject a malformed $share subscription before parsing it", url:"https://github.com/moquette-io/moquette/pull/958"},
+        {ref:"PR #957", s:"open", t:"remote DoS", title:"Keep the session event loop alive when a command throws", url:"https://github.com/moquette-io/moquette/pull/957"}
+      ]
+    },
+    {
+      name:"ds4", lang:"C", upstream:"https://github.com/antirez/ds4",
+      blurb:"A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.",
+      items:[
+        {ref:"PR #539", s:"open", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser", url:"https://github.com/antirez/ds4/pull/539"},
+        {ref:"PR #542", s:"open", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader", url:"https://github.com/antirez/ds4/pull/542"},
+        {ref:"PR #543", s:"open", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant", url:"https://github.com/antirez/ds4/pull/543"},
+        {ref:"PR #544", s:"open", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads", url:"https://github.com/antirez/ds4/pull/544"},
+        {ref:"PR #545", s:"open", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating", url:"https://github.com/antirez/ds4/pull/545"},
+        {ref:"PR #546", s:"open", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating", url:"https://github.com/antirez/ds4/pull/546"},
+        {ref:"PR #547", s:"open", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS)", url:"https://github.com/antirez/ds4/pull/547"},
+        {ref:"PR #548", s:"open", t:"integer bound", title:"Bound tokenizer merges count to INT32_MAX like the tokens table", url:"https://github.com/antirez/ds4/pull/548"},
+        {ref:"PR #541", s:"open", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast)", url:"https://github.com/antirez/ds4/pull/541"},
+        {ref:"PR #540", s:"open", t:"resource cleanup", title:"Unlink the bash-tool output temp file on job cleanup", url:"https://github.com/antirez/ds4/pull/540"},
+        {ref:"Issue #549", s:"issue", t:"hardening notes", title:"Follow-up hardening / design items from a security review", url:"https://github.com/antirez/ds4/issues/549"}
+      ]
+    },
+    {
+      name:"RecuperaBit", lang:"Python", upstream:"https://github.com/Lazza/RecuperaBit",
+      blurb:"Reconstructs and recovers files from damaged NTFS file systems.",
+      items:[
+        {ref:"PR #141", s:"open", t:"path traversal", title:"Confine restore output to the output directory", url:"https://github.com/Lazza/RecuperaBit/pull/141"},
+        {ref:"PR #142", s:"open", t:"deserialization", title:"Replace pickle with JSON for the scan save file", url:"https://github.com/Lazza/RecuperaBit/pull/142"},
+        {ref:"PR #143", s:"open", t:"crash isolation", title:"Isolate command dispatch and the deep-parse phase from crashing the whole session", url:"https://github.com/Lazza/RecuperaBit/pull/143"},
+        {ref:"PR #144", s:"open", t:"output injection", title:"Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports", url:"https://github.com/Lazza/RecuperaBit/pull/144"}
+      ]
+    }
+  ];
+
+  const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const statusLabel = s => s === 'merged' ? 'Merged' : s === 'issue' ? 'Issue' : 'Open · in review';
+
+  const cases = document.getElementById('cases');
+  cases.innerHTML = PROJECTS.map(p => {
+    const merged = p.items.filter(i => i.s === 'merged').length;
+    const prs = p.items.filter(i => i.s !== 'issue').length;
+    const tally = merged > 0
+      ? `<span class="tally good">${merged}&nbsp;merged</span>` + (prs - merged > 0 ? `<span class="tally">${prs - merged}&nbsp;open</span>` : '')
+      : `<span class="tally">${prs}&nbsp;open PR${prs>1?'s':''}</span>`;
+    const rows = p.items.map(i => `
+      <a class="row ${i.s}" href="${i.url}" target="_blank" rel="noopener">
+        <span class="ref">${esc(i.ref)}</span>
+        <span class="main">
+          <span class="ttl">${esc(i.title)}</span>
+          <span class="tags"><span class="tag">${esc(i.t)}</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status ${i.s}"><span class="dot"></span>${statusLabel(i.s)}</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>`).join('');
+    return `
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="${p.upstream}" target="_blank" rel="noopener">${esc(p.name)}</a><span class="chip-lang">${esc(p.lang)}</span></div>
+            <div class="blurb">${esc(p.blurb)}</div>
+          </div>
+          <div class="case-tally">${tally}</div>
+        </div>
+        <ul class="rows">${rows}</ul>
+      </section>`;
+  }).join('');
+
+  // Reveal on scroll (reduced-motion safe via CSS)
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e, idx) => {
+      if (e.isIntersecting){ e.target.style.transitionDelay = (Math.min(idx,3)*60)+'ms'; e.target.classList.add('in'); io.unobserve(e.target); }
+    });
+  }, {threshold:.12});
+  document.querySelectorAll('.case').forEach(el => io.observe(el));
+
+  // Count-up (reduced-motion safe)
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  document.querySelectorAll('#stats .num').forEach(el => {
+    const to = +el.dataset.to;
+    if (reduce){ el.textContent = to; return; }
+    let start = null; const dur = 900;
+    const step = ts => {
+      if (!start) start = ts;
+      const k = Math.min(1, (ts - start)/dur);
+      const eased = 1 - Math.pow(1 - k, 3);
+      el.textContent = Math.round(eased * to);
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+</script>
+<script>
+  (function(){
+    var b=document.getElementById('themeToggle'); if(!b) return;
+    b.addEventListener('click',function(){
+      var cur=document.documentElement.getAttribute('data-theme');
+      if(!cur){cur=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}
+      var next=cur==='dark'?'light':'dark';
+      document.documentElement.setAttribute('data-theme',next);
+      try{localStorage.setItem('argo-theme',next);}catch(e){}
+    });
+  })();
+</script>
+</body>
+</html>

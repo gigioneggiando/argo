@@ -1,0 +1,72 @@
+name: 🕳️ False negative (Argo missed a real bug)
+description: A genuine vulnerability Argo did not surface. Recall is the failure mode that matters most.
+labels: [false-negative]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the highest-value report for an LLM-native SAST — a bug the audit never surfaced is
+        gone (validation only removes false positives, it can't recover a miss). Before filing, it's
+        often worth asking the **[interrogation chat](../blob/main/docs/chat-example.md)**
+        *"why didn't you find X?"* — it can independently re-validate a specific hypothesis.
+  - type: textarea
+    id: missed
+    attributes:
+      label: The missed vulnerability
+      description: What it is, where (`file:line`), and its CWE class.
+    validations:
+      required: true
+  - type: textarea
+    id: why-real
+    attributes:
+      label: Why it's real / how to confirm
+      description: The tainted flow or the condition that makes it exploitable. A PoC or a link to a public advisory/CVE is gold.
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Target repo (if shareable)
+      description: A public repo + commit, or a minimal synthetic repro, lets us turn this into a benchmark case.
+      placeholder: https://github.com/owner/repo @ <commit>
+  - type: dropdown
+    id: chat-tried
+    attributes:
+      label: Did you try the chat "why didn't you find X?"
+      options:
+        - "No"
+        - "Yes — it refuted the hypothesis"
+        - "Yes — it confirmed it as a candidate (re-validated)"
+        - "Yes — needs-runtime / inconclusive"
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend / runner
+      options:
+        - headless (Claude Code)
+        - codex (OpenAI)
+        - codex --oss (local / Ollama / LM Studio)
+    validations:
+      required: true
+  - type: input
+    id: audit-model
+    attributes:
+      label: Audit model (and was --calibration on?)
+      description: Recall tracks the audit model — e.g. sonnet vs opus (`--calibration`).
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true

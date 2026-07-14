@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Questions & ideas (Discussions)
+    url: https://github.com/gigioneggiando/argo/discussions
+    about: Ask how something works, share results from a run, or float an idea before filing an issue.
+  - name: 🔒 Security vulnerability in Argo itself
+    url: https://github.com/gigioneggiando/argo/security/advisories/new
+    about: Please report privately via a security advisory (see SECURITY.md) — do NOT open a public issue.

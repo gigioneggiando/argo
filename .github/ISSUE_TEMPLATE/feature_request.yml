@@ -1,0 +1,44 @@
+name: ✨ Feature request
+description: Suggest a capability or improvement.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For open-ended or large ideas, a [Discussion](https://github.com/gigioneggiando/argo/discussions)
+        is often the better place to start — file an issue when the ask is concrete and actionable.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do that's hard or impossible today? Concrete beats abstract.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What you'd like Argo to do. If it touches the prompts vs. the orchestrator, say which — most audit-quality ideas are prompt changes, not code.
+  - type: dropdown
+    id: guardrails
+    attributes:
+      label: Does this touch a guardrail?
+      description: Detection-only, read-only repo, no live host by default, no network outside the OSINT stages, prohibited-techniques propagation. These are non-negotiable — flag it so we design carefully.
+      options:
+        - "No — it stays fully within the existing guardrails"
+        - "Maybe / not sure"
+        - "Yes — it would relax or touch a guardrail (explain below)"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you weighed, and why this one.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and Discussions and this isn't a duplicate.
+          required: true

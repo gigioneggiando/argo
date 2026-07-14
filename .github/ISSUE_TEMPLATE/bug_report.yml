@@ -1,0 +1,83 @@
+name: 🐛 Bug report
+description: Something in Argo itself (pipeline, CLI, API, or web UI) crashes or behaves wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Two quick checks first:
+        - **A vulnerability in Argo itself?** Don't file it here — follow [SECURITY.md](../blob/main/SECURITY.md).
+        - **A wrong/missing *finding* Argo produced about a target?** Use the False positive / False negative templates instead — that's about analysis quality, not an Argo bug.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What went wrong, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact command(s) and inputs. Prefer the free modes where possible (`--runner mock`, `--dry-run`).
+      render: shell
+      placeholder: |
+        python -m argo.cli pipeline --runner mock --brief ... --repo ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / stage
+      description: Where does it happen?
+      options:
+        - ingest
+        - research (Stage 0)
+        - recon
+        - audit
+        - sca
+        - validate
+        - corroborate
+        - runtime
+        - live
+        - report
+        - fix (remediation)
+        - chat
+        - CLI
+        - web UI / server
+        - other / not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend / runner
+      options:
+        - mock
+        - headless (Claude Code)
+        - codex (OpenAI)
+        - codex --oss (local / Ollama / LM Studio)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Output of `git rev-parse --short HEAD`, or the release tag.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      description: Relevant stderr, the traceback, or lines from `runs/<id>/llm_log.jsonl`. Redact any secrets or private source.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true
+        - label: This is a bug in Argo itself, not a vulnerability in Argo (→ SECURITY.md) or a finding Argo produced about a target.
+          required: true

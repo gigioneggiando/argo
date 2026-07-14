@@ -1,0 +1,66 @@
+name: 🎯 False positive (Argo reported a wrong finding)
+description: Argo produced a finding that isn't a real vulnerability. This is one of the most useful reports.
+labels: [false-positive]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you — precision reports directly improve the tool. Argo's output is AI-assisted and
+        expected to contain some false positives; telling us *which* and *why* is exactly what tunes
+        the audit and validation prompts.
+  - type: textarea
+    id: finding
+    attributes:
+      label: The finding, as Argo reported it
+      description: Title, CWE, and the cited `file:line` (from `REPORT.md` or `validated_findings.json`).
+      placeholder: |
+        AUTHZ-003 — IDOR (CWE-639) — src/api/orders.py:118
+    validations:
+      required: true
+  - type: textarea
+    id: why-wrong
+    attributes:
+      label: Why it's not a real bug
+      description: The one thing that makes it a false positive — a guard that exists, a by-design behavior, a misread data flow, an unreachable path…
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Target repo (if shareable)
+      description: A public repo + commit lets us reproduce. Leave blank if the code is private.
+      placeholder: https://github.com/owner/repo @ <commit>
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend / runner
+      options:
+        - headless (Claude Code)
+        - codex (OpenAI)
+        - codex --oss (local / Ollama / LM Studio)
+        - mock
+    validations:
+      required: true
+  - type: input
+    id: audit-model
+    attributes:
+      label: Audit model
+      description: e.g. sonnet, opus (`--calibration`), or a local model id.
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Did the adversarial validator confirm it? Did corroborate or the chat re-check disagree? Attach the finding's `validation` block if handy.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this isn't a duplicate.
+          required: true

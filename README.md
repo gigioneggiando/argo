@@ -2,6 +2,8 @@
 
 > *Argus Panoptes, the all-seeing watchman — a hundred eyes on your code.*
 
+🌐 **Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) — real vulnerabilities Argo found, disclosed as public PRs · 📖 [Wiki](https://github.com/gigioneggiando/argo/wiki) · 💬 [Discussions](https://github.com/gigioneggiando/argo/discussions)
+
 Argo finds security vulnerabilities in **source code** by driving an LLM as the analyst — it reads
 the code the way a human auditor would, rather than matching rules against a graph. Point it at any
 codebase — a **local folder**, a private repo, or a public one — and it produces a reviewable

@@ -14,6 +14,15 @@ vuln-registry/
 targets/
 chatplugin/
 
+# Local scan drivers & their logs (per-target scratch, never published)
+/run_*.py
+/run_*.log
+/finish_*.py
+/finish_*.log
+/*_build.log
+/*_tail.log
+/*_tail.py
+
 # Python
 __pycache__/
 *.pyc

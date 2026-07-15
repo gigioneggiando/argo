@@ -29,6 +29,7 @@ from pathlib import Path
 
 from .context import RunContext
 from .orchestrator import build_context, new_run_id, run_pipeline
+from .stages.ingest import _is_url
 
 
 def _norm_cwe(s) -> str:
@@ -58,6 +59,7 @@ class Case:
     expected: list[dict]
     archetype: str | None = None
     scenario: str | None = None        # mock fixtures scenario for this case
+    commit: str | None = None          # pin the repo at this revision (reproducible CVE checkout)
     # provenance (optional; for seeded-bug corpora at scale — surfaced in the report)
     corpus_id: str | None = None       # which labeled corpus this case belongs to
     cve_ids: list[str] = field(default_factory=list)   # associated CVE ids, if any
@@ -80,13 +82,17 @@ def load_suite(suite_dir) -> list[Case]:
         meta = json.loads(case_json.read_text(encoding="utf-8"))
         exp_path = cdir / meta.get("expected", "expected_findings.json")
         expected = json.loads(exp_path.read_text(encoding="utf-8")) if exp_path.exists() else []
+        repo_raw = meta["repo"]
+        # a URL repo is used verbatim (never path-resolved); a local path resolves case-dir-first
+        repo = repo_raw if _is_url(repo_raw) else str(_resolve(cdir, repo_raw))
         cases.append(Case(
             name=meta.get("name", cdir.name),
             brief=_resolve(cdir, meta["brief"]) if meta.get("brief") else None,
-            repo=str(_resolve(cdir, meta["repo"])),
+            repo=repo,
             expected=expected,
             archetype=meta.get("archetype"),
             scenario=meta.get("scenario"),
+            commit=meta.get("commit"),
             corpus_id=meta.get("corpus_id"),
             cve_ids=list(meta.get("cve_ids") or []),
             seeded_from=meta.get("seeded_from"),
@@ -195,7 +201,7 @@ def _run_case(base_config, case: Case, *, fixes: bool, re_audit: bool = False) -
     if case.scenario:
         cfg = cfg.with_overrides(fixtures_scenario=case.scenario)
     ctx = build_context(cfg, new_run_id())
-    run_pipeline(ctx, case.brief, case.repo)
+    run_pipeline(ctx, case.brief, case.repo, commit=case.commit)
     vf = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8"))
     findings = vf.get("findings", [])
     score = score_run(findings, case.expected)

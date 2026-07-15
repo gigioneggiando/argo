@@ -330,6 +330,9 @@ def pipeline(
         help="curated reference links file (one http(s) URL per line; '#' comments ok). "
              "Additive to extracted links; the --repo code is NOT a reference link."),
     run: Optional[str] = typer.Option(None, "--run", help="run id (generated if omitted)"),
+    commit: Optional[str] = typer.Option(
+        None, "--commit", help="pin --repo at this git revision (reproducible / known-CVE checkout); "
+        "for a URL it is fetched, for a local path the copy is checked out at it"),
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="run ingest+recon only, then STOP before any audit"),
     research: bool = typer.Option(
@@ -403,7 +406,7 @@ def pipeline(
         cfg = cfg.with_overrides(corroborate_enabled=False)  # ...and no networked corroboration
     ctx = build_context(cfg, run or new_run_id())
     summary = run_pipeline(ctx, brief, repo, dry_run=dry_run, research_enabled=research,
-                           links_path=links, accepted_risks_path=accepted_risks)
+                           links_path=links, accepted_risks_path=accepted_risks, commit=commit)
     summary["smoke"] = smoke
     _emit(summary)
 

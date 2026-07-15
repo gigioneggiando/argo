@@ -361,8 +361,17 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 #### A1 — Seeded-bug benchmark corpora at scale — effort **M (mostly data)** · paper value **High** — ✅ ENGINE DONE
 - **Shipped:** `Case` provenance (`corpus_id`, `cve_ids`, `seeded_from`, surfaced in `cases[].provenance`),
   optional `brief` (local-audit cases), `run_suite(..., parallel_cases=N)` + `argo bench --parallel-cases`,
-  and a documented corpus recipe in `benchmarks/README.md`. **Remaining = data**: curate real labeled
-  CVE/seeded cases (ongoing).
+  and a documented corpus recipe in `benchmarks/README.md`.
+- **Reproducible commit pinning (2026-07-15):** `case.json` gains an optional `commit`; `acquire_repo`
+  (and the whole `run_pipeline`/`argo pipeline --commit` path) fetches/checks out that exact revision,
+  so a **URL-backed** CVE case is reproducible instead of cloning the (possibly-fixed) default head. URL
+  corpora live under a **separate** suite `benchmarks/corpora/` so the default `benchmarks/` mock harness
+  stays offline (ingest clones `repo` even on the mock runner). First real case shipped:
+  `benchmarks/corpora/gguf-tools-oob/` (antirez/gguf-tools @ `fdfafbed766d`, 6 confirmed heap-OOB /
+  integer-overflow labels, several fixed upstream). Tests: `tests/test_benchmark.py`
+  (offline-default-suite, corpora commit+labels, `acquire_repo` pins a commit).
+- **Remaining = data**: curate more real labeled CVE/seeded cases into `benchmarks/corpora/` (ongoing;
+  the Fleece registry of confirmed findings is the natural source of labels).
 - **Feasibility: high; the engine seam already exists.** `benchmark.load_suite(suite_dir)` globs every
   `<case>/case.json` + `expected_findings.json`, so the harness already runs an **unlimited** number of
   labeled cases and slices precision/recall/F1 by archetype and CWE (`run_suite`, `_aggregate`,

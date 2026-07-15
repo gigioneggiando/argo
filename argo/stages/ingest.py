@@ -182,8 +182,13 @@ def _merge_reference_links(
     return merged, stats
 
 
-def acquire_repo(source: str, dest: Path, *, is_url: bool) -> None:
+def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = None) -> None:
     """Clone (URL) or copy (local path) the target source into ``dest`` and mark it read-only.
+
+    ``commit`` pins the analyzed source to a specific revision (reproducible benchmark corpora / a
+    known-CVE checkout): for a URL it fetches that revision (falling back to a full clone + checkout
+    if the host disallows fetch-by-sha); for a local path it checks the copy out at that revision.
+    Without ``commit`` the behaviour is unchanged (shallow clone of the default head / plain copy).
 
     Note: cloning the source repository from its host (e.g. GitHub) fetches SOURCE — it is not
     contacting the bug-bounty program's live target host, which no stage ever does.
@@ -192,16 +197,44 @@ def acquire_repo(source: str, dest: Path, *, is_url: bool) -> None:
         raise FileExistsError(f"repo dir already exists: {dest}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     if is_url:
-        subprocess.run(
-            ["git", "clone", "--depth", "1", source, str(dest)],
-            check=True, capture_output=True, text=True,
-        )
+        if commit:
+            _clone_at_commit(source, dest, commit)
+        else:
+            subprocess.run(
+                ["git", "clone", "--depth", "1", source, str(dest)],
+                check=True, capture_output=True, text=True,
+            )
     else:
         src = Path(source).expanduser().resolve()
         if not src.is_dir():
             raise NotADirectoryError(f"local repo path is not a directory: {src}")
         shutil.copytree(src, dest)
+        if commit:
+            if not (dest / ".git").exists():
+                shutil.rmtree(dest, ignore_errors=True)
+                raise RuntimeError(f"cannot pin commit {commit}: '{src}' is not a git repository")
+            subprocess.run(["git", "-C", str(dest), "checkout", "--quiet", commit],
+                           check=True, capture_output=True, text=True)
     _make_readonly(dest)
+
+
+def _clone_at_commit(url: str, dest: Path, commit: str) -> None:
+    """Materialize ``url`` at exactly ``commit``. Prefer a shallow fetch of that single revision
+    (fast, minimal); fall back to a full clone + checkout for hosts that reject fetch-by-sha."""
+    try:
+        dest.mkdir(parents=True)
+        for args in (["init", "--quiet"],
+                     ["remote", "add", "origin", url],
+                     ["fetch", "--depth", "1", "--quiet", "origin", commit],
+                     ["checkout", "--quiet", "FETCH_HEAD"]):
+            subprocess.run(["git", "-C", str(dest), *args],
+                           check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError:
+        shutil.rmtree(dest, ignore_errors=True)          # start clean for the fallback
+        subprocess.run(["git", "clone", "--quiet", url, str(dest)],
+                       check=True, capture_output=True, text=True)
+        subprocess.run(["git", "-C", str(dest), "checkout", "--quiet", commit],
+                       check=True, capture_output=True, text=True)
 
 
 def repo_commit(repo_dir: Path) -> tuple[str | None, str | None]:
@@ -256,7 +289,8 @@ def _asset_versions(assets_dir: Path) -> list[AssetVersion]:
 
 
 def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: bool | None = None,
-        links_path: Path | None = None, accepted_risks_path: Path | None = None) -> Scope:
+        links_path: Path | None = None, accepted_risks_path: Path | None = None,
+        commit: str | None = None) -> Scope:
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
     is_url = _is_url(repo) if repo_is_url is None else repo_is_url
 
@@ -335,7 +369,7 @@ def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: boo
 
     # --- acquire repo read-only ------------------------------------------------------
     repo_source = repo
-    acquire_repo(repo, ctx.repo_dir, is_url=is_url)
+    acquire_repo(repo, ctx.repo_dir, is_url=is_url, commit=commit)
     commit_sha, commit_date = repo_commit(ctx.repo_dir)   # pin the analyzed source (reproducibility)
 
     # --- meta.json (reproducibility + cost control) ----------------------------------

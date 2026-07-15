@@ -1,11 +1,20 @@
 """Phase 7 — benchmark scoring + harness tests (zero tokens on the mock runner)."""
 
 import json
+import os
+import shutil
+import stat
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from argo.benchmark import ab_compare, load_suite, run_suite, score_run
 
 SUITE = Path(__file__).resolve().parent.parent / "benchmarks"
+CORPORA = SUITE / "corpora"
+
+needs_git = pytest.mark.skipif(not shutil.which("git"), reason="needs git")
 
 # the three confirmed survivors the mock pipeline produces
 _F = [
@@ -62,6 +71,62 @@ def test_score_line_tolerance():
                 "line_tolerance": 1000}]
     assert score_run(f, e_tight)["tp"] == 0     # 200 is >10 from 42
     assert score_run(f, e_loose)["tp"] == 1
+
+
+def _chmod_writable(root: Path) -> None:
+    for p in root.rglob("*"):
+        try:
+            p.chmod(stat.S_IWRITE | stat.S_IREAD)
+        except OSError:
+            pass
+
+
+def test_default_suite_stays_offline():
+    """The default `benchmarks/` suite must contain only the offline mock case — real (URL) corpora
+    live under `benchmarks/corpora/` so `argo bench --runner mock` never hits the network."""
+    names = {c.name for c in load_suite(SUITE)}
+    assert names == {"acme-widgets"}
+
+
+def test_corpora_case_carries_commit_and_labels():
+    case = next(c for c in load_suite(CORPORA) if c.name == "gguf-tools-oob")
+    assert case.repo == "https://github.com/antirez/gguf-tools"
+    assert case.commit == "fdfafbed766d"          # pinned to the vulnerable revision, not HEAD
+    assert case.archetype == "cli_desktop"
+    assert len(case.expected) >= 5 and all("cwe" in e and "file" in e for e in case.expected)
+
+
+@needs_git
+def test_acquire_repo_pins_commit(tmp_path):
+    """`acquire_repo(commit=...)` on a local git repo checks the copy out at that revision, not
+    HEAD — the mechanism that makes URL-based CVE corpora reproducible."""
+    from argo.stages.ingest import acquire_repo
+
+    src = tmp_path / "src"
+    src.mkdir()
+
+    def git(*a):
+        subprocess.run(["git", "-C", str(src), *a], check=True, capture_output=True, text=True)
+
+    subprocess.run(["git", "init", "--quiet", str(src)], check=True, capture_output=True, text=True)
+    git("config", "user.email", "t@t"); git("config", "user.name", "t")
+    (src / "f.txt").write_text("v1\n", encoding="utf-8")
+    git("add", "."); git("commit", "--quiet", "-m", "c1")
+    sha1 = subprocess.run(["git", "-C", str(src), "rev-parse", "HEAD"],
+                          check=True, capture_output=True, text=True).stdout.strip()
+    (src / "f.txt").write_text("v2\n", encoding="utf-8")
+    git("add", "."); git("commit", "--quiet", "-m", "c2")
+
+    dest = tmp_path / "dest"
+    try:
+        acquire_repo(str(src), dest, is_url=False, commit=sha1)
+        assert (dest / "f.txt").read_text(encoding="utf-8") == "v1\n"   # pinned, not HEAD's "v2"
+        # no commit => plain copy at HEAD (unchanged default behaviour)
+        dest2 = tmp_path / "dest2"
+        acquire_repo(str(src), dest2, is_url=False)
+        assert (dest2 / "f.txt").read_text(encoding="utf-8") == "v2\n"
+    finally:
+        _chmod_writable(dest); _chmod_writable(tmp_path / "dest2")
 
 
 def test_load_suite():

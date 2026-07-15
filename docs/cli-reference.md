@@ -41,7 +41,7 @@ argo run      --run RUN_ID
 argo sca      --run RUN_ID
 argo validate --run RUN_ID
 argo report   --run RUN_ID
-argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--dry-run] [--smoke]
+argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--commit SHA] [--dry-run] [--smoke]
 argo fix      --run RUN_ID [--no-verify] [--re-audit] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
 argo bench    --suite DIR [--fixes] [--re-audit] [--parallel-cases N] [--ab-audit-model MODEL]
 argo feedback [--program P --dedup K --accepted/--rejected [--run R] [--note ...]] | [--import FILE]
@@ -65,6 +65,8 @@ argo quality  [--program P] [--runs-dir DIR]
   `--repo` (zero-token ingest, web research auto-off, no live hosts). e.g. `argo pipeline --repo ./my-code`.
 - `--repo` — the **codebase to analyze**: a **local folder path** (need not be a git repo; never
   pushed anywhere) **or** a git URL (cloned `--depth 1`).
+- `--commit` — pin `--repo` at a **specific git revision** (reproducible / known-CVE checkout): a URL
+  is fetched at that SHA, a local git path is checked out at it. Omit for the default head.
 - `--links` — a curated reference-links file, one `http(s)` URL per line (`#` comments and blank
   lines ignored). **Additive** to links the model extracts from the brief; the `--repo` URL is
   never allowed into `reference_links`. See `--links` semantics in

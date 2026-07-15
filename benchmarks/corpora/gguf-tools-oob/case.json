@@ -1,0 +1,9 @@
+{
+  "name": "gguf-tools-oob",
+  "repo": "https://github.com/antirez/gguf-tools",
+  "commit": "fdfafbed766d",
+  "archetype": "cli_desktop",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "antirez/gguf-tools@fdfafbed766d",
+  "expected": "expected_findings.json"
+}

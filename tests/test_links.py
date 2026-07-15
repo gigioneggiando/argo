@@ -66,7 +66,7 @@ def test_merge_order_dedup_and_repo_drop():
 def _patch_clone(monkeypatch):
     """Avoid a real git clone for URL repos: copy the local fixture repo instead."""
     monkeypatch.setattr(ing, "acquire_repo",
-                        lambda source, dest, *, is_url: shutil.copytree(REPO, dest))
+                        lambda source, dest, *, is_url, commit=None: shutil.copytree(REPO, dest))
 
 
 def test_ingest_merges_links_into_scope(env, monkeypatch):

@@ -32,9 +32,11 @@ def build_context(config: PipelineConfig, run_id: str, *, now: str | None = None
 
 # --- individual stages (thin wrappers so the CLI and tests share one entry point) ----
 def do_ingest(ctx: RunContext, brief: Path | None, repo: str, repo_is_url: bool | None = None,
-              links_path: Path | None = None, accepted_risks_path: Path | None = None):
+              links_path: Path | None = None, accepted_risks_path: Path | None = None,
+              commit: str | None = None):
     return ingest.run(ctx, brief_path=brief, repo=repo, repo_is_url=repo_is_url,
-                      links_path=links_path, accepted_risks_path=accepted_risks_path)
+                      links_path=links_path, accepted_risks_path=accepted_risks_path,
+                      commit=commit)
 
 
 def do_research(ctx: RunContext):
@@ -77,7 +79,7 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
                  research_enabled: bool = True, repo_is_url: bool | None = None,
                  links_path: Path | None = None, accepted_risks_path: Path | None = None,
                  reporter: ProgressReporter | None = None,
-                 cancel_event=None) -> dict:
+                 cancel_event=None, commit: str | None = None) -> dict:
     """Run the pipeline (ingest → [research] → recon → audit → [sca] → validate → [corroborate] →
     [runtime] → report). Never submits.
 
@@ -125,7 +127,7 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
 
     _stage("ingest", lambda: do_ingest(ctx, brief, repo, repo_is_url=repo_is_url,
                                        links_path=links_path,
-                                       accepted_risks_path=accepted_risks_path))
+                                       accepted_risks_path=accepted_risks_path, commit=commit))
     if research_enabled:
         _stage("research", lambda: do_research(ctx))
     prompts = _stage("recon", lambda: do_recon(ctx))

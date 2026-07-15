@@ -13,6 +13,7 @@ see the [top-level README](../README.md).
 | [prompt-synthesis.md](prompt-synthesis.md) | prompt authors | How Stage 2 generates target-specific audit prompts: the archetype-driven meta-prompt, the specificity self-check, reuse from the legacy generator, and how to change the meta-prompt safely |
 | [cli-reference.md](cli-reference.md) | operators | Every command and every flag, with worked examples |
 | [guardrails.md](guardrails.md) | reviewers / security | The hard guardrails and the exact code location that enforces each (incl. the research-stage OSINT carve-out and the per-backend mapping) |
+| [determinism-and-guardrails.md](determinism-and-guardrails.md) | reviewers / security / paper | **Anti-hallucination**: every deterministic gate and hard physical limit that constrains the LLM — mechanical diffs, ground-truth verification, budget/timeout/request caps, scope-lock asserts, commit-pin reproducibility |
 | [design-decisions.md](design-decisions.md) | reviewers / paper | Why Argo is LLM-direct with **no CPG/AST engine**, what it uses instead, and threats to validity |
 | [backends.md](backends.md) | everyone | **Multi-backend**: Claude Code · Codex (OpenAI) · local open-source — the abstraction, per-backend guardrails, cost, cross-model study |
 | [chat-example.md](chat-example.md) | everyone | 💬 The interrogation chat — a real worked transcript |

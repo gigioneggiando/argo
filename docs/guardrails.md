@@ -197,3 +197,11 @@ They do not vouch for finding quality — that is the job of the audit and valid
 They guarantee the pipeline stays inside the authorized envelope: source-static only, read-only,
 no submission, and **no live contact unless you explicitly opt into the gated `live` stage** (§2c),
 which itself stays scope-locked, read-only-by-default, capped, and audit-logged.
+
+## See also
+
+This page is the **safety** envelope (can Argo do something it shouldn't?). The adjacent question —
+*how the pipeline stays trustworthy given that the model hallucinates and is non-deterministic* — is
+covered in [determinism-and-guardrails.md](determinism-and-guardrails.md): mechanical diffs,
+ground-truth build verification, physical budget/timeout/request caps, the scope-lock asserts above
+viewed as anti-hallucination gates, and commit-pin reproducibility.

@@ -56,8 +56,9 @@ artifacts; `research: false` keeps the run fully offline.
 ### Remediation / fix verification (Phase 6)
 
 `POST /runs/{id}/fixes` is **opt-in** and separate from the detection-only audit. For each
-confirmed finding it asks the model (the run's own runner — free for mock runs) for a **patch as a
-unified diff**, writes it to `runs/<id>/patches/<finding_id>.diff`, then **verifies** it: the patch
+confirmed finding it asks the model (the run's own runner — free for mock runs) to **rewrite the
+affected file(s) in full** (`FIX.json`) and computes the unified diff **mechanically** (`difflib`),
+writing it to `runs/<id>/patches/<finding_id>.diff`, then **verifies** it: the patch
 is applied to an **isolated copy** of the repo and the copy is built/compiled to confirm it
 **(1) applies, (2) still compiles, (3) introduces no new errors** vs. a pre-patch baseline. The
 verdict per finding:

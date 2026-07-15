@@ -746,33 +746,31 @@ class MockClaudeRunner(ClaudeRunner):
             [{"type": "corroboration", "path": out.name, "status": "ok"}]))
 
     def _remediate(self, work_dir: Path, label, prompt: str, repo_dir) -> dict:
-        """Emit a real, applyable unified diff: read the finding's primary file (READ-ONLY) and
-        append a harmless remediation marker comment, producing a valid `fix.diff`. Keeps the
-        target compiling so the verify stage can be exercised end-to-end at zero token cost."""
-        import difflib
-
+        """Emit a `FIX.json` full-file rewrite (the primary remediation format): read the finding's
+        primary file (READ-ONLY) and append a harmless remediation marker comment, so Argo's
+        mechanical diff yields an applyable patch that keeps the target compiling — exercising the
+        verify stage end-to-end at zero token cost."""
         target = ""
         if "Primary location:" in prompt:
             seg = prompt.split("Primary location:", 1)[1].strip()
             target = seg.splitlines()[0].split(":", 1)[0].strip()
         src = Path(repo_dir) / target if (repo_dir and target) else None
         if src and src.is_file():
-            old = src.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
-            if old and not old[-1].endswith("\n"):
-                old[-1] += "\n"
+            content = src.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
+            if content and not content.endswith("\n"):
+                content += "\n"
             comment = "# argo: remediation marker (mock fix)\n" if target.endswith(".py") \
                 else "// argo: remediation marker (mock fix)\n"
-            new = old + [comment]
-            diff = "".join(difflib.unified_diff(
-                old, new, fromfile=f"a/{target}", tofile=f"b/{target}"))
+            files = [{"path": target, "new_content": content + comment}]
         else:
-            # no resolvable target — emit a new-file diff (always applies, nothing to break)
-            diff = ("--- /dev/null\n+++ b/ARGO_FIX_NOTE.md\n@@ -0,0 +1,1 @@\n"
-                    "+Argo proposed-fix placeholder (mock).\n")
-        (work_dir / "fix.diff").write_text(diff, encoding="utf-8")
+            # no resolvable target — a new file (always applies, nothing to break)
+            files = [{"path": "ARGO_FIX_NOTE.md",
+                      "new_content": "Argo proposed-fix placeholder (mock).\n"}]
+        (work_dir / "FIX.json").write_text(
+            json.dumps({"summary": "mock remediation", "files": files}), encoding="utf-8")
         return self._envelope(
-            "Mock remediation: wrote fix.diff (root-cause patch as a unified diff).\n\n"
-            "Generated files: fix.diff")
+            "Mock remediation: wrote FIX.json (full-file rewrite; Argo computes the diff).\n\n"
+            "Generated files: FIX.json")
 
     def _chat(self, work_dir: Path, label, prompt: str) -> dict:
         # Deterministic canned reply that echoes the user's question (for round-trip tests).

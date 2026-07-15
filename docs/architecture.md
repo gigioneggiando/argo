@@ -324,7 +324,10 @@ validate stages log from parallel worker threads.
 The audit is **detection-only**. A separate, opt-in flow (`argo fix`, `POST /runs/{id}/fixes`)
 turns confirmed findings into **proposed patches for a human** — never auto-applied, never
 submitted. `fixes.py` runs one model session per confirmed finding (read-only repo, artifact tools)
-that writes a unified diff; the diff is saved to `runs/<id>/patches/<id>.diff`.
+that **rewrites the affected file(s) in full** (into `FIX.json`); Argo then computes the unified
+diff **mechanically** (`difflib`) and saves it to `runs/<id>/patches/<id>.diff`. The model never
+authors hunk headers, which removes the miscounted-`@@` "corrupt patch" failure mode seen on large,
+multi-hunk diffs. (A model that still emits a raw `*.diff` is accepted as a legacy fallback.)
 
 `verify.py` then enforces the safety- and quality-bar on an **isolated copy** (`copytree`, write
 bits restored — the source mount is never touched):

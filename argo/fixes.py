@@ -1,12 +1,15 @@
 """Phase 6 — remediation (fix) pipeline. OPT-IN, separate from the detection-only audit.
 
-For each CONFIRMED finding in ``validated_findings.json`` it asks the model to produce a
-**reviewable patch as a unified diff** (it reads the repo READ-ONLY and writes a ``fix.diff``
-artifact — it never edits the target). Each patch is then handed to :mod:`argo.verify`, which
-applies it to an **isolated copy** and confirms it still builds and introduces no new errors.
+For each CONFIRMED finding in ``validated_findings.json`` it asks the model to rewrite the affected
+file(s) IN FULL (into ``FIX.json``, reading the repo READ-ONLY — it never edits the target) and then
+**computes the unified diff mechanically** with :mod:`difflib`. The model never writes a diff or
+counts ``@@`` line ranges, which removes the dominant failure mode observed on large real repos
+(multi-hunk diffs that fail ``git apply`` with "corrupt patch" because the model miscounts hunk
+headers). Each computed patch is handed to :mod:`argo.verify`, which applies it to an **isolated
+copy** and confirms it still builds and introduces no new errors.
 
 Outputs (under ``runs/<id>/``):
-  * ``patches/<finding_id>.diff`` — the proposed fix, for human review / PR;
+  * ``patches/<finding_id>.diff`` — the proposed fix (Argo-computed), for human review / PR;
   * ``fixes_report.json`` — per-finding verify verdict (applies? compiles? new errors? verified?).
 
 Guardrails: the target ``repo/`` is never modified; nothing is applied in place; no PR is opened.
@@ -14,6 +17,7 @@ Guardrails: the target ``repo/`` is never modified; nothing is applied in place;
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import sys
@@ -30,15 +34,26 @@ confirmed vulnerability from an AUTHORIZED source-only review. You have READ-ONL
 repository (Read/Grep/Glob).
 
 HARD RULES (non-negotiable):
-- Produce a fix as a UNIFIED DIFF only. NEVER edit the repository in place (it is read-only).
-- Do NOT contact, scan, or exercise any live host. Static reasoning only.
+- NEVER edit the repository in place (it is read-only). Do NOT contact, scan, or exercise any live \
+host. Static reasoning only.
 - The fix must address the ROOT CAUSE (e.g. parameterize the query, enforce the authz check), be \
 minimal, and must NOT change unrelated behavior or break compilation.
 
-OUTPUT: write a single file `fix.diff` in your current working directory containing a unified diff \
-that `git apply -p1` can apply from the repository root. Use `a/<path>` and `b/<path>` headers with \
-paths relative to the repo root. Include enough context lines (3) for the hunk to apply. After \
-writing it, end your reply with a one-line summary of the fix."""
+HOW TO DELIVER THE FIX — write a single file `FIX.json` in your current working directory:
+{
+  "summary": "<one-line description of the fix>",
+  "files": [
+    {"path": "<repo-relative path, forward slashes>", "new_content": "<the COMPLETE new file text>"}
+  ]
+}
+
+- Read each file you need to change IN FULL first, then put its ENTIRE new contents in `new_content` \
+— the whole file, not a diff and not a snippet. Copy the original exactly and change ONLY what the \
+fix requires, preserving every other line, the indentation, and the trailing newline.
+- Do NOT write a unified diff and do NOT count line numbers — Argo computes the diff mechanically \
+from your full-file rewrite, so a wrong `@@` header can never break the patch.
+- Include one object per file you change (usually exactly one). After writing `FIX.json`, end your \
+reply with the one-line summary."""
 
 
 def _primary_file(finding: dict) -> str:
@@ -56,8 +71,40 @@ def _build_prompt(finding: dict, repo_dir: Path) -> str:
         "=== CONFIRMED FINDING TO FIX ===",
         json.dumps(finding, indent=2),
         f"Primary location: {_primary_file(finding) or '(see affected[])'}",
-        "Read the affected file(s), then write `fix.diff` with the minimal root-cause fix.",
+        "Read the affected file(s) in full, then write `FIX.json` with the minimal root-cause fix "
+        "(complete rewritten file contents).",
     ])
+
+
+def _mechanical_diff(repo_dir: Path, files: list) -> str:
+    """Build a ``git apply -p1``-able unified diff from full-file rewrites, computed by difflib so
+    the model never authors (and never miscounts) hunk headers. Each entry is
+    ``{"path": <repo-relative>, "new_content": <full text>}``; a no-op rewrite is skipped, and a
+    path with no existing file is emitted as a new-file diff."""
+    parts: list[str] = []
+    for entry in files or []:
+        if not isinstance(entry, dict):
+            continue
+        rel = str(entry.get("path") or "").replace("\\", "/").strip().lstrip("./")
+        if not rel or "new_content" not in entry:
+            continue
+        new = str(entry["new_content"]).replace("\r\n", "\n")
+        old_file = repo_dir / rel
+        is_new = not old_file.exists()
+        old = "" if is_new else old_file.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
+        if old == new:
+            continue  # the model returned the file unchanged — nothing to patch
+        # keep the original file's trailing-newline convention so the hunk stays clean
+        if not is_new and old.endswith("\n") and new and not new.endswith("\n"):
+            new += "\n"
+        body = "".join(difflib.unified_diff(
+            old.splitlines(keepends=True), new.splitlines(keepends=True),
+            fromfile="/dev/null" if is_new else f"a/{rel}", tofile=f"b/{rel}"))
+        if not body:
+            continue
+        header = f"diff --git a/{rel} b/{rel}\n" + ("new file mode 100644\n" if is_new else "")
+        parts.append(header + body)
+    return "".join(parts)
 
 
 # --------------------------------------------------------------- A3: re-audit the patched copy
@@ -164,12 +211,29 @@ def _confirmed_findings(ctx: RunContext) -> list[dict]:
     return json.loads(path.read_text(encoding="utf-8")).get("findings", [])
 
 
+def _diff_from_fix_json(ctx: RunContext, work: Path, files: list) -> str | None:
+    """Read the model's ``FIX.json`` (full-file rewrites) and return the mechanically-computed
+    unified diff, or None if there is no usable FIX.json / it yields no change."""
+    fj = next((f for f in files if f.name == "FIX.json"), None) \
+        or next((p for p in work.glob("FIX.json") if p.is_file()), None)
+    if fj is None:
+        return None
+    try:
+        data = json.loads(fj.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    diff = _mechanical_diff(ctx.repo_dir, data.get("files") if isinstance(data, dict) else None)
+    return diff or None
+
+
 def _generate_one(ctx: RunContext, finding: dict) -> str | None:
     """Run one remediation session; return the unified-diff text, or None if none was produced.
 
-    A single session failing (timeout / API error) must NOT abort the whole fix run — we recover any
-    partial ``*.diff`` from the scratch dir and otherwise return None so the caller records this
-    finding as un-patched and moves on (mirrors the audit stage's per-focus resilience)."""
+    Primary path: the model writes ``FIX.json`` (full rewritten file(s)) and Argo computes the diff
+    with difflib. Legacy fallback: a model that wrote a raw ``*.diff`` is still accepted. A single
+    session failing (timeout / API error) must NOT abort the whole fix run — we recover any partial
+    scratch output and otherwise return None so the caller records this finding as un-patched and
+    moves on (mirrors the audit stage's per-focus resilience)."""
     work = ctx.work_dir("remediate", finding["id"])
     work.mkdir(parents=True, exist_ok=True)
     try:
@@ -181,25 +245,27 @@ def _generate_one(ctx: RunContext, finding: dict) -> str | None:
             stage="remediate",
             run_id=ctx.run_id,
             repo_dir=ctx.repo_dir,            # READ-ONLY
-            allowed_tools=ARTIFACT_TOOLS,     # read repo + write the diff into the scratch dir
+            allowed_tools=ARTIFACT_TOOLS,     # read repo + write FIX.json into the scratch dir
             label=f"remediate-{finding['id']}",
         )
         files = collect_output_files(result, "*")
     except RunnerError as exc:
-        files = sorted(work.glob("*"))        # the session may have written the diff before dying
+        files = sorted(work.glob("*"))        # the session may have written FIX.json before dying
         if not files:
             print(f"[fixes] {finding['id']}: remediation session failed ({exc}); no patch",
                   file=sys.stderr)
             return None
         print(f"[fixes] {finding['id']}: session failed ({exc}); recovered partial from scratch",
               file=sys.stderr)
-    diff = next((f for f in files if f.name == "fix.diff"), None)
-    if diff is None:  # partial-recovery: glob the scratch dir
-        diff = next((p for p in work.glob("*.diff") if p.is_file()), None)
-    if diff is None:
-        return None
-    text = diff.read_text(encoding="utf-8", errors="replace")
-    if not text.strip():
+
+    # Primary: mechanically compute the diff from the model's full-file rewrite.
+    text = _diff_from_fix_json(ctx, work, files)
+    if text is None:
+        # Legacy fallback: a model (or partial recovery) that produced a raw unified diff.
+        diff = next((f for f in files if f.name == "fix.diff"), None) \
+            or next((p for p in work.glob("*.diff") if p.is_file()), None)
+        text = diff.read_text(encoding="utf-8", errors="replace") if diff is not None else None
+    if not text or not text.strip():
         return None
     if not text.endswith("\n"):     # a unified diff's final line MUST be newline-terminated
         text += "\n"

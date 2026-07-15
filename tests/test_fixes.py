@@ -39,6 +39,42 @@ def test_patch_targets_parsing():
     assert patch_targets("--- a/z\n+++ /dev/null\n") == []
 
 
+def test_mechanical_diff_noop_and_new_file(tmp_path):
+    from argo.fixes import _mechanical_diff
+    repo = _py_repo(tmp_path)
+    # unchanged content -> no diff
+    same = (repo / "pkg" / "app.py").read_text(encoding="utf-8")
+    assert _mechanical_diff(repo, [{"path": "pkg/app.py", "new_content": same}]) == ""
+    # a path with no existing file -> a new-file diff
+    d = _mechanical_diff(repo, [{"path": "pkg/new.py", "new_content": "x = 1\n"}])
+    assert "new file mode 100644" in d and "+++ b/pkg/new.py" in d and "--- /dev/null" in d
+    # malformed entries are ignored, not crashed on
+    assert _mechanical_diff(repo, ["nope", {"path": "", "new_content": "y"}, {"path": "z"}]) == ""
+
+
+@needs_patch
+def test_mechanical_diff_multi_hunk_applies_and_compiles(tmp_path):
+    """The regression this feature fixes: two edits in *separated* regions of one file. A model
+    hand-writing the unified diff often miscounts the second `@@` header ('corrupt patch'); the
+    full-file rewrite + difflib computes both hunks correctly, so the patch applies and compiles."""
+    from argo.fixes import _mechanical_diff
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    original = "".join(f"a{i} = {i}\n" for i in range(20))
+    (repo / "m.py").write_text(original, encoding="utf-8")
+    # change line 2 and line 18 -> two well-separated hunks in a single file
+    lines = original.splitlines(keepends=True)
+    lines[1] = "a1 = 111\n"
+    lines[17] = "a17 = 999\n"
+    new_content = "".join(lines)
+
+    diff = _mechanical_diff(repo, [{"path": "m.py", "new_content": new_content}])
+    assert diff.count("@@ -") == 2, "expected two separate hunks"
+    res = verify_patch(repo, diff)
+    assert res["applied"] and res["compiles"] and res["verified"]
+    assert (repo / "m.py").read_text(encoding="utf-8") == original  # original untouched
+
+
 @needs_patch
 def test_verify_accepts_compiling_fix(tmp_path):
     repo = _py_repo(tmp_path)

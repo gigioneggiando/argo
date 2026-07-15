@@ -39,21 +39,30 @@ host. Static reasoning only.
 - The fix must address the ROOT CAUSE (e.g. parameterize the query, enforce the authz check), be \
 minimal, and must NOT change unrelated behavior or break compilation.
 
-HOW TO DELIVER THE FIX — write a single file `FIX.json` in your current working directory:
+HOW TO DELIVER THE FIX — write a single file `FIX.json` in your current working directory. For each \
+file you change give EITHER a full rewrite OR search/replace edits:
 {
   "summary": "<one-line description of the fix>",
   "files": [
-    {"path": "<repo-relative path, forward slashes>", "new_content": "<the COMPLETE new file text>"}
+    {"path": "<repo-relative path>", "new_content": "<the COMPLETE new file text>"},
+    {"path": "<repo-relative path>", "edits": [
+      {"search": "<exact snippet copied verbatim from the file>", "replace": "<its replacement>"}
+    ]}
   ]
 }
 
-- Read each file you need to change IN FULL first, then put its ENTIRE new contents in `new_content` \
-— the whole file, not a diff and not a snippet. Copy the original exactly and change ONLY what the \
-fix requires, preserving every other line, the indentation, and the trailing newline.
-- Do NOT write a unified diff and do NOT count line numbers — Argo computes the diff mechanically \
-from your full-file rewrite, so a wrong `@@` header can never break the patch.
-- Include one object per file you change (usually exactly one). After writing `FIX.json`, end your \
-reply with the one-line summary."""
+- Do NOT write a unified diff and do NOT count line numbers — Argo computes the diff mechanically, so \
+a wrong `@@` header can never break the patch.
+- `new_content` (preferred for small/medium files): read the file IN FULL, then put its ENTIRE new \
+contents here — the whole file, not a snippet. Copy the original exactly and change ONLY what the fix \
+requires, preserving every other line, the indentation, and the trailing newline.
+- `edits` (use for LARGE files, to avoid re-emitting the whole file): a list of search/replace blocks. \
+Each `search` MUST be copied verbatim from the current file (exact whitespace/indentation) and MUST \
+match EXACTLY ONE place in it; `replace` is the new text. Include enough surrounding lines to make \
+each `search` unique. Argo applies the edits to the original and computes the diff. If a `search` is \
+not found or is ambiguous the whole file's edit is rejected — so prefer `new_content` when unsure.
+- Give exactly one of `new_content` or `edits` per file; one object per file you change (usually one). \
+After writing `FIX.json`, end your reply with the one-line summary."""
 
 
 def _primary_file(finding: dict) -> str:
@@ -76,22 +85,52 @@ def _build_prompt(finding: dict, repo_dir: Path) -> str:
     ])
 
 
+def _apply_edits(old: str, edits: list) -> str | None:
+    """Apply search/replace blocks to ``old`` and return the new text, or None if any block does not
+    match EXACTLY ONCE (ambiguous or missing) — partial application is never returned. This lets the
+    model avoid re-emitting a whole large file while Argo still computes the diff mechanically."""
+    if not isinstance(edits, list) or not edits:
+        return None
+    text = old
+    for e in edits:
+        if not isinstance(e, dict) or "search" not in e or "replace" not in e:
+            return None
+        search = str(e["search"]).replace("\r\n", "\n")
+        replace = str(e["replace"]).replace("\r\n", "\n")
+        if not search or text.count(search) != 1:   # must be present and unambiguous
+            return None
+        text = text.replace(search, replace, 1)
+    return text if text != old else None
+
+
+def _new_content_for(entry: dict, old: str) -> str | None:
+    """Resolve an entry's target file text from a full rewrite (``new_content``) or search/replace
+    (``edits``). Returns None when the entry is unusable (so the caller skips that file)."""
+    if "new_content" in entry:
+        return str(entry["new_content"]).replace("\r\n", "\n")
+    if "edits" in entry:
+        return _apply_edits(old, entry["edits"])
+    return None
+
+
 def _mechanical_diff(repo_dir: Path, files: list) -> str:
-    """Build a ``git apply -p1``-able unified diff from full-file rewrites, computed by difflib so
-    the model never authors (and never miscounts) hunk headers. Each entry is
-    ``{"path": <repo-relative>, "new_content": <full text>}``; a no-op rewrite is skipped, and a
-    path with no existing file is emitted as a new-file diff."""
+    """Build a ``git apply -p1``-able unified diff, computed by difflib so the model never authors
+    (and never miscounts) hunk headers. Each entry is ``{"path": <repo-relative>, ...}`` carrying
+    either a full ``new_content`` rewrite or a list of ``edits`` (search/replace blocks); a no-op
+    rewrite is skipped, and a path with no existing file is emitted as a new-file diff."""
     parts: list[str] = []
     for entry in files or []:
         if not isinstance(entry, dict):
             continue
         rel = str(entry.get("path") or "").replace("\\", "/").strip().lstrip("./")
-        if not rel or "new_content" not in entry:
+        if not rel:
             continue
-        new = str(entry["new_content"]).replace("\r\n", "\n")
         old_file = repo_dir / rel
         is_new = not old_file.exists()
         old = "" if is_new else old_file.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
+        new = _new_content_for(entry, old)
+        if new is None:
+            continue
         if old == new:
             continue  # the model returned the file unchanged — nothing to patch
         # keep the original file's trailing-newline convention so the hunk stays clean

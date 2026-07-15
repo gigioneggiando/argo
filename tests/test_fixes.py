@@ -75,6 +75,38 @@ def test_mechanical_diff_multi_hunk_applies_and_compiles(tmp_path):
     assert (repo / "m.py").read_text(encoding="utf-8") == original  # original untouched
 
 
+def test_apply_edits_unique_missing_ambiguous_noop():
+    from argo.fixes import _apply_edits
+    text = "a\nb\nb\nc\n"
+    assert _apply_edits(text, [{"search": "a\n", "replace": "A\n"}]) == "A\nb\nb\nc\n"  # unique
+    assert _apply_edits(text, [{"search": "zzz", "replace": "x"}]) is None              # missing
+    assert _apply_edits(text, [{"search": "b\n", "replace": "x\n"}]) is None            # ambiguous (2x)
+    assert _apply_edits(text, [{"search": "a\n", "replace": "a\n"}]) is None            # no-op
+    assert _apply_edits(text, "not-a-list") is None
+    assert _apply_edits(text, [{"replace": "x"}]) is None                               # malformed block
+
+
+@needs_patch
+def test_mechanical_diff_from_search_replace_edits(tmp_path):
+    """Large-file optimization: the model may return search/replace `edits` instead of the whole
+    file; Argo applies them and still computes the diff mechanically (so it applies + compiles)."""
+    from argo.fixes import _mechanical_diff
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    original = "def f():\n    return 1  # bug\n\ndef g():\n    return 2\n"
+    (repo / "m.py").write_text(original, encoding="utf-8")
+
+    files = [{"path": "m.py",
+              "edits": [{"search": "    return 1  # bug\n", "replace": "    return 0  # fixed\n"}]}]
+    diff = _mechanical_diff(repo, files)
+    assert "-    return 1  # bug" in diff and "+    return 0  # fixed" in diff
+    res = verify_patch(repo, diff)
+    assert res["applied"] and res["compiles"] and res["verified"]
+    assert (repo / "m.py").read_text(encoding="utf-8") == original   # original untouched
+    # an entry whose search can't be applied is skipped, not crashed on
+    assert _mechanical_diff(repo, [{"path": "m.py", "edits": [{"search": "nope", "replace": "x"}]}]) == ""
+
+
 @needs_patch
 def test_verify_accepts_compiling_fix(tmp_path):
     repo = _py_repo(tmp_path)

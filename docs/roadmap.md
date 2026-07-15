@@ -208,10 +208,12 @@ copy** under `runs/<id>/fix_workspace/`.
       (Java, deep multi-module paths), 7/11 model-generated unified diffs failed `git apply` with
       "corrupt patch" — the model miscounted multi-hunk `@@` line ranges (paths were correct, files
       existed; the 4 simpler single-hunk diffs applied + verified). Fixed: the remediation session now
-      writes the **full rewritten file(s)** into `FIX.json` and Argo computes the unified diff
-      **mechanically** (`difflib`, `fixes._mechanical_diff`), so the model never authors (or miscounts)
-      hunk headers. A raw `*.diff` is still accepted as a legacy fallback; the mock runner emits
-      `FIX.json`. Tests: `tests/test_fixes.py` (multi-hunk-applies-and-compiles, new-file, no-op).
+      writes the change into `FIX.json` — a **full rewrite** (`new_content`) or, for **large files**,
+      search/replace **`edits`** (each `search` must match exactly once, applied by
+      `fixes._apply_edits`) — and Argo computes the unified diff **mechanically** (`difflib`,
+      `fixes._mechanical_diff`), so the model never authors (or miscounts) hunk headers. A raw `*.diff`
+      is still accepted as a legacy fallback; the mock runner emits `FIX.json`. Tests:
+      `tests/test_fixes.py` (multi-hunk-applies-and-compiles, new-file, no-op, search/replace edits).
 
 ### Phase 7 — Benchmarks & evaluation — ✅ DONE (core harness)
 Measure quality so prompt/model changes are decisions, not guesses. Implemented in

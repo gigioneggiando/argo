@@ -173,13 +173,13 @@ def run(ctx: RunContext) -> list[Path]:
     prompt_paths: list[Path] = []
     for f in files:
         if f.name == "repo_profile.json":
-            json.loads(f.read_text(encoding="utf-8"))  # must be valid JSON
+            json.loads(f.read_text(encoding="utf-8-sig"))  # must be valid JSON
             ctx.repo_profile_path.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
         elif f.name == "ground_truth.json":
             # Best-effort: the authoritative ground truth is baked into each audit prompt; this
             # structured copy feeds validate/report. A malformed pack must NOT fail the run.
             try:
-                json.loads(f.read_text(encoding="utf-8"))
+                json.loads(f.read_text(encoding="utf-8-sig"))
                 ctx.ground_truth_path.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
             except (OSError, ValueError) as exc:
                 print(f"[recon] ground_truth.json present but unreadable ({exc}); "
@@ -258,14 +258,14 @@ def _detect_archetype(repo_profile: dict, synthesis: str) -> str:
 def _capture_archetype(ctx: RunContext) -> None:
     """Persist the recon-classified archetype into meta.json (for cost/benchmark grouping)."""
     try:
-        profile = json.loads(ctx.repo_profile_path.read_text(encoding="utf-8"))
+        profile = json.loads(ctx.repo_profile_path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         profile = {}
     synth_path = ctx.run_dir / "synthesis_notes.md"
     synth = synth_path.read_text(encoding="utf-8") if synth_path.exists() else ""
     archetype = _detect_archetype(profile if isinstance(profile, dict) else {}, synth)
     try:
-        meta = json.loads(ctx.meta_path.read_text(encoding="utf-8"))
+        meta = json.loads(ctx.meta_path.read_text(encoding="utf-8-sig"))
         meta["archetype"] = archetype
         ctx.meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     except (OSError, ValueError):

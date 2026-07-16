@@ -234,7 +234,7 @@ def _reaudit_patched(ctx: RunContext, workspace: Path, finding: dict) -> dict:
     reaudit_findings: list[dict] = []
     if rf is not None:
         try:
-            reaudit_findings = json.loads(rf.read_text(encoding="utf-8")).get("findings", [])
+            reaudit_findings = json.loads(rf.read_text(encoding="utf-8-sig")).get("findings", [])
         except (json.JSONDecodeError, AttributeError):
             reaudit_findings = []
     still = _still_present(reaudit_findings, _norm_cwe(finding.get("cwe")), set(files))
@@ -247,7 +247,7 @@ def _confirmed_findings(ctx: RunContext) -> list[dict]:
     if not path.exists():
         raise FileNotFoundError(
             f"no validated_findings.json for run {ctx.run_id} — run the audit pipeline first")
-    return json.loads(path.read_text(encoding="utf-8")).get("findings", [])
+    return json.loads(path.read_text(encoding="utf-8-sig")).get("findings", [])
 
 
 def _diff_from_fix_json(ctx: RunContext, work: Path, files: list) -> str | None:

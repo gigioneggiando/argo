@@ -51,7 +51,7 @@ def _log(msg: str) -> None:
 def _load_ground_truth(ctx: RunContext) -> dict:
     """Recon's structured ground-truth pack (best-effort; empty dict if absent/malformed)."""
     try:
-        return json.loads(ctx.ground_truth_path.read_text(encoding="utf-8"))
+        return json.loads(ctx.ground_truth_path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return {}
 
@@ -84,7 +84,7 @@ def _load_all(ctx: RunContext) -> list[Finding]:
     # id-keyed merges (e.g. the runtime stage attaching a verdict by id) mis-attach to the wrong one.
     seen: dict[str, int] = {}
     for path in sorted(ctx.findings_dir.glob("*.json")):
-        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc = json.loads(path.read_text(encoding="utf-8-sig"))
         focus = doc.get("audit_focus", path.stem)
         for raw in doc.get("findings", []):
             f = Finding.model_validate(raw)
@@ -171,7 +171,7 @@ def _semantic_dedup(ctx: RunContext, findings: list[Finding]) -> tuple[list[Find
         _log("semantic dedup skipped (no output produced); keeping all findings separate")
         return findings, []
     try:
-        clusters = json.loads(files[0].read_text(encoding="utf-8")).get("clusters") or []
+        clusters = json.loads(files[0].read_text(encoding="utf-8-sig")).get("clusters") or []
     except (OSError, ValueError):
         _log("semantic dedup skipped (malformed output); keeping all findings separate")
         return findings, []
@@ -375,7 +375,7 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         # No verdict produced: do not auto-confirm. Flag for human runtime review.
         return Validation(verdict="needs_runtime_verification",
                           rationale="validation session produced no verdict file")
-    data = json.loads(files[0].read_text(encoding="utf-8"))
+    data = json.loads(files[0].read_text(encoding="utf-8-sig"))
     if data.get("verdict") not in {"confirmed", "refuted", "needs_runtime_verification",
                                    "out_of_scope"}:
         return Validation(verdict="needs_runtime_verification",
@@ -438,7 +438,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
     out: dict[str, Validation] = {}
     for fp in collect_output_files(result, "verdicts*.json"):
         try:
-            doc = json.loads(fp.read_text(encoding="utf-8"))
+            doc = json.loads(fp.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             continue
         rows = doc.get("verdicts") if isinstance(doc, dict) else (doc if isinstance(doc, list) else [])

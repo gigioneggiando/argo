@@ -79,9 +79,9 @@ def load_suite(suite_dir) -> list[Case]:
     cases: list[Case] = []
     for case_json in sorted(suite_dir.glob("*/case.json")):
         cdir = case_json.parent
-        meta = json.loads(case_json.read_text(encoding="utf-8"))
+        meta = json.loads(case_json.read_text(encoding="utf-8-sig"))
         exp_path = cdir / meta.get("expected", "expected_findings.json")
-        expected = json.loads(exp_path.read_text(encoding="utf-8")) if exp_path.exists() else []
+        expected = json.loads(exp_path.read_text(encoding="utf-8-sig")) if exp_path.exists() else []
         repo_raw = meta["repo"]
         # a URL repo is used verbatim (never path-resolved); a local path resolves case-dir-first
         repo = repo_raw if _is_url(repo_raw) else str(_resolve(cdir, repo_raw))
@@ -202,10 +202,10 @@ def _run_case(base_config, case: Case, *, fixes: bool, re_audit: bool = False) -
         cfg = cfg.with_overrides(fixtures_scenario=case.scenario)
     ctx = build_context(cfg, new_run_id())
     run_pipeline(ctx, case.brief, case.repo, commit=case.commit)
-    vf = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8"))
+    vf = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
     findings = vf.get("findings", [])
     score = score_run(findings, case.expected)
-    archetype = case.archetype or (json.loads(ctx.meta_path.read_text(encoding="utf-8"))
+    archetype = case.archetype or (json.loads(ctx.meta_path.read_text(encoding="utf-8-sig"))
                                    .get("archetype") if ctx.meta_path.exists() else None)
     try:
         cost = ctx.ledger.run_cost(ctx.run_id)

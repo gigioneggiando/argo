@@ -21,7 +21,7 @@ def quality_report(ledger, *, program_name: str | None = None,
         p = Path(benchmark_report_path)
         if p.exists():
             try:
-                rep = json.loads(p.read_text(encoding="utf-8"))
+                rep = json.loads(p.read_text(encoding="utf-8-sig"))
                 t = rep.get("totals", {})
                 bench = {"suite": rep.get("suite"), "recall": t.get("recall"),
                          "precision": t.get("precision"), "f1": t.get("f1"),

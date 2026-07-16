@@ -154,7 +154,7 @@ def _run_sandbox(ctx: RunContext, copy_dir: Path, work_dir: Path, plan: list[dic
             if tail:
                 _log(f"probe container output: {tail}")
             return None
-        return json.loads(res_path.read_text(encoding="utf-8"))
+        return json.loads(res_path.read_text(encoding="utf-8-sig"))
     except subprocess.TimeoutExpired:
         _log("sandbox timed out")
         return None
@@ -222,7 +222,7 @@ def _resolve_launcher(ctx: RunContext, scope) -> dict | None:
                  ctx.run_dir / "runtime_recipe.json"):
         if cand.is_file():
             try:
-                recipe = json.loads(cand.read_text(encoding="utf-8"))
+                recipe = json.loads(cand.read_text(encoding="utf-8-sig"))
             except (OSError, ValueError) as exc:
                 _log(f"recipe {cand.name} unreadable ({exc}); skipping it")
                 continue
@@ -248,7 +248,7 @@ def _findings_for_prompt(ctx: RunContext) -> list[dict]:
     if not vf.is_file():
         return []
     try:
-        doc = json.loads(vf.read_text(encoding="utf-8"))
+        doc = json.loads(vf.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return []
     keep = ("id", "title", "severity", "affected", "vulnerable_flow", "why_vulnerable",
@@ -296,7 +296,7 @@ def _generate_plan(ctx: RunContext, scope) -> list | None:
         _log("probe-plan generation produced no file; skipping")
         return None
     try:
-        plan = json.loads(files[0].read_text(encoding="utf-8"))
+        plan = json.loads(files[0].read_text(encoding="utf-8-sig"))
         plan = plan.get("plan", plan) if isinstance(plan, dict) else plan
     except (OSError, ValueError) as exc:
         _log(f"generated probe plan is not valid JSON ({exc}); skipping")
@@ -335,7 +335,7 @@ def _interpret(ctx: RunContext, results: dict) -> dict:
         files = collect_output_files(result, "runtime_verdicts.json")
         if not files:
             return {}
-        doc = json.loads(files[0].read_text(encoding="utf-8"))
+        doc = json.loads(files[0].read_text(encoding="utf-8-sig"))
     except (RunnerError, OSError, ValueError) as exc:
         _log(f"interpretation failed ({exc}); falling back to expectation matching")
         return {}
@@ -350,7 +350,7 @@ def run(ctx: RunContext) -> Path | None:
     plan_path = ctx.run_dir / "runtime_probe_plan.json"
     if plan_path.is_file():
         try:
-            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan = json.loads(plan_path.read_text(encoding="utf-8-sig"))
             plan = plan.get("plan", plan) if isinstance(plan, dict) else plan
             if not isinstance(plan, list):
                 raise ValueError("probe plan must be a list of {finding_id, requests:[...]}")
@@ -415,7 +415,7 @@ def _attach_to_findings(ctx: RunContext, results: dict, verdicts: dict) -> None:
     if not vf.is_file():
         return
     try:
-        doc = json.loads(vf.read_text(encoding="utf-8"))
+        doc = json.loads(vf.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return
     by_id = {f.get("finding_id"): f for f in results.get("findings", [])}

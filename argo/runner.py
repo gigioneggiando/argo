@@ -723,7 +723,7 @@ class MockClaudeRunner(ClaudeRunner):
         def _corr_for(fid: str) -> dict:
             src = self.scenario_dir / "corroborate" / f"{fid}.json"
             if src.is_file():
-                return json.loads(src.read_text(encoding="utf-8"))
+                return json.loads(src.read_text(encoding="utf-8-sig"))
             return {"finding_id": fid, "verdict": "corroborated",
                     "rationale": "(mock) no contradicting docs or newer fixing commit found.",
                     "evidence_urls": [], "fix_commit": None, "doc_url": None, "adjusted_severity": None}

@@ -66,7 +66,7 @@ def _repo_url(scope) -> str:
 def _repo_ref(ctx: RunContext, scope) -> str:
     """The exact revision the audit ran against (so the model corroborates against *newer* history)."""
     try:
-        meta = json.loads(ctx.meta_path.read_text(encoding="utf-8"))
+        meta = json.loads(ctx.meta_path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         meta = {}
     sha = meta.get("repo_commit")
@@ -172,7 +172,7 @@ def _corroborate_batch(ctx: RunContext, scope, batch: list[Finding]) -> dict[str
     out: dict[str, Corroboration] = {}
     for fp in files:
         try:
-            doc = json.loads(fp.read_text(encoding="utf-8"))
+            doc = json.loads(fp.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             continue
         rows = doc.get("corroborations") if isinstance(doc, dict) else (doc if isinstance(doc, list) else [])
@@ -207,7 +207,7 @@ def _corroborate_one(ctx: RunContext, scope, finding: Finding) -> Corroboration:
         return Corroboration(verdict="unknown",
                              rationale="corroboration session produced no verdict file")
     try:
-        data = json.loads(files[0].read_text(encoding="utf-8"))
+        data = json.loads(files[0].read_text(encoding="utf-8-sig"))
     except ValueError:
         return Corroboration(verdict="unknown", rationale="corroboration verdict was not valid JSON")
     if data.get("verdict") not in _VALID_VERDICTS:
@@ -218,7 +218,7 @@ def _corroborate_one(ctx: RunContext, scope, finding: Finding) -> Corroboration:
 
 def run(ctx: RunContext) -> Path:
     scope = ctx.load_scope()
-    doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8"))
+    doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
     survivors = [Finding.model_validate(f) for f in doc.get("findings", [])]
     if not survivors:
         _log("no surviving findings to corroborate")

@@ -198,7 +198,7 @@ def _findings_for_prompt(ctx: RunContext) -> list[dict]:
     if not vf.is_file():
         return []
     try:
-        doc = json.loads(vf.read_text(encoding="utf-8"))
+        doc = json.loads(vf.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return []
     keep = ("id", "title", "severity", "affected", "vulnerable_flow", "why_vulnerable",
@@ -257,7 +257,7 @@ def _generate_plan(ctx: RunContext, scope) -> list | None:
         _log("live probe-plan generation produced no file; skipping")
         return None
     try:
-        plan = json.loads(files[0].read_text(encoding="utf-8"))
+        plan = json.loads(files[0].read_text(encoding="utf-8-sig"))
         plan = plan.get("plan", plan) if isinstance(plan, dict) else plan
     except (OSError, ValueError) as exc:
         _log(f"generated live probe plan is not valid JSON ({exc}); skipping")
@@ -310,7 +310,7 @@ def _interpret(ctx: RunContext, results: dict) -> dict:
         files = collect_output_files(result, "live_verdicts.json")
         if not files:
             return {}
-        doc = json.loads(files[0].read_text(encoding="utf-8"))
+        doc = json.loads(files[0].read_text(encoding="utf-8-sig"))
     except (RunnerError, OSError, ValueError) as exc:
         _log(f"interpretation failed ({exc}); falling back to expectation matching")
         return {}
@@ -323,7 +323,7 @@ def _attach_to_findings(ctx: RunContext, results: dict, verdicts: dict) -> None:
     if not vf.is_file():
         return
     try:
-        doc = json.loads(vf.read_text(encoding="utf-8"))
+        doc = json.loads(vf.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return
     by_id = {f.get("finding_id"): f for f in results.get("findings", [])}
@@ -354,7 +354,7 @@ def run(ctx: RunContext):
     scope = ctx.load_scope()
     if has_plan:
         try:
-            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan = json.loads(plan_path.read_text(encoding="utf-8-sig"))
             plan = plan.get("plan", plan) if isinstance(plan, dict) else plan
             if not isinstance(plan, list):
                 raise ValueError("live probe plan must be a list of {finding_id, requests:[...]}")

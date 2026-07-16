@@ -120,7 +120,7 @@ _KNOWN_PATH = Path(__file__).resolve().parent.parent / "data" / "known_vuln_deps
 
 def _load_known() -> list[dict]:
     try:
-        return json.loads(_KNOWN_PATH.read_text(encoding="utf-8")).get("entries", [])
+        return json.loads(_KNOWN_PATH.read_text(encoding="utf-8-sig")).get("entries", [])
     except (OSError, ValueError):
         return []
 
@@ -280,7 +280,7 @@ def run(ctx: RunContext) -> Path | None:
         chosen = next((f for f in files if f.name == findings_filename), files[0])
         try:
             ndoc, repaired, _unrec, _c = _normalize_findings_doc(
-                json.loads(chosen.read_text(encoding="utf-8")), ctx, scope, "dependencies")
+                json.loads(chosen.read_text(encoding="utf-8-sig")), ctx, scope, "dependencies")
             llm_findings = ndoc.get("findings", [])
             if repaired:
                 _log(f"schema-repaired {len(repaired)} model dependency finding(s)")

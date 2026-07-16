@@ -29,7 +29,7 @@ class SchemaValidationError(ValueError):
 
 @functools.lru_cache(maxsize=None)
 def _load_schema(prompts_dir: Path, name: str) -> dict:
-    return json.loads((prompts_dir / name).read_text(encoding="utf-8"))
+    return json.loads((prompts_dir / name).read_text(encoding="utf-8-sig"))
 
 
 def _validate(doc: dict, schema: dict, kind: str) -> dict:

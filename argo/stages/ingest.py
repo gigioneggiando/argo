@@ -332,7 +332,7 @@ def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: boo
         scope_files = [f for f in files if f.name == "scope.json"]
         if not scope_files:
             raise RuntimeError("ingest: model did not produce scope.json")
-        raw = json.loads(scope_files[0].read_text(encoding="utf-8"))
+        raw = json.loads(scope_files[0].read_text(encoding="utf-8-sig"))
         raw = _strip_nulls(raw)                     # null optional fields == absent (real models)
         raw.setdefault("program_brief_raw", brief_text)
 

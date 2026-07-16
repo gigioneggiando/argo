@@ -462,7 +462,7 @@ def feedback(
     led = _ledger_for(ledger)
     try:
         if import_file is not None:
-            items = json.loads(Path(import_file).read_text(encoding="utf-8"))
+            items = json.loads(Path(import_file).read_text(encoding="utf-8-sig"))
             updated = 0
             for it in items:
                 updated += led.record_triager_feedback(

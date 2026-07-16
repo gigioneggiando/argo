@@ -184,7 +184,7 @@ def ask(ctx: RunContext, message: str) -> dict:
     new_names = {p.name for p in work.glob("*") if p.is_file()} - before
     if _CANDIDATE_FILE in new_names:
         try:
-            candidate = json.loads((work / _CANDIDATE_FILE).read_text(encoding="utf-8"))
+            candidate = json.loads((work / _CANDIDATE_FILE).read_text(encoding="utf-8-sig"))
             validated_candidate = _validate_candidate(ctx, scope, candidate)
             (work / f"candidate_{validated_candidate['finding_id']}.json").write_text(
                 json.dumps({"candidate": candidate, "validation": validated_candidate}, indent=2),

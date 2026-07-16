@@ -156,6 +156,6 @@ def read_status(run_dir: Path) -> Optional[dict]:
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
+        return json.loads(p.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError):
         return None

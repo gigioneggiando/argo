@@ -103,7 +103,7 @@ class RunContext:
     def load_scope(self) -> Scope:
         if self.scope is not None:
             return self.scope
-        raw = json.loads(self.scope_path.read_text(encoding="utf-8"))
+        raw = json.loads(self.scope_path.read_text(encoding="utf-8-sig"))
         validate_scope(raw, self.assets_dir)  # schema is authoritative
         self.scope = Scope.model_validate(raw)
         return self.scope

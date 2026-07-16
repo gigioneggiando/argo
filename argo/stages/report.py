@@ -41,7 +41,7 @@ def _repo_residual_unknowns(ctx: RunContext) -> list[str]:
     if not ctx.repo_profile_path.exists():
         return []
     try:
-        prof = json.loads(ctx.repo_profile_path.read_text(encoding="utf-8"))
+        prof = json.loads(ctx.repo_profile_path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError:
         return []
     ru = prof.get("residual_unknowns")
@@ -52,7 +52,7 @@ def _repo_residual_unknowns(ctx: RunContext) -> list[str]:
 
 def run(ctx: RunContext) -> Path:
     scope = ctx.load_scope()
-    doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8"))
+    doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
     survivors: list[dict] = doc.get("findings", [])
     dropped: list[dict] = doc.get("dropped", [])
     fixed_upstream: list[dict] = doc.get("fixed_upstream", [])

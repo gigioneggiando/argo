@@ -205,7 +205,7 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path) -> tuple[str, Path | N
     # Prefer the exactly-named file; else take the first JSON found (glob fallback).
     chosen = next((f for f in files if f.name == findings_filename), files[0])
     try:
-        raw_doc = json.loads(chosen.read_text(encoding="utf-8"))
+        raw_doc = json.loads(chosen.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         return slug, None, f"findings file is not valid JSON: {exc}"
 
@@ -308,7 +308,7 @@ def _critic_pass(ctx: RunContext, scope, slug: str, prompt_path: Path,
         return []
     chosen = next((f for f in files if f.name == findings_filename), files[0])
     try:
-        raw_doc = json.loads(chosen.read_text(encoding="utf-8"))
+        raw_doc = json.loads(chosen.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError:
         return []
     doc, _rep, _unrec, _coerced = _normalize_findings_doc(raw_doc, ctx, scope, slug)
@@ -323,7 +323,7 @@ def _run_critic_for_focus(ctx: RunContext, scope, slug: str, doc_path: Path,
     passes = ctx.config.audit_critic_passes
     if passes <= 0:
         return
-    doc = json.loads(doc_path.read_text(encoding="utf-8"))
+    doc = json.loads(doc_path.read_text(encoding="utf-8-sig"))
     findings: list[dict] = list(doc.get("findings", []))
     seen = {_finding_key(f) for f in findings}
     for i in range(passes):

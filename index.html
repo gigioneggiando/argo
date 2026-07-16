@@ -203,6 +203,7 @@
   .sev.high{color:var(--sev-high); background:var(--sev-high-bg); border:1px solid var(--sev-high-line)}
   .sev.moderate{color:var(--sev-mod); background:var(--sev-mod-bg); border:1px solid var(--sev-mod-line)}
   .sev.low{color:var(--sev-low); background:var(--sev-low-bg); border:1px solid var(--sev-low-line)}
+  .sev.muted{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
   .row .go{font-family:var(--font-mono); color:var(--muted); font-size:1rem; transition:transform .14s, color .14s}
   .row:hover .go{color:var(--accent); transform:translateX(3px)}
   .rowend{display:flex; align-items:center; gap:12px}
@@ -384,52 +385,52 @@
       name:"legba", lang:"Rust", upstream:"https://github.com/evilsocket/legba",
       blurb:"A fast, modern credential brute-forcer and password sprayer.",
       items:[
-        {ref:"PR #98",  s:"merged", t:"remote DoS", title:"Two remote-triggerable panics (DoS) from untrusted input", url:"https://github.com/evilsocket/legba/pull/98"},
-        {ref:"PR #99",  s:"merged", t:"unbounded alloc", title:"Bound two server-controlled allocations (Kerberos, AMQP) + Kerberos read timeout", url:"https://github.com/evilsocket/legba/pull/99"},
-        {ref:"PR #100", s:"merged", t:"remote DoS", title:"Cap the IRC banner read + add a read deadline", url:"https://github.com/evilsocket/legba/pull/100"},
-        {ref:"PR #101", s:"merged", t:"panic / DoS", title:"Avoid a panic on a multi-byte UTF-8 SMTP reply line", url:"https://github.com/evilsocket/legba/pull/101"},
-        {ref:"PR #102", s:"merged", t:"remote hang", title:"Add read/write timeouts to the RDP connection", url:"https://github.com/evilsocket/legba/pull/102"}
+        {ref:"PR #98",  s:"merged", sev:"High", t:"remote DoS", title:"Two remote-triggerable panics (DoS) from untrusted input", url:"https://github.com/evilsocket/legba/pull/98"},
+        {ref:"PR #99",  s:"merged", sev:"High", t:"unbounded alloc", title:"Bound two server-controlled allocations (Kerberos, AMQP) + Kerberos read timeout", url:"https://github.com/evilsocket/legba/pull/99"},
+        {ref:"PR #100", s:"merged", sev:"High", t:"remote DoS", title:"Cap the IRC banner read + add a read deadline", url:"https://github.com/evilsocket/legba/pull/100"},
+        {ref:"PR #101", s:"merged", sev:"High", t:"panic / DoS", title:"Avoid a panic on a multi-byte UTF-8 SMTP reply line", url:"https://github.com/evilsocket/legba/pull/101"},
+        {ref:"PR #102", s:"merged", sev:"High", t:"remote hang", title:"Add read/write timeouts to the RDP connection", url:"https://github.com/evilsocket/legba/pull/102"}
       ]
     },
     {
       name:"halloy", lang:"Rust", upstream:"https://github.com/squidowl/halloy",
       blurb:"A modern IRC client.",
       items:[
-        {ref:"PR #2149", s:"merged", t:"remote DoS ×3", title:"Harden against three remote-DoS issues (reported via private advisory)", url:"https://github.com/squidowl/halloy/pull/2149"}
+        {ref:"PR #2149", s:"merged", sev:"High", t:"remote DoS ×3", title:"Harden against three remote-DoS issues (reported via private advisory)", url:"https://github.com/squidowl/halloy/pull/2149"}
       ]
     },
     {
       name:"libcsp", lang:"C", upstream:"https://github.com/libcsp/libcsp",
       blurb:"The CubeSat Space Protocol: a small network stack used on spacecraft and embedded systems.",
       items:[
-        {ref:"PR #992", s:"merged", t:"use-after-free", title:"Fix use-after-free in the CSP_PS service handler", url:"https://github.com/libcsp/libcsp/pull/992"}
+        {ref:"PR #992", s:"merged", sev:"High", t:"use-after-free", title:"Fix use-after-free in the CSP_PS service handler", url:"https://github.com/libcsp/libcsp/pull/992"}
       ]
     },
     {
       name:"moquette", lang:"Java", upstream:"https://github.com/moquette-io/moquette",
       blurb:"A lightweight MQTT broker.",
       items:[
-        {ref:"PR #959", s:"merged", t:"fail-open / DoS", title:"Guard the periodic expiration task so one failing entity can't disable all expirations", url:"https://github.com/moquette-io/moquette/pull/959"},
-        {ref:"PR #958", s:"merged", t:"remote DoS", title:"Reject a malformed $share subscription before parsing it", url:"https://github.com/moquette-io/moquette/pull/958"},
-        {ref:"PR #957", s:"merged", t:"remote DoS", title:"Keep the session event loop alive when a command throws", url:"https://github.com/moquette-io/moquette/pull/957"},
-        {ref:"PR #964", s:"open", t:"durable corruption", title:"Namespace the H2 queue metadata map to prevent a client-id collision", url:"https://github.com/moquette-io/moquette/pull/964"},
-        {ref:"PR #963", s:"open", t:"remote DoS", title:"Guard pattern ACL substitution against a null username", url:"https://github.com/moquette-io/moquette/pull/963"}
+        {ref:"PR #959", s:"merged", sev:"Medium", t:"fail-open / DoS", title:"Guard the periodic expiration task so one failing entity can't disable all expirations", url:"https://github.com/moquette-io/moquette/pull/959"},
+        {ref:"PR #958", s:"merged", sev:"High", t:"remote DoS", title:"Reject a malformed $share subscription before parsing it", url:"https://github.com/moquette-io/moquette/pull/958"},
+        {ref:"PR #957", s:"merged", sev:"High", t:"remote DoS", title:"Keep the session event loop alive when a command throws", url:"https://github.com/moquette-io/moquette/pull/957"},
+        {ref:"PR #964", s:"open", sev:"Medium", t:"durable corruption", title:"Namespace the H2 queue metadata map to prevent a client-id collision", url:"https://github.com/moquette-io/moquette/pull/964"},
+        {ref:"PR #963", s:"open", sev:"High", t:"remote DoS", title:"Guard pattern ACL substitution against a null username", url:"https://github.com/moquette-io/moquette/pull/963"}
       ]
     },
     {
       name:"ds4", lang:"C", upstream:"https://github.com/antirez/ds4",
       blurb:"A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.",
       items:[
-        {ref:"PR #539", s:"open", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser", url:"https://github.com/antirez/ds4/pull/539"},
-        {ref:"PR #542", s:"open", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader", url:"https://github.com/antirez/ds4/pull/542"},
-        {ref:"PR #543", s:"open", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant", url:"https://github.com/antirez/ds4/pull/543"},
-        {ref:"PR #544", s:"open", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads", url:"https://github.com/antirez/ds4/pull/544"},
-        {ref:"PR #545", s:"open", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating", url:"https://github.com/antirez/ds4/pull/545"},
-        {ref:"PR #546", s:"open", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating", url:"https://github.com/antirez/ds4/pull/546"},
-        {ref:"PR #547", s:"open", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS)", url:"https://github.com/antirez/ds4/pull/547"},
-        {ref:"PR #548", s:"open", t:"integer bound", title:"Bound tokenizer merges count to INT32_MAX like the tokens table", url:"https://github.com/antirez/ds4/pull/548"},
-        {ref:"PR #541", s:"open", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast)", url:"https://github.com/antirez/ds4/pull/541"},
-        {ref:"PR #540", s:"open", t:"resource cleanup", title:"Unlink the bash-tool output temp file on job cleanup", url:"https://github.com/antirez/ds4/pull/540"},
+        {ref:"PR #539", s:"open", sev:"Critical", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser", url:"https://github.com/antirez/ds4/pull/539"},
+        {ref:"PR #542", s:"open", sev:"High", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader", url:"https://github.com/antirez/ds4/pull/542"},
+        {ref:"PR #543", s:"open", sev:"Medium", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant", url:"https://github.com/antirez/ds4/pull/543"},
+        {ref:"PR #544", s:"open", sev:"Medium", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads", url:"https://github.com/antirez/ds4/pull/544"},
+        {ref:"PR #545", s:"open", sev:"Medium", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating", url:"https://github.com/antirez/ds4/pull/545"},
+        {ref:"PR #546", s:"open", sev:"Low", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating", url:"https://github.com/antirez/ds4/pull/546"},
+        {ref:"PR #547", s:"open", sev:"Medium", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS)", url:"https://github.com/antirez/ds4/pull/547"},
+        {ref:"PR #548", s:"open", sev:"Low", t:"integer bound", title:"Bound tokenizer merges count to INT32_MAX like the tokens table", url:"https://github.com/antirez/ds4/pull/548"},
+        {ref:"PR #541", s:"open", sev:"Low", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast)", url:"https://github.com/antirez/ds4/pull/541"},
+        {ref:"PR #540", s:"open", sev:"Low", t:"resource cleanup", title:"Unlink the bash-tool output temp file on job cleanup", url:"https://github.com/antirez/ds4/pull/540"},
         {ref:"Issue #549", s:"issue", t:"hardening notes", title:"Follow-up hardening / design items from a security review", url:"https://github.com/antirez/ds4/issues/549"}
       ]
     },
@@ -437,19 +438,19 @@
       name:"gguf-tools", lang:"C", upstream:"https://github.com/antirez/gguf-tools",
       blurb:"A C implementation of the GGUF model-file format used by llama.cpp / ggml.",
       items:[
-        {ref:"PR #31", s:"open", t:"heap overflow", title:"Fix an out-of-bounds write in the Q4_0/Q4_1 dequantizer's second block loop", url:"https://github.com/antirez/gguf-tools/pull/31"},
-        {ref:"PR #32", s:"open", t:"heap overflow", title:"Grow the split-mixtral tensor array instead of asserting (heap overflow on crafted models)", url:"https://github.com/antirez/gguf-tools/pull/32"},
-        {ref:"PR #33", s:"open", t:"out-of-bounds read", title:"Bound tensor data offset/size against the mapping in gguf_get_tensor", url:"https://github.com/antirez/gguf-tools/pull/33"}
+        {ref:"PR #31", s:"open", sev:"High", t:"heap overflow", title:"Fix an out-of-bounds write in the Q4_0/Q4_1 dequantizer's second block loop", url:"https://github.com/antirez/gguf-tools/pull/31"},
+        {ref:"PR #32", s:"open", sev:"High", t:"heap overflow", title:"Grow the split-mixtral tensor array instead of asserting (heap overflow on crafted models)", url:"https://github.com/antirez/gguf-tools/pull/32"},
+        {ref:"PR #33", s:"open", sev:"Medium", t:"out-of-bounds read", title:"Bound tensor data offset/size against the mapping in gguf_get_tensor", url:"https://github.com/antirez/gguf-tools/pull/33"}
       ]
     },
     {
       name:"RecuperaBit", lang:"Python", upstream:"https://github.com/Lazza/RecuperaBit",
       blurb:"Reconstructs and recovers files from damaged NTFS file systems.",
       items:[
-        {ref:"PR #141", s:"open", t:"path traversal", title:"Confine restore output to the output directory", url:"https://github.com/Lazza/RecuperaBit/pull/141"},
-        {ref:"PR #142", s:"open", t:"deserialization", title:"Replace pickle with JSON for the scan save file", url:"https://github.com/Lazza/RecuperaBit/pull/142"},
-        {ref:"PR #143", s:"open", t:"crash isolation", title:"Isolate command dispatch and the deep-parse phase from crashing the whole session", url:"https://github.com/Lazza/RecuperaBit/pull/143"},
-        {ref:"PR #144", s:"open", t:"output injection", title:"Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports", url:"https://github.com/Lazza/RecuperaBit/pull/144"}
+        {ref:"PR #141", s:"open", sev:"Critical", t:"path traversal", title:"Confine restore output to the output directory", url:"https://github.com/Lazza/RecuperaBit/pull/141"},
+        {ref:"PR #142", s:"open", sev:"Critical", t:"deserialization", title:"Replace pickle with JSON for the scan save file", url:"https://github.com/Lazza/RecuperaBit/pull/142"},
+        {ref:"PR #143", s:"open", sev:"High", t:"crash isolation", title:"Isolate command dispatch and the deep-parse phase from crashing the whole session", url:"https://github.com/Lazza/RecuperaBit/pull/143"},
+        {ref:"PR #144", s:"open", sev:"Medium", t:"output injection", title:"Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports", url:"https://github.com/Lazza/RecuperaBit/pull/144"}
       ]
     }
   ];
@@ -472,7 +473,7 @@
         <span class="ref">${esc(i.ref)}</span>
         <span class="main">
           <span class="ttl">${esc(i.title)}</span>
-          <span class="tags">${i.sev ? `<span class="sev ${i.sev.toLowerCase()}">${esc(i.sev)}${i.cvss ? `<span class="score">${esc(i.cvss)}</span>` : ''}</span>` : ''}<span class="tag">${esc(i.t)}</span></span>
+          <span class="tags">${i.sev ? `<span class="sev ${i.s==='advisory' ? i.sev.toLowerCase() : 'muted'}">${esc(i.sev)}${(i.s==='advisory' && i.cvss) ? `<span class="score">${esc(i.cvss)}</span>` : ''}</span>` : ''}<span class="tag">${esc(i.t)}</span></span>
         </span>
         <span class="rowend">
           <span class="status ${i.s}"><span class="dot"></span>${statusLabel(i.s)}</span>

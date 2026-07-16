@@ -191,6 +191,9 @@
   .row .ttl{font-size:.95rem; line-height:1.35}
   .row .tags{margin-top:5px; display:flex; gap:8px; flex-wrap:wrap; align-items:center}
   .tag{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.03em; color:var(--muted); border:1px solid var(--line); border-radius:6px; padding:2px 7px}
+  .by{font-family:var(--font-mono); font-size:.66rem; color:var(--muted)}
+  .by a{color:var(--ink-soft); text-decoration:none; border-bottom:1px dotted var(--line)}
+  .by a:hover{color:var(--accent); border-bottom-color:var(--accent)}
   .status{display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; padding:5px 10px; border-radius:999px; white-space:nowrap}
   .status.merged{color:var(--good); background:var(--good-bg); border:1px solid var(--good-line)}
   .status.advisory{color:var(--good); background:var(--good-bg); border:1px solid var(--good-line)}
@@ -338,7 +341,7 @@
     <div class="support">
       <section class="panel">
         <h3>Contribute</h3>
-        <p>Found a false positive, a bug Argo missed, or want to sharpen a prompt? Reports and pull requests are genuinely welcome, the false-positive and false-negative reports most of all.</p>
+        <p>Found a false positive, a bug Argo missed, or want to sharpen a prompt? Reports and pull requests are genuinely welcome, the false-positive and false-negative reports most of all. Found a real vulnerability with Argo — or one it missed? Report it, and you'll be credited right here next to the finding.</p>
         <div class="linkrow">
           <a href="https://github.com/gigioneggiando/argo/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing guide <span class="go" aria-hidden="true">&#8594;</span></a>
           <a href="https://github.com/gigioneggiando/argo/issues" target="_blank" rel="noopener">Open issues <span class="go" aria-hidden="true">&#8594;</span></a>
@@ -473,7 +476,7 @@
         <span class="ref">${esc(i.ref)}</span>
         <span class="main">
           <span class="ttl">${esc(i.title)}</span>
-          <span class="tags">${i.sev ? `<span class="sev ${i.s==='advisory' ? i.sev.toLowerCase() : 'muted'}">${esc(i.sev)}${(i.s==='advisory' && i.cvss) ? `<span class="score">${esc(i.cvss)}</span>` : ''}</span>` : ''}<span class="tag">${esc(i.t)}</span></span>
+          <span class="tags">${i.sev ? `<span class="sev ${i.s==='advisory' ? i.sev.toLowerCase() : 'muted'}">${esc(i.sev)}${(i.s==='advisory' && i.cvss) ? `<span class="score">${esc(i.cvss)}</span>` : ''}</span>` : ''}<span class="tag">${esc(i.t)}</span>${i.credit ? `<span class="by">found by <a href="https://github.com/${esc(i.credit.replace(/^@/,''))}" target="_blank" rel="noopener">@${esc(i.credit.replace(/^@/,''))}</a></span>` : ''}</span>
         </span>
         <span class="rowend">
           <span class="status ${i.s}"><span class="dot"></span>${statusLabel(i.s)}</span>

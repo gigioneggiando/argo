@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests to open-source projects.">
+<meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo and disclosed as public pull requests. 7 projects, 29 PRs, 10 already merged.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 8 projects, 29 PRs + 1 published advisory, 10 already merged.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -179,6 +179,7 @@
   }
   .row + .row{border-top:1px solid var(--line)}
   .row.merged{border-left-color:var(--good-line)}
+  .row.advisory{border-left-color:var(--good-line)}
   .row.open{border-left-color:var(--pend-line)}
   .row:hover{background:var(--surface-2)}
   .row .ref{font-family:var(--font-mono); font-size:.82rem; color:var(--muted); font-variant-numeric:tabular-nums}
@@ -188,6 +189,7 @@
   .tag{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.03em; color:var(--muted); border:1px solid var(--line); border-radius:6px; padding:2px 7px}
   .status{display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; padding:5px 10px; border-radius:999px; white-space:nowrap}
   .status.merged{color:var(--good); background:var(--good-bg); border:1px solid var(--good-line)}
+  .status.advisory{color:var(--good); background:var(--good-bg); border:1px solid var(--good-line)}
   .status.open{color:var(--pend); background:var(--pend-bg); border:1px solid var(--pend-line)}
   .status.issue{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
   .status .dot{width:7px; height:7px; border-radius:50%; background:currentColor}
@@ -270,7 +272,7 @@
         <div class="hero-copy">
           <div class="eyebrow">Argo · real-world validation</div>
           <h1>Bugs found by <em>reading the code</em>, disclosed in the open.</h1>
-          <p class="lede">Every vulnerability below was surfaced by <strong>Argo</strong>, an LLM-native static auditor, then hand-verified and reported upstream as a public pull request. Follow any link to the fix itself.</p>
+          <p class="lede">Every vulnerability below was surfaced by <strong>Argo</strong>, an LLM-native static auditor, then hand-verified and reported upstream — as a public pull request or a published security advisory. Follow any link to the fix or advisory itself.</p>
         </div>
         <div class="hero-art" aria-hidden="true">
           <svg class="eye" viewBox="0 0 340 340">
@@ -290,16 +292,16 @@
       </div>
 
       <div class="stats" id="stats">
-        <div class="stat"><div class="num accent" data-to="7">0</div><div class="lab">Projects</div></div>
+        <div class="stat"><div class="num accent" data-to="8">0</div><div class="lab">Projects</div></div>
         <div class="stat"><div class="num" data-to="29">0</div><div class="lab">Public PRs</div></div>
         <div class="stat"><div class="num" data-to="10">0</div><div class="lab">Already merged</div></div>
-        <div class="stat"><div class="num" data-to="4">0</div><div class="lab">Languages</div></div>
+        <div class="stat"><div class="num" data-to="5">0</div><div class="lab">Languages</div></div>
       </div>
 
       <div class="notes">
         <div class="note">
           <span class="notepill">Scope</span>
-          <span>Only findings that are already <b>publicly disclosed</b> are listed, each linking to its upstream pull request. Findings still under coordinated (private) disclosure are omitted until they go public.</span>
+          <span>Only findings that are already <b>publicly disclosed</b> are listed, each linking to its upstream pull request or published security advisory. Findings still under coordinated (private) disclosure are omitted until they go public.</span>
         </div>
         <div class="note note-status">
           <span class="notepill">Status</span>
@@ -362,6 +364,13 @@
 <script>
   const PROJECTS = [
     {
+      name:"PocketBase", lang:"Go", upstream:"https://github.com/pocketbase/pocketbase",
+      blurb:"Open-source Go backend — SQLite database, auth and admin dashboard in one file.",
+      items:[
+        {ref:"GHSA", s:"advisory", t:"worker-goroutine panic (DoS)", title:"Unhandled panics in internal worker goroutines could terminate the server — fixed in v0.39.7 / v0.22.48, reporter credited", url:"https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx"}
+      ]
+    },
+    {
       name:"legba", lang:"Rust", upstream:"https://github.com/evilsocket/legba",
       blurb:"A fast, modern credential brute-forcer and password sprayer.",
       items:[
@@ -390,11 +399,11 @@
       name:"moquette", lang:"Java", upstream:"https://github.com/moquette-io/moquette",
       blurb:"A lightweight MQTT broker.",
       items:[
-        {ref:"PR #964", s:"open", t:"durable corruption", title:"Namespace the H2 queue metadata map to prevent a client-id collision", url:"https://github.com/moquette-io/moquette/pull/964"},
-        {ref:"PR #963", s:"open", t:"remote DoS", title:"Guard pattern ACL substitution against a null username", url:"https://github.com/moquette-io/moquette/pull/963"},
         {ref:"PR #959", s:"merged", t:"fail-open / DoS", title:"Guard the periodic expiration task so one failing entity can't disable all expirations", url:"https://github.com/moquette-io/moquette/pull/959"},
         {ref:"PR #958", s:"merged", t:"remote DoS", title:"Reject a malformed $share subscription before parsing it", url:"https://github.com/moquette-io/moquette/pull/958"},
-        {ref:"PR #957", s:"merged", t:"remote DoS", title:"Keep the session event loop alive when a command throws", url:"https://github.com/moquette-io/moquette/pull/957"}
+        {ref:"PR #957", s:"merged", t:"remote DoS", title:"Keep the session event loop alive when a command throws", url:"https://github.com/moquette-io/moquette/pull/957"},
+        {ref:"PR #964", s:"open", t:"durable corruption", title:"Namespace the H2 queue metadata map to prevent a client-id collision", url:"https://github.com/moquette-io/moquette/pull/964"},
+        {ref:"PR #963", s:"open", t:"remote DoS", title:"Guard pattern ACL substitution against a null username", url:"https://github.com/moquette-io/moquette/pull/963"}
       ]
     },
     {
@@ -436,15 +445,18 @@
   ];
 
   const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const statusLabel = s => s === 'merged' ? 'Merged' : s === 'issue' ? 'Issue' : 'Open · in review';
+  const statusLabel = s => s === 'merged' ? 'Merged' : s === 'advisory' ? 'Advisory · fixed' : s === 'issue' ? 'Issue' : 'Open · in review';
 
   const cases = document.getElementById('cases');
   cases.innerHTML = PROJECTS.map(p => {
+    const advisories = p.items.filter(i => i.s === 'advisory').length;
     const merged = p.items.filter(i => i.s === 'merged').length;
-    const prs = p.items.filter(i => i.s !== 'issue').length;
-    const tally = merged > 0
-      ? `<span class="tally good">${merged}&nbsp;merged</span>` + (prs - merged > 0 ? `<span class="tally">${prs - merged}&nbsp;open</span>` : '')
-      : `<span class="tally">${prs}&nbsp;open PR${prs>1?'s':''}</span>`;
+    const prs = p.items.filter(i => i.s !== 'issue' && i.s !== 'advisory').length;
+    const tally = (advisories > 0 && prs === 0)
+      ? `<span class="tally good">${advisories}&nbsp;advisor${advisories>1?'ies':'y'}</span>`
+      : merged > 0
+        ? `<span class="tally good">${merged}&nbsp;merged</span>` + (prs - merged > 0 ? `<span class="tally">${prs - merged}&nbsp;open</span>` : '')
+        : `<span class="tally">${prs}&nbsp;open PR${prs>1?'s':''}</span>`;
     const rows = p.items.map(i => `
       <a class="row ${i.s}" href="${i.url}" target="_blank" rel="noopener">
         <span class="ref">${esc(i.ref)}</span>

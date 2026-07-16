@@ -58,6 +58,21 @@ def test_research_stage_on_by_default(env):
     assert "research" in stages and stages.index("research") < stages.index("recon")
 
 
+def test_ingest_tolerates_utf8_bom_in_scope(env, make_scenario):
+    """Regression: the Codex CLI can emit scope.json with a leading UTF-8 BOM (observed on Windows).
+    Ingest must parse it via utf-8-sig, not raise json's 'Unexpected UTF-8 BOM'."""
+    from argo.stages import ingest
+
+    def _add_bom(scen: Path) -> None:
+        sp = scen / "ingest" / "scope.json"
+        sp.write_text("﻿" + sp.read_text(encoding="utf-8"), encoding="utf-8")
+
+    fixtures_dir, scenario = make_scenario(_add_bom, name="bom")
+    ctx = env(scenario=scenario, fixtures_dir=fixtures_dir)
+    scope = ingest.run(ctx, brief_path=BRIEF, repo=str(REPO))   # brief path -> reads model scope.json
+    assert scope.program_name == "Acme Widgets"                 # parsed cleanly despite the BOM
+
+
 def test_local_review_synthesizes_scope_no_brief(env, tmp_path):
     """A local folder with NO brief -> source-only scope synthesized, zero-token ingest."""
     from argo.stages import ingest

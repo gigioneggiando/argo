@@ -17,6 +17,7 @@
     --accent:#A85D24; --accent-bright:#C1732E; --on-accent:#FFFFFF;
     --good:#2F6B47; --good-bg:rgba(47,107,71,.10); --good-line:rgba(47,107,71,.32);
     --pend:#4C6C8C; --pend-bg:rgba(76,108,140,.10); --pend-line:rgba(76,108,140,.30);
+    --sev-crit:#C4283A; --sev-crit-bg:rgba(196,40,58,.11); --sev-crit-line:rgba(196,40,58,.34); --sev-high:#C05617; --sev-high-bg:rgba(192,86,23,.12); --sev-high-line:rgba(192,86,23,.34); --sev-mod:#8F6B00; --sev-mod-bg:rgba(143,107,0,.13); --sev-mod-line:rgba(143,107,0,.32); --sev-low:#647084; --sev-low-bg:rgba(100,112,132,.10); --sev-low-line:rgba(100,112,132,.28);
     --shadow:0 1px 2px rgba(20,25,35,.05), 0 8px 30px rgba(20,25,35,.06);
     --font-mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
     --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -29,6 +30,7 @@
       --accent:#D98A3D; --accent-bright:#EDA45A; --on-accent:#17120A;
       --good:#5CA077; --good-bg:rgba(92,160,119,.13); --good-line:rgba(92,160,119,.30);
       --pend:#7E9CBB; --pend-bg:rgba(126,156,187,.13); --pend-line:rgba(126,156,187,.28);
+      --sev-crit:#FF6B72; --sev-crit-bg:rgba(255,107,114,.13); --sev-crit-line:rgba(255,107,114,.30); --sev-high:#FF9457; --sev-high-bg:rgba(255,148,87,.13); --sev-high-line:rgba(255,148,87,.30); --sev-mod:#E8BE4A; --sev-mod-bg:rgba(232,190,74,.14); --sev-mod-line:rgba(232,190,74,.30); --sev-low:#9AA6B6; --sev-low-bg:rgba(154,166,182,.12); --sev-low-line:rgba(154,166,182,.28);
       --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.34);
     }
   }
@@ -38,6 +40,7 @@
     --accent:#A85D24; --accent-bright:#C1732E; --on-accent:#FFFFFF;
     --good:#2F6B47; --good-bg:rgba(47,107,71,.10); --good-line:rgba(47,107,71,.32);
     --pend:#4C6C8C; --pend-bg:rgba(76,108,140,.10); --pend-line:rgba(76,108,140,.30);
+    --sev-crit:#C4283A; --sev-crit-bg:rgba(196,40,58,.11); --sev-crit-line:rgba(196,40,58,.34); --sev-high:#C05617; --sev-high-bg:rgba(192,86,23,.12); --sev-high-line:rgba(192,86,23,.34); --sev-mod:#8F6B00; --sev-mod-bg:rgba(143,107,0,.13); --sev-mod-line:rgba(143,107,0,.32); --sev-low:#647084; --sev-low-bg:rgba(100,112,132,.10); --sev-low-line:rgba(100,112,132,.28);
     --shadow:0 1px 2px rgba(20,25,35,.05), 0 8px 30px rgba(20,25,35,.06);
   }
   :root[data-theme="dark"]{
@@ -46,6 +49,7 @@
     --accent:#D98A3D; --accent-bright:#EDA45A;
     --good:#5CA077; --good-bg:rgba(92,160,119,.13); --good-line:rgba(92,160,119,.30);
     --pend:#7E9CBB; --pend-bg:rgba(126,156,187,.13); --pend-line:rgba(126,156,187,.28);
+    --sev-crit:#FF6B72; --sev-crit-bg:rgba(255,107,114,.13); --sev-crit-line:rgba(255,107,114,.30); --sev-high:#FF9457; --sev-high-bg:rgba(255,148,87,.13); --sev-high-line:rgba(255,148,87,.30); --sev-mod:#E8BE4A; --sev-mod-bg:rgba(232,190,74,.14); --sev-mod-line:rgba(232,190,74,.30); --sev-low:#9AA6B6; --sev-low-bg:rgba(154,166,182,.12); --sev-low-line:rgba(154,166,182,.28);
     --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.34);
   }
 
@@ -193,6 +197,12 @@
   .status.open{color:var(--pend); background:var(--pend-bg); border:1px solid var(--pend-line)}
   .status.issue{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
   .status .dot{width:7px; height:7px; border-radius:50%; background:currentColor}
+  .sev{display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:.7rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; padding:4px 9px; border-radius:999px; white-space:nowrap}
+  .sev .score{font-weight:500; opacity:.85; font-variant-numeric:tabular-nums; letter-spacing:0}
+  .sev.critical{color:var(--sev-crit); background:var(--sev-crit-bg); border:1px solid var(--sev-crit-line)}
+  .sev.high{color:var(--sev-high); background:var(--sev-high-bg); border:1px solid var(--sev-high-line)}
+  .sev.moderate{color:var(--sev-mod); background:var(--sev-mod-bg); border:1px solid var(--sev-mod-line)}
+  .sev.low{color:var(--sev-low); background:var(--sev-low-bg); border:1px solid var(--sev-low-line)}
   .row .go{font-family:var(--font-mono); color:var(--muted); font-size:1rem; transition:transform .14s, color .14s}
   .row:hover .go{color:var(--accent); transform:translateX(3px)}
   .rowend{display:flex; align-items:center; gap:12px}
@@ -367,7 +377,7 @@
       name:"PocketBase", lang:"Go", upstream:"https://github.com/pocketbase/pocketbase",
       blurb:"Open-source Go backend — SQLite database, auth and admin dashboard in one file.",
       items:[
-        {ref:"GHSA", s:"advisory", t:"worker-goroutine panic (DoS)", title:"Unhandled panics in internal worker goroutines could terminate the server — fixed in v0.39.7 / v0.22.48, reporter credited", url:"https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx"}
+        {ref:"GHSA", s:"advisory", sev:"High", cvss:"8.7", t:"worker-goroutine panic (DoS)", title:"Unhandled panics in internal worker goroutines could terminate the server — fixed in v0.39.7 / v0.22.48, reporter credited", url:"https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx"}
       ]
     },
     {
@@ -462,7 +472,7 @@
         <span class="ref">${esc(i.ref)}</span>
         <span class="main">
           <span class="ttl">${esc(i.title)}</span>
-          <span class="tags"><span class="tag">${esc(i.t)}</span></span>
+          <span class="tags">${i.sev ? `<span class="sev ${i.sev.toLowerCase()}">${esc(i.sev)}${i.cvss ? `<span class="score">${esc(i.cvss)}</span>` : ''}</span>` : ''}<span class="tag">${esc(i.t)}</span></span>
         </span>
         <span class="rowend">
           <span class="status ${i.s}"><span class="dot"></span>${statusLabel(i.s)}</span>

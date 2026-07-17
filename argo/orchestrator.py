@@ -12,8 +12,8 @@ from .context import RunContext
 from .ledger import Ledger
 from .progress import ProgressReporter
 from .runner import RunnerCancelled, build_runner
-from .stages import (audit, corroborate, ingest, live, recon, report, research, runtime, sca,
-                     validate)
+from .stages import (audit, corroborate, deep_verify, ingest, live, recon, report, research,
+                     runtime, sca, validate)
 
 
 class PipelineCancelled(RuntimeError):
@@ -63,6 +63,10 @@ def do_corroborate(ctx: RunContext):
     return corroborate.run(ctx)
 
 
+def do_verify(ctx: RunContext):
+    return deep_verify.run(ctx)
+
+
 def do_runtime(ctx: RunContext):
     return runtime.run(ctx)
 
@@ -81,7 +85,7 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
                  reporter: ProgressReporter | None = None,
                  cancel_event=None, commit: str | None = None) -> dict:
     """Run the pipeline (ingest → [research] → recon → audit → [sca] → validate → [corroborate] →
-    [runtime] → report). Never submits.
+    [verify] → [runtime] → report). Never submits.
 
     ``research_enabled`` (default on) inserts the Stage-0 web-OSINT step before recon; it is the
     only networked session and is best-effort (a failure never aborts the run). Optional
@@ -90,10 +94,12 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
     """
     do_sca_stage = (not dry_run) and ctx.config.sca_enabled
     do_corroborate_stage = (not dry_run) and ctx.config.corroborate_enabled
+    do_verify_stage = (not dry_run) and ctx.config.verify_enabled
     do_runtime_stage = (not dry_run) and ctx.config.runtime_enabled
     stages = (["ingest"] + (["research"] if research_enabled else []) + ["recon"]
               + ([] if dry_run else ["audit"] + (["sca"] if do_sca_stage else [])
                  + ["validate"] + (["corroborate"] if do_corroborate_stage else [])
+                 + (["verify"] if do_verify_stage else [])
                  + (["runtime"] if do_runtime_stage else []) + ["report"]))
     own = reporter is None
     reporter = reporter or ProgressReporter(ctx, stages)
@@ -145,6 +151,8 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
     _stage("validate", lambda: do_validate(ctx))
     if do_corroborate_stage:
         _stage("corroborate", lambda: do_corroborate(ctx))
+    if do_verify_stage:
+        _stage("verify", lambda: do_verify(ctx))
     if do_runtime_stage:
         _stage("runtime", lambda: do_runtime(ctx))
     report_path = _stage("report", lambda: do_report(ctx))

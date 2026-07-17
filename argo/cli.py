@@ -4,6 +4,7 @@
     argo recon    --run RUN_ID                            -> repo_profile + prompts (Stage 2)
     argo run      --run RUN_ID                            -> per-focus findings     (Stage 3)
     argo validate --run RUN_ID                            -> validated findings     (Stage 4)
+    argo verify   --run RUN_ID                            -> deep-verified findings (Stage 7, opt-in)
     argo report   --run RUN_ID                            -> REPORT.md + drafts     (Stage 5)
     argo pipeline --brief ... --repo ... [--links ...]    -> stages 1-5, STOPS before submission
 
@@ -20,7 +21,8 @@ import typer
 
 from .config import OPUS, PipelineConfig
 from .orchestrator import (build_context, do_audit, do_corroborate, do_ingest, do_live, do_recon,
-                           do_report, do_runtime, do_sca, do_validate, new_run_id, run_pipeline)
+                           do_report, do_runtime, do_sca, do_validate, do_verify, new_run_id,
+                           run_pipeline)
 
 app = typer.Typer(add_completion=False, help="Argo — authorized source-static bug-bounty audits.")
 
@@ -273,6 +275,28 @@ def corroborate(run: str = RunIdArg,
 
 
 @app.command()
+def verify(run: str = RunIdArg,
+          max_findings: Optional[int] = typer.Option(
+              None, "--max-findings",
+              help="cap how many survivors get a deep-verify session (cost control); "
+                   "omit to deep-verify every survivor"),
+          runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+          calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+          parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """Deep-verify: independently RE-DERIVE each surviving finding from the actual source (full
+    repo access, one full session per finding, no batching, no excerpt budget) and reason across
+    the whole survivor set — catches what validate/corroborate's per-finding isolation cannot: a
+    finding that is actually several distinct bugs (split), two findings sharing one root cause
+    (merged), or a finding whose mechanism is real but a stated detail is wrong (corrected).
+    Offline, opt-in, best-effort. Rewrites validated_findings.json in place."""
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
+                        ).with_overrides(verify_enabled=True, verify_max_findings=max_findings)
+    ctx = build_context(cfg, run)
+    path = do_verify(ctx)
+    _emit({"run_id": run, "validated_findings": str(path)})
+
+
+@app.command()
 def report(run: str = RunIdArg, runner: str = RunnerOpt,
            audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
            budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
@@ -354,6 +378,15 @@ def pipeline(
         None, "--docs-url",
         help="documentation URL to ground corroboration (repeatable). If omitted, the stage searches "
              "the web for the project's official docs."),
+    verify: bool = typer.Option(
+        False, "--verify/--no-verify",
+        help="OPT-IN deep-verify: after corroboration, independently re-derive each surviving "
+             "finding from the actual source (full repo access, one full session per finding, no "
+             "batching) and reason across the whole survivor set to catch splits/merges/corrections "
+             "that per-finding-isolated stages cannot. Offline. Off by default: expensive."),
+    verify_max_findings: Optional[int] = typer.Option(
+        None, "--verify-max-findings",
+        help="(--verify) cap how many survivors get a deep-verify session (cost control)"),
     accepted_risks: Optional[Path] = AcceptedRisksOpt,
     critic_passes: Optional[int] = typer.Option(
         None, "--critic-passes",
@@ -385,6 +418,7 @@ def pipeline(
     cfg = cfg.with_overrides(sca_enabled=sca, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
+                             verify_enabled=verify, verify_max_findings=verify_max_findings,
                              attribution=attribution)
     if critic_passes is not None:
         cfg = cfg.with_overrides(audit_critic_passes=critic_passes)

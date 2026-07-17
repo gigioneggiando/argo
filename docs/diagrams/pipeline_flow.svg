@@ -1,6 +1,6 @@
-<svg width="680" viewBox="0 0 680 1022" role="img" font-family="-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" xmlns="http://www.w3.org/2000/svg">
+<svg width="680" viewBox="0 0 680 1118" role="img" font-family="-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" xmlns="http://www.w3.org/2000/svg">
 <title>End-to-end pipeline flow</title>
-<desc>Inputs feed ingest; an opt-out web-OSINT research stage feeds recon; recon extracts ground truth (invariants, baseline-correct references, variant families, false-positive carve-outs) and bakes it into the audit prompts, along with a deterministic mandatory-coverage checklist gated on cheap repo signals (memory-safety for native code, including a high-signal callout when a free-then-reparse double-free idiom is pre-scanned, crypto-primitive quality, variant-family census, fail-open defaults) so those lenses can't be dropped, plus a closed-ended variant-census worksheet that pre-scans defect families (native free/copy/alloc sinks, memory-safe panic points) and bakes their concrete site+file extent into each prompt so the auditor clears an enumerated checklist instead of stopping at one instance; audit runs parallel focuses plus a completeness-critic re-pass, with an injected impact-discipline rule (report proven impact, not reflexive IMDS/SSRF escalation) and, when supplied, the vendor's accepted-by-design behaviors so intended behavior is not reported as a bug; an opt-out software-composition (dependency) stage flags known-vulnerable pins; validate first clusters cross-focus near-duplicate findings that structural dedup cannot see (same root cause, different call site or focus) via one cheap batched semantic-dedup session, then is ground-truth-aware and downgrades-don't-deletes; an opt-out corroborate stage cross-checks each surviving finding against the project's documentation and the source repo's version-control history (commits, releases, advisories) over public web OSINT, downgrading documented-by-design findings and excluding ones already patched upstream; an opt-in runtime stage builds the target in a sealed loopback-only container and confirms findings with HTTP probes; a separate opt-in (default-off, authorization-gated) live stage makes bounded, in-scope-only, read-only, audit-logged requests to the program's real host to confirm findings; report and a final manual gate handle review and submission. Two modes over the same engine: general code audit (point at a local folder or repo, no brief) or bug-bounty triage (add a program brief). Runs on any backend (Claude Code, Codex/OpenAI, or local open-source).</desc>
+<desc>Inputs feed ingest; an opt-out web-OSINT research stage feeds recon; recon extracts ground truth (invariants, baseline-correct references, variant families, false-positive carve-outs) and bakes it into the audit prompts, along with a deterministic mandatory-coverage checklist gated on cheap repo signals (memory-safety for native code, including a high-signal callout when a free-then-reparse double-free idiom is pre-scanned, crypto-primitive quality, variant-family census, fail-open defaults) so those lenses can't be dropped, plus a closed-ended variant-census worksheet that pre-scans defect families (native free/copy/alloc sinks, memory-safe panic points) and bakes their concrete site+file extent into each prompt so the auditor clears an enumerated checklist instead of stopping at one instance; audit runs parallel focuses plus a completeness-critic re-pass, with an injected impact-discipline rule (report proven impact, not reflexive IMDS/SSRF escalation) and, when supplied, the vendor's accepted-by-design behaviors so intended behavior is not reported as a bug; an opt-out software-composition (dependency) stage flags known-vulnerable pins; validate first clusters cross-focus near-duplicate findings that structural dedup cannot see (same root cause, different call site or focus) via one cheap batched semantic-dedup session, then is ground-truth-aware and downgrades-don't-deletes; an opt-out corroborate stage cross-checks each surviving finding against the project's documentation and the source repo's version-control history (commits, releases, advisories) over public web OSINT, downgrading documented-by-design findings and excluding ones already patched upstream; an opt-in deep-verify stage independently re-derives each surviving finding from the actual source in one full session per finding with no excerpt budget, reasoning across the whole survivor set to correct a wrong factual detail, split one finding into independently-triggerable sub-bugs, or merge findings sharing a root cause; an opt-in runtime stage builds the target in a sealed loopback-only container and confirms findings with HTTP probes; a separate opt-in (default-off, authorization-gated) live stage makes bounded, in-scope-only, read-only, audit-logged requests to the program's real host to confirm findings; report and a final manual gate handle review and submission. Two modes over the same engine: general code audit (point at a local folder or repo, no brief) or bug-bounty triage (add a program brief). Runs on any backend (Claude Code, Codex/OpenAI, or local open-source).</desc>
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
 
 <rect x="40" y="24" width="185" height="56" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5" stroke-dasharray="4 3"/>
@@ -61,29 +61,34 @@
 <text x="593" y="767" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="500" fill="#6B4A0F">&#9888; LIVE (opt-in)</text>
 <text x="593" y="782" text-anchor="middle" dominant-baseline="central" font-size="10.5" fill="#8A6314">in-scope read-only probe</text>
 
-<rect x="190" y="802" width="300" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
-<text x="340" y="820" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#26215C">Stage 5 &#183; Report</text>
-<text x="340" y="840" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534AB7">&#8594; report + submission drafts</text>
+<rect x="190" y="802" width="300" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="1" stroke-dasharray="4 3"/>
+<text x="340" y="820" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#26215C">Stage &#183; Verify (opt-in)</text>
+<text x="340" y="840" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534AB7">re-derive from source &#8594; split / merge / correct</text>
 <line x1="340" y1="858" x2="340" y2="896" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-<rect x="190" y="898" width="300" height="56" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="1"/>
-<text x="340" y="916" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#4A1B0C">You: review + submit &#128075;</text>
-<text x="340" y="936" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#993C1D">manual &#8212; never automated</text>
+<rect x="190" y="898" width="300" height="56" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+<text x="340" y="916" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#26215C">Stage 5 &#183; Report</text>
+<text x="340" y="936" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#534AB7">&#8594; report + submission drafts</text>
+<line x1="340" y1="954" x2="340" y2="992" stroke="#5F5E5A" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+<rect x="190" y="994" width="300" height="56" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="1"/>
+<text x="340" y="1012" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#4A1B0C">You: review + submit &#128075;</text>
+<text x="340" y="1032" text-anchor="middle" dominant-baseline="central" font-size="12" fill="#993C1D">manual &#8212; never automated</text>
 
 <text x="500" y="436" font-size="11" fill="#888">opt-in: chat &#183; fix+verify</text>
 <text x="500" y="452" font-size="11" fill="#888">+ impact discipline &#183; accepted-risks</text>
 
-<rect x="32" y="976" width="13" height="13" rx="3" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
-<text x="51" y="983" dominant-baseline="central" font-size="12" fill="#444441">inputs</text>
-<rect x="104" y="976" width="13" height="13" rx="3" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
-<text x="123" y="983" dominant-baseline="central" font-size="12" fill="#444441">automated (offline)</text>
-<rect x="258" y="976" width="13" height="13" rx="3" fill="#E6F7F2" stroke="#2A8C73" stroke-width="0.5"/>
-<text x="277" y="983" dominant-baseline="central" font-size="12" fill="#444441">OSINT</text>
-<rect x="330" y="976" width="13" height="13" rx="3" fill="#FCEFCB" stroke="#B07A1E" stroke-width="0.5"/>
-<text x="349" y="983" dominant-baseline="central" font-size="12" fill="#444441">live (opt-in, in-scope)</text>
-<rect x="500" y="976" width="13" height="13" rx="3" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
-<text x="519" y="983" dominant-baseline="central" font-size="12" fill="#444441">manual gate</text>
+<rect x="32" y="1072" width="13" height="13" rx="3" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text x="51" y="1079" dominant-baseline="central" font-size="12" fill="#444441">inputs</text>
+<rect x="104" y="1072" width="13" height="13" rx="3" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+<text x="123" y="1079" dominant-baseline="central" font-size="12" fill="#444441">automated (offline)</text>
+<rect x="258" y="1072" width="13" height="13" rx="3" fill="#E6F7F2" stroke="#2A8C73" stroke-width="0.5"/>
+<text x="277" y="1079" dominant-baseline="central" font-size="12" fill="#444441">OSINT</text>
+<rect x="330" y="1072" width="13" height="13" rx="3" fill="#FCEFCB" stroke="#B07A1E" stroke-width="0.5"/>
+<text x="349" y="1079" dominant-baseline="central" font-size="12" fill="#444441">live (opt-in, in-scope)</text>
+<rect x="500" y="1072" width="13" height="13" rx="3" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+<text x="519" y="1079" dominant-baseline="central" font-size="12" fill="#444441">manual gate</text>
 
 <text x="340" y="14" text-anchor="middle" font-size="11" fill="#888">backends: Claude Code &#183; Codex (OpenAI / local-OSS)</text>
-<text x="340" y="1010" text-anchor="middle" font-size="11" font-style="italic" fill="#888">Two modes, one engine: omit the brief (dashed) for a general/local code audit; add it for bug-bounty triage.</text>
+<text x="340" y="1106" text-anchor="middle" font-size="11" font-style="italic" fill="#888">Two modes, one engine: omit the brief (dashed) for a general/local code audit; add it for bug-bounty triage.</text>
 </svg>

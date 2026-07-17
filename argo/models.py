@@ -20,6 +20,18 @@ Verdict = Literal["confirmed", "refuted", "needs_runtime_verification", "out_of_
 # (downgrade to accepted-risk, keep with a note); ``fixed_upstream`` = already patched in a newer
 # commit/release (move to an appendix, do not report as active); ``unknown`` = could not determine.
 CorroborationVerdict = Literal["corroborated", "design_accepted", "fixed_upstream", "unknown"]
+# Deep-verify re-derives a surviving finding from scratch, with full repo tool access and no batching,
+# and reasons ACROSS the whole survivor set (validate/corroborate deliberately judge one finding in
+# isolation, so neither can notice that two findings share one root cause, or that one finding is
+# actually bundling several independently-triggerable bugs). ``reconfirmed`` = independently re-derived,
+# stands as written; ``corrected`` = the mechanism is real but a factual detail was wrong (see
+# ``corrections``, finding kept with the fix folded in); ``split`` = this one finding is >=2 distinct
+# bugs (see ``split_into``, original replaced by the sub-findings); ``merged`` = a duplicate/subset of
+# another surviving finding by root cause, not just by dedup_key (see ``merged_into``, kept in an
+# appendix, never silently deleted); ``refuted`` = deep re-derivation shows validate+corroborate were
+# both wrong; ``inconclusive`` = could not be independently re-derived (session/backend failure, budget,
+# or genuine ambiguity even after a real attempt — never a silent drop).
+VerificationVerdict = Literal["reconfirmed", "corrected", "split", "merged", "refuted", "inconclusive"]
 
 
 # --------------------------------------------------------------------------- scope
@@ -85,6 +97,34 @@ class Corroboration(BaseModel):
     adjusted_severity: Optional[Severity] = None   # optional downgrade (e.g. design_accepted -> Low)
 
 
+class Verification(BaseModel):
+    """Deep-verify's independent re-derivation of a surviving finding (see ``VerificationVerdict``).
+
+    Unlike :class:`Validation` (adversarial but per-finding-isolated, batched, excerpt-budgeted),
+    this is the unbounded, one-session-per-finding, cross-finding-aware final pass — the same
+    standard of rigor as a human re-reading every cited line and tracing every sibling function by
+    hand before it goes in a report."""
+
+    model_config = ConfigDict(extra="allow")
+    verdict: VerificationVerdict
+    rationale: Optional[str] = None
+    # The mandatory "show your work" transcript: exact file:line trace, sibling/similar functions
+    # checked and how they differ, ABI/struct/precondition assumptions confirmed against the actual
+    # source (not the excerpt). Required for every verdict — including reconfirmed — so a human can
+    # audit *how* the re-derivation was done, not just trust the verdict.
+    independent_derivation: str = ""
+    # verdict == "corrected": what was factually wrong in the original finding and the corrected facts.
+    corrections: Optional[str] = None
+    # verdict == "split": one fully independent Finding-shaped dict per distinct sub-bug (each must
+    # stand on its own — its own affected/vulnerable_flow/why_vulnerable/exploit_scenario/impact).
+    split_into: Optional[list[dict]] = None
+    # verdict == "merged": the id of the OTHER surviving finding this is a duplicate/subset of.
+    merged_into: Optional[str] = None
+    # Other surviving finding ids considered during cross-finding clustering, even when the verdict
+    # stayed reconfirmed (so a human can see what was compared against, not just the final call).
+    related_finding_ids: list[str] = Field(default_factory=list)
+
+
 class Grounding(BaseModel):
     """Deterministic citation-grounding result attached at the validate stage: which of a
     finding's cited files / project-specific code symbols could NOT be found in the actual repo
@@ -119,6 +159,7 @@ class Finding(BaseModel):
     dedup_key: Optional[str] = None
     validation: Optional[Validation] = None
     corroboration: Optional[Corroboration] = None
+    verification: Optional[Verification] = None
     grounding: Optional[Grounding] = None
     # Orchestrator bookkeeping (not in schema, allowed via extra="allow"):
     source_focus: Optional[str] = None

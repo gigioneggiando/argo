@@ -83,6 +83,7 @@ The security logic lives in the prompts; the orchestrator is only the glue that 
 | `00_recon_synthesis_meta_prompt.md` | Stage 2. Profiles the repo, reconciles it with scope, and **generates** the complementary custom prompts. This is where general-to-detailed enrichment happens. |
 | `01_audit_prompt_template.md.j2` | Jinja skeleton every generated prompt conforms to. Fixed parts (role, finding format, rules of engagement, anti-false-positive constraints) never change; `{{ }}` slots carry target-specific content. |
 | `02_adversarial_validation_prompt.md` | Stage 4. For each finding it opens a fresh context and tries to **break it**. Only findings that survive get promoted. |
+| `09_deep_verify_prompt.md` | Stage VERIFY (opt-in). For each surviving finding, one full session re-derives it from the actual source and cross-checks it against every other survivor — split/merge/correct. |
 | `scope_schema.json` | Structure of scope/rules. Authoritative input to every stage and the final findings filter. |
 | `findings_schema.json` | Normalized findings format, for dedup and validation. |
 | `BUILD_SPEC.md` | Specification to hand to a coding agent to build the orchestrator around the assets. |
@@ -113,7 +114,7 @@ argo/
   cli.py
   models.py            # pydantic models for scope + findings
   runner.py            # AgentRunner interface (Claude headless · Codex · mock)
-  stages/{ingest,research,recon,audit,sca,validate,corroborate,runtime,live,report}.py
+  stages/{ingest,research,recon,audit,sca,validate,corroborate,deep_verify,runtime,live,report}.py
   research.py·fixes.py·verify.py·benchmark.py·chat.py·costs.py·archetype.py
   prompts/             # the assets, version-controlled in git
   ledger.py            # SQLite findings + cost ledger
@@ -189,8 +190,10 @@ argo ingest   --brief BRIEF --links LINKS --repo PATH_OR_URL   # Stage 1
 argo recon    --run RUN_ID                                     # Stage 2
 argo run      --run RUN_ID                                     # Stage 3
 argo validate --run RUN_ID                                     # Stage 4
+argo verify   --run RUN_ID                                     # Stage VERIFY (opt-in, deep re-derivation)
 argo report   --run RUN_ID                                     # Stage 5
 argo pipeline --brief ... --links ... --repo ...               # 1-5, stops before submission
+argo pipeline --brief ... --repo ... --verify                  # + deep-verify before reporting
 argo pipeline --repo ./my-code                                 # 🔐 local/personal review — NO brief, NO URL
 ```
 
@@ -243,7 +246,7 @@ Clones/copies the repo into the run dir, read-only. `--accepted-risks FILE` reco
 to be injected downstream so those behaviors are not re-reported as bugs.
 
 **Design context + impact discipline** *(cross-cutting, always on)*. Every audit prompt (and the
-validate/corroborate prompts) carries an injected block that (a) enforces **impact discipline** —
+validate/corroborate/verify prompts) carries an injected block that (a) enforces **impact discipline** —
 report *proven* impact, not reflexive escalation, e.g. don't assert cloud-metadata/IMDS reachability
 for an SSRF without evidence, and treat "an admin can do an admin thing" as by design — and (b) when
 `--accepted-risks` is given, lists those behaviors so the model doesn't raise them. This attacks the
@@ -287,6 +290,21 @@ moved to `fixed_upstream` (kept in a report appendix, never silently deleted); t
 `corroborated`. Best-effort and never touches the live in-scope hosts; `--no-corroborate` skips it.
 This is the automated form of the two false-positive modes vendors push back on most: "already
 fixed" and "documented by design".
+
+**VERIFY — Deep verify** *(opt-in, offline; after corroborate; default off)*. The final, deepest
+check: unlike validate (adversarial but deliberately judges each finding in ISOLATION, batched,
+excerpt-budgeted) and corroborate (networked but never opens the repo), deep-verify runs ONE full
+agentic session per surviving finding — no batching, no excerpt budget, full `Read`/`Grep`/`Glob`
+access to the actual repo — and independently **re-derives** each finding from the source, then
+reasons **across the whole survivor set**. This catches what per-finding isolation structurally
+cannot: a finding that's actually ≥2 distinct triggerable bugs (`split`, replaced by independent
+sub-findings), two findings sharing one root cause (`merged`, folded into the other), or a finding
+whose mechanism is real but a stated fact is wrong (`corrected`, kept with the fix noted). Every
+verdict (even `reconfirmed`) requires an `independent_derivation` transcript — the file:line trail
+actually walked — so the pass is auditable, not just trusted. Downgrade-don't-delete still applies:
+only `refuted` drops a finding, `merged`/`split` originals are kept in report appendices. Off by
+default (the most expensive annotation stage); enable with `--verify` on `argo pipeline` or run
+`argo verify --run RUN_ID` standalone.
 
 **RUNTIME — Runtime verification** *(opt-in, sandboxed; default off)*. Builds the OSS target from
 the cloned source into an **ephemeral, egress-blocked, loopback-only** container (`--network=none`)

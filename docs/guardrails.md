@@ -70,13 +70,25 @@ The boundary is enforced, not just prompted:
 - `--no-research` / `--no-corroborate` (CLI) keeps those stages off; a brief-less local review and
   `--smoke` force both off for a **100% offline** run.
 
+### 2a-bis. `verify` (deep-verify): offline like `validate`, not a third networked stage
+
+The opt-in `verify` stage (`stages/deep_verify.py`, `argo verify` / `--verify` on `pipeline`, default
+**off**) gets **full read-only repo access** (`ARTIFACT_TOOLS` — `Read`/`Grep`/`Glob`/`Write`, no
+excerpt budget) but **no network**: `session_policy("verify").network` is `False`, same as
+`validate`. `enforce_session_tools(..., stage="verify")` strips `WebSearch`/`WebFetch` exactly like
+every non-OSINT stage — proven by the same `test_only_networked_stages_get_network` test that
+covers every other offline stage. It is the deepest stage in terms of *tool budget* (one full
+session per finding, never batched) but stays inside the same two-disjoint-capabilities rule as
+everything else: repo access and network access never coexist in one session.
+
 ### 2b. The other bounded exception: the `runtime` stage (loopback-only sandbox)
 
 Runtime verification (`stages/runtime.py`, **opt-in** via `--runtime`, default **off**) runs a live
 instance — but **never the program's live in-scope host.** It builds the OSS target from the
 **cloned source** into an ephemeral, **egress-blocked** Docker container (`--network=none`, so the
 network namespace has *only* loopback) and probes **only `127.0.0.1`** inside that sealed namespace.
-Same trust model as `verify.py`'s offline builds; the "never a live host" rule (§2) is preserved and
+Same trust model as `argo/verify.py`'s offline builds (Phase-6 fix-patch build verification — not to
+be confused with the `deep_verify` pipeline stage in §2a-bis below); the "never a live host" rule (§2) is preserved and
 extended to the probe layer:
 
 - **Loopback-only gate** — `guardrails.assert_loopback_only(plan, scope)` rejects any probe whose

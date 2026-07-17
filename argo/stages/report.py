@@ -37,6 +37,10 @@ def _corr_verdict(f: dict) -> str:
     return (f.get("corroboration") or {}).get("verdict", "")
 
 
+def _verify_verdict(f: dict) -> str:
+    return (f.get("verification") or {}).get("verdict", "")
+
+
 def _repo_residual_unknowns(ctx: RunContext) -> list[str]:
     if not ctx.repo_profile_path.exists():
         return []
@@ -56,6 +60,8 @@ def run(ctx: RunContext) -> Path:
     survivors: list[dict] = doc.get("findings", [])
     dropped: list[dict] = doc.get("dropped", [])
     fixed_upstream: list[dict] = doc.get("fixed_upstream", [])
+    split_originals: list[dict] = doc.get("split_originals", [])
+    merged_findings: list[dict] = doc.get("merged_findings", [])
     survivors = sorted(
         survivors,
         key=lambda f: (-severity_rank(_eff_sev(f)), -confidence_rank(_eff_conf(f)), f.get("id", "")),
@@ -81,7 +87,8 @@ def run(ctx: RunContext) -> Path:
         )
 
     report_md = _render_report(ctx, scope, survivors, dropped, resubmissions,
-                               total_cost, n_calls, fixed_upstream)
+                               total_cost, n_calls, fixed_upstream,
+                               split_originals, merged_findings)
     sig = attribution_footer(ctx.run_id) if ctx.config.attribution else ""   # Argo provenance (default on)
     report_path = ctx.run_dir / "REPORT.md"
     report_path.write_text(report_md + sig, encoding="utf-8")
@@ -110,8 +117,10 @@ def _counts_by_severity(findings: list[dict]) -> dict[str, int]:
 
 
 def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_calls,
-                   fixed_upstream=None) -> str:
+                   fixed_upstream=None, split_originals=None, merged_findings=None) -> str:
     fixed_upstream = fixed_upstream or []
+    split_originals = split_originals or []
+    merged_findings = merged_findings or []
     counts = _counts_by_severity(survivors)
     confirmed = [f for f in survivors if _verdict(f) == "confirmed"]
     nrv = [f for f in survivors if _verdict(f) == "needs_runtime_verification"]
@@ -147,6 +156,13 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
         rt_conf = sum(1 for f in survivors
                       if (_validation_field(f, "runtime") or {}).get("verdict") == "runtime_confirmed")
         L.append(f"- Runtime-verified (sandboxed HTTP probes): **{rt_conf}** confirmed")
+    if any(f.get("verification") for f in survivors) or split_originals or merged_findings:
+        n_reconfirmed = sum(1 for f in survivors if _verify_verdict(f) == "reconfirmed")
+        n_corrected = sum(1 for f in survivors if _verify_verdict(f) == "corrected")
+        n_split_children = sum(1 for f in survivors if "-split-" in f.get("id", ""))
+        L.append(f"- Deep-verified: **{n_reconfirmed}** reconfirmed, **{n_corrected}** corrected, "
+                f"**{len(split_originals)}** split into {n_split_children} finding(s), "
+                f"**{len(merged_findings)}** merged away")
     L.append("")
 
     # Fix-first ordering
@@ -209,6 +225,31 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
             L.append(f"- `{f.get('id')}` {f.get('title')} ({f.get('cwe')}) - fixed in `{ref}`{tail}")
         L.append("")
 
+    # Split originals (deep-verify appendix — kept, not silently deleted)
+    if split_originals:
+        L.append("## Split at deep-verify (replaced by independent sub-findings, kept for the record)")
+        L.append("")
+        L.append("Deep-verify found these bundled >=2 independently-triggerable bugs under one "
+                 "description. Each sub-finding is reported on its own below (id suffixed "
+                 "`-split-N`); the original is kept here for provenance, not as an active finding:")
+        for f in split_originals:
+            verf = f.get("verification") or {}
+            L.append(f"- `{f.get('id')}` {f.get('title')} ({f.get('cwe')}) - {verf.get('rationale', '')}")
+        L.append("")
+
+    # Merged findings (deep-verify appendix — kept, not silently deleted)
+    if merged_findings:
+        L.append("## Merged at deep-verify (duplicate root cause, kept for the record)")
+        L.append("")
+        L.append("Deep-verify found these share their root cause with another surviving finding "
+                 "(by mechanism, not just by dedup key); folded into that finding rather than "
+                 "reported twice:")
+        for f in merged_findings:
+            verf = f.get("verification") or {}
+            L.append(f"- `{f.get('id')}` {f.get('title')} ({f.get('cwe')}) - merged into "
+                    f"`{verf.get('merged_into', '?')}`. {verf.get('rationale', '')}".rstrip())
+        L.append("")
+
     # Resubmission guard
     if resubmissions:
         L.append("## (!) Possible resubmissions (seen in a prior run for this program)")
@@ -267,6 +308,18 @@ def _finding_section(f: dict) -> list[str]:
             line += f" Evidence: {ev[0]}"
         L.append(line)
         L.append("")
+    verf = f.get("verification") or {}
+    if verf.get("verdict"):
+        label = {"reconfirmed": "Independently re-derived from source; stands as written.",
+                 "corrected": "Mechanism confirmed real; a factual detail was corrected — see below.",
+                 "inconclusive": "Could not be independently settled from source alone."
+                 }.get(verf["verdict"], verf["verdict"])
+        L.append(f"**Deep-verify.** {label}")
+        if verf.get("corrections"):
+            L.append(f"- Corrected: {verf['corrections']}")
+        if verf.get("independent_derivation"):
+            L.append(f"- Independent derivation: {verf['independent_derivation']}")
+        L.append("")
     L.append(f"**Recommended fix (guidance only).** {f.get('recommended_fix', '')}")
     L.append("")
     if f.get("live_verification_plan"):
@@ -312,6 +365,12 @@ def _render_draft(ctx, scope, f: dict) -> str:
         L.append("### Runtime verification (sandboxed local instance)")
         L.append(f"Confirmed at runtime via HTTP probe against a sealed local instance. "
                  f"{rt.get('evidence', '')}")
+        L.append("")
+    verf = f.get("verification") or {}
+    if verf.get("verdict") == "corrected" and verf.get("corrections"):
+        L.append("### Correction (deep-verify)")
+        L.append("An independent re-derivation from source confirmed the mechanism but corrected "
+                 f"the following detail: {verf['corrections']}")
         L.append("")
     L.append("### Suggested remediation")
     L.append(f.get("recommended_fix", ""))

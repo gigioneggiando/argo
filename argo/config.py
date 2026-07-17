@@ -37,6 +37,7 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
     "runtime": SONNET,  # R2: propose loopback probe plans + interpret results (offline, validated)
     "live": SONNET,     # L2: propose in-scope live probe plans + interpret results (offline, validated)
     "corroborate": SONNET,  # post-validation cross-check vs project docs + repo VCS history (networked)
+    "verify": OPUS,     # deep re-derivation: unbounded, full repo access, cross-finding aware (opt-in)
 }
 
 #: Default per-stage wall-clock overrides (seconds). Recon now does deep ground-truth extraction
@@ -46,6 +47,7 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
 DEFAULT_STAGE_TIMEOUTS: dict[str, int] = {
     "recon": 3600,
     "audit": 3600,
+    "verify": 3600,  # unbounded per-finding re-derivation; give it the same headroom as audit/recon
 }
 
 # --- Cost estimation for backends that report tokens but not USD ---------------------
@@ -190,6 +192,22 @@ class PipelineConfig:
     # source repo). If empty, the stage searches the web for the project's official docs + repo.
     doc_links: list[str] = field(default_factory=list)
     corroborate_max_searches: int = 8   # soft cap on web searches per finding (in-prompt guidance)
+
+    # --- Deep verify (opt-in, offline, full repo access; runs AFTER corroborate, BEFORE runtime/live) --
+    # OFF by default (the most expensive annotation stage: unbounded reasoning, one full agentic
+    # session per finding, never batched). Where validate is a cheap, deliberately finding-ISOLATED
+    # adversarial pass and corroborate is a networked docs/history cross-check, deep-verify is the
+    # final, deepest, most skeptical pass: independently RE-DERIVE each surviving finding from the
+    # actual source (not the excerpt) with full Read/Grep/Glob access, and reason ACROSS the whole
+    # survivor set so it can catch what per-finding isolation structurally cannot — one finding that
+    # is actually N distinct bugs (split), two findings that are the same root cause (merged), or a
+    # finding whose mechanism is real but a factual detail is wrong (corrected). Modeled on the
+    # standard of manual re-verification used before a disclosure ships: read every cited line, trace
+    # every sibling function, and show the work. See docs/deep-verify.md.
+    verify_enabled: bool = False
+    # Hard cap on how many survivors get a deep-verify session (cost control on a huge survivor set);
+    # None = verify every survivor. Findings past the cap are left unverified (kept, never dropped).
+    verify_max_findings: int | None = None
 
     # --- Runtime verification (opt-in, sandboxed; see docs/runtime-verification-study.md) ---------
     # OFF by default. When on, build the OSS target from the cloned source into an EPHEMERAL,

@@ -24,6 +24,8 @@ Per-stage defaults (`DEFAULT_STAGE_MODELS`), each overridable per run:
 | validate | Opus | the lever on the accepted-report rate (downgrade-don't-delete; ground-truth-aware) |
 | report | Sonnet | only used if report LLM-polish is ever enabled; report is deterministic by default |
 | sca | Opus | software-composition analysis: read dependency manifests, flag known-vuln pins |
+| corroborate | Sonnet | networked docs/VCS cross-check of each survivor (design-accepted / fixed-upstream) |
+| verify | Opus | **opt-in** deep re-derivation of each survivor, full repo access, cross-finding aware |
 | runtime | Sonnet | R2: propose loopback probe plans (offline, read-only repo) + interpret results |
 
 **The audit model is the tunable that matters.** Validation can only remove false positives; it
@@ -61,6 +63,8 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `validate_batch_size` | — | findings per adversarial-validation session (default 8). Collapses the one-session-per-finding fan-out — the main driver of session/rate-limit cost — with no precision loss (each finding is judged independently in the shared session). `1` = legacy per-finding path (also used by chat/B1 re-validate). |
 | `corroborate_batch_size` | — | survivors per corroboration session (default 8), same batching rationale for the networked docs/VCS cross-check. |
 | `sca_enabled` | `--sca / --no-sca` | run the software-composition (dependency) stage between audit and validate (default on) |
+| `verify_enabled` | `--verify / --no-verify` | **opt-in** deep-verify after corroborate (default **off** — the most expensive annotation stage: one full agentic session per finding, never batched, no excerpt budget). Independently re-derives each survivor from the actual source and reasons across the whole survivor set; see [architecture.md](architecture.md#deep-verify-why-a-separate-stage-from-validate) |
+| `verify_max_findings` | `--verify-max-findings` | (`--verify`) hard cap on how many survivors get a deep-verify session (cost control on a large survivor set); `None` = every survivor. Findings past the cap are kept, un-deep-verified |
 | `runtime_enabled` | `--runtime` | **opt-in** sandboxed runtime verification after validate (default **off**) — build the target into an egress-blocked, loopback-only container and probe ONLY the local instance; see [runtime-verification-study.md](runtime-verification-study.md) |
 | `runtime_image` / `runtime_run_cmd` / `runtime_port` | `--runtime-image` / `--runtime-run-cmd` / `--runtime-port` | explicit launcher (highest priority). **R3** also auto-resolves an `argo-runtime.json` recipe or the repo's own `Dockerfile` when these are unset |
 | `runtime_build_timeout_s` | — | R3: max seconds to docker-build a recipe/repo Dockerfile (default 1800) |

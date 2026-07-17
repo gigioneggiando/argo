@@ -51,7 +51,7 @@ def test_only_networked_stages_get_network():
         allowed, _ = enforce_session_tools(["Read", "WebSearch", "WebFetch"], stage=stage)
         assert "WebSearch" in allowed and "WebFetch" in allowed
         assert_no_network_tools(["Read", "WebFetch"], stage=stage)   # no raise
-    for stage in ("ingest", "recon", "audit", "sca", "validate", "runtime", "live",
+    for stage in ("ingest", "recon", "audit", "sca", "validate", "verify", "runtime", "live",
                   "report", "remediate", "chat", None):
         allowed, _ = enforce_session_tools(["Read", "WebSearch", "WebFetch"], stage=stage)
         assert "WebSearch" not in allowed and "WebFetch" not in allowed

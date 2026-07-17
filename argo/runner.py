@@ -554,6 +554,8 @@ class MockClaudeRunner(ClaudeRunner):
             return self._live(work_dir, label, prompt)
         if stage == "corroborate":
             return self._corroborate(work_dir, label, prompt)
+        if stage == "verify":
+            return self._verify(work_dir, label)
         if stage == "validate":
             return self._validate(work_dir, label, prompt)
         handler = {
@@ -744,6 +746,26 @@ class MockClaudeRunner(ClaudeRunner):
         out.write_text(json.dumps(_corr_for(fid), indent=2), encoding="utf-8")
         return self._envelope(self._manifest(
             [{"type": "corroboration", "path": out.name, "status": "ok"}]))
+
+    def _verify(self, work_dir: Path, label) -> dict:
+        """Mock deep-verify: always a single-finding session (never batched). A fixture
+        ``<scenario>/verify/<finding_id>.json`` (if present) drives the verdict so tests can
+        exercise corrected/split/merged/refuted/inconclusive; otherwise default to
+        ``reconfirmed`` with a canned re-derivation transcript."""
+        fid = label or "MOCK-1"
+        src = self.scenario_dir / "verify" / f"{fid}.json"
+        if src.is_file():
+            data = json.loads(src.read_text(encoding="utf-8-sig"))
+        else:
+            data = {"finding_id": fid, "verdict": "reconfirmed",
+                    "rationale": "(mock) re-derivation matched the finding as written.",
+                    "independent_derivation": "(mock) opened the cited file(s) and re-traced the "
+                                             "flow; no discrepancy found.",
+                    "related_finding_ids": []}
+        out = work_dir / f"deep_verify_{fid}.json"
+        out.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        return self._envelope(self._manifest(
+            [{"type": "deep_verify_verdict", "path": out.name, "status": "ok"}]))
 
     def _remediate(self, work_dir: Path, label, prompt: str, repo_dir) -> dict:
         """Emit a `FIX.json` full-file rewrite (the primary remediation format): read the finding's

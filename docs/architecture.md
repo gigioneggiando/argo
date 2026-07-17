@@ -10,7 +10,7 @@ See [diagrams/pipeline_flow.svg](diagrams/pipeline_flow.svg) for the visual flow
 
 ```
 argo/
-  cli.py            Typer CLI: ingest / recon / run / validate / corroborate / report / pipeline
+  cli.py            Typer CLI: ingest / recon / run / validate / corroborate / verify / report / pipeline
   orchestrator.py   wiring: build a RunContext, generate run IDs, drive the stages
   config.py         PipelineConfig: per-stage models, tool allowlists, budgets, caps
   context.py        RunContext (paths + scope loading + budget guard) + artifact collection
@@ -36,7 +36,8 @@ argo/
   verify.py         Phase-6 patch verification on an ISOLATED COPY (applies? compiles? no new errors?)
   benchmark.py      Phase-7 eval: score findings P/R/F1 vs labeled suites (by archetype / CWE) + A/B
   stages/
-    ingest.py  research.py  recon.py  audit.py  sca.py  validate.py  corroborate.py  runtime.py  report.py
+    ingest.py  research.py  recon.py  audit.py  sca.py  validate.py  corroborate.py  deep_verify.py
+    runtime.py  report.py
   verify.py         Phase-6 isolated-copy build/compile check (reused by the runtime sandbox)
   prompts/          the assets, version-pinned (sha256 recorded per run)
 
@@ -62,11 +63,13 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | SCA | `stages/sca.run` | `repo/` dependency manifests, `scope.json` | `findings/dependencies.json` — **opt-out** software-composition analysis (known-vuln pinned deps); a no-op if no manifests |
 | 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json`, **`ground_truth.json`** | `validated_findings.json` — a **cross-focus semantic dedup** then a deterministic **citation-grounding** pass run first (below), then findings are **batched** (`validate_batch_size`, default 8) into shared sessions that judge each independently, collapsing the old one-session-per-finding fan-out |
 | CORROBORATE | `stages/corroborate.run` | `validated_findings.json` (+ optional `--docs-url`, scope links, repo URL) | `validated_findings.json` rewritten with a per-finding `corroboration` block + a `fixed_upstream` appendix — **opt-out web OSINT** (the 2nd networked stage, with research). Cross-checks each finding against the project's **docs** and the repo's **VCS history** to downgrade documented-by-design findings and exclude already-patched ones. Best-effort; never the live in-scope hosts |
+| VERIFY | `stages/deep_verify.run` | `validated_findings.json`, full `repo/` (no excerpt budget) | `validated_findings.json` rewritten with a per-finding `verification` block, plus `split_originals`/`merged_findings` appendices — **opt-in**, offline, one full session per finding (never batched). Independently RE-DERIVES each surviving finding from the actual source and reasons ACROSS the whole survivor set, catching what validate/corroborate's per-finding isolation cannot: a finding that is actually several distinct bugs (`split`), two findings sharing one root cause (`merged`), or a real finding with a wrong factual detail (`corrected`). Best-effort; never touches a live host |
 | RUNTIME | `stages/runtime.run` | `validated_findings.json`, `repo/` (+ optional hand-written `runtime_probe_plan.json`) | `runtime_results.json` + per-finding `runtime` verdict — **opt-in**, sandboxed. **R2:** an LLM proposes the probe plan (gated by the loopback/anti-DoS validators) and interprets the observations into confirmed/refuted/inconclusive. No-op unless enabled + Docker + recipe |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
 `pipeline` runs 1→5 (SCA between audit and validate, corroborate after validate — both on by
-default; or 1→2 with `--dry-run`) and **stops before any submission**.
+default; verify after corroborate — opt-in, off by default; or 1→2 with `--dry-run`) and **stops
+before any submission**.
 
 **Why an "unknown"/uncertain verdict happened, not just that it did.** Both validate and corroborate
 are best-effort against session/backend failure: a validate session that dies leaves its findings
@@ -82,7 +85,7 @@ once the session limit resets rather than distrust the audit.
 
 **Design context + impact discipline (cross-cutting).** `rendering.design_context_block` is injected
 into every audit prompt (deterministically, via `recon.ensure_design_context_present`, alongside the
-prohibited-technique repair) and into the validate + corroborate prompts. It (a) enforces **impact
+prohibited-technique repair) and into the validate + corroborate + verify prompts. It (a) enforces **impact
 discipline** — report *proven* impact, not reflexive escalation (no asserting IMDS/cloud-metadata
 reachability for an SSRF without evidence; "an admin can do an admin thing" is by design) — and (b),
 when `--accepted-risks` supplied `scope.accepted_risks`, lists the vendor's intended behaviors so
@@ -97,6 +100,23 @@ authentication on management functions is typically by design, so lead with memo
 Corroborate additionally mines the issue tracker for prior "by design / wontfix" verdicts. This suppresses the two
 hardest false-positive modes at the source, complementing corroborate (which catches the
 documented/already-fixed cases after the fact).
+
+**Deep verify: why a separate stage from validate.** Validate is adversarial but structurally
+*isolates* each finding — its prompt explicitly forbids one finding's verdict from influencing
+another's, so it can never notice that finding A and finding B are the same bug reached two ways,
+or that finding C is quietly bundling two independently-triggerable bugs under one description.
+It's also batched and excerpt-budgeted (`validate_batch_size`, `excerpt_context_lines`/
+`excerpt_max_bytes`) for throughput across every raw candidate. Deep-verify inverts every one of
+those trade-offs on purpose: it runs on the much smaller SURVIVING set (already thinned by
+validate + corroborate), one full agentic session per finding with no excerpt budget (the model
+opens the real file, follows calls into siblings, reads a comparable known-correct path), and is
+handed a compact summary of every OTHER surviving finding so it can reason across the set. Its
+verdict space also has a middle ground validate's binary confirmed/refuted lacks: `corrected` (the
+mechanism is real, a stated fact was wrong — folded in via `verification.corrections`, finding
+kept), `split` (one finding replaced by N independently-verified children, original kept in the
+`split_originals` appendix), and `merged` (folded into a sibling finding by root cause, kept in the
+`merged_findings` appendix) — downgrade-don't-delete applies here too: only `refuted` removes a
+finding outright, into the normal `dropped` list. See `argo/prompts/09_deep_verify_prompt.md`.
 
 **Mandatory coverage checklist (cross-cutting, recall).** `checklists.ensure_coverage_checklist_present`
 is injected right after the design-context block into every audit prompt. Gated on `detect_native` /

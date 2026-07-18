@@ -751,8 +751,15 @@ class MockClaudeRunner(ClaudeRunner):
         """Mock deep-verify: always a single-finding session (never batched). A fixture
         ``<scenario>/verify/<finding_id>.json`` (if present) drives the verdict so tests can
         exercise corrected/split/merged/refuted/inconclusive; otherwise default to
-        ``reconfirmed`` with a canned re-derivation transcript."""
+        ``reconfirmed`` with a canned re-derivation transcript.
+
+        Sentinel ``<scenario>/verify/<finding_id>._fail_once``: fails ONLY the first attempt
+        (``work_dir.name == finding_id``, i.e. no ``-retryN`` suffix) so tests can exercise
+        deep_verify's retry-on-infra-failure path; retry attempts use a suffixed work_dir name
+        and succeed normally."""
         fid = label or "MOCK-1"
+        if work_dir.name == fid and (self.scenario_dir / "verify" / f"{fid}._fail_once").exists():
+            return self._envelope("Session interrupted.", is_error=True)
         src = self.scenario_dir / "verify" / f"{fid}.json"
         if src.is_file():
             data = json.loads(src.read_text(encoding="utf-8-sig"))

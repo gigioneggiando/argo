@@ -29,6 +29,12 @@ def _verify_fixture(d: Path, finding_id: str, doc: dict) -> None:
     (vdir / f"{finding_id}.json").write_text(json.dumps(doc), encoding="utf-8")
 
 
+def _fail_once(d: Path, finding_id: str) -> None:
+    vdir = d / "verify"
+    vdir.mkdir(parents=True, exist_ok=True)
+    (vdir / f"{finding_id}._fail_once").write_text("", encoding="utf-8")
+
+
 # --------------------------------------------------------------------------- happy
 def test_verify_attaches_blocks(env):
     ctx = env(verify_enabled=True)
@@ -160,6 +166,32 @@ def test_bad_verdict_coerced_to_inconclusive(env, make_scenario):
     vf = _validated(ctx)
     f3 = next(f for f in vf["findings"] if f["id"] == "FULL-003")
     assert f3["verification"]["verdict"] == "inconclusive"        # coerced, finding kept
+
+
+# --------------------------------------------------------------------------- retry-on-infra-failure
+def test_retries_once_on_transient_failure_then_succeeds(env, make_scenario):
+    """A recoverable session failure (CLI/sandbox crash, no output) on attempt 1 must not doom
+    the finding to inconclusive when a retry would have succeeded — real per-session cost for
+    verify ($1-4, 1-4M tokens seen on a real run) makes a bare retry worth it, unlike validate/
+    corroborate's cheaper sessions."""
+    fixtures_dir, scen = make_scenario(lambda d: _fail_once(d, "FULL-001"), name="retryok")
+    ctx = env(scen, fixtures_dir=fixtures_dir, verify_enabled=True)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    vf = _validated(ctx)
+    f1 = next(f for f in vf["findings"] if f["id"] == "FULL-001")
+    assert f1["verification"]["verdict"] == "reconfirmed"          # retry succeeded
+
+
+def test_exhausts_retries_and_falls_back_to_inconclusive(env, make_scenario):
+    """verify_max_attempts=1 means no retry at all: a single failure goes straight to
+    inconclusive, same as validate/corroborate's default (no-retry) behavior."""
+    fixtures_dir, scen = make_scenario(lambda d: _fail_once(d, "FULL-001"), name="retryfail")
+    ctx = env(scen, fixtures_dir=fixtures_dir, verify_enabled=True, verify_max_attempts=1)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    vf = _validated(ctx)
+    f1 = next(f for f in vf["findings"] if f["id"] == "FULL-001")
+    assert f1["verification"]["verdict"] == "inconclusive"
+    assert "no verdict file" in f1["verification"]["rationale"]
 
 
 # --------------------------------------------------------------------------- guardrail

@@ -31,14 +31,25 @@ def sha256_text(text: str) -> str:
 
 
 def fill_placeholders(template_text: str, mapping: dict[str, str]) -> str:
-    """Literal-substitute ``{{KEY}}`` tokens. Raise if any ``{{UPPER_SNAKE}}`` placeholder
-    is left unresolved (no silent blanks reaching a model)."""
+    """Literal-substitute ``{{KEY}}`` tokens. Raise if the TEMPLATE itself references a
+    ``{{UPPER_SNAKE}}`` placeholder with no supplied value (no silent blanks reaching a model).
+
+    The unresolved-placeholder check runs against ``template_text`` BEFORE substitution, not
+    the final rendered output — a substituted VALUE (a finding's JSON, a code excerpt, ...) can
+    legitimately contain a ``{{LOOKS_LIKE_A_PLACEHOLDER}}``-shaped substring with nothing to do
+    with Argo's own templating (e.g. real source quoting an XML Clark-notation constant built
+    with an f-string like ``f"{{{NS_SAML_PROTOCOL}}}Foo"``, a Jinja/Handlebars snippet, a C
+    macro). Scanning the post-substitution text for that pattern — as this used to — mistakes
+    such content for an unresolved template slot and crashes the run on perfectly valid input
+    (seen for real on authentik's SAML processors, CWE-agnostic: any project using double-brace
+    syntax for anything can trigger it)."""
+    referenced = {m[2:-2] for m in _PLACEHOLDER_RE.findall(template_text)}
+    missing = sorted(referenced - mapping.keys())
+    if missing:
+        raise ValueError(f"Unresolved placeholders after fill: {missing}")
     out = template_text
     for key, value in mapping.items():
         out = out.replace("{{" + key + "}}", value)
-    leftovers = sorted(set(_PLACEHOLDER_RE.findall(out)))
-    if leftovers:
-        raise ValueError(f"Unresolved placeholders after fill: {leftovers}")
     return out
 
 

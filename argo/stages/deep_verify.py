@@ -118,30 +118,49 @@ def _coerce(data: dict) -> Verification:
 
 def _verify_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding,
                 siblings: list[Finding]) -> Verification:
-    try:
-        result = ctx.runner.run(
-            prompt=_build_prompt(ctx, scope, scope_json_text, finding, siblings),
-            run_dir=ctx.run_dir,
-            work_dir=ctx.work_dir("verify", finding.id),   # fresh, isolated context
-            model=ctx.config.model_for("verify"),
-            stage="verify",
-            run_id=ctx.run_id,
-            repo_dir=ctx.repo_dir,                          # READ-ONLY, full tree, no excerpt budget
-            allowed_tools=ARTIFACT_TOOLS,
-            label=finding.id,
-        )
-        files = collect_output_files(result, "deep_verify_*.json")
-    except RunnerError as exc:
-        _log(f"{finding.id}: deep-verify session failed ({exc}); keeping as-is")
-        return Verification(verdict="inconclusive", rationale=f"deep-verify session failed: {exc}")
-    if not files:
-        return Verification(verdict="inconclusive",
-                            rationale="deep-verify session produced no verdict file")
-    try:
-        data = json.loads(files[0].read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError):
-        return Verification(verdict="inconclusive", rationale="deep-verify verdict was not valid JSON")
-    return _coerce(data)
+    """One finding, up to ``verify_max_attempts`` tries. Each attempt this expensive (one full
+    Codex/Claude session, no excerpt budget - real sessions on real targets have run 1-3M+ input
+    tokens) is worth retrying once on a transient infra failure before giving up, unlike validate/
+    corroborate's cheaper per-session cost where a bare retry isn't worth the code. A recoverable
+    CLI/sandbox crash (seen for real: Codex's Windows sandbox dying mid-session under heavy tool
+    use) shouldn't cost a $1-4 session's verdict outright."""
+    max_attempts = max(1, ctx.config.verify_max_attempts)
+    last_rationale = "deep-verify session produced no verdict file"
+    for attempt in range(max_attempts):
+        retrying = attempt + 1 < max_attempts
+        work_label = finding.id if attempt == 0 else f"{finding.id}-retry{attempt}"
+        try:
+            result = ctx.runner.run(
+                prompt=_build_prompt(ctx, scope, scope_json_text, finding, siblings),
+                run_dir=ctx.run_dir,
+                work_dir=ctx.work_dir("verify", work_label),   # fresh, isolated context per attempt
+                model=ctx.config.model_for("verify"),
+                stage="verify",
+                run_id=ctx.run_id,
+                repo_dir=ctx.repo_dir,                       # READ-ONLY, full tree, no excerpt budget
+                allowed_tools=ARTIFACT_TOOLS,
+                label=finding.id,
+            )
+            files = collect_output_files(result, "deep_verify_*.json")
+        except RunnerError as exc:
+            last_rationale = f"deep-verify session failed: {exc}"
+            _log(f"{finding.id}: attempt {attempt + 1}/{max_attempts} failed ({exc})"
+                + (" — retrying" if retrying else "; keeping as-is"))
+            continue
+        if not files:
+            last_rationale = "deep-verify session produced no verdict file"
+            _log(f"{finding.id}: attempt {attempt + 1}/{max_attempts} produced no verdict file"
+                + (" — retrying" if retrying else "; keeping as-is"))
+            continue
+        try:
+            data = json.loads(files[0].read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            last_rationale = "deep-verify verdict was not valid JSON"
+            _log(f"{finding.id}: attempt {attempt + 1}/{max_attempts} malformed JSON"
+                + (" — retrying" if retrying else "; keeping as-is"))
+            continue
+        return _coerce(data)
+    return Verification(verdict="inconclusive", rationale=last_rationale)
 
 
 def _split_child(parent: Finding, idx: int, raw: dict) -> Finding:

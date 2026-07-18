@@ -208,6 +208,12 @@ class PipelineConfig:
     # Hard cap on how many survivors get a deep-verify session (cost control on a huge survivor set);
     # None = verify every survivor. Findings past the cap are left unverified (kept, never dropped).
     verify_max_findings: int | None = None
+    # Retries per finding on a transient session failure (CLI/sandbox crash, no output produced,
+    # malformed JSON) before falling back to `inconclusive`. Default 2 (1 retry): unlike validate/
+    # corroborate's cheap per-session cost, a verify session runs unbounded with no excerpt budget
+    # (seen for real: 1-4M input tokens, $1-4 per session) - worth one retry before giving up on a
+    # crash. 1 = no retry (legacy/cheap behavior).
+    verify_max_attempts: int = 2
 
     # --- Runtime verification (opt-in, sandboxed; see docs/runtime-verification-study.md) ---------
     # OFF by default. When on, build the OSS target from the cloned source into an EPHEMERAL,

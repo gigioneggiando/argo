@@ -125,6 +125,19 @@ def test_fill_placeholders_unresolved_raises():
     assert fill_placeholders("a {{X}} b", {"X": "Z"}) == "a Z b"
 
 
+def test_fill_placeholders_ignores_lookalike_text_in_substituted_values():
+    """A substituted VALUE (e.g. a finding's code excerpt) can legitimately contain a
+    ``{{LOOKS_LIKE_A_PLACEHOLDER}}``-shaped substring that has nothing to do with Argo's own
+    templating -- e.g. real source built with an f-string like ``f"{{{NS_SAML_PROTOCOL}}}Foo"``
+    (seen for real on authentik's SAML processors). This must NOT be mistaken for an unresolved
+    template slot: the leftover-placeholder check runs against the template BEFORE substitution,
+    not the rendered output."""
+    template = "code:\n{{CODE_EXCERPTS}}\nend"
+    excerpt = 'attribute = Element(f"{{{NS_SAML_ASSERTION}}}Attribute")'
+    out = fill_placeholders(template, {"CODE_EXCERPTS": excerpt})
+    assert out == f"code:\n{excerpt}\nend"
+
+
 def test_render_audit_template_strict_undefined():
     # Missing slots must raise rather than silently emit blanks.
     with pytest.raises(Exception):

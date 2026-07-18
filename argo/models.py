@@ -163,6 +163,17 @@ class Finding(BaseModel):
     grounding: Optional[Grounding] = None
     # Orchestrator bookkeeping (not in schema, allowed via extra="allow"):
     source_focus: Optional[str] = None
+    # Which blind audit pass produced this raw finding ("primary" or "second-opinion-N"); set by
+    # validate._load_all() from the containing FindingsFile's own source_pass, mirroring source_focus.
+    # See stages/second_opinion.py.
+    source_pass: Optional[str] = None
+    # Populated at validate time when structural (_merge) or semantic (_semantic_dedup) dedup
+    # collapses findings that came from >1 DISTINCT source_pass values into one survivor — i.e. this
+    # exact finding (or a near-duplicate of it) was independently re-discovered by a separate blind
+    # pass, not just by a different audit focus within the same pass. Strong corroboration signal,
+    # surfaced in the report; deliberately NOT fed into validate/corroborate/verify's own prompts so
+    # their judgment stays independent of how many passes agree.
+    corroborating_passes: list[str] = Field(default_factory=list)
 
 
 class FindingsFile(BaseModel):
@@ -171,6 +182,9 @@ class FindingsFile(BaseModel):
     audit_focus: str
     generated_at: str
     findings: list[Finding]
+    # Set only by stages/second_opinion.py when merging a blind sub-pass's findings into the primary
+    # run's findings_dir; absent/None means "the primary pass" (see Finding.source_pass).
+    source_pass: Optional[str] = None
 
 
 # ----------------------------------------------------------------------- run meta

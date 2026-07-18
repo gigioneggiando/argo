@@ -36,8 +36,8 @@ argo/
   verify.py         Phase-6 patch verification on an ISOLATED COPY (applies? compiles? no new errors?)
   benchmark.py      Phase-7 eval: score findings P/R/F1 vs labeled suites (by archetype / CWE) + A/B
   stages/
-    ingest.py  research.py  recon.py  audit.py  sca.py  validate.py  corroborate.py  deep_verify.py
-    runtime.py  report.py
+    ingest.py  research.py  recon.py  audit.py  sca.py  second_opinion.py  validate.py
+    corroborate.py  deep_verify.py  runtime.py  report.py
   verify.py         Phase-6 isolated-copy build/compile check (reused by the runtime sandbox)
   prompts/          the assets, version-pinned (sha256 recorded per run)
 
@@ -61,6 +61,7 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
 | SCA | `stages/sca.run` | `repo/` dependency manifests, `scope.json` | `findings/dependencies.json` — **opt-out** software-composition analysis (known-vuln pinned deps); a no-op if no manifests |
+| SECOND-OPINION | `stages/second_opinion.run` | already-ingested `scope.json` + `repo/` (reused, not re-parsed/re-cloned) | N additional `findings/second-opinion-<N>-*.json`, each from its own fully independent recon+audit pass in an isolated sub-`run_dir` — **opt-in**, offline. Encodes the manual "blind second opinion" methodology (fastjson2, open62541): a fresh recon+audit cycle over the same scope/repo, optionally on a different backend (`second_opinion_backend`), recovers findings the primary pass missed and — via the SAME structural/semantic dedup validate already does — surfaces which findings were independently rediscovered by >1 pass (`Finding.corroborating_passes`) |
 | 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json`, **`ground_truth.json`** | `validated_findings.json` — a **cross-focus semantic dedup** then a deterministic **citation-grounding** pass run first (below), then findings are **batched** (`validate_batch_size`, default 8) into shared sessions that judge each independently, collapsing the old one-session-per-finding fan-out |
 | CORROBORATE | `stages/corroborate.run` | `validated_findings.json` (+ optional `--docs-url`, scope links, repo URL) | `validated_findings.json` rewritten with a per-finding `corroboration` block + a `fixed_upstream` appendix — **opt-out web OSINT** (the 2nd networked stage, with research). Cross-checks each finding against the project's **docs** and the repo's **VCS history** to downgrade documented-by-design findings and exclude already-patched ones. Best-effort; never the live in-scope hosts |
 | VERIFY | `stages/deep_verify.run` | `validated_findings.json`, full `repo/` (no excerpt budget) | `validated_findings.json` rewritten with a per-finding `verification` block, plus `split_originals`/`merged_findings` appendices — **opt-in**, offline, one full session per finding (never batched). Independently RE-DERIVES each surviving finding from the actual source and reasons ACROSS the whole survivor set, catching what validate/corroborate's per-finding isolation cannot: a finding that is actually several distinct bugs (`split`), two findings sharing one root cause (`merged`), or a real finding with a wrong factual detail (`corrected`). Best-effort; never touches a live host |
@@ -68,8 +69,8 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
 `pipeline` runs 1→5 (SCA between audit and validate, corroborate after validate — both on by
-default; verify after corroborate — opt-in, off by default; or 1→2 with `--dry-run`) and **stops
-before any submission**.
+default; second-opinion between SCA and validate, verify after corroborate — both opt-in, off by
+default; or 1→2 with `--dry-run`) and **stops before any submission**.
 
 **Why an "unknown"/uncertain verdict happened, not just that it did.** Both validate and corroborate
 are best-effort against session/backend failure: a validate session that dies leaves its findings
@@ -117,6 +118,26 @@ kept), `split` (one finding replaced by N independently-verified children, origi
 `split_originals` appendix), and `merged` (folded into a sibling finding by root cause, kept in the
 `merged_findings` appendix) — downgrade-don't-delete applies here too: only `refuted` removes a
 finding outright, into the normal `dropped` list. See `argo/prompts/09_deep_verify_prompt.md`.
+
+**Second opinion: an LLM audit is one noisy sample, not the answer.** A single recon+audit pass
+depends on that session's own sampling — the SAME model over the SAME repo can genuinely find a
+different subset of real bugs on a different run, and a single pass has no way to tell "I looked and
+there's nothing here" from "I didn't happen to look there." The manual fix used on fastjson2 and
+open62541 was a **blind second opinion**: an independent audit pass with no knowledge of the first
+pass's findings, ideally on a different backend for real diversity rather than a bare re-roll of the
+same model. `stages/second_opinion.py` makes this a pipeline mode instead of a hand-run side quest,
+and does it with almost no new matching logic: each pass gets its own isolated `run_dir` (so it's
+genuinely blind — it never reads the primary's `findings/`), reuses the primary's already-parsed
+`scope.json` and already-fetched `repo/` (no extra LLM call or re-clone to get a second pass
+started), then runs recon+audit fresh — sampling variance alone gives different audit foci even on
+the identical model/config. Its raw findings are merged into the primary's `findings/` tagged with
+a document-level `source_pass`; validate's EXISTING structural (`_merge`, exact `dedup_key` match)
+and semantic (`_semantic_dedup`, LLM-clustered near-duplicates) collapsing already does the "is this
+the same bug as another pass found" work — the only new code is the bookkeeping that notices when a
+collapsed group spans more than one distinct `source_pass` and records it as
+`Finding.corroborating_passes`, surfaced in the report as an explicit "independently confirmed by N
+blind passes" signal. Deliberately NOT fed into validate/corroborate/verify's own prompts — how many
+passes agree is evidence for a human reader, not something the adversarial stages should anchor on.
 
 **Mandatory coverage checklist (cross-cutting, recall).** `checklists.ensure_coverage_checklist_present`
 is injected right after the design-context block into every audit prompt. Gated on `detect_native` /

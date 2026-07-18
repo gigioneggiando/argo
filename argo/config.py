@@ -180,6 +180,21 @@ class PipelineConfig:
     # advisories. Emits a synthetic `dependencies` focus that joins the normal validate+report flow.
     sca_enabled: bool = True
 
+    # --- Second opinion (opt-in; runs AFTER audit/[sca], BEFORE validate) --------------------------
+    # OFF by default (0 = disabled). N >= 1 runs N ADDITIONAL, fully independent recon+audit passes
+    # over the same already-ingested scope/repo, then merges their raw findings into the primary's
+    # findings_dir before validate runs. Encodes the manual "blind second opinion" methodology used
+    # on fastjson2/open62541: a single audit pass is one noisy sample of what a careful reader would
+    # find; an independent second pass (ideally on a different backend via second_opinion_backend,
+    # for real diversity rather than just re-sampling the same model) both recovers findings the
+    # first pass missed and, when it independently converges on the same bug, produces a real
+    # corroboration signal no single pass can produce alone. See stages/second_opinion.py.
+    second_opinion_passes: int = 0
+    # Runner override for the second-opinion passes only (e.g. "headless" when the primary run used
+    # "codex", for genuine cross-engine diversity rather than just re-sampling the same model). None
+    # = same backend as the primary.
+    second_opinion_backend: str | None = None
+
     # --- Corroboration (opt-out, networked; runs AFTER validate, BEFORE runtime/live) -------------
     # ON by default. For each surviving finding, cross-checks it against the project's own DOCS and
     # the source repo's VCS HISTORY (commits / releases / advisories) over public web OSINT, to

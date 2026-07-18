@@ -114,7 +114,7 @@ argo/
   cli.py
   models.py            # pydantic models for scope + findings
   runner.py            # AgentRunner interface (Claude headless · Codex · mock)
-  stages/{ingest,research,recon,audit,sca,validate,corroborate,deep_verify,runtime,live,report}.py
+  stages/{ingest,research,recon,audit,sca,second_opinion,validate,corroborate,deep_verify,runtime,live,report}.py
   research.py·fixes.py·verify.py·benchmark.py·chat.py·costs.py·archetype.py
   prompts/             # the assets, version-controlled in git
   ledger.py            # SQLite findings + cost ledger
@@ -192,8 +192,11 @@ argo run      --run RUN_ID                                     # Stage 3
 argo validate --run RUN_ID                                     # Stage 4
 argo verify   --run RUN_ID                                     # Stage VERIFY (opt-in, deep re-derivation)
 argo report   --run RUN_ID                                     # Stage 5
+argo second-opinion --run RUN_ID --passes 2                    # extra blind passes merged in (opt-in, standalone)
 argo pipeline --brief ... --links ... --repo ...               # 1-5, stops before submission
 argo pipeline --brief ... --repo ... --verify                  # + deep-verify before reporting
+argo pipeline --brief ... --repo ... --second-opinion 1         # + one independent blind re-audit merged in
+argo pipeline --brief ... --repo ... --second-opinion 1 --second-opinion-backend codex  # cross-engine diversity
 argo pipeline --repo ./my-code                                 # 🔐 local/personal review — NO brief, NO URL
 ```
 
@@ -273,6 +276,19 @@ finding that drifts off-schema is **repaired and kept** (flagged), never silentl
 **SCA — Software-composition analysis** *(opt-out, between audit and validate)*. Reads dependency
 manifests and flags pinned versions with known advisories as a `dependencies` focus. `--no-sca` or
 a repo with no manifests skips it.
+
+**SECOND-OPINION — Blind re-audit** *(opt-in, between SCA and validate; default off)*. Runs `--second-
+opinion N` additional, fully independent recon+audit passes over the same already-ingested scope/repo
+— each in its own isolated run directory, so it's genuinely blind to the primary pass's findings —
+then merges their raw findings in before validate runs. This is the pipeline form of a manual
+methodology used on real disclosures (fastjson2, open62541): a single LLM audit is one noisy sample
+of what a careful reader would find, and an independent second pass (optionally on a different
+backend via `--second-opinion-backend`, e.g. Claude for a Codex primary run) both recovers findings
+the first pass missed and, when it independently converges on the same bug, produces a real
+corroboration signal — surfaced in the report as "independently confirmed by N blind passes." A
+failed pass is skipped, never aborts the run. Needs almost no new matching logic: validate's existing
+structural + semantic dedup already collapses cross-pass duplicates the same way it collapses
+cross-focus ones within a single pass.
 
 **4 — Validate.** Merges findings, computes `dedup_key = sha1(normalize(file + line + cwe))` and
 collapses duplicates. For each survivor, runs `02_adversarial_validation_prompt.md` in a fresh

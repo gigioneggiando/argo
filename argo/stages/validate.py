@@ -86,9 +86,11 @@ def _load_all(ctx: RunContext) -> list[Finding]:
     for path in sorted(ctx.findings_dir.glob("*.json")):
         doc = json.loads(path.read_text(encoding="utf-8-sig"))
         focus = doc.get("audit_focus", path.stem)
+        pass_id = doc.get("source_pass")  # None = the primary pass; else "second-opinion-N"
         for raw in doc.get("findings", []):
             f = Finding.model_validate(raw)
             f.source_focus = focus
+            f.source_pass = pass_id
             seen[f.id] = seen.get(f.id, 0) + 1
             if seen[f.id] > 1:
                 f.id = f"{f.id}#{seen[f.id]}"
@@ -116,15 +118,21 @@ def _merge(findings: list[Finding]) -> list[Finding]:
         keeper = items[0][1].model_copy(deep=True)
         affected = list(keeper.affected)
         variants = [keeper.variants] if keeper.variants else []
+        passes = {keeper.source_pass or "primary"}
         for _idx, other in items[1:]:
             for a in other.affected:
                 if a not in affected:
                     affected.append(a)
             if other.variants and other.variants not in variants:
                 variants.append(other.variants)
+            passes.add(other.source_pass or "primary")
         keeper.affected = affected
         if variants:
             keeper.variants = "\n".join(variants)
+        # A dedup_key collision across >1 distinct blind passes means an independent audit pass
+        # rediscovered the exact same file:line:cwe — the strongest possible corroboration signal.
+        if len(passes) > 1:
+            keeper.corroborating_passes = sorted(passes)
         merged.append(keeper)
     # Deterministic ordering for downstream sessions / output.
     merged.sort(key=lambda f: (-severity_rank(f.severity), -confidence_rank(f.confidence), f.id))
@@ -201,6 +209,14 @@ def _semantic_dedup(ctx: RunContext, findings: list[Finding]) -> tuple[list[Find
         for a in f.affected:
             if a not in primary.affected:
                 primary.affected.append(a)
+        # Same corroboration signal as _merge(), for near-duplicates the LLM clustered rather than
+        # an exact dedup_key match: if the collapsed finding came from a DIFFERENT blind pass, that's
+        # an independent rediscovery, not just a different audit focus in the same pass.
+        this_pass = f.source_pass or "primary"
+        primary_pass = primary.source_pass or "primary"
+        if this_pass != primary_pass:
+            passes = set(primary.corroborating_passes) | {primary_pass, this_pass}
+            primary.corroborating_passes = sorted(passes)
         dropped.append({"id": f.id, "dedup_key": f.dedup_key, "title": f.title, "cwe": f.cwe,
                         "severity": f.severity,
                         "reason": f"duplicate_of:{primary_id} (semantic dedup)", "verdict": None})

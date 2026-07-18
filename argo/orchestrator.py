@@ -13,7 +13,7 @@ from .ledger import Ledger
 from .progress import ProgressReporter
 from .runner import RunnerCancelled, build_runner
 from .stages import (audit, corroborate, deep_verify, ingest, live, recon, report, research,
-                     runtime, sca, validate)
+                     runtime, sca, second_opinion, validate)
 
 
 class PipelineCancelled(RuntimeError):
@@ -55,6 +55,10 @@ def do_sca(ctx: RunContext):
     return sca.run(ctx)
 
 
+def do_second_opinion(ctx: RunContext):
+    return second_opinion.run(ctx)
+
+
 def do_validate(ctx: RunContext):
     return validate.run(ctx)
 
@@ -84,8 +88,8 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
                  links_path: Path | None = None, accepted_risks_path: Path | None = None,
                  reporter: ProgressReporter | None = None,
                  cancel_event=None, commit: str | None = None) -> dict:
-    """Run the pipeline (ingest → [research] → recon → audit → [sca] → validate → [corroborate] →
-    [verify] → [runtime] → report). Never submits.
+    """Run the pipeline (ingest → [research] → recon → audit → [sca] → [second-opinion] → validate →
+    [corroborate] → [verify] → [runtime] → report). Never submits.
 
     ``research_enabled`` (default on) inserts the Stage-0 web-OSINT step before recon; it is the
     only networked session and is best-effort (a failure never aborts the run). Optional
@@ -93,11 +97,13 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
     stage boundary AND mid-stage — it is wired into the runner so an in-flight CLI session is killed.
     """
     do_sca_stage = (not dry_run) and ctx.config.sca_enabled
+    do_second_opinion_stage = (not dry_run) and ctx.config.second_opinion_passes > 0
     do_corroborate_stage = (not dry_run) and ctx.config.corroborate_enabled
     do_verify_stage = (not dry_run) and ctx.config.verify_enabled
     do_runtime_stage = (not dry_run) and ctx.config.runtime_enabled
     stages = (["ingest"] + (["research"] if research_enabled else []) + ["recon"]
               + ([] if dry_run else ["audit"] + (["sca"] if do_sca_stage else [])
+                 + (["second_opinion"] if do_second_opinion_stage else [])
                  + ["validate"] + (["corroborate"] if do_corroborate_stage else [])
                  + (["verify"] if do_verify_stage else [])
                  + (["runtime"] if do_runtime_stage else []) + ["report"]))
@@ -148,6 +154,8 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
     _stage("audit", lambda: do_audit(ctx))
     if do_sca_stage:
         _stage("sca", lambda: do_sca(ctx))
+    if do_second_opinion_stage:
+        _stage("second_opinion", lambda: do_second_opinion(ctx))
     _stage("validate", lambda: do_validate(ctx))
     if do_corroborate_stage:
         _stage("corroborate", lambda: do_corroborate(ctx))

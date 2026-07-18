@@ -3,6 +3,7 @@
     argo ingest   --brief BRIEF.txt --repo PATH_OR_URL [--links LINKS.txt] -> scope.json  (Stage 1)
     argo recon    --run RUN_ID                            -> repo_profile + prompts (Stage 2)
     argo run      --run RUN_ID                            -> per-focus findings     (Stage 3)
+    argo second-opinion --run RUN_ID --passes N            -> extra blind passes merged in (opt-in)
     argo validate --run RUN_ID                            -> validated findings     (Stage 4)
     argo verify   --run RUN_ID                            -> deep-verified findings (Stage 7, opt-in)
     argo report   --run RUN_ID                            -> REPORT.md + drafts     (Stage 5)
@@ -21,7 +22,8 @@ import typer
 
 from .config import OPUS, PipelineConfig
 from .orchestrator import (build_context, do_audit, do_corroborate, do_ingest, do_live, do_recon,
-                           do_report, do_runtime, do_sca, do_validate, do_verify, new_run_id,
+                           do_report, do_runtime, do_sca, do_second_opinion, do_validate, do_verify,
+                           new_run_id,
                            run_pipeline)
 
 app = typer.Typer(add_completion=False, help="Argo — authorized source-static bug-bounty audits.")
@@ -244,6 +246,28 @@ def live(run: str = RunIdArg,
     _emit({"run_id": run, "live_results": str(path) if path else None})
 
 
+@app.command(name="second-opinion")
+def second_opinion_cmd(run: str = RunIdArg,
+                       passes: int = typer.Option(1, "--passes",
+                           help="how many additional blind recon+audit passes to run"),
+                       backend: Optional[str] = typer.Option(
+                           None, "--backend",
+                           help="runner override for the extra passes only (e.g. 'headless' when the "
+                                "primary run used 'codex'); omit to reuse the primary's backend"),
+                       runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+                       calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+                       parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """Run N additional, fully independent blind recon+audit passes over the run's already-ingested
+    scope/repo and merge their findings into findings/ before validate runs. Each pass gets its own
+    isolated run_dir; a failed pass is skipped, never aborts. Re-run `argo validate` afterward to
+    reconcile everything (structural + semantic dedup already collapse cross-pass duplicates)."""
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
+                        ).with_overrides(second_opinion_passes=passes, second_opinion_backend=backend)
+    ctx = build_context(cfg, run)
+    do_second_opinion(ctx)
+    _emit({"run_id": run, "findings_dir": str(ctx.findings_dir)})
+
+
 @app.command()
 def validate(run: str = RunIdArg, runner: str = RunnerOpt,
              audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
@@ -369,6 +393,16 @@ def pipeline(
              "short timeout + tight caps. Defaults --brief/--repo to the bundled fixtures."),
     sca: bool = typer.Option(True, "--sca/--no-sca",
                              help="software-composition analysis of dependency manifests (on by default)"),
+    second_opinion: int = typer.Option(
+        0, "--second-opinion",
+        help="OPT-IN: run N additional, fully independent blind recon+audit passes over the same "
+             "scope/repo before validate, then merge their findings in (encodes the manual blind "
+             "second-opinion methodology). 0 disables (default). Each pass gets its own isolated "
+             "run_dir; a failed pass is skipped, never aborts the run."),
+    second_opinion_backend: Optional[str] = typer.Option(
+        None, "--second-opinion-backend",
+        help="(--second-opinion) runner override for the extra passes only, e.g. 'headless' when "
+             "--runner codex, for real cross-engine diversity. Omit to reuse the primary's backend."),
     corroborate: bool = typer.Option(
         True, "--corroborate/--no-corroborate",
         help="after validation, cross-check each finding against the project's docs + the repo's "
@@ -419,6 +453,8 @@ def pipeline(
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
                              verify_enabled=verify, verify_max_findings=verify_max_findings,
+                             second_opinion_passes=second_opinion,
+                             second_opinion_backend=second_opinion_backend,
                              attribution=attribution)
     if critic_passes is not None:
         cfg = cfg.with_overrides(audit_critic_passes=critic_passes)

@@ -163,6 +163,10 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
         L.append(f"- Deep-verified: **{n_reconfirmed}** reconfirmed, **{n_corrected}** corrected, "
                 f"**{len(split_originals)}** split into {n_split_children} finding(s), "
                 f"**{len(merged_findings)}** merged away")
+    n_corroborated_by_passes = sum(1 for f in survivors if len(f.get("corroborating_passes") or []) > 1)
+    if n_corroborated_by_passes:
+        L.append(f"- **{n_corroborated_by_passes}** finding(s) independently confirmed by "
+                f"{'a blind second-opinion pass' if n_corroborated_by_passes == 1 else 'blind second-opinion passes'}")
     L.append("")
 
     # Fix-first ordering
@@ -274,6 +278,9 @@ def _finding_section(f: dict) -> list[str]:
              f"Confidence: **{_eff_conf(f)}** | Verdict: **{_verdict(f)}**")
     L.append(f"- CWE: {f.get('cwe')}" + (f" | OWASP: {f.get('owasp')}" if f.get('owasp') else ""))
     L.append(f"- Affected: {', '.join('`' + a + '`' for a in f.get('affected', []))}")
+    passes = f.get("corroborating_passes") or []
+    if len(passes) > 1:
+        L.append(f"- **Independently confirmed by {len(passes)} blind audit passes**: {', '.join(passes)}")
     L.append("")
     L.append(f"**Vulnerable flow.** {f.get('vulnerable_flow', '')}")
     L.append("")

@@ -103,6 +103,15 @@ def _build_prompt(ctx: RunContext, scope, scope_json_text: str, finding: Finding
     }])
 
 
+#: Fields the model sometimes echoes back as a placeholder-shaped STRING (copying the field's own
+#: description from the prompt's JSON template) instead of leaving them null/omitted on a verdict
+#: where they don't apply (e.g. `split_into` on a `reconfirmed` verdict). Seen for real on authentik:
+#: a well-evidenced `reconfirmed` verdict was discarded to `inconclusive` over this alone. Dropped
+#: rather than failing the whole verdict — the real, well-derived verdict/rationale must not be lost
+#: over an irrelevant field's type.
+_LIST_FIELDS = ("split_into", "related_finding_ids")
+
+
 def _coerce(data: dict) -> Verification:
     if data.get("verdict") not in _VALID_VERDICTS:
         return Verification(verdict="inconclusive",
@@ -110,6 +119,9 @@ def _coerce(data: dict) -> Verification:
                             independent_derivation=data.get("independent_derivation") or "")
     data = dict(data)
     data.pop("finding_id", None)
+    for key in _LIST_FIELDS:
+        if key in data and not isinstance(data[key], list):
+            data.pop(key)
     try:
         return Verification.model_validate(data)
     except Exception:  # noqa: BLE001 — a malformed verdict must never crash a best-effort stage

@@ -168,6 +168,26 @@ def test_bad_verdict_coerced_to_inconclusive(env, make_scenario):
     assert f3["verification"]["verdict"] == "inconclusive"        # coerced, finding kept
 
 
+def test_string_split_into_dropped_not_fatal(env, make_scenario):
+    """Seen for real on authentik: the model sometimes echoes the prompt's own field description
+    back as a placeholder STRING for `split_into` on a verdict where it doesn't apply (e.g.
+    `reconfirmed`), instead of omitting it. That must not discard an otherwise well-formed,
+    well-evidenced verdict — the bad field is dropped, not the whole verdict."""
+    fixtures_dir, scen = make_scenario(
+        lambda d: _verify_fixture(d, "FULL-001", {
+            "finding_id": "FULL-001", "verdict": "reconfirmed",
+            "rationale": "re-derived and stands as written",
+            "independent_derivation": "opened src/api/search.py, traced the flow",
+            "split_into": "only if verdict == split: a JSON array of ..."}),  # wrong type: str not list
+        name="strsplitinto")
+    ctx = env(scen, fixtures_dir=fixtures_dir, verify_enabled=True)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    vf = _validated(ctx)
+    f1 = next(f for f in vf["findings"] if f["id"] == "FULL-001")
+    assert f1["verification"]["verdict"] == "reconfirmed"          # NOT discarded to inconclusive
+    assert "re-derived and stands as written" in f1["verification"]["rationale"]
+
+
 # --------------------------------------------------------------------------- retry-on-infra-failure
 def test_retries_once_on_transient_failure_then_succeeds(env, make_scenario):
     """A recoverable session failure (CLI/sandbox crash, no output) on attempt 1 must not doom

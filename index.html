@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 8 projects, 29 PRs + 1 published advisory, 10 already merged.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 8 projects, 30 PRs + 1 published advisory, 12 already merged.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -307,8 +307,8 @@
 
       <div class="stats" id="stats">
         <div class="stat"><div class="num accent" data-to="8">0</div><div class="lab">Projects</div></div>
-        <div class="stat"><div class="num" data-to="29">0</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num" data-to="10">0</div><div class="lab">Already merged</div></div>
+        <div class="stat"><div class="num" data-to="30">0</div><div class="lab">Public PRs</div></div>
+        <div class="stat"><div class="num" data-to="12">0</div><div class="lab">Already merged</div></div>
         <div class="stat"><div class="num" data-to="5">0</div><div class="lab">Languages</div></div>
       </div>
 
@@ -416,8 +416,9 @@
         {ref:"PR #959", s:"merged", sev:"Medium", t:"fail-open / DoS", title:"Guard the periodic expiration task so one failing entity can't disable all expirations", url:"https://github.com/moquette-io/moquette/pull/959"},
         {ref:"PR #958", s:"merged", sev:"High", t:"remote DoS", title:"Reject a malformed $share subscription before parsing it", url:"https://github.com/moquette-io/moquette/pull/958"},
         {ref:"PR #957", s:"merged", sev:"High", t:"remote DoS", title:"Keep the session event loop alive when a command throws", url:"https://github.com/moquette-io/moquette/pull/957"},
-        {ref:"PR #964", s:"open", sev:"Medium", t:"durable corruption", title:"Namespace the H2 queue metadata map to prevent a client-id collision", url:"https://github.com/moquette-io/moquette/pull/964"},
-        {ref:"PR #963", s:"open", sev:"High", t:"remote DoS", title:"Guard pattern ACL substitution against a null username", url:"https://github.com/moquette-io/moquette/pull/963"}
+        {ref:"PR #964", s:"merged", sev:"Medium", t:"durable corruption", title:"Namespace the H2 queue metadata map to prevent a client-id collision", url:"https://github.com/moquette-io/moquette/pull/964"},
+        {ref:"PR #963", s:"merged", sev:"High", t:"remote DoS", title:"Guard pattern ACL substitution against a null username", url:"https://github.com/moquette-io/moquette/pull/963"},
+        {ref:"PR #967", s:"open", sev:"Medium", t:"fail-open authz", title:"Fail closed (not open to PermitAll/AcceptAll) when a configured authorizator/authenticator class fails to load", url:"https://github.com/moquette-io/moquette/pull/967"}
       ]
     },
     {

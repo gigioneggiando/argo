@@ -119,6 +119,17 @@ kept), `split` (one finding replaced by N independently-verified children, origi
 `merged_findings` appendix) — downgrade-don't-delete applies here too: only `refuted` removes a
 finding outright, into the normal `dropped` list. See `argo/prompts/09_deep_verify_prompt.md`.
 
+**Deep verify also checks reachability against sibling consumers of the same untrusted input**
+(added 2026-07-19, after a live PoC on a real target caught this the hard way: an allocation with no
+upfront bound was correctly identified in isolation, but an unrelated earlier pass over the exact
+same untrusted bytes — a dependency-scan pre-pass with no upfront allocation of its own — happened
+to fail first on the simplest malicious construction and incidentally gated the flagged code out of
+reach; the code defect was real, the "tiny input reliably crashes everything" claim was not, for
+that construction). Deep-verify's prompt now requires grepping the whole repo for every other reader
+of the same field/bytes, checking whether one plausibly runs earlier and could incidentally block
+reachability, and downgrading to `corrected` (not silently `reconfirmed`) when it does — the kind of
+cross-call-site reasoning validate/corroborate cannot do from an excerpt in isolation.
+
 **Second opinion: an LLM audit is one noisy sample, not the answer.** A single recon+audit pass
 depends on that session's own sampling — the SAME model over the SAME repo can genuinely find a
 different subset of real bugs on a different run, and a single pass has no way to tell "I looked and

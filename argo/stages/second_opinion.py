@@ -38,7 +38,9 @@ Guardrails:
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -50,6 +52,15 @@ from . import audit, ingest, recon
 
 def _log(msg: str) -> None:
     print(f"[second-opinion] {msg}", file=sys.stderr)
+
+
+def _rmtree_readonly_safe(path: Path) -> None:
+    """A sub-run's repo copy is deliberately made read-only by ingest._make_readonly (defense in
+    depth), so a plain shutil.rmtree fails on it. Clear the write bit and retry on error."""
+    def _onerror(func, p, _exc):
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+    shutil.rmtree(path, onerror=_onerror)
 
 
 def _build_sub_context(ctx: RunContext, pass_index: int) -> RunContext:
@@ -112,6 +123,12 @@ def _run_one_pass(ctx: RunContext, pass_index: int) -> int:
     # audit diversity. Only the code-reading recon+audit cycle benefits from a second opinion.
     pass_label = f"second-opinion-{pass_index}"
     sub_ctx = _build_sub_context(ctx, pass_index)
+    if sub_ctx.run_dir.exists():
+        # A previous invocation (e.g. a failed pass retried via the standalone `argo second-opinion`
+        # command) may have left a partial sub-run dir behind — ingest.acquire_repo refuses to copy
+        # into an existing target, so without this every retry after any failure would fail again on
+        # the SAME collision. Wipe it so each attempt starts from a clean, reproducible seed.
+        _rmtree_readonly_safe(sub_ctx.run_dir)
     try:
         _seed_sub_context(ctx, sub_ctx)
         recon.run(sub_ctx)

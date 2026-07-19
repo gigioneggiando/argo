@@ -123,3 +123,30 @@ def test_failed_pass_is_skipped_not_fatal(env, monkeypatch):
     vf = _validated(ctx)
     assert vf["findings"]                                  # primary survivors still present
     assert not any(ctx.findings_dir.glob("second-opinion-1-*.json"))  # nothing merged from the failed pass
+
+
+def test_retrying_second_opinion_after_a_failure_does_not_collide(env, monkeypatch):
+    """A failed pass (session outage, backend rate-limit, ...) leaves a partial sub-run dir (incl. a
+    seeded repo copy) behind. The standalone `argo second-opinion` command is documented as safe to
+    re-run — it must not collide with that leftover dir on the next attempt (ingest.acquire_repo
+    refuses to copy into an existing target)."""
+    ctx = env(second_opinion_passes=1)
+    real_recon_run = second_opinion.recon.run
+    calls = {"n": 0}
+
+    def _fail_once(sub_ctx):
+        if sub_ctx.run_id.endswith("-so1"):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("simulated outage on the first attempt")
+        return real_recon_run(sub_ctx)
+
+    monkeypatch.setattr(second_opinion.recon, "run", _fail_once)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    assert not any(ctx.findings_dir.glob("second-opinion-1-*.json"))  # first attempt failed, as expected
+    sub_run_dir = ctx.config.runs_dir / f"{ctx.run_id}-so1"
+    assert sub_run_dir.is_dir()  # the partial seed (repo copy etc.) was left behind
+
+    monkeypatch.setattr(second_opinion.recon, "run", real_recon_run)  # simulate the outage clearing
+    second_opinion.run(ctx)  # standalone retry, same ctx/run_id — must not raise FileExistsError
+    assert any(ctx.findings_dir.glob("second-opinion-1-*.json"))  # the retry succeeded

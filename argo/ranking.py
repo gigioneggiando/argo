@@ -22,9 +22,12 @@ def split_ref(ref: str) -> tuple[str, str]:
     """Split an ``affected`` entry into ``(file, line)``; line is "" when absent.
 
     Handles ``path/to/file.py:42``, ``path:42-50`` (takes 42), and non-line refs
-    (``Class.method``)."""
+    (``Class.method``). Splits on the FIRST colon, not the last: audit models sometimes emit a
+    compound multi-line citation like ``file.js:73, :79 (description...)`` where a second colon
+    reappears inside the trailing description/second-line-ref — splitting on the last colon there
+    mis-parses the file as ``file.js:73,`` (comma and all), a path that never exists on disk."""
     if ":" in ref:
-        head, tail = ref.rsplit(":", 1)
+        head, tail = ref.split(":", 1)
         m = re.match(r"\s*(\d+)", tail)
         if m and head.strip():
             return head.strip(), m.group(1)

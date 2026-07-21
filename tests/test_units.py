@@ -10,6 +10,7 @@ from argo.rendering import extract_manifest, with_artifact_contract
 from argo.schemas import SchemaValidationError, validate_findings, validate_scope
 from argo.runner import LLMResult
 from argo.context import collect_output_files
+from argo.stages.validate import _build_excerpts
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -18,6 +19,44 @@ def test_split_ref_variants():
     assert split_ref("src/api/search.py:42") == ("src/api/search.py", "42")
     assert split_ref("src/api/x.py:42-50") == ("src/api/x.py", "42")
     assert split_ref("Service.method") == ("Service.method", "")
+
+
+def test_split_ref_compound_multi_line_citation():
+    # A real audit-model citation ("file:L1, :L2 (description)") has a SECOND colon inside the
+    # trailing description. Splitting on the LAST colon (the old behavior) mis-parses the file as
+    # "README.md:73," -- a path that never exists, which crashed validate/corroborate's excerpt
+    # builder on Windows (colon-bearing paths can pass is_file() via NTFS alt-data-stream
+    # semantics, then fail read_text()). Must split on the FIRST colon instead.
+    assert split_ref("README.md:73, :79 ('a', 'b')") == ("README.md", "73")
+
+
+def test_build_excerpts_survives_an_unreadable_ref(tmp_path, monkeypatch):
+    # A malformed/garbage citation must never crash the whole validate/corroborate batch (it
+    # covers many OTHER unrelated findings in the same call). This is general defense-in-depth
+    # for ANY path that passes is_file() but then fails read_text() -- e.g. the real-world trigger
+    # was a colon-bearing path that NTFS treats as an alt-data-stream reference on Windows, passing
+    # is_file() but raising on read. Simulate that shape directly (decoupled from split_ref's own
+    # fix above) by forcing is_file()/read_text() to behave that way for a specific bogus name.
+    (tmp_path / "README.md").write_text("line one\nline two\n", encoding="utf-8")
+    real_is_file = Path.is_file
+    real_read_text = Path.read_text
+
+    def fake_is_file(self):
+        if self.name == "weird":
+            return True
+        return real_is_file(self)
+
+    def fake_read_text(self, *a, **kw):
+        if self.name == "weird":
+            raise OSError("simulated NTFS alt-data-stream miss")
+        return real_read_text(self, *a, **kw)
+
+    monkeypatch.setattr(Path, "is_file", fake_is_file)
+    monkeypatch.setattr(Path, "read_text", fake_read_text)
+
+    out = _build_excerpts(tmp_path, ["weird:99", "README.md:1"], 2, 4000)
+    assert "unreadable in repo copy" in out
+    assert "line one" in out  # the second, well-formed ref still produced a real excerpt
 
 
 def test_dedup_key_stable_and_discriminating():

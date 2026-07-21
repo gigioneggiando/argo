@@ -317,10 +317,18 @@ def _build_excerpts(repo_dir: Path, affected: list[str], ctx_lines: int, max_byt
     for ref in affected:
         file, line = split_ref(ref)
         path = repo_dir / file
-        if not path.is_file():
-            chunks.append(f"--- {ref} (source not found in repo copy) ---")
+        try:
+            if not path.is_file():
+                chunks.append(f"--- {ref} (source not found in repo copy) ---")
+                continue
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as exc:
+            # A malformed/garbage citation must never crash the whole batch (validate/corroborate
+            # cover many OTHER unrelated findings in the same call) -- e.g. a colon-bearing `file`
+            # can pass is_file() yet fail read_text() on Windows (NTFS alternate-data-stream path
+            # semantics treat "name:suffix" as a stream reference on the base file).
+            chunks.append(f"--- {ref} (unreadable in repo copy: {exc.__class__.__name__}) ---")
             continue
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         if line:
             ln = int(line)
             start, end = max(1, ln - ctx_lines), min(len(lines), ln + ctx_lines)

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 8 projects, 30 PRs + 1 published advisory, 12 already merged.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 8 projects, 30 PRs + 1 published advisory, 14 already merged.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -185,6 +185,7 @@
   .row.merged{border-left-color:var(--good-line)}
   .row.advisory{border-left-color:var(--good-line)}
   .row.open{border-left-color:var(--pend-line)}
+  .row.closed{border-left-color:var(--line)}
   .row:hover{background:var(--surface-2)}
   .row .ref{font-family:var(--font-mono); font-size:.82rem; color:var(--muted); font-variant-numeric:tabular-nums}
   .row .main{min-width:0}
@@ -199,6 +200,7 @@
   .status.advisory{color:var(--good); background:var(--good-bg); border:1px solid var(--good-line)}
   .status.open{color:var(--pend); background:var(--pend-bg); border:1px solid var(--pend-line)}
   .status.issue{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
+  .status.closed{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
   .status .dot{width:7px; height:7px; border-radius:50%; background:currentColor}
   .sev{display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:.7rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; padding:4px 9px; border-radius:999px; white-space:nowrap}
   .sev .score{font-weight:500; opacity:.85; font-variant-numeric:tabular-nums; letter-spacing:0}
@@ -308,7 +310,7 @@
       <div class="stats" id="stats">
         <div class="stat"><div class="num accent" data-to="8">0</div><div class="lab">Projects</div></div>
         <div class="stat"><div class="num" data-to="30">0</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num" data-to="12">0</div><div class="lab">Already merged</div></div>
+        <div class="stat"><div class="num" data-to="14">0</div><div class="lab">Already merged</div></div>
         <div class="stat"><div class="num" data-to="5">0</div><div class="lab">Languages</div></div>
       </div>
 
@@ -452,15 +454,15 @@
       blurb:"Reconstructs and recovers files from damaged NTFS file systems.",
       items:[
         {ref:"PR #141", s:"open", sev:"Critical", t:"path traversal", title:"Confine restore output to the output directory", url:"https://github.com/Lazza/RecuperaBit/pull/141"},
-        {ref:"PR #142", s:"open", sev:"Critical", t:"deserialization", title:"Replace pickle with JSON for the scan save file", url:"https://github.com/Lazza/RecuperaBit/pull/142"},
-        {ref:"PR #143", s:"open", sev:"High", t:"crash isolation", title:"Isolate command dispatch and the deep-parse phase from crashing the whole session", url:"https://github.com/Lazza/RecuperaBit/pull/143"},
-        {ref:"PR #144", s:"open", sev:"Medium", t:"output injection", title:"Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports", url:"https://github.com/Lazza/RecuperaBit/pull/144"}
+        {ref:"PR #142", s:"closed", sev:"Critical", t:"deserialization", title:"Replace pickle with JSON for the scan save file", url:"https://github.com/Lazza/RecuperaBit/pull/142"},
+        {ref:"PR #143", s:"merged", sev:"High", t:"crash isolation", title:"Isolate command dispatch and the deep-parse phase from crashing the whole session", url:"https://github.com/Lazza/RecuperaBit/pull/143"},
+        {ref:"PR #144", s:"merged", sev:"Medium", t:"output injection", title:"Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports", url:"https://github.com/Lazza/RecuperaBit/pull/144"}
       ]
     }
   ];
 
   const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const statusLabel = s => s === 'merged' ? 'Merged' : s === 'advisory' ? 'Advisory · fixed' : s === 'issue' ? 'Issue' : 'Open · in review';
+  const statusLabel = s => s === 'merged' ? 'Merged' : s === 'advisory' ? 'Advisory · fixed' : s === 'issue' ? 'Issue' : s === 'closed' ? 'Closed · not merged' : 'Open · in review';
 
   const cases = document.getElementById('cases');
   cases.innerHTML = PROJECTS.map(p => {

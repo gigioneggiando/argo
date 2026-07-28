@@ -619,8 +619,8 @@ own "Constraints that shape every decision" section already states but never bui
 cheap and would let D2 eventually also answer "if you hit a limit on this plan, expect to wait ~X" —
 closing the loop between the two items instead of shipping them as unrelated features.
 
-### E. Multi-branch freshness check (reduce false "already fixed" duplicates) — ⬜ BACKLOG (proposed
-2026-07-28, motivated by the open62541 disclosure — see `docs/design-decisions.md` /
+### E. Multi-branch freshness check (reduce false "already fixed" duplicates) — ✅ DONE (2026-07-28,
+motivated by the open62541 disclosure — see `docs/design-decisions.md` /
 `disclosure-precision-lessons` case notes for the full incident)
 
 **What's missing today:** Argo has no automated pass that diffs the audited tree against upstream
@@ -656,9 +656,16 @@ open62541 case's other 2 verified duplicates) — that information is by design 
 external auditor, human or AI, and no amount of engineering closes that gap. Frame this as "catch the
 same-tree-just-different-branch case," not "eliminate false positives from vendor-side duplicates."
 
-**Verdict:** small, mechanical, high-signal-to-effort for the specific multi-branch-project case; not
-started. Lower priority than D1/D2 (this hits a couple of findings per report on some targets; D1/D2
-affect every large run).
+**Verdict:** implemented as an opt-in, best-effort `freshness_check` stage; still informational only.
+Post-implementation review caught one real gap in the "audited branch" half of the check: a
+pinned-commit checkout (the common case for reproducible audits) leaves the local repo on a
+detached HEAD, so guessing the audited branch from `symbolic-ref`/the remote's default branch
+silently picks the WRONG branch whenever the actual audited branch isn't the remote's default
+(e.g. auditing `dev` on a repo whose default is `master`) — exactly the multi-branch scenario this
+feature exists for. Fixed by persisting the raw `--commit` argument as given (branch/tag/sha, before
+resolution) into `meta.json` as `RunMeta.requested_ref`, and having `freshness.py` prefer it over
+guessing whenever it isn't sha-shaped. Covered by
+`test_audited_branch_uses_requested_ref_on_detached_head` in `tests/test_freshness.py`.
 
 ## Cross-cutting / decisions to make before Phase 0
 

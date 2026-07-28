@@ -6,6 +6,7 @@
     argo second-opinion --run RUN_ID --passes N            -> extra blind passes merged in (opt-in)
     argo validate --run RUN_ID                            -> validated findings     (Stage 4)
     argo verify   --run RUN_ID                            -> deep-verified findings (Stage 7, opt-in)
+    argo freshness --run RUN_ID                           -> freshness flags       (opt-in)
     argo report   --run RUN_ID                            -> REPORT.md + drafts     (Stage 5)
     argo pipeline --brief ... --repo ... [--links ...]    -> stages 1-5, STOPS before submission
 
@@ -21,9 +22,9 @@ from typing import Optional
 import typer
 
 from .config import OPUS, PipelineConfig
-from .orchestrator import (build_context, do_audit, do_corroborate, do_ingest, do_live, do_recon,
-                           do_report, do_runtime, do_sca, do_second_opinion, do_validate, do_verify,
-                           new_run_id,
+from .orchestrator import (build_context, do_audit, do_corroborate, do_freshness_check, do_ingest,
+                           do_live, do_recon, do_report, do_runtime, do_sca, do_second_opinion,
+                           do_validate, do_verify, new_run_id,
                            run_pipeline)
 
 app = typer.Typer(add_completion=False, help="Argo — authorized source-static bug-bounty audits.")
@@ -321,6 +322,26 @@ def verify(run: str = RunIdArg,
 
 
 @app.command()
+def freshness(run: str = RunIdArg,
+              lookback_days: int = typer.Option(
+                  365, "--lookback-days",
+                  help="how many days of branch history to inspect for same-file commits"),
+              runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+              calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+              parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """Freshness check: look for same-file commits on the audited branch after the pinned commit
+    and on version-looking sibling branches. Informational only; verdicts/statuses are unchanged.
+    Networked git history check, opt-in, best-effort. Rewrites validated_findings.json in place only
+    when flags are found."""
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
+                        ).with_overrides(freshness_check_enabled=True,
+                                         freshness_lookback_days=lookback_days)
+    ctx = build_context(cfg, run)
+    path = do_freshness_check(ctx)
+    _emit({"run_id": run, "validated_findings": str(path)})
+
+
+@app.command()
 def report(run: str = RunIdArg, runner: str = RunnerOpt,
            audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
            budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
@@ -421,6 +442,13 @@ def pipeline(
     verify_max_findings: Optional[int] = typer.Option(
         None, "--verify-max-findings",
         help="(--verify) cap how many survivors get a deep-verify session (cost control)"),
+    freshness_check: bool = typer.Option(
+        False, "--freshness-check/--no-freshness-check",
+        help="OPT-IN: before reporting, check audited/sibling branch git history for same-file "
+             "commits that should be manually verified before sending"),
+    freshness_lookback_days: int = typer.Option(
+        365, "--freshness-lookback-days",
+        help="(--freshness-check) days of branch history to inspect"),
     accepted_risks: Optional[Path] = AcceptedRisksOpt,
     critic_passes: Optional[int] = typer.Option(
         None, "--critic-passes",
@@ -453,6 +481,8 @@ def pipeline(
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
                              verify_enabled=verify, verify_max_findings=verify_max_findings,
+                             freshness_check_enabled=freshness_check,
+                             freshness_lookback_days=freshness_lookback_days,
                              second_opinion_passes=second_opinion,
                              second_opinion_backend=second_opinion_backend,
                              attribution=attribution)

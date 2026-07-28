@@ -125,6 +125,30 @@ class Verification(BaseModel):
     related_finding_ids: list[str] = Field(default_factory=list)
 
 
+class FreshnessCommit(BaseModel):
+    """One commit touching a cited file on a branch that should be checked before reporting."""
+
+    model_config = ConfigDict(extra="allow")
+    sha: str
+    subject: str
+    author_date: str
+
+
+class FreshnessFlag(BaseModel):
+    """Informational same-file history touch found by the freshness check.
+
+    This is not a verdict and does not change validation/corroboration/deep-verify status. A commit
+    touching the same file is only a prompt for human review before sending a report.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    branch: str
+    file_path: str
+    commits: list[FreshnessCommit] = Field(default_factory=list)
+    checked_at: str
+    relation: Literal["audited_branch", "sibling_branch"] = "sibling_branch"
+
+
 class Grounding(BaseModel):
     """Deterministic citation-grounding result attached at the validate stage: which of a
     finding's cited files / project-specific code symbols could NOT be found in the actual repo
@@ -160,6 +184,7 @@ class Finding(BaseModel):
     validation: Optional[Validation] = None
     corroboration: Optional[Corroboration] = None
     verification: Optional[Verification] = None
+    freshness_flag: Optional[list[FreshnessFlag]] = None
     grounding: Optional[Grounding] = None
     # Orchestrator bookkeeping (not in schema, allowed via extra="allow"):
     source_focus: Optional[str] = None
@@ -205,6 +230,11 @@ class RunMeta(BaseModel):
     repo_is_url: bool
     repo_commit: Optional[str] = None       # pinned HEAD SHA of the analyzed repo, if it is a git tree
     repo_commit_date: Optional[str] = None  # ISO date of that commit, if available
+    requested_ref: Optional[str] = None     # raw --commit as given (branch/tag/sha), before
+                                             # resolution to repo_commit; None if no --commit was
+                                             # passed (default branch head). A branch-shaped value
+                                             # here is the true audited branch name even when the
+                                             # checkout ends up on a detached HEAD (pinned commit).
     runner: str
     stage_models: dict[str, str]
     # Structural guardrail flags:

@@ -12,7 +12,7 @@ from .context import RunContext
 from .ledger import Ledger
 from .progress import ProgressReporter
 from .runner import RunnerCancelled, build_runner
-from .stages import (audit, corroborate, deep_verify, ingest, live, recon, report, research,
+from .stages import (audit, corroborate, deep_verify, freshness, ingest, live, recon, report, research,
                      runtime, sca, second_opinion, validate)
 
 
@@ -71,6 +71,10 @@ def do_verify(ctx: RunContext):
     return deep_verify.run(ctx)
 
 
+def do_freshness_check(ctx: RunContext):
+    return freshness.run(ctx)
+
+
 def do_runtime(ctx: RunContext):
     return runtime.run(ctx)
 
@@ -89,7 +93,7 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
                  reporter: ProgressReporter | None = None,
                  cancel_event=None, commit: str | None = None) -> dict:
     """Run the pipeline (ingest → [research] → recon → audit → [sca] → [second-opinion] → validate →
-    [corroborate] → [verify] → [runtime] → report). Never submits.
+    [corroborate] → [verify] → [freshness_check] → [runtime] → report). Never submits.
 
     ``research_enabled`` (default on) inserts the Stage-0 web-OSINT step before recon; it is the
     only networked session and is best-effort (a failure never aborts the run). Optional
@@ -100,12 +104,14 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
     do_second_opinion_stage = (not dry_run) and ctx.config.second_opinion_passes > 0
     do_corroborate_stage = (not dry_run) and ctx.config.corroborate_enabled
     do_verify_stage = (not dry_run) and ctx.config.verify_enabled
+    do_freshness_stage = (not dry_run) and ctx.config.freshness_check_enabled
     do_runtime_stage = (not dry_run) and ctx.config.runtime_enabled
     stages = (["ingest"] + (["research"] if research_enabled else []) + ["recon"]
               + ([] if dry_run else ["audit"] + (["sca"] if do_sca_stage else [])
                  + (["second_opinion"] if do_second_opinion_stage else [])
                  + ["validate"] + (["corroborate"] if do_corroborate_stage else [])
                  + (["verify"] if do_verify_stage else [])
+                 + (["freshness_check"] if do_freshness_stage else [])
                  + (["runtime"] if do_runtime_stage else []) + ["report"]))
     own = reporter is None
     reporter = reporter or ProgressReporter(ctx, stages)
@@ -161,6 +167,8 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
         _stage("corroborate", lambda: do_corroborate(ctx))
     if do_verify_stage:
         _stage("verify", lambda: do_verify(ctx))
+    if do_freshness_stage:
+        _stage("freshness_check", lambda: do_freshness_check(ctx))
     if do_runtime_stage:
         _stage("runtime", lambda: do_runtime(ctx))
     report_path = _stage("report", lambda: do_report(ctx))

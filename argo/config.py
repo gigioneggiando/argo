@@ -230,6 +230,14 @@ class PipelineConfig:
     # crash. 1 = no retry (legacy/cheap behavior).
     verify_max_attempts: int = 2
 
+    # --- Freshness check (opt-in, networked git history check; informational only) -----------------
+    # OFF by default. Late in the pipeline, check whether cited files were touched on the audited
+    # branch after the pinned commit or on version-looking sibling release/maintenance branches.
+    # This never proves a finding is fixed and never changes/drops findings; it only adds a
+    # "verify before sending" flag for human review. Best-effort: no git/network/origin -> skip.
+    freshness_check_enabled: bool = False
+    freshness_lookback_days: int = 365
+
     # --- Runtime verification (opt-in, sandboxed; see docs/runtime-verification-study.md) ---------
     # OFF by default. When on, build the OSS target from the cloned source into an EPHEMERAL,
     # EGRESS-BLOCKED (--network=none), LOOPBACK-ONLY container and probe ONLY that local instance to

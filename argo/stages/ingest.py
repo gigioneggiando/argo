@@ -380,6 +380,7 @@ def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: boo
         target_type=scope.target_type,
         repo_source=repo_source,
         repo_is_url=is_url,
+        requested_ref=commit,
         repo_commit=commit_sha,
         repo_commit_date=commit_date,
         runner=ctx.config.runner,

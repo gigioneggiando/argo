@@ -116,11 +116,39 @@ def _counts_by_severity(findings: list[dict]) -> dict[str, int]:
     return counts
 
 
+def _freshness_rows(findings: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for f in findings:
+        flags = f.get("freshness_flag") or []
+        if isinstance(flags, dict):
+            flags = [flags]
+        for flag in flags:
+            if not isinstance(flag, dict):
+                continue
+            commits = []
+            for c in flag.get("commits") or []:
+                if not isinstance(c, dict):
+                    continue
+                sha = (c.get("sha") or "")[:12] or "unknown"
+                date = c.get("author_date") or "date unknown"
+                subject = c.get("subject") or "(no subject)"
+                commits.append(f"`{sha}` ({date}) {subject}")
+            rows.append({
+                "finding_id": f.get("id", "?"),
+                "branch": flag.get("branch", "?"),
+                "relation": flag.get("relation", "sibling_branch"),
+                "file_path": flag.get("file_path", "?"),
+                "commits": "; ".join(commits) if commits else "commit details unavailable",
+            })
+    return rows
+
+
 def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_calls,
                    fixed_upstream=None, split_originals=None, merged_findings=None) -> str:
     fixed_upstream = fixed_upstream or []
     split_originals = split_originals or []
     merged_findings = merged_findings or []
+    freshness_rows = _freshness_rows(survivors)
     counts = _counts_by_severity(survivors)
     confirmed = [f for f in survivors if _verdict(f) == "confirmed"]
     nrv = [f for f in survivors if _verdict(f) == "needs_runtime_verification"]
@@ -227,6 +255,21 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
             ev = corr.get("evidence_urls") or []
             tail = f" ({ev[0]})" if ev else ""
             L.append(f"- `{f.get('id')}` {f.get('title')} ({f.get('cwe')}) - fixed in `{ref}`{tail}")
+        L.append("")
+
+    # Freshness check appendix - informational only, active findings unchanged.
+    if freshness_rows:
+        L.append("## Freshness check - verify before sending")
+        L.append("")
+        L.append("These commits touched files cited by active findings on the audited branch after "
+                 "the pinned commit or on version-looking sibling branches. This is informational "
+                 "only: a same-file touch is not proof of a fix and does not change severity, "
+                 "confidence, or reporting status.")
+        for row in freshness_rows:
+            relation = {"audited_branch": "audited branch",
+                        "sibling_branch": "sibling branch"}.get(row["relation"], row["relation"])
+            L.append(f"- `{row['finding_id']}` {relation} `{row['branch']}`, file "
+                     f"`{row['file_path']}` - {row['commits']}")
         L.append("")
 
     # Split originals (deep-verify appendix — kept, not silently deleted)

@@ -9,7 +9,8 @@ import threading
 from pathlib import Path
 
 from argo.config import PipelineConfig
-from argo.orchestrator import (PipelineCancelled, build_context, new_run_id, run_pipeline)
+from argo.orchestrator import (PipelineCancelled, build_context, new_run_id, pipeline_stages,
+                               run_pipeline)
 from argo.progress import ProgressReporter
 
 from .schemas import RunRequest
@@ -55,8 +56,7 @@ class JobManager:
             links_path = ctx.run_dir / "links.txt"
             links_path.write_text(req.links, encoding="utf-8")
 
-        stages = (["ingest"] + (["research"] if research else []) + ["recon"]
-                  + ([] if req.dry_run else ["audit", "validate", "report"]))
+        stages = pipeline_stages(ctx, dry_run=req.dry_run, research_enabled=research)
         reporter = ProgressReporter(ctx, stages)
         reporter.begin()  # status.json exists before this call returns
 

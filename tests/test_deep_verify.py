@@ -211,7 +211,7 @@ def test_exhausts_retries_and_falls_back_to_inconclusive(env, make_scenario):
     vf = _validated(ctx)
     f1 = next(f for f in vf["findings"] if f["id"] == "FULL-001")
     assert f1["verification"]["verdict"] == "inconclusive"
-    assert "no verdict file" in f1["verification"]["rationale"]
+    assert "deep-verify session failed" in f1["verification"]["rationale"]
 
 
 # --------------------------------------------------------------------------- guardrail

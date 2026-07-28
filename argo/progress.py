@@ -31,14 +31,21 @@ class ProgressReporter:
     Cost is read live from the ledger so it advances even mid-stage.
     """
 
-    def __init__(self, ctx: "RunContext", stages: tuple[str, ...] | list[str]):
+    def __init__(self, ctx: "RunContext", stages: tuple[str, ...] | list[str],
+                 initial_status: dict | None = None):
         self.ctx = ctx
         self.stages = list(stages)
         self._lock = threading.Lock()
-        self._state = "starting"
-        self._error: Optional[str] = None
-        self._started_at = _now()
+        self._state = str(initial_status.get("state") or "starting") if initial_status else "starting"
+        self._error: Optional[str] = initial_status.get("error") if initial_status else None
+        self._retry_after: Optional[str] = initial_status.get("retry_after") if initial_status else None
+        self._started_at = (initial_status.get("started_at") if initial_status else None) or _now()
         self._stage_state = {s: {"name": s, "state": "pending"} for s in self.stages}
+        if initial_status:
+            for st in initial_status.get("stages") or []:
+                name = st.get("name") if isinstance(st, dict) else None
+                if name in self._stage_state:
+                    self._stage_state[name].update(st)
         self._begun = False
 
     # -- lifecycle ------------------------------------------------------------------
@@ -48,6 +55,8 @@ class ProgressReporter:
                 return
             self._begun = True
             self._state = "running"
+            self._error = None
+            self._retry_after = None
             self._write()
 
     def start_stage(self, stage: str) -> None:
@@ -55,6 +64,12 @@ class ProgressReporter:
             st = self._stage_state.setdefault(stage, {"name": stage, "state": "pending"})
             st["state"] = "running"
             st["started_at"] = _now()
+            st.pop("ended_at", None)
+            st.pop("error", None)
+            st.pop("retry_after", None)
+            self._state = "running"
+            self._error = None
+            self._retry_after = None
             self._write()
 
     def finish_stage(self, stage: str) -> None:
@@ -62,20 +77,30 @@ class ProgressReporter:
             st = self._stage_state.setdefault(stage, {"name": stage, "state": "pending"})
             st["state"] = "done"
             st["ended_at"] = _now()
+            st.pop("error", None)
+            st.pop("retry_after", None)
             self._write()
 
-    def fail_stage(self, stage: str, error: str) -> None:
+    def fail_stage(self, stage: str, error: str, retry_after: str | None = None) -> None:
         with self._lock:
             st = self._stage_state.setdefault(stage, {"name": stage, "state": "pending"})
             st["state"] = "failed"
             st["ended_at"] = _now()
+            st["error"] = error
+            if retry_after:
+                st["retry_after"] = retry_after
+            else:
+                st.pop("retry_after", None)
             self._state = "failed"
             self._error = error
+            self._retry_after = retry_after
             self._write()
 
     def complete(self) -> None:
         with self._lock:
             self._state = "completed"
+            self._error = None
+            self._retry_after = None
             self._write()
 
     def cancelled(self) -> None:
@@ -90,6 +115,7 @@ class ProgressReporter:
         with self._lock:
             self._state = "failed"
             self._error = error
+            self._retry_after = None
             self._write()
 
     # -- snapshot -------------------------------------------------------------------
@@ -109,6 +135,7 @@ class ProgressReporter:
             "artifacts": self._artifacts(),
             "cost_usd": round(cost, 6),
             "error": self._error,
+            "retry_after": self._retry_after,
             "started_at": self._started_at,
             "updated_at": _now(),
         }

@@ -9,7 +9,8 @@ model failed to surface.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+import json
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 # --- Model IDs (the most capable current Claude models) -----------------------------
@@ -180,6 +181,11 @@ class PipelineConfig:
     # advisories. Emits a synthetic `dependencies` focus that joins the normal validate+report flow.
     sca_enabled: bool = True
 
+    # Stage-0 web OSINT / threat intel before recon. Historically this was passed as a separate
+    # run_pipeline argument; keeping it in the persisted config makes resume reconstruct the original
+    # stage set instead of guessing whether the run was started with --research or --no-research.
+    research_enabled: bool = True
+
     # --- Second opinion (opt-in; runs AFTER audit/[sca], BEFORE validate) --------------------------
     # OFF by default (0 = disabled). N >= 1 runs N ADDITIONAL, fully independent recon+audit passes
     # over the same already-ingested scope/repo, then merges their raw findings into the primary's
@@ -343,3 +349,44 @@ class PipelineConfig:
             max_parallel_audits=1,
             audit_critic_passes=0,        # smoke stays single-session
         )
+
+
+_PATH_FIELDS = {"runs_dir", "prompts_dir", "ledger_path", "fixtures_dir"}
+
+
+def _jsonable(value):
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    return value
+
+
+def pipeline_config_to_dict(config: PipelineConfig) -> dict:
+    """Return a JSON-safe representation of the effective PipelineConfig."""
+    return {f.name: _jsonable(getattr(config, f.name)) for f in fields(PipelineConfig)}
+
+
+def pipeline_config_from_dict(raw: dict) -> PipelineConfig:
+    """Reconstruct PipelineConfig from config.json, ignoring unknown future keys."""
+    if not isinstance(raw, dict):
+        raise ValueError("config.json must contain a JSON object")
+    known = {f.name for f in fields(PipelineConfig)}
+    data = {k: v for k, v in raw.items() if k in known}
+    for name in _PATH_FIELDS:
+        if name in data and data[name] is not None:
+            data[name] = Path(data[name])
+    return PipelineConfig(**data)
+
+
+def write_pipeline_config(path: Path, config: PipelineConfig) -> None:
+    Path(path).write_text(json.dumps(pipeline_config_to_dict(config), indent=2), encoding="utf-8")
+
+
+def load_pipeline_config(path: Path) -> PipelineConfig:
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(p)
+    return pipeline_config_from_dict(json.loads(p.read_text(encoding="utf-8-sig")))

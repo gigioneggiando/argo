@@ -10,7 +10,7 @@ from pathlib import Path
 from .config import PipelineConfig
 from .context import RunContext
 from .ledger import Ledger
-from .progress import ProgressReporter
+from .progress import ProgressReporter, read_status
 from .runner import RunnerCancelled, build_runner
 from .stages import (audit, corroborate, deep_verify, freshness, ingest, live, recon, report, research,
                      runtime, sca, second_opinion, validate)
@@ -87,39 +87,79 @@ def do_report(ctx: RunContext):
     return report.run(ctx)
 
 
-def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: bool = False,
-                 research_enabled: bool = True, repo_is_url: bool | None = None,
-                 links_path: Path | None = None, accepted_risks_path: Path | None = None,
-                 reporter: ProgressReporter | None = None,
-                 cancel_event=None, commit: str | None = None) -> dict:
-    """Run the pipeline (ingest → [research] → recon → audit → [sca] → [second-opinion] → validate →
-    [corroborate] → [verify] → [freshness_check] → [runtime] → report). Never submits.
+def pipeline_stages(ctx: RunContext, *, dry_run: bool = False,
+                    research_enabled: bool | None = None) -> list[str]:
+    """Compute the effective stage sequence from the run config."""
+    research_on = ctx.config.research_enabled if research_enabled is None else research_enabled
+    stages = ["ingest"] + (["research"] if research_on else []) + ["recon"]
+    if dry_run:
+        return stages
+    stages += ["audit"]
+    if ctx.config.sca_enabled:
+        stages.append("sca")
+    if ctx.config.second_opinion_passes > 0:
+        stages.append("second_opinion")
+    stages.append("validate")
+    if ctx.config.corroborate_enabled:
+        stages.append("corroborate")
+    if ctx.config.verify_enabled:
+        stages.append("verify")
+    if ctx.config.freshness_check_enabled:
+        stages.append("freshness_check")
+    if ctx.config.runtime_enabled:
+        stages.append("runtime")
+    stages.append("report")
+    return stages
 
-    ``research_enabled`` (default on) inserts the Stage-0 web-OSINT step before recon; it is the
-    only networked session and is best-effort (a failure never aborts the run). Optional
-    ``reporter`` records per-stage progress to ``status.json``; ``cancel_event`` aborts at the next
-    stage boundary AND mid-stage — it is wired into the runner so an in-flight CLI session is killed.
-    """
-    do_sca_stage = (not dry_run) and ctx.config.sca_enabled
-    do_second_opinion_stage = (not dry_run) and ctx.config.second_opinion_passes > 0
-    do_corroborate_stage = (not dry_run) and ctx.config.corroborate_enabled
-    do_verify_stage = (not dry_run) and ctx.config.verify_enabled
-    do_freshness_stage = (not dry_run) and ctx.config.freshness_check_enabled
-    do_runtime_stage = (not dry_run) and ctx.config.runtime_enabled
-    stages = (["ingest"] + (["research"] if research_enabled else []) + ["recon"]
-              + ([] if dry_run else ["audit"] + (["sca"] if do_sca_stage else [])
-                 + (["second_opinion"] if do_second_opinion_stage else [])
-                 + ["validate"] + (["corroborate"] if do_corroborate_stage else [])
-                 + (["verify"] if do_verify_stage else [])
-                 + (["freshness_check"] if do_freshness_stage else [])
-                 + (["runtime"] if do_runtime_stage else []) + ["report"]))
-    own = reporter is None
-    reporter = reporter or ProgressReporter(ctx, stages)
-    if own:
-        reporter.begin()
 
-    # Wire cancellation into the runner so a long session (e.g. a 20-min audit) is killed on Cancel,
-    # not just checked between stages.
+def _stage_functions(
+    ctx: RunContext,
+    stages: list[str],
+    *,
+    brief: Path | None = None,
+    repo: str | None = None,
+    repo_is_url: bool | None = None,
+    links_path: Path | None = None,
+    accepted_risks_path: Path | None = None,
+    commit: str | None = None,
+    resume: bool = False,
+) -> list[tuple[str, object]]:
+    funcs = {
+        "research": lambda: do_research(ctx),
+        "recon": lambda: do_recon(ctx),
+        "audit": lambda: do_audit(ctx),
+        "sca": lambda: do_sca(ctx),
+        "second_opinion": lambda: do_second_opinion(ctx),
+        "validate": lambda: do_validate(ctx),
+        "corroborate": lambda: do_corroborate(ctx),
+        "verify": lambda: do_verify(ctx),
+        "freshness_check": lambda: do_freshness_check(ctx),
+        "runtime": lambda: do_runtime(ctx),
+        "live": lambda: do_live(ctx),
+        "report": lambda: do_report(ctx),
+    }
+    if not resume:
+        if repo is None:
+            raise ValueError("repo is required for ingest")
+        funcs["ingest"] = lambda: do_ingest(
+            ctx, brief, repo, repo_is_url=repo_is_url, links_path=links_path,
+            accepted_risks_path=accepted_risks_path, commit=commit)
+    return [(name, funcs[name]) for name in stages if name in funcs]
+
+
+def _run_stage_sequence(ctx: RunContext, stage_fns: list[tuple[str, object]],
+                        reporter: ProgressReporter, cancel_event=None,
+                        *, start_from: str | None = None,
+                        done_stages: set[str] | None = None) -> dict[str, object]:
+    names = [name for name, _fn in stage_fns]
+    if start_from is not None and start_from not in names:
+        raise ValueError(f"unknown or non-resumable stage {start_from!r}")
+    start_idx = names.index(start_from) if start_from else 0
+    done_stages = done_stages or set()
+    results: dict[str, object] = {}
+
+    # Wire cancellation into the runner so a long session is killed on Cancel, not just checked
+    # between stages.
     ctx.runner.cancel_event = cancel_event
 
     def _check_cancel() -> None:
@@ -127,55 +167,127 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
             reporter.cancelled()
             raise PipelineCancelled(f"run {ctx.run_id} cancelled")
 
-    def _stage(name: str, fn):
+    for idx, (name, fn) in enumerate(stage_fns):
+        if idx < start_idx:
+            continue
+        if name in done_stages:
+            continue
         _check_cancel()
         reporter.start_stage(name)
         try:
             result = fn()
         except PipelineCancelled:
             raise
-        except RunnerCancelled as exc:                 # killed mid-stage -> a cancellation, not a failure
+        except RunnerCancelled as exc:
             reporter.cancelled()
             raise PipelineCancelled(f"run {ctx.run_id} cancelled mid-stage ({name})") from exc
         except Exception as exc:
-            reporter.fail_stage(name, f"{type(exc).__name__}: {exc}")
+            reporter.fail_stage(
+                name,
+                f"{type(exc).__name__}: {exc}",
+                retry_after=getattr(exc, "retry_after", None),
+            )
             raise
         reporter.finish_stage(name)
-        return result
+        results[name] = result
+    return results
 
-    _stage("ingest", lambda: do_ingest(ctx, brief, repo, repo_is_url=repo_is_url,
-                                       links_path=links_path,
-                                       accepted_risks_path=accepted_risks_path, commit=commit))
-    if research_enabled:
-        _stage("research", lambda: do_research(ctx))
-    prompts = _stage("recon", lambda: do_recon(ctx))
+
+def _completed_summary(ctx: RunContext) -> dict:
+    report_path = ctx.run_dir / "REPORT.md"
+    return {
+        "run_id": ctx.run_id,
+        "report": str(report_path) if report_path.exists() else None,
+        "drafts_dir": str(ctx.drafts_dir),
+        "cost_usd": ctx.ledger.run_cost(ctx.run_id),
+    }
+
+
+def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: bool = False,
+                 research_enabled: bool | None = None, repo_is_url: bool | None = None,
+                 links_path: Path | None = None, accepted_risks_path: Path | None = None,
+                 reporter: ProgressReporter | None = None,
+                 cancel_event=None, commit: str | None = None) -> dict:
+    """Run the pipeline and emit status.json progress. Never submits."""
+    if research_enabled is not None and research_enabled != ctx.config.research_enabled:
+        ctx.config = ctx.config.with_overrides(research_enabled=research_enabled)
+    stages = pipeline_stages(ctx, dry_run=dry_run)
+    own = reporter is None
+    reporter = reporter or ProgressReporter(ctx, stages)
+    if own:
+        reporter.begin()
+
+    results = _run_stage_sequence(
+        ctx,
+        _stage_functions(
+            ctx, stages, brief=brief, repo=repo, repo_is_url=repo_is_url,
+            links_path=links_path, accepted_risks_path=accepted_risks_path, commit=commit),
+        reporter,
+        cancel_event,
+    )
+    reporter.complete()
     if dry_run:
-        reporter.complete()
+        prompts = results.get("recon") or []
         return {
             "run_id": ctx.run_id,
             "stopped_after": "recon (dry-run)",
             "prompts": [str(p) for p in prompts],
             "scope": str(ctx.scope_path),
         }
-    _stage("audit", lambda: do_audit(ctx))
-    if do_sca_stage:
-        _stage("sca", lambda: do_sca(ctx))
-    if do_second_opinion_stage:
-        _stage("second_opinion", lambda: do_second_opinion(ctx))
-    _stage("validate", lambda: do_validate(ctx))
-    if do_corroborate_stage:
-        _stage("corroborate", lambda: do_corroborate(ctx))
-    if do_verify_stage:
-        _stage("verify", lambda: do_verify(ctx))
-    if do_freshness_stage:
-        _stage("freshness_check", lambda: do_freshness_check(ctx))
-    if do_runtime_stage:
-        _stage("runtime", lambda: do_runtime(ctx))
-    report_path = _stage("report", lambda: do_report(ctx))
-    reporter.complete()
+    report_path = results.get("report") or (ctx.run_dir / "REPORT.md")
     return {
         "run_id": ctx.run_id,
         "report": str(report_path),
+        "drafts_dir": str(ctx.drafts_dir),
+        "cost_usd": ctx.ledger.run_cost(ctx.run_id),
+    }
+
+
+def resume_pipeline(ctx: RunContext, from_stage: str | None = None,
+                    reporter: ProgressReporter | None = None,
+                    cancel_event=None) -> dict:
+    """Resume an existing run from the first stage not marked done in status.json."""
+    status = read_status(ctx.run_dir)
+    if not status:
+        raise FileNotFoundError(f"cannot resume run {ctx.run_id}: missing or unreadable status.json")
+    stages = pipeline_stages(ctx)
+    state_by_stage = {
+        st.get("name"): st.get("state")
+        for st in (status.get("stages") or [])
+        if isinstance(st, dict)
+    }
+    if from_stage is not None:
+        if from_stage not in stages:
+            raise ValueError(f"stage {from_stage!r} is not in this run's configured stage sequence")
+        start = from_stage
+    else:
+        start = next((s for s in stages if state_by_stage.get(s) != "done"), None)
+    if start is None:
+        return _completed_summary(ctx)
+    if start == "ingest":
+        raise RuntimeError(
+            "cannot resume from ingest: the original --brief/--repo inputs are not replayed by "
+            "argo resume. Re-run argo pipeline/ingest with the original inputs.")
+
+    done = {s for s, state in state_by_stage.items() if state == "done"}
+    own = reporter is None
+    reporter = reporter or ProgressReporter(ctx, stages, initial_status=status)
+    if own:
+        reporter.begin()
+    results = _run_stage_sequence(
+        ctx,
+        _stage_functions(ctx, stages, resume=True),
+        reporter,
+        cancel_event,
+        start_from=start,
+        done_stages=done,
+    )
+    reporter.complete()
+    report_path = results.get("report") or (ctx.run_dir / "REPORT.md")
+    return {
+        "run_id": ctx.run_id,
+        "resumed_from": start,
+        "report": str(report_path) if Path(report_path).exists() else str(report_path),
         "drafts_dir": str(ctx.drafts_dir),
         "cost_usd": ctx.ledger.run_cost(ctx.run_id),
     }

@@ -16,16 +16,20 @@ There is deliberately NO submit command: submission is a manual human action.
 from __future__ import annotations
 
 import json
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 import typer
 
-from .config import OPUS, PipelineConfig
+from .config import OPUS, PipelineConfig, load_pipeline_config
 from .orchestrator import (build_context, do_audit, do_corroborate, do_freshness_check, do_ingest,
                            do_live, do_recon, do_report, do_runtime, do_sca, do_second_opinion,
                            do_validate, do_verify, new_run_id,
-                           run_pipeline)
+                           resume_pipeline, run_pipeline)
+from .progress import read_status
+from .runner import parse_retry_after
 
 app = typer.Typer(add_completion=False, help="Argo — authorized source-static bug-bounty audits.")
 
@@ -123,6 +127,78 @@ AcceptedRisksOpt = typer.Option(
 
 def _emit(obj: dict) -> None:
     typer.echo(json.dumps(obj, indent=2))
+
+
+def _parse_duration(text: str) -> timedelta:
+    raw = text.strip().lower()
+    if raw.isdigit():
+        return timedelta(seconds=int(raw))
+    total = timedelta()
+    pos = 0
+    import re
+    for m in re.finditer(r"(\d+(?:\.\d+)?)([smhd])", raw):
+        if m.start() != pos:
+            raise typer.BadParameter(f"invalid duration {text!r}; use forms like 30m, 12h, 1d")
+        value = float(m.group(1))
+        unit = m.group(2)
+        if unit == "s":
+            total += timedelta(seconds=value)
+        elif unit == "m":
+            total += timedelta(minutes=value)
+        elif unit == "h":
+            total += timedelta(hours=value)
+        elif unit == "d":
+            total += timedelta(days=value)
+        pos = m.end()
+    if pos != len(raw) or total.total_seconds() <= 0:
+        raise typer.BadParameter(f"invalid duration {text!r}; use forms like 30m, 12h, 1d")
+    return total
+
+
+def _resume_config(run: str, runs_dir: Path) -> PipelineConfig:
+    run_dir = Path(runs_dir) / run
+    config_path = run_dir / "config.json"
+    if not config_path.exists():
+        raise typer.BadParameter(
+            f"cannot resume run {run}: {config_path} is missing. This run predates config "
+            "persistence; use the manual per-stage commands with the original flags instead.")
+    try:
+        cfg = load_pipeline_config(config_path)
+    except Exception as exc:
+        raise typer.BadParameter(f"cannot resume run {run}: failed to read {config_path}: {exc}") from exc
+    if Path(cfg.runs_dir).resolve() != Path(runs_dir).resolve():
+        cfg = cfg.with_overrides(runs_dir=Path(runs_dir))
+    return cfg
+
+
+def _failed_retry_after(status: dict | None) -> str | None:
+    if not status:
+        return None
+    for st in status.get("stages") or []:
+        if isinstance(st, dict) and st.get("state") == "failed" and st.get("retry_after"):
+            return st.get("retry_after")
+    return status.get("retry_after")
+
+
+def _sleep_until_retry_after(retry_after: str, *, max_wait: timedelta) -> None:
+    target = parse_retry_after(retry_after)
+    if target is None:
+        return
+    now = datetime.now(timezone.utc).astimezone(target.tzinfo)
+    wake = target + timedelta(seconds=60)
+    if wake <= now:
+        return
+    wait_for = wake - now
+    if wait_for > max_wait:
+        raise typer.BadParameter(
+            f"retry_after {retry_after!r} is {wait_for} away, beyond --max-wait {max_wait}")
+    while True:
+        now = datetime.now(timezone.utc).astimezone(wake.tzinfo)
+        remaining = wake - now
+        if remaining.total_seconds() <= 0:
+            return
+        typer.echo(f"[resume] waiting {remaining} until retry_after={retry_after!r}")
+        time.sleep(min(300, max(1, remaining.total_seconds())))
 
 
 # --- commands -------------------------------------------------------------------------
@@ -355,6 +431,29 @@ def report(run: str = RunIdArg, runner: str = RunnerOpt,
 
 
 @app.command()
+def resume(
+    run: str = RunIdArg,
+    wait: bool = typer.Option(False, "--wait",
+                              help="sleep until the failed stage's retry_after hint, then resume"),
+    max_wait: str = typer.Option("12h", "--max-wait",
+                                 help="maximum time to wait with --wait, e.g. 30m, 12h, 1d"),
+    runs_dir: Path = RunsDirOpt,
+):
+    """Resume an existing pipeline run using the run's persisted config.json."""
+    cfg = _resume_config(run, runs_dir)
+    status = read_status(Path(cfg.runs_dir) / run)
+    retry_after = _failed_retry_after(status)
+    target = parse_retry_after(retry_after) if retry_after else None
+    if target is not None and target > datetime.now(timezone.utc).astimezone(target.tzinfo):
+        if not wait:
+            raise typer.BadParameter(f"resume again after {retry_after}")
+        _sleep_until_retry_after(retry_after, max_wait=_parse_duration(max_wait))
+    ctx = build_context(cfg, run)
+    summary = resume_pipeline(ctx)
+    _emit(summary)
+
+
+@app.command()
 def fix(run: str = RunIdArg,
         no_verify: bool = typer.Option(False, "--no-verify",
                                        help="skip the compile / no-new-errors verification"),
@@ -477,7 +576,7 @@ def pipeline(
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts)
-    cfg = cfg.with_overrides(sca_enabled=sca, runtime_enabled=runtime,
+    cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
                              verify_enabled=verify, verify_max_findings=verify_max_findings,
@@ -494,7 +593,8 @@ def pipeline(
         cfg = cfg.with_overrides(runner=runner, codex_model=codex_model, codex_oss=codex_oss,
                                  codex_local_provider=codex_local_provider)
         research = False                                   # a cheap smoke stays fully offline
-        cfg = cfg.with_overrides(corroborate_enabled=False)  # ...and skips the networked cross-check
+        cfg = cfg.with_overrides(research_enabled=False,
+                                 corroborate_enabled=False)  # ...and skips the networked cross-check
         if brief is None:
             brief = Path("tests/fixtures/brief.txt")       # bundled tiny fixture
         if repo is None:
@@ -503,7 +603,8 @@ def pipeline(
         raise typer.BadParameter("--repo is required (a local folder path or a git URL)")
     if brief is None:
         research = False     # local/personal review: no program context to web-research, stay offline
-        cfg = cfg.with_overrides(corroborate_enabled=False)  # ...and no networked corroboration
+        cfg = cfg.with_overrides(research_enabled=False,
+                                 corroborate_enabled=False)  # ...and no networked corroboration
     ctx = build_context(cfg, run or new_run_id())
     summary = run_pipeline(ctx, brief, repo, dry_run=dry_run, research_enabled=research,
                            links_path=links, accepted_risks_path=accepted_risks, commit=commit)

@@ -559,7 +559,7 @@ already tracks at the right moment**, not by building new tracking:
    complete). Users learn the number from the final summary, after the spend already happened.
 
 #### D1 — `argo resume` (generalize the hand-written "finisher script" pattern) — effort **M** ·
-operator value **High** · paper value **Low**
+operator value **High** · paper value **Low** - DONE (2026-07-28)
 - **What already exists, unused for this:** `argo/runner.py:883-887` (`_extract_session_reset_hint`)
   already regex-parses a reset time out of the raw error text (e.g. "resets 1:50pm (Europe/Rome)")
   but only logs it today — the parsed value is discarded. `argo/progress.py`'s `ProgressReporter`
@@ -589,6 +589,10 @@ operator value **High** · paper value **Low**
   after the whole process exits (surviving a reboot) — real infra (cron/Task Scheduler, a job queue)
   disproportionate to "one user, occasional multi-hour waits"; `--wait` inside one long-lived process
   covers the actually-observed need.
+
+- **Shipped note (2026-07-28):** `argo resume --run ID [--wait] [--max-wait DURATION]` now loads the run's persisted `config.json`, resumes from the first non-done configured stage, records `retry_after` in `status.json`, and re-arms fallback backends after parseable reset hints.
+- **Additional hardening shipped with D1:** ingest now persists the full effective `PipelineConfig` to `config.json`, and no-status `is_error` runner envelopes now raise `RunnerError` so fallback/retry paths are exercised instead of returning garbage output.
+- **Post-implementation review fix:** `parse_retry_after`'s timezone-name lookup only caught `ZoneInfoNotFoundError`, but `zoneinfo.ZoneInfo` raises plain `ValueError` for a malformed key (path-traversal-shaped, embedded NUL, ...) — an untrusted-looking reset-hint string could have crashed the fallback chain it exists to protect. Broadened the catch; regression test in `tests/test_resume.py`.
 
 #### D2 — `argo estimate` (preflight cost range before spending anything) — effort **S–M** ·
 operator value **High** · paper value **Med** (implements the cost-preview constraint the roadmap's

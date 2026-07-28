@@ -27,7 +27,9 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config import ARTIFACT_TOOLS, PipelineConfig, estimate_cost_usd
 from .guardrails import assert_no_network_tools, enforce_session_tools, session_policy
@@ -53,7 +55,11 @@ class LLMResult:
 
 
 class RunnerError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, retry_after: str | None = None,
+                 retryable: bool = False):
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.retryable = retryable
 
 
 class RunnerCancelled(RuntimeError):
@@ -263,7 +269,8 @@ class AgentRunner(ABC):
             raise RunnerError(
                 f"claude session API error (stage={stage}, run_id={run_id}, label={label}): "
                 f"api_error_status={result.api_error_status!r}, stop_reason="
-                f"{result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix}")
+                f"{result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix}",
+                retry_after=reset_hint)
 
         # --- per-session caps (no native --max-turns in v2.1.178) ----------------------
         mt = self.config.session_max_turns
@@ -277,13 +284,16 @@ class AgentRunner(ABC):
                 f"session exceeded per-session cost cap ${mc:.4f} "
                 f"(cost=${result.cost_usd:.4f}, stage={stage}, run_id={run_id}, label={label})")
 
-        # Recoverable error (no api_error_status, e.g. budget/turn limit reached mid-write):
-        # return it so the stage can glob the scratch dir for partial artifacts.
+        # Recoverable error (no api_error_status): raise so FallbackRunner can retry/fall back.
+        # Stages that know how to salvage partial scratch artifacts still catch RunnerError.
         if result.is_error:
-            print(f"[runner] WARNING recoverable is_error session "
-                  f"(stage={stage}, run_id={run_id}, label={label}, "
-                  f"stop_reason={result.stop_reason!r}) — attempting partial recovery",
-                  file=sys.stderr)
+            reset_suffix = f", session_limit_reset_hint={reset_hint!r}" if reset_hint else ""
+            raise RunnerError(
+                f"recoverable is_error session (stage={stage}, run_id={run_id}, label={label}, "
+                f"stop_reason={result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix})",
+                retry_after=reset_hint,
+                retryable=True,
+            )
         return result
 
     def _session_budget(self, run_id: str) -> float | None:
@@ -869,6 +879,8 @@ _RETRYABLE_HINTS = ("session limit", "rate limit", "rate_limit", "api_error_stat
 
 
 def _is_retryable(exc: Exception) -> bool:
+    if bool(getattr(exc, "retryable", False)):
+        return True
     s = str(exc).lower()
     return any(h in s for h in _RETRYABLE_HINTS)
 
@@ -887,6 +899,63 @@ def _extract_session_reset_hint(text: str | None) -> str | None:
     return m.group(1).strip().rstrip(".,;") if m else None
 
 
+_TIME_HINT_RE = re.compile(
+    r"^\s*(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<ampm>am|pm)?"
+    r"(?:\s*\((?P<tz>[^)]+)\))?\s*$",
+    re.IGNORECASE,
+)
+
+
+def parse_retry_after(value: str | None, *, now: datetime | None = None) -> datetime | None:
+    """Best-effort conversion of a reset hint into a future aware datetime.
+
+    Supports ISO timestamps and Claude's common human hints such as ``5pm`` or
+    ``12:50am (Europe/Rome)``. If a time-only hint has already passed today, tomorrow is used.
+    """
+    if not value:
+        return None
+    text = value.strip()
+    now = now or datetime.now(timezone.utc).astimezone()
+    try:
+        iso = text[:-1] + "+00:00" if text.endswith("Z") else text
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=now.tzinfo)
+        return dt
+    except ValueError:
+        pass
+
+    m = _TIME_HINT_RE.match(text)
+    if not m:
+        return None
+    tzinfo = now.tzinfo
+    tz_name = (m.group("tz") or "").strip()
+    if tz_name:
+        try:
+            tzinfo = ZoneInfo(tz_name)
+        except (ZoneInfoNotFoundError, ValueError):
+            # ZoneInfo raises plain ValueError (not ZoneInfoNotFoundError) for a malformed key
+            # (path-traversal-shaped, embedded NUL, ...) — this is a best-effort parse of
+            # free-text error output, never worth crashing the fallback chain over.
+            tzinfo = now.tzinfo
+    hour = int(m.group("hour"))
+    minute = int(m.group("minute") or 0)
+    ampm = (m.group("ampm") or "").lower()
+    if ampm:
+        if hour < 1 or hour > 12:
+            return None
+        hour = hour % 12
+        if ampm == "pm":
+            hour += 12
+    if hour > 23 or minute > 59:
+        return None
+    base = now.astimezone(tzinfo)
+    dt = base.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if dt <= base:
+        dt += timedelta(days=1)
+    return dt
+
+
 class FallbackRunner(AgentRunner):
     """Chains backends for resilience: on a RETRYABLE limit (session/rate-limit/429) the SAME call is
     retried on the next backend (e.g. Claude -> Codex -> local). The model is recomputed per backend
@@ -896,7 +965,7 @@ class FallbackRunner(AgentRunner):
 
     def __init__(self, config: PipelineConfig, ledger: Ledger, runners: list[AgentRunner]):
         self._runners = runners                       # primary first; set BEFORE super().__init__
-        self._disabled: set[int] = set()
+        self._disabled: dict[int, datetime | None] = {}
         self._fb_lock = threading.Lock()
         super().__init__(config, ledger)
 
@@ -914,8 +983,13 @@ class FallbackRunner(AgentRunner):
         stage = kwargs.get("stage")
         for i, r in enumerate(self._runners):
             with self._fb_lock:
+                disabled_until = self._disabled.get(i)
                 if i in self._disabled:
-                    continue
+                    if disabled_until is None:
+                        continue
+                    if datetime.now(timezone.utc) <= disabled_until.astimezone(timezone.utc):
+                        continue
+                    del self._disabled[i]
             kw = dict(kwargs)
             if stage is not None:                     # each backend picks its own model for the stage
                 kw["model"] = r.config.model_for(stage)
@@ -925,12 +999,14 @@ class FallbackRunner(AgentRunner):
                 last_exc = exc
                 if not _is_retryable(exc):
                     raise
+                retry_at = parse_retry_after(getattr(exc, "retry_after", None))
                 with self._fb_lock:
-                    self._disabled.add(i)
+                    self._disabled[i] = retry_at
                 if i + 1 < len(self._runners):
+                    reset = f" until {retry_at.isoformat()}" if retry_at else ""
                     print(f"[runner] backend #{i} ({r.config.runner}) hit a retryable limit; "
-                          f"falling back to #{i + 1} ({self._runners[i + 1].config.runner})",
-                          file=sys.stderr)
+                          f"falling back to #{i + 1} ({self._runners[i + 1].config.runner})"
+                          f"{reset}", file=sys.stderr)
         raise last_exc if last_exc else RunnerError("all fallback backends exhausted")
 
     def _invoke(self, **kwargs):                      # never used — run() delegates whole calls

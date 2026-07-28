@@ -59,13 +59,14 @@ def _run(cfg, ledger, env, tmp_path, *, stage="audit"):
 
 
 # --------------------------------------------------------------------- caps (Step 3)
-def test_recoverable_is_error_returns_and_is_logged(tmp_path):
+def test_recoverable_is_error_raises_after_logging(tmp_path):
     ledger = Ledger(tmp_path / "l.sqlite")
     env = {"is_error": True, "api_error_status": None, "result": "partial",
            "usage": {"input_tokens": 1, "output_tokens": 2}, "total_cost_usd": 0.02,
            "num_turns": 2, "session_id": "s", "stop_reason": "max_budget"}
-    res = _run(PipelineConfig(), ledger, env, tmp_path)
-    assert res.is_error is True and res.cost_usd == 0.02     # returned for partial recovery
+    with pytest.raises(RunnerError) as e:
+        _run(PipelineConfig(), ledger, env, tmp_path)
+    assert e.value.retryable is True
     assert ledger.run_call_count("R") == 1                   # logged even on error
     ledger.close()
 

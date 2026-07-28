@@ -81,8 +81,8 @@ def test_full_pipeline_via_api(tmp_path):
         run_id = _start(client)
         st = _wait(client, run_id)
         assert st["state"] == "completed"
-        # research (default on) + ingest + recon + audit + validate + report = 6 stages
-        assert [s["state"] for s in st["stages"]] == ["done"] * 6
+        # research (default on) + ingest + recon + audit + validate + corroborate + report
+        assert [s["state"] for s in st["stages"]] == ["done"] * 7
         assert "research" in [s["name"] for s in st["stages"]]
         assert st["artifacts"]["report"] is True
         assert st["artifacts"]["validated_findings"] is True

@@ -541,6 +541,125 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
   the unzipped path to ingest with `is_url=False`. **Low value:** the server already resolves a typed local
   path on the same machine, so upload mainly helps a future remote deployment.
 
+### D. Resilience & cost transparency — ⬜ BACKLOG (proposed 2026-07-26, motivated by real recurring
+operator pain across this campaign's runs on Claude Pro/Max plans — see `docs/design-decisions.md`
+for how this differs from the Phase-8 retrospective cost report, which is done)
+
+Two related problems observed repeatedly in practice, both solvable mostly by **exposing state Argo
+already tracks at the right moment**, not by building new tracking:
+
+1. On Claude Pro/Max, a real run frequently outlives the rolling session-limit window. Today, once
+   every configured fallback backend is exhausted, the stage just fails
+   (`RunnerError("all fallback backends exhausted")`) and the run sits dead until a human notices,
+   waits past the reset time, and hand-writes a one-off script that re-enters the pipeline at the
+   right stage on the existing `run_id` — this exact pattern has been repeated from scratch on
+   nearly every large target this campaign has run (bonjour, coturn, mitmproxy, jsoup, Pumpkin, ...).
+2. There is no way to know a run's likely cost **before** starting it — only the hard `--budget`
+   ceiling (aborts mid-run once exceeded) and the Phase-8 `/costs` page (retrospective, after runs
+   complete). Users learn the number from the final summary, after the spend already happened.
+
+#### D1 — `argo resume` (generalize the hand-written "finisher script" pattern) — effort **M** ·
+operator value **High** · paper value **Low**
+- **What already exists, unused for this:** `argo/runner.py:883-887` (`_extract_session_reset_hint`)
+  already regex-parses a reset time out of the raw error text (e.g. "resets 1:50pm (Europe/Rome)")
+  but only logs it today — the parsed value is discarded. `argo/progress.py`'s `ProgressReporter`
+  already persists per-stage state (`pending/running/done/failed/skipped`) plus the raw error string
+  to `status.json` on every stage boundary (`fail_stage`). Every pipeline stage is already an
+  independent, resumable function taking an existing `ctx` (`do_ingest` … `do_report` in
+  `argo/orchestrator.py:34-83`), and the CLI already exposes each one standalone with `--run RUN_ID`
+  (`recon`/`run`/`sca`/`validate`/`corroborate`/`verify`/`report` in `argo/cli.py`). This is
+  precisely the primitive every hand-written `finish_<target>.py` in this campaign has used — it was
+  never generalized into the tool itself.
+- **Proposed:** (a) attach the parsed reset hint to the raised error (e.g. `RunnerError.retry_after`)
+  so `status.json` gains a machine-readable field, not just human text; (b) a
+  `resume_pipeline(ctx, from_stage=None)` in `orchestrator.py` that reads `status.json`, finds the
+  first non-`done` stage, and resumes `run_pipeline`'s stage sequence from there — turning every
+  future "write a finisher script" into `argo resume --run ID`; (c) `--wait [--max-wait 12h]`: if the
+  failed stage's `retry_after` is in the future, sleep (with periodic status prints) until then + a
+  small buffer and retry automatically — bounded, Ctrl+C-safe (state is file-based, so aborting a
+  wait loses nothing and `argo resume` is always re-invokable later); (d) as a side effect, fix a
+  real existing bug this campaign hit on the jsoup run: `FallbackRunner._disabled`
+  (`argo/runner.py:899`) is permanent for the process's whole lifetime once a backend trips a
+  retryable limit, so a long finisher process can never switch back to a backend that recovered
+  mid-run — once `retry_after` is tracked, re-arm a disabled backend once `now() > retry_after`
+  instead of never.
+- **Verdict:** build (a)+(b) first — they alone eliminate the recurring finisher-script busywork with
+  no new waiting behavior. (c) is a genuine nice-to-have on top; (d) is a real bug fix that falls out
+  for free once (a) exists. Explicitly deferred: a persistent daemon/OS-service that resumes runs
+  after the whole process exits (surviving a reboot) — real infra (cron/Task Scheduler, a job queue)
+  disproportionate to "one user, occasional multi-hour waits"; `--wait` inside one long-lived process
+  covers the actually-observed need.
+
+#### D2 — `argo estimate` (preflight cost range before spending anything) — effort **S–M** ·
+operator value **High** · paper value **Med** (implements the cost-preview constraint the roadmap's
+own "Constraints that shape every decision" section already states but never built)
+- **What already exists, unused for this:** `argo/ledger.py`'s `Ledger` already aggregates
+  `cost_by_model`, `cost_by_stage`, `recent_run_costs`; `argo/costs.py`'s `cost_report` already
+  buckets `avg_cost_per_run` **by archetype** (`argo/archetype.py`'s 11 canonical categories,
+  classified by recon and persisted in `meta.json`) across every run Argo has ever done. This is
+  real historical data with no new tracking required — only a new read path, surfaced before the
+  audit stage instead of only after `report`.
+- **Proposed:** (a) `argo estimate --repo <path/url> [--critic-passes N] [--second-opinion N]
+  [--corroborate/--no-corroborate] [--verify]` runs only `ingest`+`recon` (already the two cheap,
+  pre-audit stages) to get real LOC/file-count + the recon-classified archetype, looks up historical
+  cost for that archetype, and prints a **range from observed variance** (e.g. "archetype=
+  web_api_cms, N=7 past runs: $18-$61, median $34; this config historically runs ~1.6x baseline
+  based on stage-cost-share -> estimated $30-$95"), not a false-precision point number; (b) cold-start
+  fallback when an archetype has no history yet: a rough estimate from `cost_by_model`'s own observed
+  $/1k-output-tokens times the real first-audit-prompt token count (recon already has the repo, so
+  this isn't a guess) times stage/pass multipliers, clearly labeled "rough" vs. the confident
+  historical range; (c) surface the same estimate automatically right after `recon` in a normal
+  `argo pipeline` run, before `audit` (the first real spend), requiring `--yes` or an interactive
+  confirm to proceed unless `--budget` was already set explicitly.
+- **Verdict:** do this one first if only building one of D1/D2 — smaller new-code surface (almost
+  pure aggregation over existing data), and (unlike D1) every run benefits, not just the ones that
+  hit a session limit.
+
+**Cross-cutting note:** recording each `retry_after` observation into the ledger alongside D1(a) is
+cheap and would let D2 eventually also answer "if you hit a limit on this plan, expect to wait ~X" —
+closing the loop between the two items instead of shipping them as unrelated features.
+
+### E. Multi-branch freshness check (reduce false "already fixed" duplicates) — ⬜ BACKLOG (proposed
+2026-07-28, motivated by the open62541 disclosure — see `docs/design-decisions.md` /
+`disclosure-precision-lessons` case notes for the full incident)
+
+**What's missing today:** Argo has no automated pass that diffs the audited tree against upstream
+before finalizing a report. The `design_context_block` helper in `argo/rendering.py` injects
+maintainer-confirmed by-design priors into prompts, and corroborate's own prompt asks the model to
+consider issue-tracker context — but there is no coded step that actually checks "has this exact code
+path already been changed since we pinned our commit," on any branch.
+
+**Concrete motivating case:** open62541's maintainer classified 6/22 findings as duplicates. Verified
+by hand: 2 were fixed on a **private branch/internal advisory 2+ months before our audit** — genuinely
+uncatchable. But 1 (`maxPublishReqPerSession` cap) was fixed and merged to the project's `1.4`
+**maintenance branch 7 days before** our audit commit on `master` — fully public, fully checkable,
+just on a sibling branch we never looked at. Multi-branch release maintenance (a stable branch gets a
+fix before it's forward-merged to `master`/`dev`) is common in C/embedded/industrial-protocol projects,
+which are exactly the kind of target this campaign has increasingly favored.
+
+**Proposed:** a `freshness_check(ctx)` pass, run late (after `audit`, before `report` — cheap since it
+only needs `git log -- <file>` per already-cited finding path, not a full re-audit): (a) enumerate every
+finding's cited file path(s); (b) discover sibling branches worth checking — for a `git` target, `git
+branch -r` filtered to version-looking names (`\d+\.\d+`, `stable`, `release/*`, `lts`) plus whatever
+the target's own `SECURITY.md`/`CONTRIBUTING.md` states about supported branches (open62541's literally
+lists "master/1.5/1.4/1.3"); (c) for each finding, `git log <other-branch> -- <path>` since a
+reasonable lookback window (e.g. 6-12 months, or since the audited commit's date minus N days) and
+flag if a commit touches the same lines/function name — not proof of a fix, just a "check this before
+reporting" flag surfaced to the human/finalization step, since only a human (or a much deeper model
+pass) can tell a coincidental touch from an actual fix; (d) do the same single-branch check (audited
+branch only) against commits made *after* the pinned commit but *before* report-send time, covering the
+plain "we pinned early, upstream moved on before we finished" case, which is cheaper and even more
+likely to matter on long-running audits.
+
+**Explicit non-goal:** this cannot and should not try to catch privately-tracked/unmerged fixes (the
+open62541 case's other 2 verified duplicates) — that information is by design not available to an
+external auditor, human or AI, and no amount of engineering closes that gap. Frame this as "catch the
+same-tree-just-different-branch case," not "eliminate false positives from vendor-side duplicates."
+
+**Verdict:** small, mechanical, high-signal-to-effort for the specific multi-branch-project case; not
+started. Lower priority than D1/D2 (this hits a couple of findings per report on some targets; D1/D2
+affect every large run).
+
 ## Cross-cutting / decisions to make before Phase 0
 
 - **UI stack.** FastAPI backend is the clear choice. Frontend: a lightweight modern SPA

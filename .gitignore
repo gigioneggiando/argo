@@ -1,6 +1,7 @@
 # Run artifacts and local state
 runs/
 .pytest_tmp/
+.pytest_tmp*/
 argo/ledger.sqlite
 argo/ledger.sqlite-*
 argo/app_settings.json

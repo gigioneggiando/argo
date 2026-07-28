@@ -541,7 +541,7 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
   the unzipped path to ingest with `is_url=False`. **Low value:** the server already resolves a typed local
   path on the same machine, so upload mainly helps a future remote deployment.
 
-### D. Resilience & cost transparency — ⬜ BACKLOG (proposed 2026-07-26, motivated by real recurring
+### D. Resilience & cost transparency — ✅ DONE (D1/D2 shipped 2026-07-28; motivated by real recurring
 operator pain across this campaign's runs on Claude Pro/Max plans — see `docs/design-decisions.md`
 for how this differs from the Phase-8 retrospective cost report, which is done)
 
@@ -618,6 +618,14 @@ own "Constraints that shape every decision" section already states but never bui
 - **Verdict:** do this one first if only building one of D1/D2 — smaller new-code surface (almost
   pure aggregation over existing data), and (unlike D1) every run benefits, not just the ones that
   hit a session limit.
+
+- **Shipped note (2026-07-28):** `argo estimate --repo ...` now runs ingest+recon only, keeps the
+  resulting run directory for reuse, and prints either an archetype-specific historical range or a
+  clearly labeled cold-start rough estimate. `argo pipeline` prints the same estimate after recon
+  and before audit; it asks for confirmation only in an interactive TTY when neither `--yes` nor an
+  explicit `--budget` was supplied. Small refactor: the web-only `_run_archetypes()` scan moved from
+  `server/app.py` into shared `argo/archetype.py::run_archetypes()` so CLI and API use the same
+  run_id-to-archetype mapping.
 
 **Cross-cutting note:** recording each `retry_after` observation into the ledger alongside D1(a) is
 cheap and would let D2 eventually also answer "if you hit a limit on this plan, expect to wait ~X" —

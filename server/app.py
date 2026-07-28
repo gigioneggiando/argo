@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 
 from argo import __version__
 from argo import chat as chat_engine
+from argo.archetype import run_archetypes
 from argo.chat import ChatStore
 from argo.costs import cost_report
 from argo.fixes import generate_fixes
@@ -194,7 +195,7 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
     @app.get("/costs")
     def costs():
         """Observed cost analytics from the ledger (Phase 8), grouped by archetype when known."""
-        return cost_report(ledger, run_archetypes=_run_archetypes())
+        return cost_report(ledger, run_archetypes=run_archetypes(runs_dir))
 
     @app.get("/quality")
     def quality():
@@ -204,18 +205,6 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
         from argo.quality import quality_report
         bench = runs_dir / "benchmark_report.json"
         return quality_report(ledger, benchmark_report_path=bench if bench.exists() else None)
-
-    def _run_archetypes() -> dict:
-        """Map run_id -> canonical archetype, read from each run's meta.json."""
-        mapping = {}
-        if runs_dir.exists():
-            for rd in runs_dir.iterdir():
-                if not rd.is_dir():
-                    continue
-                arch = (_read_json(rd / "meta.json") or {}).get("archetype")
-                if arch:
-                    mapping[rd.name] = arch
-        return mapping
 
     @app.get("/runs")
     def list_runs():

@@ -3,12 +3,15 @@ Kept separate from the CLI so tests can drive the pipeline programmatically."""
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from .config import PipelineConfig
 from .context import RunContext
+from .estimate import estimate_cost, format_estimate
 from .ledger import Ledger
 from .progress import ProgressReporter, read_status
 from .runner import RunnerCancelled, build_runner
@@ -207,7 +210,10 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
                  research_enabled: bool | None = None, repo_is_url: bool | None = None,
                  links_path: Path | None = None, accepted_risks_path: Path | None = None,
                  reporter: ProgressReporter | None = None,
-                 cancel_event=None, commit: str | None = None) -> dict:
+                 cancel_event=None, commit: str | None = None,
+                 estimate_before_audit: bool = False,
+                 estimate_output: Callable[[str], None] | None = None,
+                 estimate_confirm: Callable[[dict], bool] | None = None) -> dict:
     """Run the pipeline and emit status.json progress. Never submits."""
     if research_enabled is not None and research_enabled != ctx.config.research_enabled:
         ctx.config = ctx.config.with_overrides(research_enabled=research_enabled)
@@ -217,14 +223,31 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
     if own:
         reporter.begin()
 
-    results = _run_stage_sequence(
-        ctx,
-        _stage_functions(
-            ctx, stages, brief=brief, repo=repo, repo_is_url=repo_is_url,
-            links_path=links_path, accepted_risks_path=accepted_risks_path, commit=commit),
-        reporter,
-        cancel_event,
-    )
+    stage_fns = _stage_functions(
+        ctx, stages, brief=brief, repo=repo, repo_is_url=repo_is_url,
+        links_path=links_path, accepted_risks_path=accepted_risks_path, commit=commit)
+    results: dict[str, object] = {}
+    estimate: dict | None = None
+    if estimate_before_audit and not dry_run and "audit" in stages:
+        audit_idx = next(i for i, (name, _fn) in enumerate(stage_fns) if name == "audit")
+        results.update(_run_stage_sequence(ctx, stage_fns[:audit_idx], reporter, cancel_event))
+        estimate = _estimate_after_recon(ctx)
+        if estimate_output is not None:
+            estimate_output(format_estimate(estimate))
+        proceed = estimate_confirm(estimate) if estimate_confirm is not None else True
+        if not proceed:
+            reporter.complete()
+            prompts = results.get("recon") or []
+            return {
+                "run_id": ctx.run_id,
+                "stopped_after": "recon (estimate declined)",
+                "estimate": estimate,
+                "prompts": [str(p) for p in prompts],
+                "scope": str(ctx.scope_path),
+            }
+        results.update(_run_stage_sequence(ctx, stage_fns[audit_idx:], reporter, cancel_event))
+    else:
+        results = _run_stage_sequence(ctx, stage_fns, reporter, cancel_event)
     reporter.complete()
     if dry_run:
         prompts = results.get("recon") or []
@@ -235,12 +258,26 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
             "scope": str(ctx.scope_path),
         }
     report_path = results.get("report") or (ctx.run_dir / "REPORT.md")
-    return {
+    summary = {
         "run_id": ctx.run_id,
         "report": str(report_path),
         "drafts_dir": str(ctx.drafts_dir),
         "cost_usd": ctx.ledger.run_cost(ctx.run_id),
     }
+    if estimate is not None:
+        summary["estimate"] = estimate
+    return summary
+
+
+def _estimate_after_recon(ctx: RunContext) -> dict:
+    meta = {}
+    try:
+        meta = json.loads(ctx.meta_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        pass
+    archetype = meta.get("archetype") if isinstance(meta, dict) else None
+    return estimate_cost(ctx.ledger, Path(ctx.config.runs_dir), archetype or "other",
+                         ctx.config, run_id=ctx.run_id)
 
 
 def resume_pipeline(ctx: RunContext, from_stage: str | None = None,

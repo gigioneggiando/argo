@@ -16,6 +16,7 @@ There is deliberately NO submit command: submission is a manual human action.
 from __future__ import annotations
 
 import json
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ from typing import Optional
 import typer
 
 from .config import OPUS, PipelineConfig, load_pipeline_config
+from .estimate import estimate_cost, format_estimate
 from .orchestrator import (build_context, do_audit, do_corroborate, do_freshness_check, do_ingest,
                            do_live, do_recon, do_report, do_runtime, do_sca, do_second_opinion,
                            do_validate, do_verify, new_run_id,
@@ -485,6 +487,110 @@ def fix(run: str = RunIdArg,
     _emit(report)
 
 
+def _archetype_for_run(run_dir: Path) -> str:
+    try:
+        meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return "other"
+    arch = meta.get("archetype") if isinstance(meta, dict) else None
+    return str(arch or "other")
+
+
+@app.command()
+def estimate(
+    brief: Optional[Path] = typer.Option(None, "--brief", exists=True,
+                                         help="program brief text file (omit for a local/personal "
+                                              "source-only review synthesized from --repo)"),
+    repo: str = typer.Option(..., "--repo", help="codebase to analyze: a local folder path or a git URL"),
+    links: Optional[Path] = typer.Option(
+        None, "--links", exists=True,
+        help="curated reference links file (same meaning as argo pipeline --links)"),
+    run: Optional[str] = typer.Option(None, "--run", help="run id (generated if omitted)"),
+    commit: Optional[str] = typer.Option(
+        None, "--commit", help="pin --repo at this git revision before recon"),
+    research: bool = typer.Option(
+        True, "--research/--no-research",
+        help="run the cheap Stage-0 OSINT step before recon when a brief is provided"),
+    sca: bool = typer.Option(True, "--sca/--no-sca",
+                             help="include/exclude SCA in the estimated full config"),
+    second_opinion: int = typer.Option(
+        0, "--second-opinion",
+        help="estimate N additional blind recon+audit passes"),
+    second_opinion_backend: Optional[str] = typer.Option(
+        None, "--second-opinion-backend",
+        help="runner override for second-opinion passes"),
+    corroborate: bool = typer.Option(
+        True, "--corroborate/--no-corroborate",
+        help="include/exclude corroboration in the estimated full config"),
+    docs_url: Optional[list[str]] = typer.Option(
+        None, "--docs-url",
+        help="documentation URL to ground corroboration (repeatable)"),
+    verify: bool = typer.Option(False, "--verify/--no-verify",
+                                help="include/exclude deep verify in the estimate"),
+    verify_max_findings: Optional[int] = typer.Option(
+        None, "--verify-max-findings",
+        help="(--verify) cap how many survivors get deep verify"),
+    freshness_check: bool = typer.Option(
+        False, "--freshness-check/--no-freshness-check",
+        help="include/exclude the late freshness-check stage"),
+    freshness_lookback_days: int = typer.Option(
+        365, "--freshness-lookback-days",
+        help="(--freshness-check) days of branch history to inspect"),
+    accepted_risks: Optional[Path] = AcceptedRisksOpt,
+    critic_passes: Optional[int] = typer.Option(
+        None, "--critic-passes",
+        help="completeness-critic re-passes per audit focus"),
+    runtime: bool = typer.Option(False, "--runtime/--no-runtime",
+        help="include/exclude sandboxed runtime verification in the estimate"),
+    runtime_image: Optional[str] = typer.Option(None, "--runtime-image",
+        help="(--runtime) Docker image that contains/builds the runnable app"),
+    runtime_run_cmd: Optional[str] = typer.Option(None, "--runtime-run-cmd",
+        help="(--runtime) in-container command that starts the app"),
+    runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+    calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+    parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+    timeout: Optional[int] = TimeoutOpt, max_turns: Optional[int] = MaxTurnsOpt,
+    session_budget: Optional[float] = SessionBudgetOpt,
+    codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
+    codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
+    claude_accounts: Optional[str] = ClaudeAccountsOpt,
+    codex_accounts: Optional[str] = CodexAccountsOpt,
+):
+    """Run ingest+recon only, classify the target, and print a pre-audit cost estimate."""
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
+                        timeout=timeout, max_turns=max_turns, session_budget=session_budget,
+                        codex_model=codex_model, codex_oss=codex_oss,
+                        codex_local_provider=codex_local_provider, fallback=fallback,
+                        claude_accounts=claude_accounts, codex_accounts=codex_accounts)
+    cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
+                             runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
+                             corroborate_enabled=corroborate, doc_links=list(docs_url or []),
+                             verify_enabled=verify, verify_max_findings=verify_max_findings,
+                             freshness_check_enabled=freshness_check,
+                             freshness_lookback_days=freshness_lookback_days,
+                             second_opinion_passes=second_opinion,
+                             second_opinion_backend=second_opinion_backend)
+    if critic_passes is not None:
+        cfg = cfg.with_overrides(audit_critic_passes=critic_passes)
+    if brief is None:
+        research = False
+        cfg = cfg.with_overrides(research_enabled=False, corroborate_enabled=False)
+
+    ctx = build_context(cfg, run or new_run_id())
+    try:
+        summary = run_pipeline(ctx, brief, repo, dry_run=True, research_enabled=research,
+                               links_path=links, accepted_risks_path=accepted_risks,
+                               commit=commit)
+        arch = _archetype_for_run(ctx.run_dir)
+        est = estimate_cost(ctx.ledger, Path(cfg.runs_dir), arch, cfg, run_id=ctx.run_id)
+        typer.echo(format_estimate(est))
+        typer.echo(f"Run artifacts kept in {ctx.run_dir} for reuse or review.")
+        _emit({"run_id": ctx.run_id, "stopped_after": summary.get("stopped_after"),
+               "archetype": arch, "estimate": est})
+    finally:
+        ctx.ledger.close()
+
+
 @app.command()
 def pipeline(
     brief: Optional[Path] = typer.Option(None, "--brief", exists=True,
@@ -503,6 +609,8 @@ def pipeline(
         "for a URL it is fetched, for a local path the copy is checked out at it"),
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="run ingest+recon only, then STOP before any audit"),
+    yes: bool = typer.Option(False, "--yes",
+                             help="proceed past the pre-audit cost estimate without prompting"),
     research: bool = typer.Option(
         True, "--research/--no-research",
         help="Stage-0 web OSINT/threat-intel before recon (the ONLY networked stage; never the "
@@ -606,8 +714,21 @@ def pipeline(
         cfg = cfg.with_overrides(research_enabled=False,
                                  corroborate_enabled=False)  # ...and no networked corroboration
     ctx = build_context(cfg, run or new_run_id())
+
+    def _print_estimate(text: str) -> None:
+        typer.echo(text, err=True)
+
+    def _confirm_estimate(_estimate: dict) -> bool:
+        if yes or cfg.budget_usd is not None:
+            return True
+        if not sys.stdin.isatty():
+            return True
+        return typer.confirm("Proceed into audit?", default=False)
+
     summary = run_pipeline(ctx, brief, repo, dry_run=dry_run, research_enabled=research,
-                           links_path=links, accepted_risks_path=accepted_risks, commit=commit)
+                           links_path=links, accepted_risks_path=accepted_risks, commit=commit,
+                           estimate_before_audit=not dry_run, estimate_output=_print_estimate,
+                           estimate_confirm=_confirm_estimate)
     summary["smoke"] = smoke
     _emit(summary)
 

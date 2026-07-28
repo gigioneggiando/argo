@@ -6,6 +6,9 @@ so cost analytics and future benchmarks (Phase 7) can group/calibrate by archety
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 ARCHETYPES = {
     "web_api_cms": "Web / API / CMS",
     "plugin_extension": "Plugin / Extension / Mod",
@@ -50,3 +53,26 @@ def canonicalize(text: str | None) -> str:
 
 def label(key: str) -> str:
     return ARCHETYPES.get(key, key)
+
+
+def run_archetypes(runs_dir: Path) -> dict[str, str]:
+    """Map run_id -> canonical archetype from each run's meta.json.
+
+    This is shared by the API cost endpoint and the CLI estimator. Missing, malformed, or
+    pre-archetype meta files are ignored so one bad run directory never breaks analytics.
+    """
+    mapping: dict[str, str] = {}
+    root = Path(runs_dir)
+    if not root.exists():
+        return mapping
+    for rd in root.iterdir():
+        if not rd.is_dir():
+            continue
+        try:
+            meta = json.loads((rd / "meta.json").read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        arch = meta.get("archetype") if isinstance(meta, dict) else None
+        if arch:
+            mapping[rd.name] = canonicalize(str(arch))
+    return mapping

@@ -1028,10 +1028,10 @@ def _expand_backend(config: PipelineConfig, ledger: Ledger, name: str) -> list[A
     """One backend name -> one or more runners. Multi-account backends expand to one runner per
     credential dir (limits are per-account): Claude via CLAUDE_CONFIG_DIR, Codex via CODEX_HOME."""
     if name == "headless" and config.claude_accounts:
-        return [HeadlessClaudeRunner(config.with_overrides(claude_config_dir=d), ledger)
+        return [HeadlessClaudeRunner(config.with_overrides(runner=name, claude_config_dir=d), ledger)
                 for d in config.claude_accounts]
     if name == "codex" and config.codex_accounts:
-        return [CodexRunner(config.with_overrides(codex_home=d), ledger)
+        return [CodexRunner(config.with_overrides(runner=name, codex_home=d), ledger)
                 for d in config.codex_accounts]
     return [_build_one(config, ledger, name)]
 

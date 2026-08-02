@@ -141,6 +141,34 @@ def test_build_runner_multi_account_claude_chain(tmp_path):
         ledger.close()
 
 
+def test_build_runner_cross_backend_multi_account_sets_correct_runner(tmp_path):
+    # Reproduces a real production failure (livekit run, 2026-08-02): primary=codex (single
+    # account -> _build_one), fallback=headless with MULTIPLE claude_accounts -> _expand_backend's
+    # multi-account branch. Each expanded HeadlessClaudeRunner's own config.runner must say
+    # "headless", NOT inherit "codex" from the top-level config - otherwise model_for(stage)
+    # resolves to the Codex model id (e.g. "gpt-5.5") even on the Claude CLI call, which then
+    # fails with a hard "model not found" 404, defeating the whole point of the fallback chain.
+    from argo.ledger import Ledger
+    from argo.runner import HeadlessClaudeRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="codex", runner_fallbacks=["headless"],
+                             claude_accounts=["/acct/a", "/acct/b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 3   # codex -> acctA -> acctB
+        fallback_runners = r._runners[1:]
+        assert all(isinstance(x, HeadlessClaudeRunner) for x in fallback_runners)
+        assert all(x.config.runner == "headless" for x in fallback_runners)
+        # the model resolution that actually broke in production: with the bug, config.runner
+        # stayed "codex" on the fallback runners, so model_for() returned the Codex model id
+        # (e.g. "gpt-5.5") even though the CLI being invoked was `claude`, not `codex`.
+        assert all(x.config.model_for("validate") ==
+                   PipelineConfig(runner="headless").model_for("validate")
+                   for x in fallback_runners)
+    finally:
+        ledger.close()
+
+
 def test_build_runner_accounts_then_backend_fallback(tmp_path):
     from argo.ledger import Ledger
     ledger = Ledger(tmp_path / "l.sqlite")

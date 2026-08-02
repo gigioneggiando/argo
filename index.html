@@ -415,7 +415,7 @@
       name:"moquette", lang:"Java", upstream:"https://github.com/moquette-io/moquette",
       blurb:"A lightweight MQTT broker.",
       items:[
-        {ref:"GHSA-5f42-97gr-vfhq", s:"advisory", sev:"Critical", t:"authz bypass", title:"Pattern-ACL wildcard injection lets an attacker widen per-tenant %c/%u ACL rules via clientId/username", url:"https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq"},
+        {ref:"GHSA", s:"advisory", sev:"Critical", t:"authz bypass", title:"Pattern-ACL wildcard injection lets an attacker widen per-tenant %c/%u ACL rules via clientId/username", url:"https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq"},
         {ref:"PR #959", s:"merged", sev:"Medium", t:"fail-open / DoS", title:"Guard the periodic expiration task so one failing entity can't disable all expirations", url:"https://github.com/moquette-io/moquette/pull/959"},
         {ref:"PR #958", s:"merged", sev:"High", t:"remote DoS", title:"Reject a malformed $share subscription before parsing it", url:"https://github.com/moquette-io/moquette/pull/958"},
         {ref:"PR #957", s:"merged", sev:"High", t:"remote DoS", title:"Keep the session event loop alive when a command throws", url:"https://github.com/moquette-io/moquette/pull/957"},

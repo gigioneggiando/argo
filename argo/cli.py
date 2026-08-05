@@ -432,6 +432,28 @@ def report(run: str = RunIdArg, runner: str = RunnerOpt,
     _emit({"run_id": run, "report": str(path), "drafts_dir": str(ctx.drafts_dir)})
 
 
+@app.command(name="pr-draft")
+def pr_draft(run: str = RunIdArg,
+             finding: str = typer.Option(..., "--finding", help="confirmed finding id to draft for"),
+             test_command: Optional[str] = typer.Option(
+                 None, "--test-command", help="local build/test command to include in the PR body"),
+             runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+             calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+             parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """Write a maintainer-facing GitHub PR body scaffold for one confirmed finding.
+
+    This is a local artifact only; Argo still never opens or submits a PR.
+    """
+    from .stages.report import write_pr_draft
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    ctx = build_context(cfg, run)
+    try:
+        path = write_pr_draft(ctx, finding, test_command=test_command)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    _emit({"run_id": run, "finding": finding, "pr_draft": str(path)})
+
+
 @app.command()
 def resume(
     run: str = RunIdArg,

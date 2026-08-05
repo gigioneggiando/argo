@@ -27,6 +27,7 @@ Everywhere below, `argo` ≡ `python -m argo.cli`.
 | `runtime` | RUNTIME | **opt-in** sandboxed runtime verification: build the target in an egress-blocked, loopback-only container and probe ONLY the local instance (never live hosts) → `runtime_results.json`. See [runtime-verification-study.md](runtime-verification-study.md) |
 | `live` | LIVE | ⚠️ **opt-in, default off, AUTHORIZED USE ONLY.** Bounded **read-only** requests to the program's **in-scope** hosts to confirm findings. Requires `--i-have-authorization`; RoE-gated (automation/safe-harbor/prohibited), in-scope-only (out-of-scope/unknown blocked), capped + audit-logged. Uses a hand-written `runs/<id>/live_probe_plan.json` if present, else (L2) an **offline** LLM generates one from the validated findings (same gates apply) and interprets the results → `live_results.json` + `live_audit_log.jsonl` (+ a `validation.live` block on findings). See [guardrails §2c](guardrails.md#2c-the-opt-in-live-exception-the-live-stage-in-scope-hosts-only) |
 | `report` | 5 | `REPORT.md` + DRAFT submissions |
+| `pr-draft` | post-report | maintainer-facing GitHub PR body scaffold for one confirmed finding; local artifact only, never submits |
 | `pipeline` | 1–5 | the whole chain; **stops before any submission** |
 | `fix` | 6 (opt-in) | propose + **verify** a patch per confirmed finding (applies? compiles? no new errors?); never touches the target |
 | `bench` | 7 | score a labeled suite — findings precision/recall/F1 by archetype + CWE (+ optional A/B and patch quality) |
@@ -43,6 +44,7 @@ argo run      --run RUN_ID
 argo sca      --run RUN_ID
 argo validate --run RUN_ID
 argo report   --run RUN_ID
+argo pr-draft --run RUN_ID --finding FINDING_ID [--test-command "CMD"]
 argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--commit SHA] [--dry-run] [--smoke]
 argo fix      --run RUN_ID [--no-verify] [--re-audit] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
 argo bench    --suite DIR [--fixes] [--re-audit] [--parallel-cases N] [--ab-audit-model MODEL]
@@ -110,6 +112,18 @@ argo quality  [--program P] [--runs-dir DIR]
 | `--critic-passes N` | completeness-critic re-passes per audit focus (the depth lever — re-audits each focus for missed variant-family members / unverified invariants, looping until dry). **Default 1**; `0` disables. |
 | `--dry-run` | run ingest + recon, then **stop before any audit**. The prompt-quality feedback loop: inspect the generated prompts (incl. the ground-truth sections) before paying to run them. |
 | `--smoke` | de-risked **real** end-to-end check: cheapest models, one audit focus, low budget + short timeout + tight caps. Defaults `--brief`/`--repo` to the bundled fixtures (and forces `--no-research`). See [headless-runner.md](headless-runner.md#the---smoke-run). |
+
+## `pr-draft` options
+
+| Flag | Meaning |
+|---|---|
+| `--finding ID` | confirmed finding id from `validated_findings.json` to turn into a GitHub PR body scaffold |
+| `--test-command "CMD"` | optional local build/test command to include in the draft's validation section |
+
+`pr-draft` writes `runs/<RUN_ID>/pr_drafts/<ID>.md`. It is meant for the OSS-maintainer flow:
+after you implement and locally test a fix, use the scaffold as the starting point for a clear PR
+body with what changed, why it matters, and how it was checked. It refuses unconfirmed findings and
+does not open or submit anything.
 
 ## `fix`-only options (Phase 6 remediation)
 

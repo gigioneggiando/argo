@@ -108,6 +108,15 @@ def run(ctx: RunContext) -> Path:
     return report_path
 
 
+def write_pr_draft(ctx: RunContext, finding_id: str, test_command: str | None = None) -> Path:
+    """Write a maintainer-facing GitHub PR body scaffold for one confirmed finding."""
+    out_dir = ctx.run_dir / "pr_drafts"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{finding_id}.md"
+    path.write_text(render_pr_draft(ctx, finding_id, test_command=test_command), encoding="utf-8")
+    return path
+
+
 # ------------------------------------------------------------------------- rendering
 def _counts_by_severity(findings: list[dict]) -> dict[str, int]:
     counts = {s: 0 for s in SEVERITY_ORDER}
@@ -431,6 +440,55 @@ def _render_draft(ctx, scope, f: dict) -> str:
         L.append("")
     L.append("---")
     L.append("**DRAFT - verify before submitting. No live testing was performed by the pipeline.**")
+    L.append("")
+    return "\n".join(L)
+
+
+def render_pr_draft(ctx: RunContext, finding_id: str, test_command: str | None = None) -> str:
+    scope = ctx.load_scope()
+    doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
+    finding = next((f for f in doc.get("findings", []) if f.get("id") == finding_id), None)
+    if finding is None:
+        raise ValueError(f"finding {finding_id!r} was not found in validated_findings.json")
+    if _verdict(finding) != "confirmed":
+        raise ValueError(f"finding {finding_id!r} is not confirmed; PR drafts are for confirmed findings")
+    if _corr_verdict(finding) == "design_accepted":
+        raise ValueError(f"finding {finding_id!r} is documented as an accepted design risk")
+
+    affected = finding.get("affected") or []
+    affected_text = ", ".join(f"`{item}`" for item in affected) or "_Add affected files._"
+    test_text = f"`{test_command}`" if test_command else "_Replace with the exact local test/build command you ran._"
+    L: list[str] = []
+    L.append(f"# Draft PR body - {finding.get('title')}")
+    L.append("")
+    L.append("> Human-edit before opening a PR: describe the final patch and paste real test output. ")
+    L.append("> Argo generated this from a confirmed source-static finding; it did not submit anything.")
+    L.append("")
+    L.append("## What does this PR do?")
+    L.append("")
+    L.append(f"Addresses **{finding.get('title')}** in {affected_text}.")
+    L.append("")
+    L.append(f"Root cause: {finding.get('why_vulnerable', '')}")
+    L.append("")
+    L.append(f"Recommended fix direction: {finding.get('recommended_fix', '')}")
+    L.append("")
+    L.append("## Why is it important?")
+    L.append("")
+    L.append(f"Impact: {finding.get('impact', '')}")
+    L.append("")
+    L.append(f"Validated flow: {_validation_field(finding, 'surviving_data_flow') or finding.get('vulnerable_flow', '')}")
+    L.append("")
+    L.append("## How was this checked?")
+    L.append("")
+    L.append(f"- Argo run: `{ctx.run_id}` against `{scope.program_name}`")
+    L.append(f"- Verdict: `{_verdict(finding)}`; severity: `{_eff_sev(finding)}`; confidence: `{_eff_conf(finding)}`")
+    L.append(f"- Local validation command: {test_text}")
+    L.append("- Regression expectation: the vulnerable flow above is rejected or safely handled after this patch.")
+    L.append("")
+    L.append("## Safety notes")
+    L.append("")
+    L.append("- Argo performed source-static analysis only; no live hosts were contacted.")
+    L.append("- This draft is for a human-authored PR after implementing and testing a fix.")
     L.append("")
     return "\n".join(L)
 

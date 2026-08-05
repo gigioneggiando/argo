@@ -182,6 +182,28 @@ def test_drafts_only_for_confirmed(env):
     assert drafts == {"FULL-001", "AUTHZ-002"}
 
 
+def test_pr_draft_for_confirmed_finding(env):
+    from argo.stages.report import write_pr_draft
+    ctx = env()
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    path = write_pr_draft(ctx, "AUTHZ-002", test_command="pytest tests/test_orders.py -q")
+    text = path.read_text(encoding="utf-8")
+    assert path == ctx.run_dir / "pr_drafts" / "AUTHZ-002.md"
+    assert "# Draft PR body - IDOR: order access without ownership check" in text
+    assert "## What does this PR do?" in text
+    assert "`pytest tests/test_orders.py -q`" in text
+    assert "no live hosts were contacted" in text
+
+
+def test_pr_draft_rejects_unconfirmed_finding(env):
+    from argo.stages.report import write_pr_draft
+    import pytest
+    ctx = env()
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    with pytest.raises(ValueError, match="not confirmed"):
+        write_pr_draft(ctx, "FULL-003")
+
+
 # --------------------------------------------------------------------------- fallbacks
 def test_missing_manifest_recon_glob_fallback(env, make_scenario):
     fixtures_dir, scen = make_scenario(

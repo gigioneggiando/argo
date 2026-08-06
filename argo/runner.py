@@ -956,11 +956,22 @@ def parse_retry_after(value: str | None, *, now: datetime | None = None) -> date
     return dt
 
 
+#: When a retryable error carries NO parseable reset hint (Codex's exit_1/0-token crash signature
+#: never includes one; only Claude's "session limit ... resets HH:MM" messages do), disable the
+#: backend for this bounded cooldown instead of for the rest of the run. Empirically (this
+#: campaign's own operational history) a hint-less Codex failure is more often a transient sandbox
+#: flake than genuine credit exhaustion -- permanently benching it on the first hiccup cascades
+#: everything onto the fallback backend, exhausting ITS real quota instead. If it genuinely IS
+#: exhausted, the wasted retries are near-free (0 tokens, sub-second exit_1).
+_NO_HINT_RETRY_COOLDOWN = timedelta(minutes=5)
+
+
 class FallbackRunner(AgentRunner):
     """Chains backends for resilience: on a RETRYABLE limit (session/rate-limit/429) the SAME call is
     retried on the next backend (e.g. Claude -> Codex -> local). The model is recomputed per backend
-    (each child has its own config), and a backend that hits its limit is disabled for the rest of
-    the run (circuit breaker) so we don't re-hit the wall on every subsequent call. A non-retryable
+    (each child has its own config), and a backend that hits its limit is disabled (circuit breaker)
+    so we don't re-hit the wall on every subsequent call -- until its reset hint (if the error
+    carried one) or a bounded cooldown (`_NO_HINT_RETRY_COOLDOWN`, if it didn't). A non-retryable
     error propagates immediately."""
 
     def __init__(self, config: PipelineConfig, ledger: Ledger, runners: list[AgentRunner]):
@@ -1000,10 +1011,14 @@ class FallbackRunner(AgentRunner):
                 if not _is_retryable(exc):
                     raise
                 retry_at = parse_retry_after(getattr(exc, "retry_after", None))
+                bounded = retry_at is None    # no reset hint in the error -> bounded cooldown, not forever
+                if bounded:
+                    retry_at = datetime.now(timezone.utc) + _NO_HINT_RETRY_COOLDOWN
                 with self._fb_lock:
                     self._disabled[i] = retry_at
                 if i + 1 < len(self._runners):
-                    reset = f" until {retry_at.isoformat()}" if retry_at else ""
+                    reset = (f" for {_NO_HINT_RETRY_COOLDOWN} (no reset hint)" if bounded
+                             else f" until {retry_at.isoformat()}")
                     print(f"[runner] backend #{i} ({r.config.runner}) hit a retryable limit; "
                           f"falling back to #{i + 1} ({self._runners[i + 1].config.runner})"
                           f"{reset}", file=sys.stderr)

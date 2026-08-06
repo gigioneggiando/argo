@@ -264,12 +264,17 @@ Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`
   the primary backend hits a **retryable** session/rate-limit (429), the same call is transparently
   retried on the next backend (each picking its own per-stage model), so a long Opus run that walls
   on the Claude session limit mid-`validate` self-heals onto Codex instead of degrading. A walled
-  backend is disabled for the rest of the run (circuit breaker); a non-retryable error propagates.
-  When a session-limit error's detail text carries a human-readable reset time (e.g. "You've hit your
-  session limit · resets 12:50am (Europe/Rome)"), `_extract_session_reset_hint` pulls it out into the
-  `RunnerError` message and the `llm_log.jsonl` row (`session_limit_reset_hint`) — so a human (or a
-  future resume script) can `grep` a run log for exactly when it is safe to retry, instead of hunting
-  down and re-reading the raw API error text.
+  backend is disabled (circuit breaker) until its reset hint elapses; a non-retryable error
+  propagates. When a session-limit error's detail text carries a human-readable reset time (e.g.
+  "You've hit your session limit · resets 12:50am (Europe/Rome)"), `_extract_session_reset_hint`
+  pulls it out into the `RunnerError` message and the `llm_log.jsonl` row
+  (`session_limit_reset_hint`) — so a human (or a future resume script) can `grep` a run log for
+  exactly when it is safe to retry, instead of hunting down and re-reading the raw API error text.
+  A retryable error with **no** parseable hint (Codex's exit_1/0-token crash signature never
+  carries one — it's frequently a transient sandbox flake, not real credit exhaustion) gets a
+  bounded cooldown instead (`_NO_HINT_RETRY_COOLDOWN`, 5 minutes) — permanently benching the
+  backend on one hiccup would silently cascade the entire rest of a run onto the fallback,
+  exhausting its own real quota instead of giving the walled backend a real second chance.
   The chain can mix backends **and accounts** (`_expand_backend`): `--claude-accounts dirA,dirB`
   builds one `HeadlessClaudeRunner` per `CLAUDE_CONFIG_DIR` and `--codex-accounts` one `CodexRunner`
   per `CODEX_HOME` (limits are per-account), so e.g. `Claude-A → Claude-B → Codex-A → Codex-B`. The

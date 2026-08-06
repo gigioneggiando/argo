@@ -83,6 +83,49 @@ def test_circuit_breaker_skips_walled_backend():
     assert p.calls == 1 and f.calls == 2
 
 
+def _raise_hintless_retryable(msg="recoverable is_error session (stage=audit): stop_reason='exit_1'"):
+    """Mirrors the real shape of AgentRunner.run()'s final `raise RunnerError(..., retryable=True)`
+    for a Codex exit_1/0-token crash: retryable, but with NO parseable reset hint (retry_after is
+    never set on that path unless the error text itself carried a "resets HH:MM"-style hint, which
+    Codex's crash signature never does)."""
+    def b(kw):
+        raise RunnerError(msg, retryable=True)
+    return b
+
+
+def test_hintless_retryable_error_gets_bounded_cooldown_not_permanent():
+    # Reproduces a real production failure (livekit run 20260804-170931-d90733, 2026-08-04): a
+    # single transient Codex sandbox flake (exit_1, 0 tokens, no api_error_status -- indistinguishable
+    # from real credit exhaustion by message text alone) hit right after `ingest`. Before this fix,
+    # a retryable error with no parseable reset hint disabled the backend FOREVER for the rest of
+    # the process (retry_at stayed None) -- so every subsequent call for the rest of that ~9-hour
+    # run skipped Codex entirely and went straight to the Claude fallback, which then burned
+    # through its OWN real session-limit quota covering for what should have been one retry.
+    from datetime import datetime, timedelta, timezone
+    import argo.runner as runner_mod
+
+    p = _Fake("codex", _raise_hintless_retryable())
+    f = _Fake("headless", _return("CLAUDE-RESULT"))
+    fr = FallbackRunner(PipelineConfig(), None, [p, f])
+
+    assert fr.run(**_KW) == "CLAUDE-RESULT"        # codex fails hint-less -> falls back to claude
+    assert p.calls == 1 and f.calls == 1
+
+    disabled_until = fr._disabled[0]
+    assert disabled_until is not None              # bounded now, NOT the old "disabled forever" None
+    now = datetime.now(timezone.utc)
+    assert now < disabled_until <= now + runner_mod._NO_HINT_RETRY_COOLDOWN
+
+    # second call, still within the cooldown window: codex stays skipped (same as before the fix)
+    fr.run(**_KW)
+    assert p.calls == 1 and f.calls == 2
+
+    # simulate the cooldown having elapsed: codex must be RETRIED, not permanently benched
+    fr._disabled[0] = now - timedelta(seconds=1)
+    fr.run(**_KW)
+    assert p.calls == 2 and f.calls == 3           # codex was tried again (and failed again -> fallback)
+
+
 def test_each_backend_picks_its_own_model():
     # primary (headless) fails -> codex child should be called with the codex model, not opus
     p = _Fake("headless", _raise("session limit"))

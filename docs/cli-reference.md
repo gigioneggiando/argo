@@ -125,6 +125,14 @@ after you implement and locally test a fix, use the scaffold as the starting poi
 body with what changed, why it matters, and how it was checked. It refuses unconfirmed findings and
 does not open or submit anything.
 
+If `argo fix` (Phase 6) has already produced + verified a patch for this finding
+(`runs/<RUN_ID>/fixes_report.json`), the "How was this checked?" section cites that real evidence
+(patch applies/builds/introduces no new errors, plus a re-audit confirmation if `--re-audit` was
+used) instead of the manual `--test-command` placeholder. A patch that exists but FAILED
+verification is flagged explicitly ("did **NOT** pass ... do not rely on it as-is"), never
+presented as if it were clean. Run `argo fix` before `pr-draft` to get this — it's optional, not
+required.
+
 ## `fix`-only options (Phase 6 remediation)
 
 | Flag | Meaning |

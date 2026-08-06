@@ -204,6 +204,46 @@ def test_pr_draft_rejects_unconfirmed_finding(env):
         write_pr_draft(ctx, "FULL-003")
 
 
+def test_pr_draft_cites_verified_fix_patch(env):
+    # When `argo fix` has already produced + verified a patch for this finding, the PR draft
+    # should cite that real evidence instead of the manual --test-command placeholder.
+    import json
+    from argo.stages.report import write_pr_draft
+    ctx = env()
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    (ctx.run_dir / "fixes_report.json").write_text(json.dumps({
+        "run_id": ctx.run_id, "fixes": [{
+            "finding_id": "AUTHZ-002", "patch": "AUTHZ-002.diff",
+            "verify": {"verified": True, "tool": "pytest", "applied": True, "compiles": True,
+                      "re_audit": {"ran": True, "confirmed_fixed": True}},
+        }],
+    }), encoding="utf-8")
+    text = write_pr_draft(ctx, "AUTHZ-002").read_text(encoding="utf-8")
+    assert "patches/AUTHZ-002.diff" in text
+    assert "**verified**" in text
+    assert "builds with `pytest`" in text
+    assert "Re-audit on the patched copy confirms the original vulnerability is gone." in text
+
+
+def test_pr_draft_flags_unverified_fix_patch(env):
+    # A patch that exists but FAILED verification must be flagged as unreliable, never presented
+    # as if it were a clean, ready-to-use fix.
+    import json
+    from argo.stages.report import write_pr_draft
+    ctx = env()
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    (ctx.run_dir / "fixes_report.json").write_text(json.dumps({
+        "run_id": ctx.run_id, "fixes": [{
+            "finding_id": "AUTHZ-002", "patch": "AUTHZ-002.diff",
+            "verify": {"verified": False, "reason": "introduces new errors"},
+        }],
+    }), encoding="utf-8")
+    text = write_pr_draft(ctx, "AUTHZ-002").read_text(encoding="utf-8")
+    assert "did **NOT** pass" in text
+    assert "introduces new errors" in text
+    assert "do not rely on it as-is" in text
+
+
 # --------------------------------------------------------------------------- fallbacks
 def test_missing_manifest_recon_glob_fallback(env, make_scenario):
     fixtures_dir, scen = make_scenario(

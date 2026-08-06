@@ -444,6 +444,20 @@ def _render_draft(ctx, scope, f: dict) -> str:
     return "\n".join(L)
 
 
+def _fix_verify_entry(ctx: RunContext, finding_id: str) -> dict | None:
+    """Look up this finding's entry in ``runs/<id>/fixes_report.json`` (Phase 6, ``argo fix``),
+    if that stage has already run for this finding. Returns the raw ``fixes[]`` entry (with its
+    ``verify`` sub-dict) or ``None`` if the report doesn't exist or has no matching entry."""
+    path = ctx.run_dir / "fixes_report.json"
+    if not path.is_file():
+        return None
+    try:
+        report = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    return next((f for f in report.get("fixes", []) if f.get("finding_id") == finding_id), None)
+
+
 def render_pr_draft(ctx: RunContext, finding_id: str, test_command: str | None = None) -> str:
     scope = ctx.load_scope()
     doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
@@ -458,6 +472,8 @@ def render_pr_draft(ctx: RunContext, finding_id: str, test_command: str | None =
     affected = finding.get("affected") or []
     affected_text = ", ".join(f"`{item}`" for item in affected) or "_Add affected files._"
     test_text = f"`{test_command}`" if test_command else "_Replace with the exact local test/build command you ran._"
+    fix_entry = _fix_verify_entry(ctx, finding_id)
+    verify = (fix_entry or {}).get("verify") or {}
     L: list[str] = []
     L.append(f"# Draft PR body - {finding.get('title')}")
     L.append("")
@@ -482,6 +498,22 @@ def render_pr_draft(ctx: RunContext, finding_id: str, test_command: str | None =
     L.append("")
     L.append(f"- Argo run: `{ctx.run_id}` against `{scope.program_name}`")
     L.append(f"- Verdict: `{_verdict(finding)}`; severity: `{_eff_sev(finding)}`; confidence: `{_eff_conf(finding)}`")
+    if fix_entry and fix_entry.get("patch"):
+        if verify.get("verified"):
+            L.append(f"- Candidate patch `patches/{fix_entry['patch']}` (from `argo fix`) "
+                     f"**verified** on an isolated copy: applies cleanly, builds with "
+                     f"`{verify.get('tool', 'the detected build tool')}`, introduces no new errors.")
+            re_audit = verify.get("re_audit") or {}
+            if re_audit.get("ran") and re_audit.get("confirmed_fixed"):
+                L.append("- Re-audit on the patched copy confirms the original vulnerability is gone.")
+        else:
+            reason = verify.get("reason", "not verified")
+            L.append(f"- Candidate patch `patches/{fix_entry['patch']}` exists but Argo's own "
+                     f"verification did **NOT** pass ({reason}) — do not rely on it as-is; "
+                     f"treat it as a starting point only.")
+    else:
+        L.append("- No `argo fix` patch found for this finding "
+                 "(run `argo fix --run RUN_ID --only " + finding_id + "` to generate + verify one).")
     L.append(f"- Local validation command: {test_text}")
     L.append("- Regression expectation: the vulnerable flow above is rejected or safely handled after this patch.")
     L.append("")

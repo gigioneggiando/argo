@@ -1,0 +1,35 @@
+name: Tests
+
+# Runs on every PR (incl. from forks — plain `pull_request` gets a read-only, secret-less
+# GITHUB_TOKEN, which is fine and correct: the suite never needs secrets, see below) and on every
+# push to main, so a direct push gets the same signal a PR would.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # requires-python = ">=3.11" in pyproject.toml — cover the floor and the latest stable.
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        # Entirely on the mock runner — zero tokens, no API calls, no secrets needed (see
+        # CONTRIBUTING.md "Development setup"). The one Docker-gated test skips cleanly when
+        # Docker isn't available, which is the norm on a bare runner.
+        run: python -m pytest tests/ -q

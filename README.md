@@ -1,5 +1,8 @@
 # 👁️ Argo — LLM-native static vulnerability detection
 
+[![Tests](https://github.com/gigioneggiando/argo/actions/workflows/tests.yml/badge.svg)](https://github.com/gigioneggiando/argo/actions/workflows/tests.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 > *Argus Panoptes, the all-seeing watchman — a hundred eyes on your code.*
 
 🌐 **Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) — real vulnerabilities Argo found, disclosed as public PRs · 📖 [Wiki](https://github.com/gigioneggiando/argo/wiki) · 💬 [Discussions](https://github.com/gigioneggiando/argo/discussions)

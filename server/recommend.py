@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-OPUS = "claude-opus-4-8"
-SONNET = "claude-sonnet-4-6"
+OPUS = "claude-opus-5"
+SONNET = "claude-sonnet-5"
 
 _TIERS = {
     "quick": {

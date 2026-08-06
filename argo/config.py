@@ -14,8 +14,8 @@ from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 # --- Model IDs (the most capable current Claude models) -----------------------------
-OPUS = "claude-opus-4-8"
-SONNET = "claude-sonnet-4-6"
+OPUS = "claude-opus-5"
+SONNET = "claude-sonnet-5"
 HAIKU = "claude-haiku-4-5-20251001"  # cheapest; used for the headless smoke run
 
 #: Default per-stage model assignment.

@@ -174,7 +174,7 @@ def test_recommend_tiers(tmp_path):
         assert quick["config"]["runner"] == "mock"                 # never auto-enables spend
         assert quick["config"]["budget_usd"] < thorough["config"]["budget_usd"]
         assert thorough["config"]["calibration"] is True
-        assert thorough["config"]["models"]["audit"] == "claude-opus-4-8"
+        assert thorough["config"]["models"]["audit"] == "claude-opus-5"
         assert "rationale" in thorough and thorough["rationale"]
     finally:
         app.state.ledger.close()

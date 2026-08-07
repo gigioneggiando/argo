@@ -475,3 +475,4 @@ Apache License 2.0 — see [LICENSE](LICENSE). Argo is **detection-only** and in
 **authorized** security testing (bug-bounty programs with safe harbor, your own code, CTFs, or
 research). You are responsible for staying within the scope and rules of engagement of any program
 you point it at.
+

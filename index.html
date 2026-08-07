@@ -184,6 +184,7 @@
   .row + .row{border-top:1px solid var(--line)}
   .row.merged{border-left-color:var(--good-line)}
   .row.advisory{border-left-color:var(--good-line)}
+  .row.fixed{border-left-color:var(--good-line)}
   .row.open{border-left-color:var(--pend-line)}
   .row.closed{border-left-color:var(--line)}
   .row:hover{background:var(--surface-2)}
@@ -198,6 +199,7 @@
   .status{display:inline-flex; align-items:center; gap:6px; font-family:var(--font-mono); font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; padding:5px 10px; border-radius:999px; white-space:nowrap}
   .status.merged{color:var(--good); background:var(--good-bg); border:1px solid var(--good-line)}
   .status.advisory{color:var(--good); background:var(--good-bg); border:1px solid var(--good-line)}
+  .status.fixed{color:var(--good); background:var(--good-bg); border:1px solid var(--good-line)}
   .status.open{color:var(--pend); background:var(--pend-bg); border:1px solid var(--pend-line)}
   .status.issue{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
   .status.closed{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
@@ -428,15 +430,15 @@
       name:"ds4", lang:"C", upstream:"https://github.com/antirez/ds4",
       blurb:"A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.",
       items:[
-        {ref:"PR #539", s:"closed", sev:"Critical", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser — closed without merge, fixed independently by antirez the same day", url:"https://github.com/antirez/ds4/pull/539"},
-        {ref:"PR #542", s:"closed", sev:"High", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/542"},
-        {ref:"PR #543", s:"closed", sev:"Medium", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/543"},
-        {ref:"PR #544", s:"closed", sev:"Medium", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/544"},
-        {ref:"PR #545", s:"closed", sev:"Medium", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/545"},
-        {ref:"PR #546", s:"closed", sev:"Low", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/546"},
-        {ref:"PR #547", s:"closed", sev:"Medium", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS) — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/547"},
+        {ref:"PR #539", s:"fixed", sev:"Critical", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser (antirez landed his own equivalent fix commit the same day)", url:"https://github.com/antirez/ds4/pull/539"},
+        {ref:"PR #542", s:"fixed", sev:"High", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader", url:"https://github.com/antirez/ds4/pull/542"},
+        {ref:"PR #543", s:"fixed", sev:"Medium", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant", url:"https://github.com/antirez/ds4/pull/543"},
+        {ref:"PR #544", s:"fixed", sev:"Medium", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads", url:"https://github.com/antirez/ds4/pull/544"},
+        {ref:"PR #545", s:"fixed", sev:"Medium", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating", url:"https://github.com/antirez/ds4/pull/545"},
+        {ref:"PR #546", s:"fixed", sev:"Low", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating", url:"https://github.com/antirez/ds4/pull/546"},
+        {ref:"PR #547", s:"fixed", sev:"Medium", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS)", url:"https://github.com/antirez/ds4/pull/547"},
         {ref:"PR #548", s:"open", sev:"Low", t:"integer bound", title:"Bound tokenizer merges count to INT32_MAX like the tokens table", url:"https://github.com/antirez/ds4/pull/548"},
-        {ref:"PR #541", s:"closed", sev:"Low", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast) — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/541"},
+        {ref:"PR #541", s:"fixed", sev:"Low", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast)", url:"https://github.com/antirez/ds4/pull/541"},
         {ref:"PR #540", s:"open", sev:"Low", t:"resource cleanup", title:"Unlink the bash-tool output temp file on job cleanup", url:"https://github.com/antirez/ds4/pull/540"},
         {ref:"Issue #549", s:"issue", t:"hardening notes", title:"Follow-up hardening / design items from a security review", url:"https://github.com/antirez/ds4/issues/549"}
       ]
@@ -469,7 +471,7 @@
   ];
 
   const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const statusLabel = s => s === 'merged' ? 'Merged' : s === 'advisory' ? 'Advisory · fixed' : s === 'issue' ? 'Issue' : s === 'closed' ? 'Closed · not merged' : 'Open · in review';
+  const statusLabel = s => s === 'merged' ? 'Merged' : s === 'advisory' ? 'Advisory · fixed' : s === 'fixed' ? 'Fixed independently' : s === 'issue' ? 'Issue' : s === 'closed' ? 'Closed · not merged' : 'Open · in review';
 
   const cases = document.getElementById('cases');
   cases.innerHTML = PROJECTS.map(p => {

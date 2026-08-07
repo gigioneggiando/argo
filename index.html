@@ -256,6 +256,16 @@
     .hero-top{grid-template-columns:1fr}
     .hero-art{display:none}
   }
+  @media (max-width:600px){
+    .top .wrap{gap:8px}
+    .brand small{display:none}
+    .top nav{gap:4px}
+    .top nav a.hideable2{display:none}
+  }
+  @media (max-width:360px){
+    .top nav a.nav-cta{padding:7px 8px}
+    .brand .eye{font-size:1rem}
+  }
   @media (prefers-reduced-motion:reduce){
     .case{opacity:1 !important; transform:none !important; transition:none}
     .eye .iris, .eye .gaze{animation:none}
@@ -275,7 +285,7 @@
     <nav>
       <a class="hideable" href="https://github.com/gigioneggiando/argo" target="_blank" rel="noopener">Repository</a>
       <a class="hideable" href="https://github.com/gigioneggiando/argo/wiki" target="_blank" rel="noopener">Wiki</a>
-      <a href="https://github.com/gigioneggiando/argo/discussions" target="_blank" rel="noopener">Discussions</a>
+      <a class="hideable2" href="https://github.com/gigioneggiando/argo/discussions" target="_blank" rel="noopener">Discussions</a>
       <a class="nav-cta" href="#support">Contribute</a>
           <button id="themeToggle" class="theme-btn" type="button" aria-label="Toggle light or dark theme">&#9680;</button>
     </nav>

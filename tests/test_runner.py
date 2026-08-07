@@ -2,7 +2,10 @@
 tools, run() must strip them before any session launches, and the headless command must
 hard-disallow them."""
 
+import shutil
 from pathlib import Path
+
+import pytest
 
 from argo.config import PipelineConfig, NETWORK_TOOLS, MUTATION_TOOLS
 from argo.ledger import Ledger
@@ -39,6 +42,7 @@ def test_run_strips_network_and_mutation_tools(tmp_path):
     ledger.close()
 
 
+@pytest.mark.skipif(not shutil.which("claude"), reason="claude CLI not installed")
 def test_headless_cmd_is_readonly_sandboxed(tmp_path):
     ledger = Ledger(tmp_path / "l.sqlite")
     runner = HeadlessClaudeRunner(PipelineConfig(), ledger)

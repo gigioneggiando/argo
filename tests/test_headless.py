@@ -2,6 +2,7 @@
 and robust error handling on the subprocess path. No tokens spent."""
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,12 @@ from argo.runner import (ClaudeRunner, HeadlessClaudeRunner, RunnerError,
 from conftest import FIXTURES
 
 REAL = json.loads((FIXTURES / "real_envelope.json").read_text(encoding="utf-8"))
+
+#: _build_cmd/_invoke resolve the real `claude` binary via shutil.which() before doing anything
+#: else (even with _exec mocked away) -- these tests need it actually installed, unlike the rest
+#: of the suite (mock runner, zero tokens). Same skip-if-tool-missing pattern as the Docker-gated
+#: test in test_runtime.py.
+needs_claude_cli = pytest.mark.skipif(not shutil.which("claude"), reason="claude CLI not installed")
 
 
 # --------------------------------------------------------------------- parser (Step 2)
@@ -115,6 +122,7 @@ def test_session_budget_uses_remaining_run_budget(tmp_path):
 
 
 # --------------------------------------------------------------------- flags (Step 1/3)
+@needs_claude_cli
 def test_build_cmd_caps_and_no_max_turns(tmp_path):
     ledger = Ledger(tmp_path / "l.sqlite")
     cmd = HeadlessClaudeRunner(PipelineConfig(), ledger)._build_cmd(
@@ -136,6 +144,7 @@ def _invoke(runner, tmp_path):
                           run_id="R", label="x", timeout_s=5)
 
 
+@needs_claude_cli
 def test_invoke_raises_on_empty_stdout(tmp_path, monkeypatch):
     ledger = Ledger(tmp_path / "l.sqlite")
     runner = HeadlessClaudeRunner(PipelineConfig(), ledger)
@@ -156,6 +165,7 @@ def test_invoke_raises_on_malformed_json(tmp_path, monkeypatch):
     ledger.close()
 
 
+@needs_claude_cli
 def test_invoke_returns_envelope_even_on_nonzero_exit(tmp_path, monkeypatch):
     ledger = Ledger(tmp_path / "l.sqlite")
     runner = HeadlessClaudeRunner(PipelineConfig(), ledger)

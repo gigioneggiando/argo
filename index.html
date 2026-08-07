@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 8 projects, 28 PRs + 2 published advisories, 15 already merged.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 9 projects, 28 PRs + 4 published advisories, 15 already merged.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -308,7 +308,7 @@
       </div>
 
       <div class="stats" id="stats">
-        <div class="stat"><div class="num accent" data-to="8">0</div><div class="lab">Projects</div></div>
+        <div class="stat"><div class="num accent" data-to="9">0</div><div class="lab">Projects</div></div>
         <div class="stat"><div class="num" data-to="28">0</div><div class="lab">Public PRs</div></div>
         <div class="stat"><div class="num" data-to="15">0</div><div class="lab">Already merged</div></div>
         <div class="stat"><div class="num" data-to="5">0</div><div class="lab">Languages</div></div>
@@ -428,15 +428,15 @@
       name:"ds4", lang:"C", upstream:"https://github.com/antirez/ds4",
       blurb:"A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.",
       items:[
-        {ref:"PR #539", s:"open", sev:"Critical", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser", url:"https://github.com/antirez/ds4/pull/539"},
-        {ref:"PR #542", s:"open", sev:"High", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader", url:"https://github.com/antirez/ds4/pull/542"},
-        {ref:"PR #543", s:"open", sev:"Medium", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant", url:"https://github.com/antirez/ds4/pull/543"},
-        {ref:"PR #544", s:"open", sev:"Medium", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads", url:"https://github.com/antirez/ds4/pull/544"},
-        {ref:"PR #545", s:"open", sev:"Medium", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating", url:"https://github.com/antirez/ds4/pull/545"},
-        {ref:"PR #546", s:"open", sev:"Low", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating", url:"https://github.com/antirez/ds4/pull/546"},
-        {ref:"PR #547", s:"open", sev:"Medium", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS)", url:"https://github.com/antirez/ds4/pull/547"},
+        {ref:"PR #539", s:"closed", sev:"Critical", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser — closed without merge, fixed independently by antirez the same day", url:"https://github.com/antirez/ds4/pull/539"},
+        {ref:"PR #542", s:"closed", sev:"High", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/542"},
+        {ref:"PR #543", s:"closed", sev:"Medium", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/543"},
+        {ref:"PR #544", s:"closed", sev:"Medium", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/544"},
+        {ref:"PR #545", s:"closed", sev:"Medium", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/545"},
+        {ref:"PR #546", s:"closed", sev:"Low", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/546"},
+        {ref:"PR #547", s:"closed", sev:"Medium", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS) — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/547"},
         {ref:"PR #548", s:"open", sev:"Low", t:"integer bound", title:"Bound tokenizer merges count to INT32_MAX like the tokens table", url:"https://github.com/antirez/ds4/pull/548"},
-        {ref:"PR #541", s:"open", sev:"Low", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast)", url:"https://github.com/antirez/ds4/pull/541"},
+        {ref:"PR #541", s:"closed", sev:"Low", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast) — closed without merge, fixed independently by antirez", url:"https://github.com/antirez/ds4/pull/541"},
         {ref:"PR #540", s:"open", sev:"Low", t:"resource cleanup", title:"Unlink the bash-tool output temp file on job cleanup", url:"https://github.com/antirez/ds4/pull/540"},
         {ref:"Issue #549", s:"issue", t:"hardening notes", title:"Follow-up hardening / design items from a security review", url:"https://github.com/antirez/ds4/issues/549"}
       ]
@@ -456,6 +456,14 @@
       items:[
         {ref:"PR #143", s:"merged", sev:"High", t:"crash isolation", title:"Isolate command dispatch and the deep-parse phase from crashing the whole session", url:"https://github.com/Lazza/RecuperaBit/pull/143"},
         {ref:"PR #144", s:"merged", sev:"Medium", t:"output injection", title:"Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports", url:"https://github.com/Lazza/RecuperaBit/pull/144"}
+      ]
+    },
+    {
+      name:"coturn", lang:"C", upstream:"https://github.com/coturn/coturn",
+      blurb:"A widely-deployed TURN and STUN relay server for WebRTC NAT traversal.",
+      items:[
+        {ref:"GHSA", s:"advisory", sev:"Medium", t:"ACL bypass / SSRF", title:"addr_less_eq() compares IPv6 range endpoints byte-by-byte instead of numerically, letting an authenticated TURN client bypass denied-peer-ip / allowed-peer-ip IPv6 ranges (a TURN-specific SSRF)", url:"https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99"},
+        {ref:"GHSA", s:"advisory", sev:"Medium", t:"resource exhaustion", title:"An authenticated client can grow the shared multiplex-peer demux table without limit in multiplex-peer mode", url:"https://github.com/coturn/coturn/security/advisories/GHSA-67c2-q5xv-f85p"}
       ]
     }
   ];

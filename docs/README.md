@@ -2,7 +2,8 @@
 
 Implementation-level documentation for Argo — an **LLM-native static vulnerability detector** for
 source code (general code audit by default; bug-bounty triage as one mode). For the **conceptual
-overview** (what the pipeline is, why prompt enrichment matters, model strategy, operational tips),
+overview** (what the pipeline is, why prompt enrichment matters, model strategy, operational tips,
+and [what makes it behave like an expert reviewer rather than a linter](../README.md#-it-works-like-an-expert-reviewer-not-a-linter)),
 see the [top-level README](../README.md).
 
 ## Contents

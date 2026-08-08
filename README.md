@@ -25,8 +25,13 @@ resubmission tracking), not the whole tool — see [Two modes](#-two-modes-gener
 
 - 🔎 **Threat-informed audit** — opt-out Stage-0 web OSINT (CVEs, advisories, history) feeds recon.
 - 🧠 **Archetype-driven prompts** — classifies the software, then writes custom audit prompts for it.
+- 🧭 **Reads for intent, not just syntax** — recon extracts named security invariants (what the code is
+  *supposed* to do, and how to check it) before the audit starts, so the hunt is closed-ended
+  verification against real intended behavior, not pattern-guessing that mistakes business logic for a bug.
 - 🛡️ **Adversarial validation** — a second model tries to *refute* each finding before it survives.
-- 🌐 **Docs + history corroboration** — opt-out cross-check of each finding against the project's docs and the repo's VCS history (downgrades by-design, excludes already-fixed).
+- 🌐 **Docs + history corroboration** — opt-out cross-check of each finding against the project's own
+  docs, VCS history, issue tracker, PRs, and security advisories — catches "already fixed" and
+  "already reported" before it reaches you, not just "documented by design".
 - 🎯 **Design-aware & impact-disciplined** — inject the vendor's accepted-by-design behaviors (`--accepted-risks`) + an anti-over-claim rule (no reflexive IMDS/SSRF escalation) so intended behavior isn't reported and impact isn't inflated.
 - 🔌 **Multi-backend** — Claude / Codex / OpenAI / local-OSS, same pipeline (see [docs/backends.md](docs/backends.md)).
 - 🩹 **Opt-in remediation** — proposes a patch per finding and **verifies it compiles** on an isolated copy.
@@ -35,6 +40,49 @@ resubmission tracking), not the whole tool — see [Two modes](#-two-modes-gener
 - 🚫 **Detection-only, read-only, never live** — guardrails enforced in code, not just prompts.
 
 ![End-to-end pipeline flow](docs/diagrams/pipeline_flow.svg)
+
+---
+
+## 🕵️ It works like an expert reviewer, not a linter
+
+This is the part that's easy to oversell, so here's the honest version: Argo isn't a claim that
+expert judgment is unnecessary — every practice below is borrowed directly from how a careful human
+security researcher actually works, and a human still decides what gets reported. What it does claim
+is narrower, and we think it's true: it follows that discipline **consistently, on every run**, so
+what reaches you has already been through a first pass of the scrutiny an experienced reviewer would
+apply — not raw model output.
+
+Concretely, this is not "an AI that greps for bugs":
+
+- **It works out what the code is supposed to do before it looks for what's wrong.** Recon extracts
+  named security invariants — *"this property must hold, here, and here's how to check it"* — and the
+  correct baseline pattern to diff variants against, before the audit starts. That turns the hunt into
+  **closed-ended verification** against the software's actual intended behavior, instead of
+  open-ended pattern guessing that flags normal business logic as a bug.
+- **It knows where to look.** Recon classifies what kind of software it's reviewing (web/API, CMS,
+  library/SDK, CLI, agent/LLM, …) and threat-informs itself with the project's own public CVE and
+  advisory history before writing a single audit prompt — the triage step an experienced auditor does
+  before opening the first file, instead of giving every line equal attention.
+- **It goes after the crown jewels, not noise.** A completeness-critic pass re-audits each area for
+  what a first read missed; a second, adversarial model then actively tries to *break* every finding
+  before it's allowed to survive — the same self-skepticism a careful reviewer applies to their own
+  draft before sending it.
+- **It checks whether you already know.** Before a finding reaches you, it's cross-checked against the
+  project's own documentation, its VCS history, and its issue tracker, PRs, and published advisories —
+  specifically to catch the two things that make a security report look amateur: flagging something
+  the maintainers already fixed, or flagging a documented, intentional design decision as if it were a
+  bug.
+- **It says "I don't know" instead of guessing.** A genuinely uncertain finding is kept as
+  `needs_runtime_verification` with a concrete open question attached — never silently dropped, and
+  never force-labeled "confirmed" just to look more complete. See a
+  [real, unedited transcript](docs/chat-example.md) of it correcting its own false positive and
+  admitting a false negative, mid-conversation.
+
+None of this makes Argo infallible — it's a probabilistic tool, and says so throughout these docs
+(see [design-decisions.md](docs/design-decisions.md)). It means the floor is higher than "an LLM was
+asked to find bugs": what you're reviewing has already been triaged, self-critiqued, and fact-checked
+against public reality once. See it working on real, unmodified open-source code, not a curated demo:
+**[live findings](https://gigioneggiando.github.io/argo/)**.
 
 ---
 

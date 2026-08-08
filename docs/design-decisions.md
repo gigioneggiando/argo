@@ -66,6 +66,12 @@ Why we did *not* add it:
 
 What we use **instead** (cheap, safe, additive — no build, no new runtime):
 
+- **Ground-truth extraction (Stage 2)**: before any hunting starts, recon extracts named security
+  invariants (`location → expected property → how to check it`) and the correct baseline-implementation
+  pattern to diff variants against. This is the concrete mechanism behind "reads for intent, not just
+  syntax" in the README: it turns the audit from open-ended pattern search into **closed-ended
+  verification** against the software's actual intended behavior, which is what keeps the model from
+  mistaking ordinary business logic for a vulnerability.
 - **Per-focus recon split**: Stage 2 partitions the target into focused audit prompts so each audit
   session reasons about a bounded surface (a poor-man's "slice").
 - **Vulnerability-class index** (`argo/data/vuln_index.yaml`): archetype → likely CWE classes,

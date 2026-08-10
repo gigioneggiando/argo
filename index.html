@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 9 projects, 28 PRs + 4 published advisories, 15 already merged.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 9 projects, 28 PRs + 4 published advisories, 23 already resolved (15 merged, 8 fixed independently).">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -322,7 +322,7 @@
       <div class="stats" id="stats">
         <div class="stat"><div class="num accent" data-to="9">0</div><div class="lab">Projects</div></div>
         <div class="stat"><div class="num" data-to="28">0</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num" data-to="15">0</div><div class="lab">Already merged</div></div>
+        <div class="stat"><div class="num" data-to="23">0</div><div class="lab">Already resolved</div></div>
         <div class="stat"><div class="num" data-to="5">0</div><div class="lab">Languages</div></div>
       </div>
 
@@ -440,15 +440,15 @@
       name:"ds4", lang:"C", upstream:"https://github.com/antirez/ds4",
       blurb:"A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.",
       items:[
-        {ref:"PR #539", s:"fixed", sev:"Critical", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser (antirez landed his own equivalent fix commit the same day)", url:"https://github.com/antirez/ds4/pull/539"},
-        {ref:"PR #542", s:"fixed", sev:"High", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader", url:"https://github.com/antirez/ds4/pull/542"},
-        {ref:"PR #543", s:"fixed", sev:"Medium", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant", url:"https://github.com/antirez/ds4/pull/543"},
-        {ref:"PR #544", s:"fixed", sev:"Medium", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads", url:"https://github.com/antirez/ds4/pull/544"},
-        {ref:"PR #545", s:"fixed", sev:"Medium", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating", url:"https://github.com/antirez/ds4/pull/545"},
-        {ref:"PR #546", s:"fixed", sev:"Low", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating", url:"https://github.com/antirez/ds4/pull/546"},
-        {ref:"PR #547", s:"fixed", sev:"Medium", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS)", url:"https://github.com/antirez/ds4/pull/547"},
+        {ref:"PR #539", s:"fixed", sev:"Critical", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser (applied via commit 8e49a5c, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/539"},
+        {ref:"PR #542", s:"fixed", sev:"High", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader (applied via commit c7689db, co-authored with antirez, alongside #543 and #545)", url:"https://github.com/antirez/ds4/pull/542"},
+        {ref:"PR #543", s:"fixed", sev:"Medium", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant (applied via commit c7689db, co-authored with antirez, alongside #542 and #545)", url:"https://github.com/antirez/ds4/pull/543"},
+        {ref:"PR #544", s:"fixed", sev:"Medium", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads (applied via commit 0fa15c6, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/544"},
+        {ref:"PR #545", s:"fixed", sev:"Medium", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating (applied via commit c7689db, co-authored with antirez, alongside #542 and #543)", url:"https://github.com/antirez/ds4/pull/545"},
+        {ref:"PR #546", s:"fixed", sev:"Low", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating (applied via commit f02d79c, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/546"},
+        {ref:"PR #547", s:"fixed", sev:"Medium", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS) (applied via commit a169cff, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/547"},
         {ref:"PR #548", s:"open", sev:"Low", t:"integer bound", title:"Bound tokenizer merges count to INT32_MAX like the tokens table", url:"https://github.com/antirez/ds4/pull/548"},
-        {ref:"PR #541", s:"fixed", sev:"Low", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast)", url:"https://github.com/antirez/ds4/pull/541"},
+        {ref:"PR #541", s:"fixed", sev:"Low", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast) (applied via commit 8340f35, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/541"},
         {ref:"PR #540", s:"open", sev:"Low", t:"resource cleanup", title:"Unlink the bash-tool output temp file on job cleanup", url:"https://github.com/antirez/ds4/pull/540"},
         {ref:"Issue #549", s:"issue", t:"hardening notes", title:"Follow-up hardening / design items from a security review", url:"https://github.com/antirez/ds4/issues/549"}
       ]
@@ -487,11 +487,14 @@
   cases.innerHTML = PROJECTS.map(p => {
     const advisories = p.items.filter(i => i.s === 'advisory').length;
     const merged = p.items.filter(i => i.s === 'merged').length;
+    const fixed = p.items.filter(i => i.s === 'fixed').length;
+    const resolved = merged + fixed;
+    const resolvedLabel = merged > 0 && fixed > 0 ? 'resolved' : fixed > 0 ? 'fixed' : 'merged';
     const prs = p.items.filter(i => i.s !== 'issue' && i.s !== 'advisory').length;
     const tally = (advisories > 0 && prs === 0)
       ? `<span class="tally good">${advisories}&nbsp;advisor${advisories>1?'ies':'y'}</span>`
-      : merged > 0
-        ? `<span class="tally good">${merged}&nbsp;merged</span>` + (prs - merged > 0 ? `<span class="tally">${prs - merged}&nbsp;open</span>` : '')
+      : resolved > 0
+        ? `<span class="tally good">${resolved}&nbsp;${resolvedLabel}</span>` + (prs - resolved > 0 ? `<span class="tally">${prs - resolved}&nbsp;open</span>` : '')
         : `<span class="tally">${prs}&nbsp;open PR${prs>1?'s':''}</span>`;
     const rows = p.items.map(i => `
       <a class="row ${i.s}" href="${i.url}" target="_blank" rel="noopener">

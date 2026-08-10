@@ -487,6 +487,10 @@ manually against the instance, inside the program rules.
 
 ## 💡 Operational tips
 
+- **A run that stops (crash, Ctrl+C, a rate limit) is not lost.** Every stage writes its output
+  atomically, so `argo resume RUN_ID` continues from the first unfinished stage — no re-ingest, no
+  re-paying for stages already done. The CLI prints the exact command when a run stops. Details:
+  [cli-reference.md § Recovering a stopped run](docs/cli-reference.md#recovering-a-stopped-run).
 - Keep prompts under git and record which version each run used: you can A/B test them and see
   which produce accepted findings.
 - The SQLite ledger avoids re-reporting the same bug across runs/programs and tracks your hit rate.

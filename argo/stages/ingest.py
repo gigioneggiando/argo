@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from ..config import ARTIFACT_TOOLS, write_pipeline_config
-from ..context import RunContext, collect_output_files
+from ..context import RunContext, atomic_write_json, collect_output_files
 from ..models import AssetVersion, RunMeta, Scope
 from ..rendering import sha256_text, with_artifact_contract
 from ..schemas import validate_scope
@@ -365,7 +365,7 @@ def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: boo
     if not scope.prohibited_techniques:            # guardrail precondition for every render
         raise RuntimeError("ingest: scope.prohibited_techniques is empty after extraction")
 
-    ctx.scope_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    atomic_write_json(ctx.scope_path, raw)
     ctx.scope = scope
 
     # --- acquire repo read-only ------------------------------------------------------

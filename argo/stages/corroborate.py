@@ -32,7 +32,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from ..config import RESEARCH_TOOLS
-from ..context import BudgetExceeded, RunContext, collect_output_files
+from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
 from ..models import Corroboration, Finding
 from ..rendering import design_context_block, fill_placeholders, with_artifact_contract
 from ..runner import RunnerError
@@ -341,7 +341,7 @@ def run(ctx: RunContext) -> Path:
     stats["unknown_due_to_infra_failure"] = infra_failure_unknown
     stats["unknown_genuine"] = counts["unknown"] - infra_failure_unknown
     stats["verdict_self_corrected"] = overridden
-    ctx.validated_findings_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    atomic_write_json(ctx.validated_findings_path, doc)
     unknown_breakdown = (
         f"{counts['unknown']} unknown ({infra_failure_unknown} due to session/backend failure — "
         f"re-run `argo corroborate {ctx.run_id}` once the limit resets; "

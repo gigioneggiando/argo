@@ -31,7 +31,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from ..config import ARTIFACT_TOOLS
-from ..context import BudgetExceeded, RunContext, collect_output_files
+from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
 from ..guardrails import assert_prohibited_present
 from ..models import Finding, Verification
 from ..ranking import dedup_key, split_ref
@@ -290,7 +290,7 @@ def run(ctx: RunContext) -> Path:
     stats["survivors"] = len(kept)
     stats["deep_verify_inconclusive_due_to_infra_failure"] = infra_failure
     stats["deep_verify_inconclusive_genuine"] = counts.get("inconclusive", 0) - infra_failure
-    ctx.validated_findings_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    atomic_write_json(ctx.validated_findings_path, doc)
 
     _log(f"{counts.get('reconfirmed', 0)} reconfirmed, {counts.get('corrected', 0)} corrected, "
         f"{len(split_originals)} split ({split_children_total} new finding(s)), "

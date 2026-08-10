@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from ..config import ARTIFACT_TOOLS
-from ..context import BudgetExceeded, RunContext, collect_output_files
+from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
 from ..guardrails import assert_prohibited_present
 from ..rendering import fill_placeholders, with_artifact_contract
 from ..runner import RunnerError
@@ -294,9 +294,8 @@ def run(ctx: RunContext) -> Path | None:
         return None
     doc = {"program_name": scope.program_name, "audit_focus": "dependencies",
            "generated_at": ctx.timestamp(), "findings": merged}
-    ctx.findings_dir.mkdir(parents=True, exist_ok=True)
     out = ctx.findings_dir / "dependencies.json"
-    out.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    atomic_write_json(out, doc)
     _log(f"{len(merged)} dependency finding(s) ({len(det)} deterministic + "
          f"{len(merged) - len(det)} model) -> {out.name}")
     return out

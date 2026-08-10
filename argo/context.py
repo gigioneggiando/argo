@@ -5,10 +5,11 @@ missing or the session died mid-write)."""
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from .config import PipelineConfig
 from .ledger import Ledger
@@ -16,6 +17,36 @@ from .models import Scope
 from .rendering import extract_manifest
 from .runner import ClaudeRunner, LLMResult
 from .schemas import validate_scope
+
+
+def atomic_write_json(path: Path, data: Any, *, indent: int = 2) -> None:
+    """Write JSON to ``path`` atomically (temp file + ``os.replace``), so a hard kill mid-write
+    (Ctrl+C, OOM, process kill) can never leave a truncated/corrupt file behind for the NEXT stage
+    — or a resumed run — to choke on. This matters most for files re-read and rewritten by several
+    stages in turn (``validated_findings.json`` is read/rewritten by validate, corroborate,
+    deep_verify, freshness, runtime, and live) — a torn write there breaks every stage after it,
+    turning an otherwise-recoverable crash into one ``argo resume`` cannot recover from.
+
+    Retries briefly on Windows ``PermissionError`` (a concurrent reader can transiently hold the
+    file open — the same condition :func:`progress.ProgressReporter._write` works around) but,
+    unlike that telemetry writer, ultimately RAISES on persistent failure rather than dropping the
+    write silently: telemetry can afford to lose an update, a stage's real output cannot.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    text = json.dumps(data, indent=indent)
+    last_exc: OSError | None = None
+    for attempt in range(5):
+        try:
+            tmp.write_text(text, encoding="utf-8")
+            tmp.replace(path)
+            return
+        except PermissionError as exc:
+            last_exc = exc
+            time.sleep(0.02)
+    assert last_exc is not None
+    raise last_exc
 
 
 class BudgetExceeded(RuntimeError):

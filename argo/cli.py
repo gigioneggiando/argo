@@ -131,6 +131,28 @@ def _emit(obj: dict) -> None:
     typer.echo(json.dumps(obj, indent=2))
 
 
+def _run_with_resume_hint(fn, ctx):
+    """Run a pipeline-driving callable (``run_pipeline``/``resume_pipeline``); on ANY interruption
+    — a real failure, or the user hitting Ctrl+C — print a clear, immediate pointer to the resume
+    command before re-raising. Without this, a stopped run looks like total data loss to anyone who
+    doesn't already know ``argo resume`` exists: `status.json` and every stage's own output file
+    are written atomically and mostly survive a hard kill, but a raw Python traceback (or a silent
+    Ctrl+C) tells a normal user none of that."""
+    try:
+        return fn()
+    except (typer.Exit, SystemExit):
+        raise
+    except (KeyboardInterrupt, Exception) as exc:
+        typer.echo(
+            f"\n[argo] Run '{ctx.run_id}' stopped: {type(exc).__name__}: {exc}\n"
+            "[argo] Most progress is preserved on disk (stage outputs are written atomically).\n"
+            f"[argo] To continue from where it left off:\n"
+            f"[argo]     argo resume {ctx.run_id}\n",
+            err=True,
+        )
+        raise
+
+
 def _parse_duration(text: str) -> timedelta:
     raw = text.strip().lower()
     if raw.isdigit():
@@ -473,7 +495,7 @@ def resume(
             raise typer.BadParameter(f"resume again after {retry_after}")
         _sleep_until_retry_after(retry_after, max_wait=_parse_duration(max_wait))
     ctx = build_context(cfg, run)
-    summary = resume_pipeline(ctx)
+    summary = _run_with_resume_hint(lambda: resume_pipeline(ctx), ctx)
     _emit(summary)
 
 
@@ -747,10 +769,11 @@ def pipeline(
             return True
         return typer.confirm("Proceed into audit?", default=False)
 
-    summary = run_pipeline(ctx, brief, repo, dry_run=dry_run, research_enabled=research,
-                           links_path=links, accepted_risks_path=accepted_risks, commit=commit,
-                           estimate_before_audit=not dry_run, estimate_output=_print_estimate,
-                           estimate_confirm=_confirm_estimate)
+    summary = _run_with_resume_hint(lambda: run_pipeline(
+        ctx, brief, repo, dry_run=dry_run, research_enabled=research,
+        links_path=links, accepted_risks_path=accepted_risks, commit=commit,
+        estimate_before_audit=not dry_run, estimate_output=_print_estimate,
+        estimate_confirm=_confirm_estimate), ctx)
     summary["smoke"] = smoke
     _emit(summary)
 

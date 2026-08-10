@@ -66,7 +66,14 @@ All failures produce a clear error with `run_id` + `stage`, never a silent crash
   mid-write) → returned, so the stage can glob the scratch dir for partial artifacts.
 - **Non-zero exit / empty / malformed stdout** → `RunnerError` with the stderr tail (this is what
   an auth/startup failure looks like).
-- **Timeout** → `RunnerError`.
+- **Timeout** → `RunnerError` (now `retryable=True` — a hang is not assumed to be deterministic).
+
+Every `RunnerError` these paths raise also carries a classified `failure_kind`
+(`moderation_flagged`/`credits_exhausted`/`rate_limited`/`timeout`/`unknown_retryable`/`None`), so
+`FallbackRunner` can apply a failure-appropriate cooldown instead of one flat default — see
+[architecture.md](architecture.md#the-agentrunner-abstraction) for the full breakdown (this
+classification applies to both backends via the shared `AgentRunner.run()`, not just Codex, even
+though Codex's exit_1/0-token crash signature is where it matters most in practice).
 
 **Partial recovery:** `stages/audit.py` and `stages/recon.py` catch a hard `RunnerError` and try
 to recover whatever the session already wrote to its scratch dir before failing — so one timed-out

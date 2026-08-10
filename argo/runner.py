@@ -54,12 +54,29 @@ class LLMResult:
     raw: dict = field(default_factory=dict)
 
 
+#: Best-effort classification of WHY a backend call failed, so a caller (FallbackRunner, a future
+#: orchestrator-level retry) can apply a failure-appropriate recovery instead of treating every
+#: retryable error identically. Distinct from ``retryable`` (whether to retry AT ALL) — this is
+#: about HOW: a rate limit wants to wait out its own reset hint; a moderation flag wants a real
+#: time gap before hitting the same classifier again (immediate retries of the same prompt have
+#: been observed to flag on every attempt even when a spaced-out one-off call succeeds); credits
+#: exhaustion on THIS backend won't resolve itself no matter how long you wait, so it should fall
+#: through to a genuinely different backend rather than being retried in place; a timeout might
+#: just need a longer budget next time. ``unknown_retryable`` is the conservative fallback for a
+#: failure that looks transient (matched a generic hint, or matched nothing distinctive) but isn't
+#: one of the specifically-recognized shapes above.
+FailureKind = str  # Literal["moderation_flagged", "credits_exhausted", "rate_limited",
+                    #         "timeout", "unknown_retryable"] -- kept as `str` (not typing.Literal)
+                    # so a new signature can be added without a call-site type-check ripple.
+
+
 class RunnerError(RuntimeError):
     def __init__(self, message: str, *, retry_after: str | None = None,
-                 retryable: bool = False):
+                 retryable: bool = False, failure_kind: FailureKind | None = None):
         super().__init__(message)
         self.retry_after = retry_after
         self.retryable = retryable
+        self.failure_kind = failure_kind
 
 
 class RunnerCancelled(RuntimeError):
@@ -266,11 +283,13 @@ class AgentRunner(ABC):
         # These carry api_error_status and cannot produce usable artifacts -> abort clearly.
         if result.is_error and result.api_error_status:
             reset_suffix = f", session_limit_reset_hint={reset_hint!r}" if reset_hint else ""
+            kind = (_classify_failure_text(f"{result.api_error_status} {result.text}")
+                    or ("rate_limited" if "429" in str(result.api_error_status) else None))
             raise RunnerError(
                 f"claude session API error (stage={stage}, run_id={run_id}, label={label}): "
                 f"api_error_status={result.api_error_status!r}, stop_reason="
                 f"{result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix}",
-                retry_after=reset_hint)
+                retry_after=reset_hint, failure_kind=kind)
 
         # --- per-session caps (no native --max-turns in v2.1.178) ----------------------
         mt = self.config.session_max_turns
@@ -288,11 +307,13 @@ class AgentRunner(ABC):
         # Stages that know how to salvage partial scratch artifacts still catch RunnerError.
         if result.is_error:
             reset_suffix = f", session_limit_reset_hint={reset_hint!r}" if reset_hint else ""
+            kind = _classify_failure_text(result.text) or "unknown_retryable"
             raise RunnerError(
                 f"recoverable is_error session (stage={stage}, run_id={run_id}, label={label}, "
                 f"stop_reason={result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix})",
                 retry_after=reset_hint,
                 retryable=True,
+                failure_kind=kind,
             )
         return result
 
@@ -497,14 +518,28 @@ class CodexRunner(AgentRunner):
         try:
             proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
-            raise RunnerError(f"codex session timed out after {timeout}s (stage={stage}, "
-                              f"run_id={run_id}, label={label})") from exc
+            # A genuine hang-then-kill is not a deterministic failure -- the same call could well
+            # succeed on a retry (this backend again, after a cooldown, or a fallback). Previously
+            # NOT marked retryable, so a single hang killed the whole run with no fallback attempt.
+            raise RunnerError(
+                f"codex session timed out after {timeout}s (stage={stage}, "
+                f"run_id={run_id}, label={label})",
+                retryable=True, failure_kind="timeout") from exc
         text = last_msg.read_text(encoding="utf-8", errors="replace") if last_msg.exists() else ""
         if proc.returncode != 0 and not text and not (proc.stdout or "").strip():
-            raise RunnerError(  # clear startup/auth failure — fail loudly, don't log a silent call
+            # "No output at all" is the exact shape of BOTH an immediate moderation flag (fires
+            # before any tool call ran) and credits exhaustion (every call after the account runs
+            # dry exits instantly, 0 tokens) -- the two are structurally identical here and only
+            # distinguishable by the actual stderr text. Classify it either way. Previously this
+            # path was NOT marked retryable at all, so Argo never even tried a configured fallback
+            # backend on exactly the failure shape fallback exists for -- fixed: always retryable,
+            # a wasted retry here costs ~0 tokens and sub-second wall clock either way.
+            kind = _classify_failure_text(proc.stderr) or "unknown_retryable"
+            raise RunnerError(
                 f"codex produced no output (stage={stage}, run_id={run_id}, label={label}, "
                 f"exit={proc.returncode}); likely auth/startup failure.\nstderr tail:\n"
-                f"{(proc.stderr or '')[-1500:]}")
+                f"{(proc.stderr or '')[-1500:]}",
+                retryable=True, failure_kind=kind)
         return {"_backend": "codex", "returncode": proc.returncode, "text": text,
                 "stdout": proc.stdout or "", "stderr": (proc.stderr or "")[-2000:]}
 
@@ -885,6 +920,40 @@ def _is_retryable(exc: Exception) -> bool:
     return any(h in s for h in _RETRYABLE_HINTS)
 
 
+#: Codex's own moderation classifier's error text (confirmed live — see the
+#: codex-moderation-cybersecurity-flag campaign notes): "ERROR: This content was flagged for
+#: possible cybersecurity risk. If this seems wrong, try rephrasing your request. To get
+#: authorized for security work, join the Trusted Access for Cyber program:
+#: https://chatgpt.com/cyber". Matched on the stable substring (not the whole sentence) since
+#: surrounding wording could shift; this phrase is the load-bearing part.
+_MODERATION_FLAG_SIGNATURE = "flagged for possible cybersecurity risk"
+
+#: Codex's credits-exhaustion signature, confirmed live via a manual `codex exec` smoke test (see
+#: argo-run-pacing-limits campaign notes — recurred 3 times independently: libcsp, authentik's
+#: verify stage, coturn). The STRUCTURAL fingerprint alone (stop_reason=exit_1, 0 tokens,
+#: session_id=null) is NOT enough to tell this apart from an immediate moderation flag, which
+#: produces the identical shape when it fires before any tool call ran — only the actual error
+#: text differs, which is why this is a text match, not a code-path match.
+_CREDITS_EXHAUSTED_SIGNATURE = "out of credits"
+
+
+def _classify_failure_text(text: str | None) -> FailureKind | None:
+    """Best-effort classification of a raw backend error/stderr string into a :data:`FailureKind`.
+
+    Returns ``None`` (not ``"unknown_retryable"``) when nothing distinctive matched, so a caller
+    can tell "checked, and nothing specific matched" from "never checked" and apply its own
+    default rather than this function silently picking one.
+    """
+    s = (text or "").lower()
+    if _MODERATION_FLAG_SIGNATURE in s:
+        return "moderation_flagged"
+    if _CREDITS_EXHAUSTED_SIGNATURE in s:
+        return "credits_exhausted"
+    if any(h in s for h in _RETRYABLE_HINTS):
+        return "rate_limited"
+    return None
+
+
 #: A session-limit error's detail text often carries a human-readable reset time (e.g. "You've hit
 #: your session limit · resets 12:50am (Europe/Rome)"). Extracting it means a human (or a future
 #: resume script) can `grep` a run log for exactly when it is safe to retry, instead of having to
@@ -962,8 +1031,40 @@ def parse_retry_after(value: str | None, *, now: datetime | None = None) -> date
 #: campaign's own operational history) a hint-less Codex failure is more often a transient sandbox
 #: flake than genuine credit exhaustion -- permanently benching it on the first hiccup cascades
 #: everything onto the fallback backend, exhausting ITS real quota instead. If it genuinely IS
-#: exhausted, the wasted retries are near-free (0 tokens, sub-second exit_1).
+#: exhausted, the wasted retries are near-free (0 tokens, sub-second exit_1). This is now the
+#: FALLBACK duration for a failure whose kind isn't one of the specifically-tuned entries in
+#: `_COOLDOWN_BY_FAILURE_KIND` below.
 _NO_HINT_RETRY_COOLDOWN = timedelta(minutes=5)
+
+#: Per-FailureKind cooldown before a disabled backend is reconsidered, when the error carried no
+#: parseable reset hint of its own. Deliberately NOT one flat duration for every retryable failure:
+#: - `credits_exhausted`: won't resolve itself no matter how long you wait short of a human topping
+#:   the account up. Retrying every 5 minutes against a genuinely empty account wastes nothing
+#:   (near-zero tokens, sub-second exit) but also accomplishes nothing -- a longer cooldown lets the
+#:   run spend that time productively on a DIFFERENT backend instead of re-checking a dead one.
+#:   Still bounded, not permanent: a false-positive text match, or a mid-run top-up, shouldn't
+#:   permanently bench an otherwise-working backend for the rest of a long run.
+#: - `moderation_flagged`: reflects the "short-lived account/session-level cooldown" hypothesis
+#:   from this campaign's operational history (immediate back-to-back retries of the identical
+#:   prompt flagged on every attempt even when a spaced-out one-off call with the SAME prompt
+#:   succeeded). Duration is a reasoned starting point, not a measured constant -- validate before
+#:   relying on it for anything time-critical.
+#: Any FailureKind not listed here (including a plain `None`) falls back to `_NO_HINT_RETRY_COOLDOWN`.
+_COOLDOWN_BY_FAILURE_KIND: dict[str, timedelta] = {
+    "credits_exhausted": timedelta(minutes=30),
+    "moderation_flagged": timedelta(minutes=10),
+}
+
+#: Before advancing to the NEXT backend in the chain after a moderation-flagged failure, sleep this
+#: long IF (and only if) the next backend is the same underlying provider (`config.runner`) as the
+#: one that just failed -- e.g. a `runner_fallbacks=["codex","codex"]` chain retrying on a second
+#: Codex account/instance. A genuinely different backend (codex -> headless) doesn't share the
+#: classifier that flagged, so there is nothing to wait out and the fallback still fires
+#: immediately. This is the direct fix for the observed failure mode: firing the next attempt with
+#: zero delay, even on a nominally "different" chain entry, does not escape the cooldown when it's
+#: really the same classifier being hit again. Untested exact duration -- a reasoned starting point
+#: pending real validation, not a measured constant.
+_MODERATION_RETRY_DELAY = timedelta(seconds=90)
 
 
 class FallbackRunner(AgentRunner):
@@ -1010,18 +1111,35 @@ class FallbackRunner(AgentRunner):
                 last_exc = exc
                 if not _is_retryable(exc):
                     raise
+                failure_kind = getattr(exc, "failure_kind", None)
+                cooldown = _COOLDOWN_BY_FAILURE_KIND.get(failure_kind, _NO_HINT_RETRY_COOLDOWN)
                 retry_at = parse_retry_after(getattr(exc, "retry_after", None))
                 bounded = retry_at is None    # no reset hint in the error -> bounded cooldown, not forever
                 if bounded:
-                    retry_at = datetime.now(timezone.utc) + _NO_HINT_RETRY_COOLDOWN
+                    retry_at = datetime.now(timezone.utc) + cooldown
                 with self._fb_lock:
                     self._disabled[i] = retry_at
                 if i + 1 < len(self._runners):
-                    reset = (f" for {_NO_HINT_RETRY_COOLDOWN} (no reset hint)" if bounded
+                    next_r = self._runners[i + 1]
+                    reset = (f" for {cooldown} (no reset hint)" if bounded
                              else f" until {retry_at.isoformat()}")
-                    print(f"[runner] backend #{i} ({r.config.runner}) hit a retryable limit; "
-                          f"falling back to #{i + 1} ({self._runners[i + 1].config.runner})"
-                          f"{reset}", file=sys.stderr)
+                    # A moderation flag and the next chain entry is the SAME backend provider (e.g.
+                    # a runner_fallbacks=["codex","codex"] chain): firing immediately does not
+                    # escape a short-lived classifier cooldown (observed: back-to-back retries all
+                    # flagged even when a spaced-out one-off call succeeded). A genuinely different
+                    # backend shares no such cooldown, so it still fires immediately. Sleep OUTSIDE
+                    # the lock -- other threads sharing this FallbackRunner must keep making
+                    # progress on their own calls while this one waits.
+                    if failure_kind == "moderation_flagged" and next_r.config.runner == r.config.runner:
+                        delay_s = _MODERATION_RETRY_DELAY.total_seconds()
+                        print(f"[runner] backend #{i} ({r.config.runner}) was moderation-flagged; "
+                              f"waiting {delay_s:.0f}s before retrying the same backend type on "
+                              f"#{i + 1}{reset}", file=sys.stderr)
+                        time.sleep(delay_s)
+                    else:
+                        print(f"[runner] backend #{i} ({r.config.runner}) hit a retryable limit "
+                              f"({failure_kind or 'unspecified'}); falling back to #{i + 1} "
+                              f"({next_r.config.runner}){reset}", file=sys.stderr)
         raise last_exc if last_exc else RunnerError("all fallback backends exhausted")
 
     def _invoke(self, **kwargs):                      # never used — run() delegates whole calls

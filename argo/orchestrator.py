@@ -4,8 +4,10 @@ Kept separate from the CLI so tests can drive the pipeline programmatically."""
 from __future__ import annotations
 
 import json
+import sys
+import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -14,13 +16,56 @@ from .context import RunContext
 from .estimate import estimate_cost, format_estimate
 from .ledger import Ledger
 from .progress import ProgressReporter, read_status
-from .runner import RunnerCancelled, build_runner
+from .runner import RunnerCancelled, _is_retryable, build_runner, parse_retry_after
 from .stages import (audit, corroborate, deep_verify, freshness, ingest, live, recon, report, research,
                      runtime, sca, second_opinion, validate)
 
 
 class PipelineCancelled(RuntimeError):
     """Raised when a run is cancelled between stages."""
+
+
+#: A stage exception that reaches _run_stage_sequence already represents every backend a
+#: FallbackRunner had configured failing (or a single-backend config's only option failing) -- so
+#: an auto-retry here means "give whatever just failed a little real TIME, then try the exact same
+#: stage call again," relying on FallbackRunner's own internal cooldown bookkeeping (which persists
+#: on ctx.runner across the whole run) to skip anything still disabled. Bounded so a genuinely
+#: broken stage can't loop forever.
+_MAX_STAGE_AUTO_RETRIES = 2
+
+#: Cap on how long an auto-retry will sleep waiting for a failure's own reset hint. Beyond this,
+#: auto-retrying blindly would silently hang an unattended run for a long, indeterminate stretch --
+#: give up on auto-retry and surface the failure normally instead (cli.py's resume-hint then tells
+#: a human exactly how to continue manually, e.g. `argo resume --wait --max-wait 12h` for a hint
+#: further out than this).
+_AUTO_RETRY_MAX_SLEEP = timedelta(minutes=10)
+
+#: Failure kinds an automatic in-process stage retry must NOT attempt. Credits exhaustion will not
+#: resolve itself no matter how long the process waits short of a human topping the account up --
+#: see runner._COOLDOWN_BY_FAILURE_KIND's own reasoning for the same judgment call applied to
+#: FallbackRunner's backend-level cooldown. Retrying here would just burn the bounded retry budget
+#: on something that structurally cannot succeed, delaying the (still necessary) surfaced failure.
+_NO_AUTO_RETRY_FAILURE_KINDS = {"credits_exhausted"}
+
+
+def _auto_retry_wait_seconds(exc: Exception) -> float | None:
+    """How long to sleep before an automatic in-process stage retry, or ``None`` if either the
+    failure isn't retryable at all, is a kind that auto-retry should never attempt, or its own
+    reset hint points further out than ``_AUTO_RETRY_MAX_SLEEP`` (too long to wait unattended)."""
+    if not _is_retryable(exc):
+        return None
+    if getattr(exc, "failure_kind", None) in _NO_AUTO_RETRY_FAILURE_KINDS:
+        return None
+    target = parse_retry_after(getattr(exc, "retry_after", None))
+    if target is None:
+        return 20.0  # no specific hint -- still worth one short, cheap pause before retrying
+    now = datetime.now(timezone.utc).astimezone(target.tzinfo)
+    wait = (target - now).total_seconds()
+    if wait <= 0:
+        return 1.0
+    if wait > _AUTO_RETRY_MAX_SLEEP.total_seconds():
+        return None
+    return wait
 
 
 def new_run_id() -> str:
@@ -177,20 +222,31 @@ def _run_stage_sequence(ctx: RunContext, stage_fns: list[tuple[str, object]],
             continue
         _check_cancel()
         reporter.start_stage(name)
-        try:
-            result = fn()
-        except PipelineCancelled:
-            raise
-        except RunnerCancelled as exc:
-            reporter.cancelled()
-            raise PipelineCancelled(f"run {ctx.run_id} cancelled mid-stage ({name})") from exc
-        except Exception as exc:
-            reporter.fail_stage(
-                name,
-                f"{type(exc).__name__}: {exc}",
-                retry_after=getattr(exc, "retry_after", None),
-            )
-            raise
+        attempt = 0
+        while True:
+            try:
+                result = fn()
+                break
+            except PipelineCancelled:
+                raise
+            except RunnerCancelled as exc:
+                reporter.cancelled()
+                raise PipelineCancelled(f"run {ctx.run_id} cancelled mid-stage ({name})") from exc
+            except Exception as exc:
+                wait_s = _auto_retry_wait_seconds(exc) if attempt < _MAX_STAGE_AUTO_RETRIES else None
+                if wait_s is None:
+                    reporter.fail_stage(
+                        name,
+                        f"{type(exc).__name__}: {exc}",
+                        retry_after=getattr(exc, "retry_after", None),
+                    )
+                    raise
+                attempt += 1
+                print(f"[orchestrator] stage {name!r} failed "
+                      f"({getattr(exc, 'failure_kind', None) or 'retryable'}); auto-retry "
+                      f"{attempt}/{_MAX_STAGE_AUTO_RETRIES} in {wait_s:.0f}s: {exc}",
+                      file=sys.stderr)
+                time.sleep(wait_s)
         reporter.finish_stage(name)
         results[name] = result
     return results

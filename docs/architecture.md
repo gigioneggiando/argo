@@ -282,21 +282,66 @@ Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`
   pulls it out into the `RunnerError` message and the `llm_log.jsonl` row
   (`session_limit_reset_hint`) — so a human (or a future resume script) can `grep` a run log for
   exactly when it is safe to retry, instead of hunting down and re-reading the raw API error text.
-  A retryable error with **no** parseable hint (Codex's exit_1/0-token crash signature never
-  carries one — it's frequently a transient sandbox flake, not real credit exhaustion) gets a
-  bounded cooldown instead (`_NO_HINT_RETRY_COOLDOWN`, 5 minutes) — permanently benching the
-  backend on one hiccup would silently cascade the entire rest of a run onto the fallback,
-  exhausting its own real quota instead of giving the walled backend a real second chance.
   The chain can mix backends **and accounts** (`_expand_backend`): `--claude-accounts dirA,dirB`
   builds one `HeadlessClaudeRunner` per `CLAUDE_CONFIG_DIR` and `--codex-accounts` one `CodexRunner`
   per `CODEX_HOME` (limits are per-account), so e.g. `Claude-A → Claude-B → Codex-A → Codex-B`. The
   runner injects the per-account env var (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`, normalized) per call.
+
+  **Failure-kind classification and kind-aware backoff.** Every `RunnerError` carries an optional
+  `failure_kind` (`"moderation_flagged"`, `"credits_exhausted"`, `"rate_limited"`, `"timeout"`,
+  `"unknown_retryable"`, or `None`), set by `_classify_failure_text` matching the actual, confirmed-
+  live error text a backend produced — not just its exit code, which is structurally identical for
+  very different underlying causes. Concretely, Codex's exit_1/0-token crash signature (no
+  `api_error_status`, no last-message file, no stdout) is produced by BOTH an immediate moderation
+  flag ("flagged for possible cybersecurity risk...") AND genuine credit exhaustion ("...out of
+  credits...") — only the actual stderr text tells them apart. This matters because the right
+  recovery differs by kind:
+  - `credits_exhausted` — no amount of waiting fixes an empty account, so the backend is benched for
+    a **longer** cooldown (30 minutes) than the generic hint-less default, so the run spends that
+    time productively on a different backend instead of re-checking a dead one every few minutes.
+  - `moderation_flagged` — reflects operational history that immediate same-classifier retries keep
+    flagging even when a spaced-out one-off call with the identical prompt succeeds. Gets its own
+    10-minute bench, **and** — the direct fix for that observed pattern — if the *next* chain entry
+    is the *same* backend provider as the one that just flagged (e.g. a
+    `runner_fallbacks=["codex","codex"]` chain), `FallbackRunner` sleeps `_MODERATION_RETRY_DELAY`
+    (90s) before firing that attempt, since an immediate retry does not escape a short-lived
+    classifier cooldown. A genuinely different backend (Codex → Claude) shares no such cooldown and
+    still fires immediately. The sleep happens **outside** the per-instance lock, so other threads
+    sharing the same `FallbackRunner` (validate/corroborate's batched sessions) keep making progress.
+  - Anything else retryable with no specific reset hint keeps the original bounded cooldown
+    (`_NO_HINT_RETRY_COOLDOWN`, 5 minutes) — permanently benching a backend on one hiccup would
+    silently cascade the entire rest of a run onto the fallback, exhausting its own real quota
+    instead of giving the walled backend a real second chance.
+
+  A genuine subprocess **timeout** (hang → tree-kill, see below) and Codex's "produced no output at
+  all" path are now both explicitly `retryable=True` — previously neither was, so a single hang or
+  an immediate moderation flag/credit failure killed the whole run without ever trying a configured
+  fallback backend, on exactly the failure shape fallback exists for.
 
 The real backends launch the CLI through `AgentRunner._exec`, a **cancellable** subprocess: a pump
 thread runs `communicate` while the main thread polls `self.cancel_event` (set by the orchestrator
 for the run). On Cancel it kills the whole process **tree** (`_kill_tree`: `taskkill /T` on Windows,
 `killpg` on POSIX) and raises `RunnerCancelled`, which the orchestrator turns into a cancellation —
 so a long audit stops mid-stage, not at the next boundary (C1). Timeouts use the same path.
+
+**Orchestrator-level auto-retry.** A stage exception reaching `_run_stage_sequence`
+(`orchestrator.py`) already means every backend `FallbackRunner` had configured just failed (or a
+single-backend config's only option did) — so `_run_stage_sequence` gives the failure a little real
+time and retries the *exact same stage call* in place, bounded to `_MAX_STAGE_AUTO_RETRIES` (2)
+attempts, before giving up. `_auto_retry_wait_seconds` decides per attempt: not retryable, or the
+failure's `failure_kind` is `credits_exhausted` (waiting doesn't fix an empty account — see above)
+→ don't retry at all; a specific reset hint that's further out than `_AUTO_RETRY_MAX_SLEEP` (10
+minutes) → also don't retry (an unattended run must not silently sleep for hours inside the
+process) — surface the failure normally instead, same as before this existed, which is where
+`cli._run_with_resume_hint`'s "run `argo resume <run_id>`" message takes over. Otherwise: honor the
+specific reset hint if there is one (via the same `parse_retry_after` `argo resume --wait` already
+uses), or take a short 20-second pause if there isn't. This relies on — and doesn't duplicate —
+`FallbackRunner`'s own `_disabled` circuit-breaker bookkeeping, which persists on `ctx.runner`
+across the whole run: when the retried stage call re-invokes `ctx.runner.run(...)`, any backend
+still on cooldown from the same underlying failure is skipped automatically, same as any other call.
+In practice this means many transient failures (a rate limit, a moderation-flag cooldown, a
+sandbox flake) now resolve themselves without a human needing to notice the run stopped and run
+`argo resume` by hand — that command remains the answer for anything auto-retry gives up on.
 
 ## `RunContext`
 
@@ -318,6 +363,16 @@ but not the per-focus `audit_*.md` prompts — which used to abort the whole run
 Because the synthesis is read-only and idempotent, `stages/recon.run` now retries it (`_RECON_MAX_ATTEMPTS`)
 when the attempt produced no audit prompt, so a lost synthesis recovers automatically instead of needing
 a manual finisher.
+
+**Every canonical write is atomic (resilience).** Each stage's canonical output —
+`validated_findings.json` in particular, which is read and rewritten in turn by `validate`,
+`corroborate`, `verify`, `freshness_check`, `runtime`, and `live` — is written via
+`context.atomic_write_json` (temp file + `os.replace`, the same pattern `progress.py` already used
+for `status.json`), not a plain `write_text`. A hard kill (Ctrl+C, OOM, a process kill) mid-write
+now always leaves the LAST GOOD version on disk rather than a truncated one, so a subsequent `argo
+resume` (see below and [cli-reference.md](cli-reference.md#recovering-a-stopped-run)) always has a
+valid file to read instead of occasionally inheriting corruption from the exact moment it was
+trying to recover from.
 
 ### Scratch vs. canonical artifacts (why a file appears twice)
 

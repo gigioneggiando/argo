@@ -29,6 +29,7 @@ Everywhere below, `argo` ≡ `python -m argo.cli`.
 | `report` | 5 | `REPORT.md` + DRAFT submissions |
 | `pr-draft` | post-report | maintainer-facing GitHub PR body scaffold for one confirmed finding; local artifact only, never submits |
 | `pipeline` | 1–5 | the whole chain; **stops before any submission** |
+| `resume` | any | continue a `pipeline`/`run` invocation that stopped partway (crash, Ctrl+C, a backend rate limit, a session timeout) from wherever it left off — no re-ingest, no re-paying for already-completed stages. See "Recovering a stopped run" below |
 | `fix` | 6 (opt-in) | propose + **verify** a patch per confirmed finding (applies? compiles? no new errors?); never touches the target |
 | `bench` | 7 | score a labeled suite — findings precision/recall/F1 by archetype + CWE (+ optional A/B and patch quality) |
 | `serve` | — | run the HTTP API + web UI |
@@ -46,6 +47,7 @@ argo validate --run RUN_ID
 argo report   --run RUN_ID
 argo pr-draft --run RUN_ID --finding FINDING_ID [--test-command "CMD"]
 argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--commit SHA] [--dry-run] [--smoke]
+argo resume   RUN_ID [--wait] [--max-wait 12h]
 argo fix      --run RUN_ID [--no-verify] [--re-audit] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
 argo bench    --suite DIR [--fixes] [--re-audit] [--parallel-cases N] [--ab-audit-model MODEL]
 argo feedback [--program P --dedup K --accepted/--rejected [--run R] [--note ...]] | [--import FILE]
@@ -76,6 +78,35 @@ argo quality  [--program P] [--runs-dir DIR]
   never allowed into `reference_links`. See `--links` semantics in
   [the root README](../README.md#inputs-how-to-set-up-a-program).
 - `--run` — reuse an existing run id (generated automatically if omitted).
+
+## Recovering a stopped run
+
+If `pipeline` (or an individual stage command) stops partway — a backend crash, a rate limit, a
+session timeout, or you hitting Ctrl+C — you do **not** need to start over. Every stage writes its
+output atomically (temp file + rename), so a hard kill mid-write leaves the last good file intact
+rather than a truncated one, and `status.json` tracks exactly which stages already finished. When a
+run stops, the CLI prints the exact command to continue it:
+
+```
+[argo] Run 'RUN_ID' stopped: RunnerError: ...
+[argo] Most progress is preserved on disk (stage outputs are written atomically).
+[argo] To continue from where it left off:
+[argo]     argo resume RUN_ID
+```
+
+```bash
+argo resume RUN_ID              # continue from the first not-yet-done stage
+argo resume RUN_ID --wait       # if the failure carried a "retry after TIME" hint (e.g. a rate
+                                 # limit), sleep until then instead of failing immediately
+argo resume RUN_ID --wait --max-wait 2h   # cap how long --wait will sleep
+```
+
+`resume` re-reads the run's persisted `config.json`, so it uses the exact same settings the
+original invocation did — you don't repeat `--repo`/`--brief`/flags. A stage already marked `done`
+in `status.json` is never re-run (and never re-billed); only the first incomplete stage onward
+executes. The one hard boundary: a run that stopped **before ingest finished** (no usable
+`scope.json`/repo copy yet) can't be resumed — `resume` says so plainly and you start over with
+`pipeline`.
 
 ## Shared options (all commands)
 

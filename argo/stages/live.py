@@ -27,7 +27,7 @@ import urllib.parse
 import urllib.request
 
 from ..config import ARTIFACT_TOOLS
-from ..context import RunContext, collect_output_files
+from ..context import RunContext, atomic_write_json, collect_output_files
 from ..guardrails import (assert_inscope_only, assert_live_authorized, assert_live_write_policy,
                           validate_probe_plan, assert_prohibited_present,
                           inscope_matchers, host_in_scope, host_of)
@@ -263,7 +263,7 @@ def _generate_plan(ctx: RunContext, scope) -> list | None:
         _log(f"generated live probe plan is not valid JSON ({exc}); skipping")
         return None
     if isinstance(plan, list) and plan:
-        (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
+        atomic_write_json(ctx.run_dir / "live_probe_plan.json", plan)
         _log(f"LLM generated a live probe plan for {len(plan)} finding(s)")
         return plan
     _log("LLM proposed no in-scope probeable findings")
@@ -339,7 +339,7 @@ def _attach_to_findings(ctx: RunContext, results: dict, verdicts: dict) -> None:
             verdict, evidence = ("live_confirmed" if any_met else "live_inconclusive"), None
         finding.setdefault("validation", {})["live"] = {
             "verdict": verdict, "evidence": evidence, "probes": ev.get("requests", [])}
-    vf.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    atomic_write_json(vf, doc)
 
 
 def run(ctx: RunContext):
@@ -389,7 +389,7 @@ def run(ctx: RunContext):
     (ctx.run_dir / "live_audit_log.jsonl").write_text(
         "\n".join(json.dumps(a) for a in audit) + ("\n" if audit else ""), encoding="utf-8")
     out = ctx.run_dir / "live_results.json"
-    out.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    atomic_write_json(out, results)
     _attach_to_findings(ctx, results, verdicts)
     confirmed = sum(1 for v in verdicts.values() if v.get("live_verdict") == "live_confirmed") \
         if verdicts else sum(1 for f in results["findings"]

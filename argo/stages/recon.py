@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ..archetype import canonicalize
 from ..config import ARTIFACT_TOOLS
-from ..context import RunContext, collect_output_files
+from ..context import RunContext, atomic_write_json, collect_output_files
 from ..guardrails import (
     assert_audit_prompt_wellformed,
     assert_prohibited_present,
@@ -267,6 +267,6 @@ def _capture_archetype(ctx: RunContext) -> None:
     try:
         meta = json.loads(ctx.meta_path.read_text(encoding="utf-8-sig"))
         meta["archetype"] = archetype
-        ctx.meta_path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        atomic_write_json(ctx.meta_path, meta)
     except (OSError, ValueError):
         pass  # telemetry only — never fail the run over it

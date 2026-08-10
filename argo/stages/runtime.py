@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 
 from ..config import ARTIFACT_TOOLS
-from ..context import RunContext, collect_output_files
+from ..context import RunContext, atomic_write_json, collect_output_files
 from ..guardrails import (assert_loopback_only, validate_probe_plan, RuntimeProbeError,
                           assert_prohibited_present)
 from ..rendering import fill_placeholders, with_artifact_contract
@@ -302,7 +302,7 @@ def _generate_plan(ctx: RunContext, scope) -> list | None:
         _log(f"generated probe plan is not valid JSON ({exc}); skipping")
         return None
     if isinstance(plan, list) and plan:
-        (ctx.run_dir / "runtime_probe_plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
+        atomic_write_json(ctx.run_dir / "runtime_probe_plan.json", plan)
         _log(f"LLM generated a probe plan for {len(plan)} finding(s)")
         return plan
     _log("LLM proposed no probeable findings")
@@ -399,7 +399,7 @@ def run(ctx: RunContext) -> Path | None:
         results["verdicts"] = list(verdicts.values())
 
     out = ctx.run_dir / "runtime_results.json"
-    out.write_text(json.dumps(results, indent=2), encoding="utf-8")
+    atomic_write_json(out, results)
     _attach_to_findings(ctx, results, verdicts)
     confirmed = sum(1 for v in verdicts.values() if v.get("runtime_verdict") == "runtime_confirmed") \
         if verdicts else sum(1 for f in results.get("findings", [])
@@ -433,4 +433,4 @@ def _attach_to_findings(ctx: RunContext, results: dict, verdicts: dict) -> None:
             "booted": results.get("booted"), "verdict": verdict,
             "evidence": evidence, "probes": ev.get("requests", []),
         }
-    vf.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    atomic_write_json(vf, doc)

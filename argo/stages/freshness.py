@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Sequence
 
-from ..context import RunContext
+from ..context import RunContext, atomic_write_json
 from ..models import Finding, FreshnessCommit, FreshnessFlag
 from ..ranking import split_ref
 
@@ -336,6 +336,6 @@ def run(ctx: RunContext) -> Path:
         return ctx.validated_findings_path
 
     doc["findings"] = [f.model_dump(exclude_none=True) for f in survivors]
-    ctx.validated_findings_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    atomic_write_json(ctx.validated_findings_path, doc)
     _log(f"flagged {flagged_findings} finding(s); verdicts unchanged")
     return ctx.validated_findings_path

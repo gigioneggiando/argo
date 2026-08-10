@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from ..config import ARTIFACT_TOOLS
-from ..context import BudgetExceeded, RunContext, collect_output_files
+from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
 from ..grounding import build_index, ground_finding
 from ..guardrails import assert_prohibited_present, out_of_scope_match
 from ..models import Finding, Grounding, Validation
@@ -598,7 +598,7 @@ def run(ctx: RunContext) -> Path:
         "findings": [f.model_dump(exclude_none=True) for f in survivors],
         "dropped": dropped,
     }
-    ctx.validated_findings_path.write_text(json.dumps(out_doc, indent=2), encoding="utf-8")
+    atomic_write_json(ctx.validated_findings_path, out_doc)
     survivor_note = (
         f"{len(survivors)} survivor(s) ({infra_unvalidated} not actually adversarially validated — "
         f"session/backend failure or budget reached; re-run validate later if desired)"

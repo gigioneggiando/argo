@@ -45,7 +45,7 @@ import sys
 from pathlib import Path
 
 from ..config import PipelineConfig
-from ..context import RunContext
+from ..context import RunContext, atomic_write_json
 from ..runner import build_runner
 from . import audit, ingest, recon
 
@@ -113,7 +113,7 @@ def _merge_findings_back(ctx: RunContext, sub_ctx: RunContext, pass_label: str) 
         doc["audit_focus"] = f"{pass_label}-{doc.get('audit_focus', path.stem)}"
         count += len(doc.get("findings", []))
         out_path = ctx.findings_dir / f"{pass_label}-{path.name}"
-        out_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+        atomic_write_json(out_path, doc)
     return count
 
 

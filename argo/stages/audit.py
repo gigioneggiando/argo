@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from ..config import ARTIFACT_TOOLS
-from ..context import BudgetExceeded, RunContext, collect_output_files
+from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
 from ..guardrails import assert_prohibited_present
 from ..rendering import with_artifact_contract
 from ..runner import RunnerError
@@ -225,8 +225,7 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path) -> tuple[str, Path | N
         return slug, None, f"findings still invalid after normalization: {exc}"
 
     out = ctx.findings_dir / f"{slug}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    atomic_write_json(out, doc)
     _collect_variant_log(ctx, slug, work)
     n = len(doc.get("findings", []))
     _log(f"{slug}: {n} finding(s){' [partial session]' if partial else ''}")
@@ -344,7 +343,7 @@ def _run_critic_for_focus(ctx: RunContext, scope, slug: str, doc_path: Path,
              f"({len(findings)} total)")
     if len(findings) != len(doc.get("findings", [])):
         doc["findings"] = findings
-        doc_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+        atomic_write_json(doc_path, doc)
 
 
 def run(ctx: RunContext) -> list[Path]:

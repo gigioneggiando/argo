@@ -24,6 +24,11 @@ Handle each finding on its own evidence — do not let one finding's verdict inf
 - Search the **issue tracker, PRs, and discussions** (open AND closed), not only docs/commits — a
   behavior repeatedly reported and dismissed as intended is strong `design_accepted` evidence.
 - Keep it bounded: roughly **{{MAX_SEARCHES}} web searches PER FINDING** is plenty.
+- **Each finding's `verdict` and `rationale` must never contradict each other.** If a rationale
+  states or clearly implies vendor-documented/intentional/accepted-design behavior, that finding's
+  `verdict` MUST be `design_accepted` — never write a rationale describing intended/documented
+  behavior while returning `corroborated` for the same item. Re-read each rationale before picking
+  its verdict field, not the other way around.
 
 ## CONTEXT
 The audit ran against this version of the source (corroborate against newer history if any exists):

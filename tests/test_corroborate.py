@@ -92,6 +92,53 @@ def test_design_accepted_kept_but_no_draft(env, make_scenario):
     assert "Vendor-documented design decision" in report
 
 
+# ------------------------------------------------------------- verdict self-consistency backstop
+def test_verdict_self_corrected_when_rationale_asserts_design_accepted(env, make_scenario):
+    """The model can (and, once for real on gitea, did) write a rationale that itself asserts
+    vendor-confirmed intent while leaving verdict at "corroborated" — a genuine self-contradiction.
+    The deterministic backstop must catch this, correct the verdict, and preserve the original call."""
+    fixtures_dir, scen = make_scenario(
+        lambda d: _corr_fixture(d, "AUTHZ-002", {
+            "finding_id": "AUTHZ-002", "verdict": "corroborated",
+            "rationale": "The GitHub issue tracker shows this is documented as intended by the "
+                         "maintainers; see issue #42.",
+        }),
+        name="selfcontradict")
+    ctx = env(scen, fixtures_dir=fixtures_dir, corroborate_enabled=True)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    vf = _validated(ctx)
+    kept = {f["id"]: f for f in vf["findings"]}
+    corr = kept["AUTHZ-002"]["corroboration"]
+    assert corr["verdict"] == "design_accepted"                  # corrected, not left at corroborated
+    assert corr["verdict_overridden_from"] == "corroborated"     # original call preserved, not lost
+    assert vf["stats"]["verdict_self_corrected"] == 1
+    # no submission draft for a (corrected) design_accepted finding
+    assert "AUTHZ-002" not in {p.stem for p in ctx.drafts_dir.glob("*.md")}
+    report = (ctx.run_dir / "REPORT.md").read_text(encoding="utf-8")
+    assert "auto-corrected from `corroborated` to `design_accepted`" in report
+
+
+def test_verdict_not_corrected_for_an_ordinary_corroborated_rationale(env, make_scenario):
+    """Precision check: a rationale that merely mentions "documentation" in passing (without
+    asserting the behavior itself is vendor-confirmed as intended) must NOT trigger the backstop —
+    a false positive here would wrongly downgrade a real, still-open vulnerability."""
+    fixtures_dir, scen = make_scenario(
+        lambda d: _corr_fixture(d, "AUTHZ-002", {
+            "finding_id": "AUTHZ-002", "verdict": "corroborated",
+            "rationale": "The documentation does not mention this behavior anywhere, and no "
+                         "issue or PR addresses it, so it still appears to be a real, unaddressed bug.",
+        }),
+        name="notriggerfp")
+    ctx = env(scen, fixtures_dir=fixtures_dir, corroborate_enabled=True)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    vf = _validated(ctx)
+    kept = {f["id"]: f for f in vf["findings"]}
+    corr = kept["AUTHZ-002"]["corroboration"]
+    assert corr["verdict"] == "corroborated"
+    assert corr.get("verdict_overridden_from") is None
+    assert vf["stats"]["verdict_self_corrected"] == 0
+
+
 # --------------------------------------------------------------------------- best effort
 def test_bad_verdict_coerced_to_unknown(env, make_scenario):
     fixtures_dir, scen = make_scenario(

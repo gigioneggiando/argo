@@ -366,6 +366,11 @@ def _finding_section(f: dict) -> list[str]:
         elif ev:
             line += f" Evidence: {ev[0]}"
         L.append(line)
+        if corr.get("verdict_overridden_from"):
+            L.append(f"> ⚠️ Verdict auto-corrected from `{corr['verdict_overridden_from']}` to "
+                      f"`design_accepted`: the model's own rationale above asserted vendor-confirmed/"
+                      f"documented intent, but its structured verdict initially said otherwise. "
+                      f"Double-check this call before relying on it.")
         L.append("")
     verf = f.get("verification") or {}
     if verf.get("verdict"):

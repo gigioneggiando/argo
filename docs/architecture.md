@@ -102,6 +102,18 @@ Corroborate additionally mines the issue tracker for prior "by design / wontfix"
 hardest false-positive modes at the source, complementing corroborate (which catches the
 documented/already-fixed cases after the fact).
 
+**Corroborate's own verdict/rationale self-consistency backstop.** The model corroborating a
+finding occasionally writes a `rationale` that itself asserts vendor-confirmed/documented intent
+while the structured `verdict` it outputs alongside that same rationale still says `corroborated` —
+a genuine contradiction between what the model wrote and what it selected, observed in production
+(2/27 findings on one target nearly shipped as new vulnerabilities before a human caught the
+mismatch by hand). The prompt now explicitly instructs the model to keep verdict and rationale
+consistent; a deterministic, high-precision phrase check (`corroborate._reconcile_verdict_with_rationale`)
+is a backstop for when that instruction alone isn't enough — it corrects the verdict to
+`design_accepted` when the rationale clearly asserts it, and preserves the model's original call in
+`corroboration.verdict_overridden_from` so nothing is silently substituted (surfaced in `REPORT.md`
+with an explicit "auto-corrected" note for human review).
+
 **Deep verify: why a separate stage from validate.** Validate is adversarial but structurally
 *isolates* each finding — its prompt explicitly forbids one finding's verdict from influencing
 another's, so it can never notice that finding A and finding B are the same bug reached two ways,

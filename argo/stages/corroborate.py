@@ -16,6 +16,12 @@ Guardrails (defense in depth):
     passed as excerpts in the prompt (network OR repo, never both in one session).
   * It must NEVER contact the program's live in-scope hosts (passed as a forbidden list, like research).
   * Best-effort: a failure here never fails the run — the finding is simply left ``unknown``.
+  * Self-consistency backstop: the model occasionally writes a ``rationale`` that itself asserts
+    vendor-confirmed/documented intent while leaving ``verdict`` at ``corroborated`` — a real
+    contradiction seen in production (2/27 gitea findings, 2026-07-22), not a hypothetical. A
+    deterministic, high-precision phrase check (``_reconcile_verdict_with_rationale``) catches this
+    and corrects the verdict, preserving the model's original call in
+    ``verdict_overridden_from`` for transparency rather than silently substituting it.
 """
 
 from __future__ import annotations
@@ -51,6 +57,51 @@ _INFRA_FAILURE_RATIONALE_PREFIXES = (
 def _is_infra_failure(corr: Corroboration) -> bool:
     return (corr.verdict == "unknown" and bool(corr.rationale)
             and corr.rationale.startswith(_INFRA_FAILURE_RATIONALE_PREFIXES))
+
+
+# Self-consistency backstop for a real, observed LLM failure mode: the model's free-text ``rationale``
+# correctly identifies and cites vendor documentation proving a behavior is intentional, but the
+# structured ``verdict`` field it outputs alongside that same rationale still says "corroborated" — a
+# contradiction between what the model wrote and what it clicked, not a code-plumbing bug. Found
+# 2026-07-22 on gitea (CRYPTO-TOKEN-002, SSRF-001): both were about to ship as new vulnerabilities in
+# a disclosure until a human re-read all 27 rationales by hand and caught the mismatch. The primary
+# fix is prompting the model to keep verdict and rationale consistent (see 08_corroborate_prompt.md /
+# 08b_corroborate_batch_prompt.md); this is the deterministic safety net for when that still slips
+# through. Deliberately a SHORT, high-precision phrase list, not a broad keyword scan — a false
+# positive here (wrongly downgrading a real vulnerability to design_accepted) is a worse outcome than
+# the false negative it's meant to catch, so every phrase is one that essentially only appears when a
+# rationale is actually asserting vendor-confirmed intent, not describing a design constraint the
+# vulnerability violates.
+_DESIGN_ACCEPTED_SIGNALS = (
+    "documented as intended",
+    "documented as intentional",
+    "intended, documented behavior",
+    "confirmed intentional",
+    "vendor confirms this is intended",
+    "vendor documentation confirms this is intended",
+    "explicitly documented as intended",
+    "is a documented design decision",
+    "is an accepted design decision",
+    "accepted risk per",
+    "known, accepted limitation",
+    "matches the vendor's documented threat model",
+)
+
+
+def _reconcile_verdict_with_rationale(corr: Corroboration) -> Corroboration:
+    """If ``rationale`` strongly asserts vendor-confirmed/documented intent while ``verdict`` is
+    anything other than ``design_accepted``, correct the verdict — but never silently: the model's
+    own original verdict is preserved in ``verdict_overridden_from`` so a human reviewing the report
+    can see exactly what happened and double-check the call (see the module-level note above)."""
+    if corr.verdict == "design_accepted" or corr.verdict == "fixed_upstream" or not corr.rationale:
+        return corr
+    text = corr.rationale.lower()
+    if any(sig in text for sig in _DESIGN_ACCEPTED_SIGNALS):
+        return corr.model_copy(update={
+            "verdict": "design_accepted",
+            "verdict_overridden_from": corr.verdict,
+        })
+    return corr
 
 
 def _log(msg: str) -> None:
@@ -255,9 +306,16 @@ def run(ctx: RunContext) -> Path:
     fixed_upstream: list[dict] = []
     counts = {"corroborated": 0, "design_accepted": 0, "fixed_upstream": 0, "unknown": 0}
     infra_failure_unknown = 0
+    overridden = 0
     for f in survivors:
         corr = verdicts.get(f.id)
         if corr is not None:
+            corr = _reconcile_verdict_with_rationale(corr)
+            if corr.verdict_overridden_from is not None:
+                overridden += 1
+                _log(f"{f.id}: verdict self-corrected "
+                     f"{corr.verdict_overridden_from} -> design_accepted "
+                     f"(rationale asserted vendor-confirmed intent)")
             f.corroboration = corr
             counts[corr.verdict] = counts.get(corr.verdict, 0) + 1
             if corr.verdict == "unknown" and _is_infra_failure(corr):
@@ -282,6 +340,7 @@ def run(ctx: RunContext) -> Path:
     # a corroboration-quality problem in the gguf-tools run that first prompted this split.
     stats["unknown_due_to_infra_failure"] = infra_failure_unknown
     stats["unknown_genuine"] = counts["unknown"] - infra_failure_unknown
+    stats["verdict_self_corrected"] = overridden
     ctx.validated_findings_path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
     unknown_breakdown = (
         f"{counts['unknown']} unknown ({infra_failure_unknown} due to session/backend failure — "
@@ -289,7 +348,8 @@ def run(ctx: RunContext) -> Path:
         f"{counts['unknown'] - infra_failure_unknown} genuinely inconclusive)"
         if infra_failure_unknown else f"{counts['unknown']} unknown"
     )
-    _log(f"{counts['corroborated']} corroborated, {counts['design_accepted']} design-accepted, "
+    override_note = f" ({overridden} verdict-self-corrected)" if overridden else ""
+    _log(f"{counts['corroborated']} corroborated, {counts['design_accepted']} design-accepted{override_note}, "
          f"{len(fixed_upstream)} fixed-upstream, {unknown_breakdown} "
          f"-> {len(kept)} active survivor(s)")
     return ctx.validated_findings_path

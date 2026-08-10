@@ -34,6 +34,12 @@ already fixed, and reporting a documented "by design" decision as a vulnerabilit
   docs and commits: maintainers of the same behavior being reported repeatedly and dismissed as
   intended is strong `design_accepted` evidence (cite the issue/PR/discussion URL).
 - Keep it bounded: roughly **{{MAX_SEARCHES}} web searches** for this finding is plenty.
+- **Your `verdict` and your `rationale` must never contradict each other.** If your rationale states
+  or clearly implies that the behavior is vendor-documented, intentional, or an accepted design
+  decision, your `verdict` MUST be `design_accepted` — do not write a rationale describing intended/
+  documented behavior while still returning `corroborated`. This has happened before and nearly
+  caused a documented-as-intended behavior to be reported as a new vulnerability; re-read your own
+  rationale before picking the verdict field, not the other way around.
 
 ## THE FINDING
 The audit ran against this version of the source (corroborate against newer history if any exists):

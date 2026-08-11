@@ -4,8 +4,8 @@ backend (Claude -> Codex -> local), with a circuit breaker and per-backend model
 import pytest
 
 from argo.config import PipelineConfig
-from argo.runner import (FallbackRunner, RunnerError, _extract_session_reset_hint,
-                         _is_retryable, build_runner)
+from argo.runner import (FallbackRunner, RunnerError, _classify_failure_text,
+                         _extract_session_reset_hint, _is_retryable, build_runner)
 
 
 class _Fake:
@@ -55,6 +55,26 @@ def test_extract_session_reset_hint():
     assert _extract_session_reset_hint("model overloaded, try again later") is None
     assert _extract_session_reset_hint(None) is None
     assert _extract_session_reset_hint("") is None
+
+
+def test_classify_failure_text():
+    # The real observed shapes (see codex-moderation-cybersecurity-flag / argo-run-pacing-limits
+    # campaign notes) -- case-insensitive substring match, not the whole sentence, since wording
+    # around the load-bearing phrase could shift.
+    assert _classify_failure_text(
+        "ERROR: This content was flagged for possible cybersecurity risk. If this seems wrong, "
+        "try rephrasing your request. To get authorized for security work, join the Trusted "
+        "Access for Cyber program: https://chatgpt.com/cyber") == "moderation_flagged"
+    assert _classify_failure_text("FLAGGED FOR POSSIBLE CYBERSECURITY RISK") == "moderation_flagged"
+    assert _classify_failure_text(
+        "ERROR: Your workspace is out of credits. Please contact your administrator."
+    ) == "credits_exhausted"
+    assert _classify_failure_text("You've hit your session limit · resets 5pm") == "rate_limited"
+    assert _classify_failure_text("api_error_status=429, retry later") == "rate_limited"
+    # generic/unrelated text and empty input match nothing specific
+    assert _classify_failure_text("codex produced no output; likely auth/startup failure") is None
+    assert _classify_failure_text(None) is None
+    assert _classify_failure_text("") is None
 
 
 def test_falls_back_on_retryable_limit():
@@ -124,6 +144,111 @@ def test_hintless_retryable_error_gets_bounded_cooldown_not_permanent():
     fr._disabled[0] = now - timedelta(seconds=1)
     fr.run(**_KW)
     assert p.calls == 2 and f.calls == 3           # codex was tried again (and failed again -> fallback)
+
+
+# --------------------------------------------------------------- failure-kind-aware cooldown/backoff
+def _raise_kind(kind, msg="recoverable is_error session"):
+    def b(kw):
+        raise RunnerError(msg, retryable=True, failure_kind=kind)
+    return b
+
+
+def test_credits_exhausted_gets_a_longer_cooldown_than_the_hintless_default():
+    """Retrying every 5 minutes against a genuinely empty account is pointless -- once the failure
+    is POSITIVELY classified as credits_exhausted (not just an ambiguous hint-less failure), it
+    should be benched longer so the run spends that time productively on a different backend."""
+    import argo.runner as runner_mod
+    from datetime import datetime, timezone
+
+    from datetime import timedelta
+
+    p = _Fake("codex", _raise_kind("credits_exhausted"))
+    f = _Fake("headless", _return("CLAUDE-RESULT"))
+    fr = FallbackRunner(PipelineConfig(), None, [p, f])
+    assert fr.run(**_KW) == "CLAUDE-RESULT"
+
+    now = datetime.now(timezone.utc)
+    disabled_until = fr._disabled[0]
+    expected = runner_mod._COOLDOWN_BY_FAILURE_KIND["credits_exhausted"]
+    assert expected > runner_mod._NO_HINT_RETRY_COOLDOWN  # sanity: it really is the longer one
+    assert now + expected - timedelta(seconds=5) <= disabled_until <= now + expected
+
+
+def test_unrecognized_failure_kind_falls_back_to_the_default_cooldown():
+    import argo.runner as runner_mod
+    from datetime import datetime, timezone
+
+    p = _Fake("codex", _raise_kind("unknown_retryable"))
+    f = _Fake("headless", _return("CLAUDE-RESULT"))
+    fr = FallbackRunner(PipelineConfig(), None, [p, f])
+    assert fr.run(**_KW) == "CLAUDE-RESULT"
+
+    now = datetime.now(timezone.utc)
+    disabled_until = fr._disabled[0]
+    assert now < disabled_until <= now + runner_mod._NO_HINT_RETRY_COOLDOWN
+
+
+def test_moderation_flag_sleeps_before_retrying_the_same_backend_type(monkeypatch):
+    """The core fix for the observed failure mode: a runner_fallbacks=["codex","codex"] chain
+    previously fired the second attempt with zero delay, which flagged on every attempt even when
+    a spaced-out one-off call with the identical prompt succeeded. Same-provider retries after a
+    moderation flag must now wait."""
+    import argo.runner as runner_mod
+
+    slept = []
+    monkeypatch.setattr(runner_mod.time, "sleep", lambda s: slept.append(s))
+
+    p1 = _Fake("codex", _raise_kind("moderation_flagged"))
+    p2 = _Fake("codex", _return("CODEX-RESULT-2"))
+    fr = FallbackRunner(PipelineConfig(), None, [p1, p2])
+    assert fr.run(**_KW) == "CODEX-RESULT-2"
+    assert slept == [runner_mod._MODERATION_RETRY_DELAY.total_seconds()]
+
+
+def test_moderation_flag_does_not_sleep_before_a_genuinely_different_backend(monkeypatch):
+    """A different provider (codex -> headless) doesn't share whatever cooldown flagged the first
+    one, so there is nothing to wait out -- the fallback should still fire immediately, same as any
+    other retryable error."""
+    import argo.runner as runner_mod
+
+    slept = []
+    monkeypatch.setattr(runner_mod.time, "sleep", lambda s: slept.append(s))
+
+    p = _Fake("codex", _raise_kind("moderation_flagged"))
+    f = _Fake("headless", _return("CLAUDE-RESULT"))
+    fr = FallbackRunner(PipelineConfig(), None, [p, f])
+    assert fr.run(**_KW) == "CLAUDE-RESULT"
+    assert slept == []
+
+
+def test_no_output_codex_failure_now_genuinely_falls_back_end_to_end(tmp_path, monkeypatch):
+    """End-to-end regression test for the real bug: before this fix, CodexRunner._invoke's "no
+    output at all" path (the exact shape a moderation flag or credits exhaustion takes when it
+    fires immediately) was NOT retryable, so a configured fallback backend was never attempted at
+    all -- the whole run died on the first hit. Drives the REAL CodexRunner (not the duck-typed
+    _Fake) through FallbackRunner to prove the fix holds at the level a real pipeline run sees, not
+    just at the unit level tested in test_codex.py."""
+    import argo.runner as runner_mod
+    from argo.ledger import Ledger
+
+    class _FakeProc:
+        def __init__(self, stdout="", stderr="", returncode=0):
+            self.stdout, self.stderr, self.returncode = stdout, stderr, returncode
+
+    ledger = Ledger(tmp_path / "l.sqlite")
+    codex = runner_mod.CodexRunner(PipelineConfig(runner="codex"), ledger)
+    codex._resolved_bin = "codex"  # avoid a PATH dependency
+    stderr = "ERROR: This content was flagged for possible cybersecurity risk."
+    monkeypatch.setattr(codex, "_exec", lambda *a, **k: _FakeProc("", stderr, 1))
+    monkeypatch.setattr(runner_mod.time, "sleep", lambda s: None)  # don't actually wait in tests
+
+    claude = _Fake("headless", _return("CLAUDE-RESULT"))
+    fr = FallbackRunner(PipelineConfig(), ledger, [codex, claude])
+    result = fr.run(prompt="p", run_dir=tmp_path, work_dir=tmp_path / "work",
+                    model="m", stage="audit", run_id="R")
+    assert result == "CLAUDE-RESULT"           # fell all the way through to the real fallback
+    assert claude.calls == 1
+    ledger.close()
 
 
 def test_each_backend_picks_its_own_model():

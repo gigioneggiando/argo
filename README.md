@@ -412,9 +412,15 @@ Codex OS sandbox); cost is authoritative for Claude and token-estimated for Code
 **[docs/backends.md](docs/backends.md)**.
 
 **Resilience — multi-account & multi-backend fallback.** Backends and accounts chain transparently:
-when one hits a **session/rate limit (429)** the same call is retried on the next (a per-run circuit
-breaker disables the walled one; a non-retryable error propagates). Since limits are **per-account**,
-two logged-in Claude accounts double your capacity before falling through to Codex:
+when one hits a **retryable failure** (session/rate limit, a timeout, or a classified Codex
+moderation-flag/credits-exhaustion signature) the same call is retried on the next (a per-run
+circuit breaker disables the walled one, for a cooldown that's longer for a confirmed dead-account
+signal and includes a real delay before retrying the *same* backend again after a moderation flag;
+a non-retryable error propagates immediately). On top of that, a stage that still fails after
+exhausting its whole backend chain gets a few bounded, automatic in-process retries before the CLI
+gives up and tells you to `argo resume` — many transient failures now resolve themselves without
+you needing to notice and re-invoke anything. Since limits are **per-account**, two logged-in
+Claude accounts double your capacity before falling through to Codex:
 
 ```bash
 # account A -> account B -> Codex, all transparent on a 429

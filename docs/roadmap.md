@@ -593,6 +593,21 @@ operator value **High** · paper value **Low** - DONE (2026-07-28)
 - **Shipped note (2026-07-28):** `argo resume --run ID [--wait] [--max-wait DURATION]` now loads the run's persisted `config.json`, resumes from the first non-done configured stage, records `retry_after` in `status.json`, and re-arms fallback backends after parseable reset hints.
 - **Additional hardening shipped with D1:** ingest now persists the full effective `PipelineConfig` to `config.json`, and no-status `is_error` runner envelopes now raise `RunnerError` so fallback/retry paths are exercised instead of returning garbage output.
 - **Post-implementation review fix:** `parse_retry_after`'s timezone-name lookup only caught `ZoneInfoNotFoundError`, but `zoneinfo.ZoneInfo` raises plain `ValueError` for a malformed key (path-traversal-shaped, embedded NUL, ...) — an untrusted-looking reset-hint string could have crashed the fallback chain it exists to protect. Broadened the catch; regression test in `tests/test_resume.py`.
+- **Follow-up shipped (2026-08-10):** the "run sits dead until a human notices" problem this section
+  originally motivated D1 with is now smaller in practice, not just easier to recover from. Three
+  changes, complementing (not replacing) `argo resume`: (a) every stage's canonical output write is
+  now atomic (`context.atomic_write_json`), so a kill mid-write can no longer hand a resumed run a
+  corrupt file to choke on; (b) `RunnerError` gained a classified `failure_kind`
+  (`moderation_flagged`/`credits_exhausted`/`rate_limited`/`timeout`/`unknown_retryable`), letting
+  `FallbackRunner` apply a failure-appropriate cooldown instead of one flat 5-minute default — and
+  fixing a real bug where Codex's "produced no output at all" failure (the exact shape an immediate
+  moderation flag or credit exhaustion takes) was NOT retryable at all, so a configured fallback was
+  never even attempted on it; (c) `_run_stage_sequence` now auto-retries a still-failing stage
+  in-process (bounded, honors the failure's own reset hint up to a cap) before giving up — the
+  deliberately-deferred "resume after the whole process exits" daemon idea from D1's own verdict
+  above is still out of scope, but a large share of what used to need it turns out not to need the
+  process to exit at all. See [architecture.md](architecture.md#the-agentrunner-abstraction) and
+  [cli-reference.md](cli-reference.md#recovering-a-stopped-run) for the full mechanics.
 
 #### D2 — `argo estimate` (preflight cost range before spending anything) — effort **S–M** ·
 operator value **High** · paper value **Med** (implements the cost-preview constraint the roadmap's

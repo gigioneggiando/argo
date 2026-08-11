@@ -81,6 +81,13 @@ argo quality  [--program P] [--runs-dir DIR]
 
 ## Recovering a stopped run
 
+Most transient backend hiccups (a rate limit, a Codex moderation-flag cooldown, a timeout) never
+even reach the point of "the run stopped" — the pipeline retries the same stage automatically, a
+bounded couple of times, before giving up (see [architecture.md](architecture.md#the-agentrunner-abstraction)
+for exactly which failures qualify). What follows is what happens once that auto-retry gives up, or
+for a failure it deliberately doesn't attempt (e.g. a confirmed-dead account, or a reset hint too
+far out to wait for unattended).
+
 If `pipeline` (or an individual stage command) stops partway — a backend crash, a rate limit, a
 session timeout, or you hitting Ctrl+C — you do **not** need to start over. Every stage writes its
 output atomically (temp file + rename), so a hard kill mid-write leaves the last good file intact

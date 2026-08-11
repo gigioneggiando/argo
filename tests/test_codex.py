@@ -5,12 +5,16 @@ The Codex backend enforces "no network except research, repo never writable" via
 equivalent of the Claude `--disallowedTools` sandbox test.
 """
 
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from argo.config import PipelineConfig, estimate_cost_usd
 from argo.guardrails import session_policy
 from argo.ledger import Ledger
-from argo.runner import CodexRunner, _CODEX_NETWORK_CFG, _scan_codex_tokens, build_runner
+from argo.runner import (CodexRunner, RunnerError, _CODEX_NETWORK_CFG, _scan_codex_tokens,
+                         build_runner)
 
 
 def _runner(tmp_path, **cfg):
@@ -96,6 +100,80 @@ def test_model_for_codex(monkeypatch):
     # else the "codex-default" label
     monkeypatch.setattr(cfgmod, "_codex_default_model", lambda: None)
     assert PipelineConfig(runner="codex").model_for("audit") == "codex-default"
+
+
+# --------------------------------------------------------------- failure classification (_invoke)
+class _FakeProc:
+    def __init__(self, stdout="", stderr="", returncode=0):
+        self.stdout, self.stderr, self.returncode = stdout, stderr, returncode
+
+
+def _invoke(r, tmp_path, **overrides):
+    kw = dict(prompt="p", work_dir=tmp_path, model="m", repo_dir=None,
+              allowed=["Read"], disallowed=[], policy=None, stage="audit",
+              run_id="R", label="x", timeout_s=5)
+    kw.update(overrides)
+    return r._invoke(**kw)
+
+
+def test_invoke_timeout_is_now_retryable(tmp_path, monkeypatch):
+    """A genuine hang-then-kill is not a deterministic failure -- the same call could well succeed
+    on a retry. Before this fix it was NOT marked retryable, so a single timeout killed the whole
+    run with no fallback attempt, even when one was configured."""
+    r = _runner(tmp_path)
+
+    def _boom(*a, **k):
+        raise subprocess.TimeoutExpired(cmd=["codex"], timeout=5)
+
+    monkeypatch.setattr(r, "_exec", _boom)
+    with pytest.raises(RunnerError) as exc_info:
+        _invoke(r, tmp_path)
+    assert exc_info.value.retryable is True
+    assert exc_info.value.failure_kind == "timeout"
+    r.ledger.close()
+
+
+def test_invoke_no_output_moderation_flag_is_classified_and_retryable(tmp_path, monkeypatch):
+    """The real observed shape (codex-moderation-cybersecurity-flag campaign notes): the
+    classifier firing before any tool call ran produces no last-message file and no stdout --
+    structurally identical to credits exhaustion, distinguishable only by the stderr text. Before
+    this fix, ANY "no output at all" failure was NOT retryable, so a configured fallback backend
+    was never even attempted on exactly the failure shape fallback exists for."""
+    r = _runner(tmp_path)
+    stderr = ("ERROR: This content was flagged for possible cybersecurity risk. If this seems "
+              "wrong, try rephrasing your request. To get authorized for security work, join the "
+              "Trusted Access for Cyber program: https://chatgpt.com/cyber")
+    monkeypatch.setattr(r, "_exec", lambda *a, **k: _FakeProc("", stderr, 1))
+    with pytest.raises(RunnerError) as exc_info:
+        _invoke(r, tmp_path)
+    assert exc_info.value.retryable is True
+    assert exc_info.value.failure_kind == "moderation_flagged"
+    r.ledger.close()
+
+
+def test_invoke_no_output_credits_exhausted_is_classified_and_retryable(tmp_path, monkeypatch):
+    r = _runner(tmp_path)
+    stderr = "ERROR: Your workspace is out of credits. Please contact your administrator."
+    monkeypatch.setattr(r, "_exec", lambda *a, **k: _FakeProc("", stderr, 1))
+    with pytest.raises(RunnerError) as exc_info:
+        _invoke(r, tmp_path)
+    assert exc_info.value.retryable is True
+    assert exc_info.value.failure_kind == "credits_exhausted"
+    r.ledger.close()
+
+
+def test_invoke_no_output_unrecognized_text_is_still_retryable_with_unknown_kind(tmp_path, monkeypatch):
+    """An unrecognized "no output" failure still defaults to retryable -- matching the existing,
+    already-established philosophy for hint-less Codex failures (see _NO_HINT_RETRY_COOLDOWN's own
+    reasoning): empirically more often a transient flake than something permanent, and a wasted
+    retry costs ~0 tokens either way."""
+    r = _runner(tmp_path)
+    monkeypatch.setattr(r, "_exec", lambda *a, **k: _FakeProc("", "some unrelated startup error", 1))
+    with pytest.raises(RunnerError) as exc_info:
+        _invoke(r, tmp_path)
+    assert exc_info.value.retryable is True
+    assert exc_info.value.failure_kind == "unknown_retryable"
+    r.ledger.close()
 
 
 def test_api_and_cli_codex_config_passthrough(tmp_path):

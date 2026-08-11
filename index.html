@@ -470,7 +470,7 @@
       name:"coturn", lang:"C", upstream:"https://github.com/coturn/coturn",
       blurb:"A widely-deployed TURN and STUN relay server for WebRTC NAT traversal.",
       items:[
-        {ref:"GHSA", s:"advisory", sev:"Medium", t:"ACL bypass / SSRF", title:"addr_less_eq() compares IPv6 range endpoints byte-by-byte instead of numerically, letting an authenticated TURN client bypass denied-peer-ip / allowed-peer-ip IPv6 ranges (a TURN-specific SSRF)", url:"https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99"},
+        {ref:"GHSA", s:"advisory", sev:"Medium", cve:"CVE-2026-73213", t:"ACL bypass / SSRF", title:"addr_less_eq() compares IPv6 range endpoints byte-by-byte instead of numerically, letting an authenticated TURN client bypass denied-peer-ip / allowed-peer-ip IPv6 ranges (a TURN-specific SSRF)", url:"https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99"},
         {ref:"GHSA", s:"advisory", sev:"Medium", t:"resource exhaustion", title:"An authenticated client can grow the shared multiplex-peer demux table without limit in multiplex-peer mode", url:"https://github.com/coturn/coturn/security/advisories/GHSA-67c2-q5xv-f85p"}
       ]
     }
@@ -497,7 +497,7 @@
         <span class="ref">${esc(i.ref)}</span>
         <span class="main">
           <span class="ttl">${esc(i.title)}</span>
-          <span class="tags">${i.sev ? `<span class="sev ${i.s==='advisory' ? i.sev.toLowerCase() : 'muted'}">${esc(i.sev)}${(i.s==='advisory' && i.cvss) ? `<span class="score">${esc(i.cvss)}</span>` : ''}</span>` : ''}<span class="tag">${esc(i.t)}</span>${i.credit ? `<span class="by">found by <a href="https://github.com/${esc(i.credit.replace(/^@/,''))}" target="_blank" rel="noopener">@${esc(i.credit.replace(/^@/,''))}</a></span>` : ''}</span>
+          <span class="tags">${i.sev ? `<span class="sev ${i.s==='advisory' ? i.sev.toLowerCase() : 'muted'}">${esc(i.sev)}${(i.s==='advisory' && i.cvss) ? `<span class="score">${esc(i.cvss)}</span>` : ''}</span>` : ''}<span class="tag">${esc(i.t)}</span>${i.cve ? `<span class="tag">${esc(i.cve)}</span>` : ''}${i.credit ? `<span class="by">found by <a href="https://github.com/${esc(i.credit.replace(/^@/,''))}" target="_blank" rel="noopener">@${esc(i.credit.replace(/^@/,''))}</a></span>` : ''}</span>
         </span>
         <span class="rowend">
           <span class="status ${i.s}"><span class="dot"></span>${statusLabel(i.s)}</span>

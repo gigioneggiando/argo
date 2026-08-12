@@ -121,18 +121,34 @@ class Ledger:
             )
             self._conn.commit()
 
+    @staticmethod
+    def _run_id_and_children(run_id: str) -> tuple[str, str]:
+        """A second-opinion blind pass runs under its own child run_id
+        (``f"{run_id}-so{pass_index}"``, see stages/second_opinion.py) so its artifacts land in an
+        isolated run_dir -- but it is still spend incurred BY this run, not a separate one, so every
+        cost/count query must combine the two rather than silently undercounting whichever passes
+        happen to have a different run_id. ``%``/`_` are escaped since they are SQL LIKE wildcards;
+        real run_ids (``new_run_id()``: a timestamp + 6 hex chars) never contain either, but nothing
+        stops a caller from passing an arbitrary string here."""
+        escaped = run_id.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return run_id, escaped + "-so%"
+
     def run_cost(self, run_id: str) -> float:
+        exact, children_pattern = self._run_id_and_children(run_id)
         with self._lock:
             row = self._conn.execute(
-                "SELECT COALESCE(SUM(cost_usd), 0.0) AS c FROM llm_calls WHERE run_id = ?",
-                (run_id,),
+                "SELECT COALESCE(SUM(cost_usd), 0.0) AS c FROM llm_calls "
+                "WHERE run_id = ? OR run_id LIKE ? ESCAPE '\\'",
+                (exact, children_pattern),
             ).fetchone()
         return float(row["c"])
 
     def run_call_count(self, run_id: str) -> int:
+        exact, children_pattern = self._run_id_and_children(run_id)
         with self._lock:
             row = self._conn.execute(
-                "SELECT COUNT(*) AS n FROM llm_calls WHERE run_id = ?", (run_id,)
+                "SELECT COUNT(*) AS n FROM llm_calls WHERE run_id = ? OR run_id LIKE ? ESCAPE '\\'",
+                (exact, children_pattern),
             ).fetchone()
         return int(row["n"])
 

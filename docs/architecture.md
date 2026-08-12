@@ -463,7 +463,13 @@ findings_ledger(id, ts, program_name, run_id, dedup_key, title, verdict, validat
                 UNIQUE(program_name, dedup_key, run_id))
 ```
 
-- `llm_calls` powers cost control and the hard per-run `--budget` guard (`run_cost()`).
+- `llm_calls` powers cost control and the hard per-run `--budget` guard (`run_cost()`). A
+  second-opinion blind pass (`--second-opinion N`) runs under its own child run_id
+  (`f"{run_id}-so{N}"`, its own isolated `run_dir`) but the **same** ledger file — `run_cost()`/
+  `run_call_count()` combine a run_id with any `-soN` children by design, so the `--budget` ceiling
+  and the reported `cost_usd` reflect the run's TRUE total spend, not just the primary pass's own
+  rows. (Found the hard way: before this, a second-opinion pass got a full fresh budget allowance
+  independent of what the primary had already spent, since its rows lived under a different run_id.)
 - `findings_ledger` detects cross-run/cross-program resubmission (`prior_sightings()`), which
   Stage 5 surfaces as a "possible resubmissions" section.
 - The `triager_*` columns hold **real-world feedback** (A2): `record_triager_feedback()` ingests

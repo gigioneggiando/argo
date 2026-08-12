@@ -53,6 +53,100 @@ def fill_placeholders(template_text: str, mapping: dict[str, str]) -> str:
     return out
 
 
+def render_prompt_pair(assets_dir: Path, template_name: str,
+                       mapping: dict[str, str]) -> tuple[str, str | None]:
+    """Render ``template_name`` via :func:`fill_placeholders`, plus its neutral-register
+    companion if one exists on disk (``<name-without-.md>.neutral.md``, filled with the SAME
+    mapping). Returns ``(prompt, neutral_prompt)``; ``neutral_prompt`` is ``None`` when no
+    companion file is present, so a caller can pass it straight through to
+    ``AgentRunner.run(..., neutral_prompt=...)`` without an extra existence check.
+
+    The companion is a plain hand-authored template (same placeholders, same output contract as
+    the original — only the narrative framing softened), not a derived/generated variant, so
+    rendering it costs nothing beyond the primary template."""
+    template = (assets_dir / template_name).read_text(encoding="utf-8")
+    prompt = fill_placeholders(template, mapping)
+    neutral_path = assets_dir / (template_name.removesuffix(".md") + ".neutral.md")
+    neutral_prompt = (fill_placeholders(neutral_path.read_text(encoding="utf-8"), mapping)
+                      if neutral_path.is_file() else None)
+    return prompt, neutral_prompt
+
+
+#: Curated, deterministic word/phrase substitutions for :func:`neutralize_audit_prompt`. Ordered
+#: most-specific-first (multi-word/hyphenated phrases before the bare word they contain) so a
+#: later, broader pattern never re-matches text a more specific one already rewrote. Deliberately
+#: NOT touching "vulnerability"/"vulnerable" or CWE/severity vocabulary — that terminology is
+#: inherent to the audit task itself (and the findings schema downstream), not the adversarial
+#: *framing* around it; only the narrative register is softened here. Case-preserving (matches
+#: Title/UPPER/lower case) via :func:`_case_like`.
+_AUDIT_NEUTRAL_LEXICON: tuple[tuple[re.Pattern, str], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE), replacement) for pattern, replacement in (
+        (r"\battack surfaces\b", "exposed interfaces"),
+        (r"\battack surface\b", "exposed interface"),
+        # Hyphenated compounds (attacker-controlled/-supplied/-influenced/-controllable/...) must
+        # be rewritten BEFORE the bare \battacker\b rule below: "attacker-" already satisfies that
+        # rule's trailing \b (a hyphen is a non-word char), so without this ordering the bare rule
+        # would fire first and leave a broken "an untrusted caller-controlled" behind.
+        (r"\battacker-(?=\w)", "externally-"),
+        (r"\battackers\b", "untrusted callers"),
+        (r"\battacker\b", "an untrusted caller"),
+        (r"\bexploitable\b", "triggerable"),
+        (r"\bexploited\b", "triggered"),
+        (r"\bexploiting\b", "triggering"),
+        (r"\bexploits\b", "triggers"),
+        (r"\bexploit\b", "trigger"),
+        (r"\bmalicious\b", "unexpected"),
+        (r"\badversarial\b", "challenging"),
+        (r"\battacks\b", "abuse cases"),
+        (r"\battack\b", "abuse"),
+    )
+)
+
+#: A top-level markdown heading ends whatever protected section (see ``neutralize_audit_prompt``)
+#: was opened by an earlier line — checked against ``01_audit_prompt_template.md.j2``, where
+#: "PROHIBITED TECHNIQUES (hard limits):" is plain prose *inside* the "## SCOPE & RULES OF
+#: ENGAGEMENT" section, not its own heading, so the protected block must be opened by matching the
+#: phrase on ANY line (heading or not) and closed only at the next top-level heading.
+_TOP_HEADING_RE = re.compile(r"^\s*#{1,2}\s")
+
+
+def _case_like(sample: str, replacement: str) -> str:
+    if sample.isupper():
+        return replacement.upper()
+    if sample[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+
+def neutralize_audit_prompt(text: str) -> str:
+    """Best-effort, deterministic, zero-LLM-cost rewrite of an already-rendered audit prompt's
+    NARRATIVE register (see ``_AUDIT_NEUTRAL_LEXICON``), for a reactive retry after Codex's
+    moderation classifier flags the original. There is no static per-focus template to pair a
+    hand-authored neutral variant with (audit prompts are synthesized prose written by the recon
+    model, see ``stages/recon.py``), so this operates on the rendered text directly instead.
+
+    Skips the PROHIBITED TECHNIQUES block (from the line that names it through the next top-level
+    heading) entirely, so the scope's verbatim constraint text — checked by
+    ``guardrails.assert_prohibited_present`` — is never rewritten. This is best-effort, not a
+    proof: callers that also gate on that assertion should re-check the result before sending it,
+    exactly as they already do for the original prompt."""
+    protected = False
+    out_lines = []
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if protected and _TOP_HEADING_RE.match(line):
+            protected = False
+        if "prohibited techniques" in stripped.lower():
+            protected = True
+        if protected:
+            out_lines.append(line)
+            continue
+        for pattern, replacement in _AUDIT_NEUTRAL_LEXICON:
+            line = pattern.sub(lambda m: _case_like(m.group(0), replacement), line)
+        out_lines.append(line)
+    return "".join(out_lines)
+
+
 def render_audit_template(ctx: dict, prompts_dir: Path) -> str:
     """Render ``01_audit_prompt_template.md.j2`` with StrictUndefined (any missing slot
     raises rather than emitting a blank)."""

@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from argo.ranking import dedup_key, split_ref, severity_rank, confidence_rank
-from argo.rendering import extract_manifest, with_artifact_contract
+from argo.rendering import (extract_manifest, neutralize_audit_prompt, render_prompt_pair,
+                            with_artifact_contract)
 from argo.schemas import SchemaValidationError, validate_findings, validate_scope
 from argo.runner import LLMResult
 from argo.context import collect_output_files
@@ -215,3 +216,50 @@ def test_artifact_contract_mentions_readonly_and_manifest():
     assert "READ-ONLY" in out
     assert "f.json" in out
     assert "```json" in out  # manifest contract present
+
+
+# ------------------------------------------------------------ neutral-register workaround
+def test_render_prompt_pair_finds_the_neutral_companion(tmp_path):
+    (tmp_path / "t.md").write_text("Hello {{NAME}}.", encoding="utf-8")
+    (tmp_path / "t.neutral.md").write_text("Hi there {{NAME}}.", encoding="utf-8")
+    prompt, neutral = render_prompt_pair(tmp_path, "t.md", {"NAME": "world"})
+    assert prompt == "Hello world."
+    assert neutral == "Hi there world."
+
+
+def test_render_prompt_pair_without_a_companion_returns_none(tmp_path):
+    (tmp_path / "t.md").write_text("Hello {{NAME}}.", encoding="utf-8")
+    prompt, neutral = render_prompt_pair(tmp_path, "t.md", {"NAME": "world"})
+    assert prompt == "Hello world."
+    assert neutral is None
+
+
+def test_neutralize_audit_prompt_softens_narrative_vocabulary():
+    text = (
+        "## ATTACK SURFACES TO COVER\n"
+        "Identify exploitable vulnerabilities reachable by an attacker-controlled input. "
+        "Be adversarial but evidence-driven.\n"
+    )
+    out = neutralize_audit_prompt(text)
+    assert "exploitable" not in out and "triggerable" in out
+    assert "attacker-controlled" not in out and "externally-controlled" in out
+    assert "adversarial" not in out and "challenging" in out
+    # the audit task's own inherent vocabulary is untouched -- only the framing is softened
+    assert "vulnerabilities" in out
+
+
+def test_neutralize_audit_prompt_preserves_the_prohibited_techniques_block_verbatim():
+    text = (
+        "## SCOPE & RULES OF ENGAGEMENT\n\n"
+        "PROHIBITED TECHNIQUES (hard limits):\n"
+        "- no attacks against production infrastructure\n"
+        "- no attacker-controlled DoS or malicious payloads to live hosts\n\n"
+        "## ROLE\n"
+        "Find exploitable vulnerabilities via attacker-controlled input.\n"
+    )
+    out = neutralize_audit_prompt(text)
+    prohibited_block, after_role = out.split("## ROLE")
+    assert "no attacks against production infrastructure" in prohibited_block
+    assert "no attacker-controlled DoS or malicious payloads to live hosts" in prohibited_block
+    assert "exploitable" not in after_role and "triggerable" in after_role
+    assert "attacker-controlled" not in after_role and "externally-controlled" in after_role

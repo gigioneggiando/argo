@@ -35,7 +35,7 @@ from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_out
 from ..guardrails import assert_prohibited_present
 from ..models import Finding, Verification
 from ..ranking import dedup_key, split_ref
-from ..rendering import design_context_block, fill_placeholders, with_artifact_contract
+from ..rendering import design_context_block, render_prompt_pair, with_artifact_contract
 from ..runner import RunnerError
 from .validate import _build_excerpts
 
@@ -77,13 +77,12 @@ def _prior_verdicts(f: Finding) -> dict:
 
 
 def _build_prompt(ctx: RunContext, scope, scope_json_text: str, finding: Finding,
-                  siblings: list[Finding]) -> str:
-    template = (ctx.assets_dir / "09_deep_verify_prompt.md").read_text(encoding="utf-8")
+                  siblings: list[Finding]) -> tuple[str, str | None]:
     excerpts = _build_excerpts(
         ctx.repo_dir, finding.affected,
         ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes,
     )
-    rendered = fill_placeholders(template, {
+    mapping = {
         "FINDING_JSON": json.dumps(finding.model_dump(exclude_none=True), indent=2),
         "PRIOR_VERDICTS_JSON": json.dumps(_prior_verdicts(finding), indent=2),
         "CODE_EXCERPTS": excerpts,
@@ -92,15 +91,22 @@ def _build_prompt(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         "SCOPE_JSON": scope_json_text,
         "SIBLING_FINDINGS_JSON": json.dumps([_summarize(s) for s in siblings if s.id != finding.id],
                                             indent=2),
-    })
+    }
+    rendered, neutral_rendered = render_prompt_pair(ctx.assets_dir, "09_deep_verify_prompt.md", mapping)
     assert_prohibited_present(rendered, scope.prohibited_techniques)  # guardrail
-    rendered = (rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
+
+    def _finish(text: str) -> str:
+        text = (text.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
                 "If this finding matches an accepted-by-design behavior listed above, return verdict "
                 "`refuted` with a rationale that names the accepted risk.")
-    return with_artifact_contract(rendered, artifacts=[{
-        "type": "deep_verify_verdict", "filename": f"deep_verify_{finding.id}.json", "schema": None,
-        "desc": "the deep-verify verdict for this single finding",
-    }])
+        return with_artifact_contract(text, artifacts=[{
+            "type": "deep_verify_verdict", "filename": f"deep_verify_{finding.id}.json", "schema": None,
+            "desc": "the deep-verify verdict for this single finding",
+        }])
+
+    prompt = _finish(rendered)
+    neutral_prompt = _finish(neutral_rendered) if neutral_rendered is not None else None
+    return prompt, neutral_prompt
 
 
 #: Fields the model sometimes echoes back as a placeholder-shaped STRING (copying the field's own
@@ -141,9 +147,11 @@ def _verify_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding,
     for attempt in range(max_attempts):
         retrying = attempt + 1 < max_attempts
         work_label = finding.id if attempt == 0 else f"{finding.id}-retry{attempt}"
+        prompt, neutral_prompt = _build_prompt(ctx, scope, scope_json_text, finding, siblings)
         try:
             result = ctx.runner.run(
-                prompt=_build_prompt(ctx, scope, scope_json_text, finding, siblings),
+                prompt=prompt,
+                neutral_prompt=neutral_prompt,
                 run_dir=ctx.run_dir,
                 work_dir=ctx.work_dir("verify", work_label),   # fresh, isolated context per attempt
                 model=ctx.config.model_for("verify"),

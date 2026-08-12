@@ -8,7 +8,7 @@ construction, and the subprocess error paths with crafted inputs and fakes (stil
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/ -q          # 358 tests (incl. the HTTP API + UI serving on the mock runner)
+python -m pytest tests/ -q          # 366 tests (incl. the HTTP API + UI serving on the mock runner)
 ```
 
 `pytest.ini` pins `--basetemp=.pytest_tmp` so the read-only repo copies the pipeline creates do
@@ -19,7 +19,7 @@ not trip Windows' global temp rotation.
 | File | Covers |
 |---|---|
 | `test_guardrails.py` | tool-allowlist stripping, `assert_no_network_tools`, **the `research`-stage OSINT carve-out** (research keeps WebSearch/WebFetch but loses the shell; every other stage stays offline), prohibited-technique present/missing/empty, audit-prompt well-formedness, placeholder/`.j2` rendering |
-| `test_units.py` | `split_ref` / `dedup_key`, manifest extraction + glob fallback, schema conformance of fixtures, artifact-contract shape |
+| `test_units.py` | `split_ref` / `dedup_key`, manifest extraction + glob fallback, schema conformance of fixtures, artifact-contract shape; **neutral-register prompts** — `render_prompt_pair` finds/renders a `.neutral.md` companion or returns `None` when absent, `neutralize_audit_prompt` softens narrative vocabulary while leaving the PROHIBITED TECHNIQUES block byte-identical |
 | `test_runner.py` | the runner strips network/mutation tools even when a stage requests them; headless command is read-only/sandboxed |
 | `test_headless.py` | strict parser over the **real** captured envelope, shape-drift fail-loud, recoverable-vs-API-error classification, turn/cost caps, `--max-budget-usd` present / no `--max-turns`, session-budget math, empty/malformed/non-zero-exit handling, audit partial-recovery |
 | `test_links.py` | `--links` parsing/normalization/merge, repo-drop safety rule, schema survival, propagation into a rendered prompt, backward compatibility |
@@ -38,6 +38,7 @@ not trip Windows' global temp rotation.
 | `test_orchestrator_retry.py` | **orchestrator-level auto-retry**: `_run_stage_sequence` retries a retryable stage failure in place (bounded, real sleep mocked in tests) and can still succeed; retries are capped then propagate; `credits_exhausted` and a non-retryable failure are never auto-retried; a reset hint further out than the auto-retry sleep cap is not waited for (surfaces normally instead of hanging an unattended run); a cancelled run is never retried |
 | `test_context.py` | **`atomic_write_json`**: writes correct content and leaves no leftover `.tmp` file, creates missing parent directories, a write that fails before the atomic replace never touches the last-good file on disk, retries a transient Windows `PermissionError` then succeeds, and raises (rather than silently dropping the write) after a persistent one |
 | `test_cli_resume_hint.py` | **`cli._run_with_resume_hint`**: returns the wrapped callable's result on success; on a real failure OR a `KeyboardInterrupt` (Ctrl+C is the most likely real-world interruption), prints the exact `argo resume <run_id>` command before re-raising; a clean `typer.Exit` passes through silently (no false-alarm resume hint on ordinary CLI control flow) |
+| `test_neutral_retry.py` | **neutral-register moderation-flag recovery**: `AgentRunner.run()` retries once, same backend, with a caller-supplied `neutral_prompt` on a `moderation_flagged` failure (short delay, distinct from `FallbackRunner`'s 90s same-provider cooldown); no retry when `neutral_prompt` is omitted (byte-identical to pre-feature behavior); no retry for any other failure kind; bounded to exactly one retry even if the neutral variant also flags |
 
 ## The two zero-cost modes
 

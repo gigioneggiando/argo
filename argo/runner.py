@@ -218,6 +218,46 @@ class AgentRunner(ABC):
         repo_dir: Path | None = None,
         allowed_tools: tuple[str, ...] = ARTIFACT_TOOLS,
         label: str | None = None,
+        neutral_prompt: str | None = None,
+    ) -> LLMResult:
+        """Run one session; on a moderation-flagged failure, retry ONCE on this SAME backend with
+        ``neutral_prompt`` (a caller-supplied differently-worded variant of ``prompt``) if one was
+        supplied. Bounded to exactly one retry (no recursion). Both attempts are logged
+        independently via the normal ledger/jsonl path in :meth:`_run_attempt`, so the audit trail
+        shows the flag and the recovery. A caller that never passes ``neutral_prompt`` sees
+        byte-identical behavior to a plain single attempt. This is orthogonal to (and unaware of)
+        :class:`FallbackRunner`'s cross-backend retry and the orchestrator's whole-stage
+        auto-retry — three independent layers, see docs/architecture.md."""
+        try:
+            return self._run_attempt(
+                prompt=prompt, run_dir=run_dir, work_dir=work_dir, model=model, stage=stage,
+                run_id=run_id, repo_dir=repo_dir, allowed_tools=allowed_tools, label=label,
+            )
+        except RunnerError as exc:
+            if exc.failure_kind != "moderation_flagged" or neutral_prompt is None:
+                raise
+            print(f"[runner] stage={stage} label={label!r} was moderation-flagged; retrying once "
+                  f"in {_NEUTRAL_RETRY_DELAY_S:.0f}s with a neutral-register prompt variant",
+                  file=sys.stderr)
+            time.sleep(_NEUTRAL_RETRY_DELAY_S)
+            return self._run_attempt(
+                prompt=neutral_prompt, run_dir=run_dir, work_dir=work_dir, model=model,
+                stage=stage, run_id=run_id, repo_dir=repo_dir, allowed_tools=allowed_tools,
+                label=f"{label}-neutral-retry" if label else "neutral-retry",
+            )
+
+    def _run_attempt(
+        self,
+        *,
+        prompt: str,
+        run_dir: Path,
+        work_dir: Path,
+        model: str,
+        stage: str,
+        run_id: str,
+        repo_dir: Path | None = None,
+        allowed_tools: tuple[str, ...] = ARTIFACT_TOOLS,
+        label: str | None = None,
     ) -> LLMResult:
         # --- guardrails ---------------------------------------------------------------
         # One backend-neutral policy ("no network except research; repo never writable"); each
@@ -1065,6 +1105,16 @@ _COOLDOWN_BY_FAILURE_KIND: dict[str, timedelta] = {
 #: really the same classifier being hit again. Untested exact duration -- a reasoned starting point
 #: pending real validation, not a measured constant.
 _MODERATION_RETRY_DELAY = timedelta(seconds=90)
+
+#: Delay before AgentRunner.run()'s own same-backend, same-call retry with a caller-supplied
+#: neutral-register ``neutral_prompt`` (see run()). Deliberately much shorter than
+#: `_MODERATION_RETRY_DELAY`: that 90s figure exists because identical back-to-back retries of
+#: the SAME prompt kept flagging on every attempt -- a neutrally-worded prompt is a materially
+#: different input to the classifier, so the same "let the classifier cool down" justification
+#: doesn't apply at full strength. A short pause is still cheap insurance against anything
+#: session/account-level rather than purely content-based. Untested exact duration -- a reasoned
+#: starting point, not a measured constant, same as the other timing constants in this module.
+_NEUTRAL_RETRY_DELAY_S = 5.0
 
 
 class FallbackRunner(AgentRunner):

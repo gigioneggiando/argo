@@ -19,7 +19,7 @@ from ..grounding import build_index, ground_finding
 from ..guardrails import assert_prohibited_present, out_of_scope_match
 from ..models import Finding, Grounding, Validation
 from ..ranking import confidence_rank, dedup_key, severity_rank, split_ref
-from ..rendering import design_context_block, fill_placeholders, with_artifact_contract
+from ..rendering import design_context_block, fill_placeholders, render_prompt_pair, with_artifact_contract
 from ..runner import RunnerError
 
 _KEEP_VERDICTS = {"confirmed", "needs_runtime_verification"}
@@ -351,34 +351,39 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         ctx.repo_dir, finding.affected,
         ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes,
     )
-    template = (ctx.assets_dir / "02_adversarial_validation_prompt.md").read_text(encoding="utf-8")
-    rendered = fill_placeholders(template, {
+    mapping = {
         "FINDING_JSON": json.dumps(finding.model_dump(exclude_none=True), indent=2),
         "CODE_EXCERPTS": excerpts,
         "REPO_PATH": str(ctx.repo_dir.resolve()),
         "TARGET_TYPE": scope.target_type,
         "SCOPE_JSON": scope_json_text,
         "GROUND_TRUTH": _format_ground_truth(ground_truth, finding.source_focus),
-    })
+    }
+    rendered, neutral_rendered = render_prompt_pair(
+        ctx.assets_dir, "02_adversarial_validation_prompt.md", mapping)
     assert_prohibited_present(rendered, scope.prohibited_techniques)  # guardrail
 
     # Impact discipline (no reflexive IMDS-style escalation) + accepted-by-design context: a finding
     # matching a stated accepted risk should be refuted-as-out-of-scope rather than confirmed.
-    rendered = (rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
+    def _finish(text: str) -> str:
+        text = (text.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
                 "If this finding matches an accepted-by-design behavior listed above, return verdict "
                 "`out_of_scope` with a rationale that names the accepted risk (it is intended, not a "
                 "vulnerability).")
+        return with_artifact_contract(
+            text,
+            artifacts=[{
+                "type": "verdict", "filename": f"verdict_{finding.id}.json", "schema": None,
+                "desc": "the adversarial validation verdict for this single finding",
+            }],
+        )
 
-    prompt = with_artifact_contract(
-        rendered,
-        artifacts=[{
-            "type": "verdict", "filename": f"verdict_{finding.id}.json", "schema": None,
-            "desc": "the adversarial validation verdict for this single finding",
-        }],
-    )
+    prompt = _finish(rendered)
+    neutral_prompt = _finish(neutral_rendered) if neutral_rendered is not None else None
     try:
         result = ctx.runner.run(
             prompt=prompt,
+            neutral_prompt=neutral_prompt,
             run_dir=ctx.run_dir,
             work_dir=ctx.work_dir("validate", finding.id),   # fresh, isolated context
             model=ctx.config.model_for("validate"),
@@ -431,25 +436,31 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
                 ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes),
             "ground_truth": _format_ground_truth(ground_truth, f.source_focus),
         })
-    template = (ctx.assets_dir / "02b_adversarial_validation_batch_prompt.md").read_text(encoding="utf-8")
-    rendered = fill_placeholders(template, {
+    mapping = {
         "FINDINGS_BATCH": json.dumps(items, indent=2),
         "REPO_PATH": str(ctx.repo_dir.resolve()),
         "TARGET_TYPE": scope.target_type,
         "SCOPE_JSON": scope_json_text,
-    })
+    }
+    rendered, neutral_rendered = render_prompt_pair(
+        ctx.assets_dir, "02b_adversarial_validation_batch_prompt.md", mapping)
     assert_prohibited_present(rendered, scope.prohibited_techniques)  # guardrail
-    rendered = (rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
+
+    def _finish(text: str) -> str:
+        text = (text.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
                 "If a finding matches an accepted-by-design behavior listed above, return verdict "
                 "`out_of_scope` for it with a rationale that names the accepted risk.")
-    prompt = with_artifact_contract(rendered, artifacts=[{
-        "type": "verdicts", "filename": "verdicts.json", "schema": None,
-        "desc": "a JSON object {\"verdicts\": [...]} with ONE adversarial verdict per finding_id in the batch",
-    }])
+        return with_artifact_contract(text, artifacts=[{
+            "type": "verdicts", "filename": "verdicts.json", "schema": None,
+            "desc": "a JSON object {\"verdicts\": [...]} with ONE adversarial verdict per finding_id in the batch",
+        }])
+
+    prompt = _finish(rendered)
+    neutral_prompt = _finish(neutral_rendered) if neutral_rendered is not None else None
     ids = [f.id for f in batch]
     try:
         result = ctx.runner.run(
-            prompt=prompt, run_dir=ctx.run_dir,
+            prompt=prompt, neutral_prompt=neutral_prompt, run_dir=ctx.run_dir,
             work_dir=ctx.work_dir("validate", "batch-" + ids[0]),   # fresh, isolated context
             model=ctx.config.model_for("validate"), stage="validate",
             run_id=ctx.run_id, repo_dir=ctx.repo_dir,               # READ-ONLY

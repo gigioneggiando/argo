@@ -15,14 +15,31 @@ from pathlib import Path
 
 from ..config import ARTIFACT_TOOLS
 from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
-from ..guardrails import assert_prohibited_present
-from ..rendering import with_artifact_contract
+from ..guardrails import PromptGuardrailError, assert_prohibited_present
+from ..rendering import neutralize_audit_prompt, with_artifact_contract
 from ..runner import RunnerError
 from ..schemas import SchemaValidationError, validate_findings
 
 
 def _log(msg: str) -> None:
     print(f"[audit] {msg}", file=sys.stderr)
+
+
+def _neutral_variant(prompt: str, scope, slug: str) -> str | None:
+    """Best-effort neutral-register variant for a reactive retry after a moderation flag (see
+    ``rendering.neutralize_audit_prompt``). Re-checked against the SAME guardrail the original
+    prompt passed (``assert_prohibited_present``) before it is ever handed to ``ctx.runner.run``
+    — if the deterministic rewrite happened to touch the scope's verbatim constraint text, fall
+    back to no neutral variant (the call still gets a normal single attempt, just without the
+    retry) rather than silently sending a weakened prompt."""
+    candidate = neutralize_audit_prompt(prompt)
+    try:
+        assert_prohibited_present(candidate, scope.prohibited_techniques)
+    except PromptGuardrailError:
+        _log(f"{slug}: neutral-register variant dropped a prohibited-technique constraint; "
+             "no neutral retry available for this focus")
+        return None
+    return candidate
 
 
 # Findings-schema string-typed fields. Real models sometimes emit these as structured
@@ -181,6 +198,7 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path) -> tuple[str, Path | N
     try:
         result = ctx.runner.run(
             prompt=prompt,
+            neutral_prompt=_neutral_variant(prompt, scope, slug),
             run_dir=ctx.run_dir,
             work_dir=work,
             model=ctx.config.model_for("audit"),
@@ -294,7 +312,8 @@ def _critic_pass(ctx: RunContext, scope, slug: str, prompt_path: Path,
     work = ctx.work_dir("audit", f"{slug}__critic")
     try:
         result = ctx.runner.run(
-            prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
+            prompt=prompt, neutral_prompt=_neutral_variant(prompt, scope, f"{slug}-critic"),
+            run_dir=ctx.run_dir, work_dir=work,
             model=ctx.config.model_for("audit"), stage="audit", run_id=ctx.run_id,
             repo_dir=ctx.repo_dir, allowed_tools=ARTIFACT_TOOLS, label=f"{slug}-critic")
         files = collect_output_files(result, "SECURITY_FINDINGS__*.json")

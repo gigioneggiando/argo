@@ -75,6 +75,13 @@ Every `RunnerError` these paths raise also carries a classified `failure_kind`
 classification applies to both backends via the shared `AgentRunner.run()`, not just Codex, even
 though Codex's exit_1/0-token crash signature is where it matters most in practice).
 
+A `moderation_flagged` failure specifically also gets a **same-backend retry with a neutral-register
+prompt variant**, if the calling stage supplied one (`run(..., neutral_prompt=...)`) — one bounded
+retry, no LLM call needed to produce the variant (a hand-authored companion template for
+validate/deep_verify, a deterministic word-substitution pass for audit's model-generated prose). See
+[architecture.md](architecture.md#the-agentrunner-abstraction) for the full mechanism; this is
+independent of `FallbackRunner`'s cross-backend retry described above.
+
 **Partial recovery:** `stages/audit.py` and `stages/recon.py` catch a hard `RunnerError` and try
 to recover whatever the session already wrote to its scratch dir before failing — so one timed-out
 or crashed session does not lose a whole focus (audit) or the generated prompts (recon).

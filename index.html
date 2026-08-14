@@ -156,6 +156,23 @@
   .sec-head h2{font-size:1.15rem; margin:0; letter-spacing:-.01em}
   .sec-head .hint{font-family:var(--font-mono); font-size:.74rem; color:var(--muted)}
 
+  /* Filters */
+  .filters{display:flex; align-items:center; gap:20px; margin:0 0 20px; flex-wrap:wrap}
+  .filter-group{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+  .filter-label{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin-right:2px}
+  .filter-chip{
+    font-family:var(--font-mono); font-size:.72rem; padding:5px 11px; border-radius:999px;
+    border:1px solid var(--line); background:var(--surface); color:var(--ink-soft);
+    cursor:pointer; line-height:1.4; transition:background .15s, border-color .15s, color .15s;
+  }
+  .filter-chip:hover{border-color:var(--accent); color:var(--ink)}
+  .filter-chip:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .filter-chip.active{background:var(--accent); color:var(--on-accent); border-color:var(--accent)}
+  .filter-count{font-family:var(--font-mono); font-size:.72rem; color:var(--muted); margin-left:auto}
+  .case.filtered-out, .row.filtered-out{display:none}
+  .no-results{display:none; font-family:var(--font-mono); font-size:.84rem; color:var(--muted); text-align:center; padding:40px 20px; border:1px dashed var(--line); border-radius:16px}
+  .no-results.show{display:block}
+
   /* Case files */
   .cases{display:flex; flex-direction:column; gap:20px}
   .case{
@@ -300,7 +317,7 @@
         <div class="hero-copy">
           <div class="eyebrow">Argo · real-world validation</div>
           <h1>Bugs found by <em>reading the code</em>, disclosed in the open.</h1>
-          <p class="lede">Every vulnerability below was surfaced by <strong>Argo</strong>, an LLM-native static auditor, then hand-verified and reported upstream — as a public pull request or a published security advisory. Follow any link to the fix or advisory itself.</p>
+          <p class="lede">Every vulnerability below was surfaced by <strong>Argo</strong>, an LLM-native static auditor, then hand-verified and reported upstream: as a public pull request or a published security advisory. Follow any link to the fix or advisory itself.</p>
         </div>
         <div class="hero-art" aria-hidden="true">
           <svg class="eye" viewBox="0 0 340 340">
@@ -329,11 +346,11 @@
       <div class="notes">
         <div class="note">
           <span class="notepill">Scope</span>
-          <span>Only findings that are already <b>publicly disclosed</b> are listed, each linking to its upstream pull request or published security advisory. Findings still under coordinated (private) disclosure are omitted until they go public — Argo itself is language-agnostic and has audited well beyond the languages shown here.</span>
+          <span>Only findings that are already <b>publicly disclosed</b> are listed, each linking to its upstream pull request or published security advisory. Findings still under coordinated (private) disclosure are omitted until they go public. Argo itself is language-agnostic and has audited well beyond the languages shown here.</span>
         </div>
         <div class="note">
           <span class="notepill">Recognition</span>
-          <span>Credited on <a href="https://livekit.com/security/hall-of-fame" target="_blank" rel="noopener">LiveKit's Security Hall of Fame</a> — the disclosure itself was private, but the findings below that are now confirmed fixed each link to a real, public upstream pull request. The PRs don't individually name the reporter; the Hall of Fame page is where that credit lives. The remaining reported findings stay off this list until they're fixed too.</span>
+          <span>Credited on <a href="https://livekit.com/security/hall-of-fame" target="_blank" rel="noopener">LiveKit's Security Hall of Fame</a>. The disclosure itself was private, but the findings below that are now confirmed fixed each link to a real, public upstream pull request. The PRs don't individually name the reporter; the Hall of Fame page is where that credit lives. The remaining reported findings stay off this list until they're fixed too.</span>
         </div>
       </div>
     </div>
@@ -344,20 +361,38 @@
       <h2>Disclosures</h2>
       <span class="hint" id="ordering">merged fixes first · then open review</span>
     </div>
+    <div class="filters" id="filters">
+      <div class="filter-group" role="group" aria-label="Filter by finding severity">
+        <span class="filter-label">Severity</span>
+        <button type="button" class="filter-chip active" data-filter="sev" data-value="" aria-pressed="true">All</button>
+        <button type="button" class="filter-chip" data-filter="sev" data-value="Critical" aria-pressed="false">Critical</button>
+        <button type="button" class="filter-chip" data-filter="sev" data-value="High" aria-pressed="false">High</button>
+        <button type="button" class="filter-chip" data-filter="sev" data-value="Medium" aria-pressed="false">Medium</button>
+        <button type="button" class="filter-chip" data-filter="sev" data-value="Low" aria-pressed="false">Low</button>
+      </div>
+      <div class="filter-group" role="group" aria-label="Filter by project GitHub stars">
+        <span class="filter-label">Stars</span>
+        <button type="button" class="filter-chip active" data-filter="stars" data-value="0" aria-pressed="true">Any</button>
+        <button type="button" class="filter-chip" data-filter="stars" data-value="1000" aria-pressed="false">1k+</button>
+        <button type="button" class="filter-chip" data-filter="stars" data-value="5000" aria-pressed="false">5k+</button>
+        <button type="button" class="filter-chip" data-filter="stars" data-value="20000" aria-pressed="false">20k+</button>
+      </div>
+      <span class="filter-count" id="filterCount" aria-live="polite"></span>
+    </div>
     <div class="cases" id="cases">
-      <section class="case">
+<section class="case" data-stars="60668">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/pocketbase/pocketbase" target="_blank" rel="noopener">PocketBase</a><span class="chip-lang">Go</span></div>
-            <div class="blurb">Open-source Go backend — SQLite database, auth and admin dashboard in one file.</div>
+            <div class="blurb">Open-source Go backend: SQLite database, auth and admin dashboard in one file.</div>
           </div>
           <div class="case-tally"><span class="tally good">1&nbsp;advisory</span></div>
         </div>
         <ul class="rows">
-      <a class="row advisory" href="https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx" target="_blank" rel="noopener">
+      <a class="row advisory" href="https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">GHSA</span>
         <span class="main">
-          <span class="ttl">Unhandled panics in internal worker goroutines could terminate the server — fixed in v0.39.7 / v0.22.48, reporter credited</span>
+          <span class="ttl">Unhandled panics in internal worker goroutines could terminate the server (fixed in v0.39.7 / v0.22.48, reporter credited)</span>
           <span class="tags"><span class="sev high">High<span class="score">8.7</span></span><span class="tag">worker-goroutine panic (DoS)</span></span>
         </span>
         <span class="rowend">
@@ -366,7 +401,7 @@
         </span>
       </a></ul>
       </section>
-      <section class="case">
+<section class="case" data-stars="1927">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/evilsocket/legba" target="_blank" rel="noopener">legba</a><span class="chip-lang">Rust</span></div>
@@ -375,7 +410,7 @@
           <div class="case-tally"><span class="tally good">5&nbsp;merged</span></div>
         </div>
         <ul class="rows">
-      <a class="row merged" href="https://github.com/evilsocket/legba/pull/98" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/98" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #98</span>
         <span class="main">
           <span class="ttl">Two remote-triggerable panics (DoS) from untrusted input</span>
@@ -386,7 +421,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/evilsocket/legba/pull/99" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/99" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #99</span>
         <span class="main">
           <span class="ttl">Bound two server-controlled allocations (Kerberos, AMQP) + Kerberos read timeout</span>
@@ -397,7 +432,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/evilsocket/legba/pull/100" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/100" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #100</span>
         <span class="main">
           <span class="ttl">Cap the IRC banner read + add a read deadline</span>
@@ -408,7 +443,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/evilsocket/legba/pull/101" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/101" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #101</span>
         <span class="main">
           <span class="ttl">Avoid a panic on a multi-byte UTF-8 SMTP reply line</span>
@@ -419,7 +454,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/evilsocket/legba/pull/102" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/102" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #102</span>
         <span class="main">
           <span class="ttl">Add read/write timeouts to the RDP connection</span>
@@ -431,7 +466,7 @@
         </span>
       </a></ul>
       </section>
-      <section class="case">
+<section class="case" data-stars="4401">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/squidowl/halloy" target="_blank" rel="noopener">halloy</a><span class="chip-lang">Rust</span></div>
@@ -440,7 +475,7 @@
           <div class="case-tally"><span class="tally good">1&nbsp;merged</span></div>
         </div>
         <ul class="rows">
-      <a class="row merged" href="https://github.com/squidowl/halloy/pull/2149" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/squidowl/halloy/pull/2149" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #2149</span>
         <span class="main">
           <span class="ttl">Harden against three remote-DoS issues (reported via private advisory)</span>
@@ -452,7 +487,7 @@
         </span>
       </a></ul>
       </section>
-      <section class="case">
+<section class="case" data-stars="677">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/libcsp/libcsp" target="_blank" rel="noopener">libcsp</a><span class="chip-lang">C</span></div>
@@ -461,7 +496,7 @@
           <div class="case-tally"><span class="tally good">1&nbsp;merged</span></div>
         </div>
         <ul class="rows">
-      <a class="row merged" href="https://github.com/libcsp/libcsp/pull/992" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/libcsp/libcsp/pull/992" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #992</span>
         <span class="main">
           <span class="ttl">Fix use-after-free in the CSP_PS service handler</span>
@@ -473,7 +508,7 @@
         </span>
       </a></ul>
       </section>
-      <section class="case">
+<section class="case" data-stars="2451">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/moquette-io/moquette" target="_blank" rel="noopener">moquette</a><span class="chip-lang">Java</span></div>
@@ -482,7 +517,7 @@
           <div class="case-tally"><span class="tally good">6&nbsp;merged</span></div>
         </div>
         <ul class="rows">
-      <a class="row advisory" href="https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq" target="_blank" rel="noopener">
+      <a class="row advisory" href="https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq" data-sev="Critical" target="_blank" rel="noopener">
         <span class="ref">GHSA</span>
         <span class="main">
           <span class="ttl">Pattern-ACL wildcard injection lets an attacker widen per-tenant %c/%u ACL rules via clientId/username</span>
@@ -493,7 +528,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/959" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/959" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #959</span>
         <span class="main">
           <span class="ttl">Guard the periodic expiration task so one failing entity can't disable all expirations</span>
@@ -504,7 +539,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/958" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/958" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #958</span>
         <span class="main">
           <span class="ttl">Reject a malformed $share subscription before parsing it</span>
@@ -515,7 +550,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/957" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/957" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #957</span>
         <span class="main">
           <span class="ttl">Keep the session event loop alive when a command throws</span>
@@ -526,7 +561,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/964" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/964" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #964</span>
         <span class="main">
           <span class="ttl">Namespace the H2 queue metadata map to prevent a client-id collision</span>
@@ -537,7 +572,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/963" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/963" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #963</span>
         <span class="main">
           <span class="ttl">Guard pattern ACL substitution against a null username</span>
@@ -548,7 +583,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/967" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/967" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #967</span>
         <span class="main">
           <span class="ttl">Fail closed (not open to PermitAll/AcceptAll) when a configured authorizator/authenticator class fails to load</span>
@@ -560,7 +595,7 @@
         </span>
       </a></ul>
       </section>
-      <section class="case">
+<section class="case" data-stars="21366">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/antirez/ds4" target="_blank" rel="noopener">ds4</a><span class="chip-lang">C</span></div>
@@ -569,7 +604,7 @@
           <div class="case-tally"><span class="tally good">8&nbsp;fixed</span><span class="tally">2&nbsp;open</span></div>
         </div>
         <ul class="rows">
-      <a class="row fixed" href="https://github.com/antirez/ds4/pull/539" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/539" data-sev="Critical" target="_blank" rel="noopener">
         <span class="ref">PR #539</span>
         <span class="main">
           <span class="ttl">Fix pre-auth double-free in the JSON request parser (applied via commit 8e49a5c, co-authored with antirez)</span>
@@ -580,7 +615,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/antirez/ds4/pull/542" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/542" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #542</span>
         <span class="main">
           <span class="ttl">Bound file-declared length prefixes in the model loader (applied via commit c7689db, co-authored with antirez, alongside #543 and #545)</span>
@@ -591,7 +626,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/antirez/ds4/pull/543" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/543" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #543</span>
         <span class="main">
           <span class="ttl">Cross-check tensor data size against shape in FP8/FP4 dequant (applied via commit c7689db, co-authored with antirez, alongside #542 and #545)</span>
@@ -602,7 +637,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/antirez/ds4/pull/544" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/544" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #544</span>
         <span class="main">
           <span class="ttl">Cap file-declared lengths in agent KV-cache reads (applied via commit 0fa15c6, co-authored with antirez)</span>
@@ -613,7 +648,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/antirez/ds4/pull/545" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/545" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #545</span>
         <span class="main">
           <span class="ttl">Bound GGUF metadata / tensor counts by file size before allocating (applied via commit c7689db, co-authored with antirez, alongside #542 and #543)</span>
@@ -624,7 +659,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/antirez/ds4/pull/546" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/546" data-sev="Low" target="_blank" rel="noopener">
         <span class="ref">PR #546</span>
         <span class="main">
           <span class="ttl">Reject an oversized snapshot token_count before allocating (applied via commit f02d79c, co-authored with antirez)</span>
@@ -635,7 +670,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/antirez/ds4/pull/547" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/547" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #547</span>
         <span class="main">
           <span class="ttl">Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS) (applied via commit a169cff, co-authored with antirez)</span>
@@ -646,7 +681,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row open" href="https://github.com/antirez/ds4/pull/548" target="_blank" rel="noopener">
+      <a class="row open" href="https://github.com/antirez/ds4/pull/548" data-sev="Low" target="_blank" rel="noopener">
         <span class="ref">PR #548</span>
         <span class="main">
           <span class="ttl">Bound tokenizer merges count to INT32_MAX like the tokens table</span>
@@ -657,7 +692,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/antirez/ds4/pull/541" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/541" data-sev="Low" target="_blank" rel="noopener">
         <span class="ref">PR #541</span>
         <span class="main">
           <span class="ttl">Handle NaN in json_int() (undefined double→int cast) (applied via commit 8340f35, co-authored with antirez)</span>
@@ -668,7 +703,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row open" href="https://github.com/antirez/ds4/pull/540" target="_blank" rel="noopener">
+      <a class="row open" href="https://github.com/antirez/ds4/pull/540" data-sev="Low" target="_blank" rel="noopener">
         <span class="ref">PR #540</span>
         <span class="main">
           <span class="ttl">Unlink the bash-tool output temp file on job cleanup</span>
@@ -691,7 +726,7 @@
         </span>
       </a></ul>
       </section>
-      <section class="case">
+<section class="case" data-stars="357">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/antirez/gguf-tools" target="_blank" rel="noopener">gguf-tools</a><span class="chip-lang">C</span></div>
@@ -700,7 +735,7 @@
           <div class="case-tally"><span class="tally">3&nbsp;open PRs</span></div>
         </div>
         <ul class="rows">
-      <a class="row open" href="https://github.com/antirez/gguf-tools/pull/31" target="_blank" rel="noopener">
+      <a class="row open" href="https://github.com/antirez/gguf-tools/pull/31" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #31</span>
         <span class="main">
           <span class="ttl">Fix an out-of-bounds write in the Q4_0/Q4_1 dequantizer's second block loop</span>
@@ -711,7 +746,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row open" href="https://github.com/antirez/gguf-tools/pull/32" target="_blank" rel="noopener">
+      <a class="row open" href="https://github.com/antirez/gguf-tools/pull/32" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #32</span>
         <span class="main">
           <span class="ttl">Grow the split-mixtral tensor array instead of asserting (heap overflow on crafted models)</span>
@@ -722,7 +757,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row open" href="https://github.com/antirez/gguf-tools/pull/33" target="_blank" rel="noopener">
+      <a class="row open" href="https://github.com/antirez/gguf-tools/pull/33" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #33</span>
         <span class="main">
           <span class="ttl">Bound tensor data offset/size against the mapping in gguf_get_tensor</span>
@@ -734,7 +769,7 @@
         </span>
       </a></ul>
       </section>
-      <section class="case">
+<section class="case" data-stars="624">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/Lazza/RecuperaBit" target="_blank" rel="noopener">RecuperaBit</a><span class="chip-lang">Python</span></div>
@@ -743,7 +778,7 @@
           <div class="case-tally"><span class="tally good">2&nbsp;merged</span></div>
         </div>
         <ul class="rows">
-      <a class="row merged" href="https://github.com/Lazza/RecuperaBit/pull/143" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/Lazza/RecuperaBit/pull/143" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #143</span>
         <span class="main">
           <span class="ttl">Isolate command dispatch and the deep-parse phase from crashing the whole session</span>
@@ -754,7 +789,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row merged" href="https://github.com/Lazza/RecuperaBit/pull/144" target="_blank" rel="noopener">
+      <a class="row merged" href="https://github.com/Lazza/RecuperaBit/pull/144" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #144</span>
         <span class="main">
           <span class="ttl">Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports</span>
@@ -766,7 +801,7 @@
         </span>
       </a></ul>
       </section>
-      <section class="case">
+<section class="case" data-stars="14294">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/coturn/coturn" target="_blank" rel="noopener">coturn</a><span class="chip-lang">C</span></div>
@@ -775,7 +810,7 @@
           <div class="case-tally"><span class="tally good">2&nbsp;advisories</span></div>
         </div>
         <ul class="rows">
-      <a class="row advisory" href="https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99" target="_blank" rel="noopener">
+      <a class="row advisory" href="https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">GHSA</span>
         <span class="main">
           <span class="ttl">addr_less_eq() compares IPv6 range endpoints byte-by-byte instead of numerically, letting an authenticated TURN client bypass denied-peer-ip / allowed-peer-ip IPv6 ranges (a TURN-specific SSRF)</span>
@@ -786,7 +821,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row advisory" href="https://github.com/coturn/coturn/security/advisories/GHSA-67c2-q5xv-f85p" target="_blank" rel="noopener">
+      <a class="row advisory" href="https://github.com/coturn/coturn/security/advisories/GHSA-67c2-q5xv-f85p" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">GHSA</span>
         <span class="main">
           <span class="ttl">An authenticated client can grow the shared multiplex-peer demux table without limit in multiplex-peer mode</span>
@@ -798,7 +833,7 @@
         </span>
       </a></ul>
       </section>
-      <section class="case">
+<section class="case" data-stars="20332">
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/livekit/livekit" target="_blank" rel="noopener">LiveKit</a><span class="chip-lang">Go</span></div>
@@ -807,7 +842,7 @@
           <div class="case-tally"><span class="tally good">13&nbsp;fixed</span></div>
         </div>
         <ul class="rows">
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4741" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4741" data-sev="Critical" target="_blank" rel="noopener">
         <span class="ref">PR #4741</span>
         <span class="main">
           <span class="ttl">Data-track packet header parser allowed hdrSize to exceed buffer length, crashing the whole server process on a single malformed message from any joined participant</span>
@@ -818,7 +853,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4741" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4741" data-sev="Critical" target="_blank" rel="noopener">
         <span class="ref">PR #4741</span>
         <span class="main">
           <span class="ttl">Integer wraparound in the same data-track header parser could also cause an out-of-bounds slice read/panic for large extension-size values</span>
@@ -829,7 +864,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4739" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4739" data-sev="Critical" target="_blank" rel="noopener">
         <span class="ref">PR #4739</span>
         <span class="main">
           <span class="ttl">Unclamped Dependency-Descriptor spatial/temporal IDs could index a fixed array out of bounds and crash the process</span>
@@ -840,7 +875,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4757" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4757" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #4757</span>
         <span class="main">
           <span class="ttl">Unauthenticated, oversized Twirp request bodies were fully decoded before any bridge-grant check ran</span>
@@ -851,7 +886,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4743" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4743" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #4743</span>
         <span class="main">
           <span class="ttl">No maximum read-message size was configured on the client-facing signaling WebSocket, allowing unbounded memory growth from a single connection</span>
@@ -862,7 +897,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4750" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4750" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #4750</span>
         <span class="main">
           <span class="ttl">Per-participant pendingTracks map grew without bound; a connection could add tracks without publishing them to exhaust server memory</span>
@@ -873,7 +908,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #4742</span>
         <span class="main">
           <span class="ttl">Malformed TURN deny_peer_cidrs entries silently disabled the intended deny rule instead of failing closed</span>
@@ -884,7 +919,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4744" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4744" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #4744</span>
         <span class="main">
           <span class="ttl">A single participant credential could open unlimited TURN relay allocations, exhausting the shared relay-port range for everyone else</span>
@@ -895,7 +930,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4758" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4758" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #4758</span>
         <span class="main">
           <span class="ttl">DownTrack.handleRTCP spawned one goroutine per incoming RTCP NACK packet with no cap, letting a peer exhaust server resources</span>
@@ -906,7 +941,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4756" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4756" data-sev="Low" target="_blank" rel="noopener">
         <span class="ref">PR #4756</span>
         <span class="main">
           <span class="ttl">Authentication failures logged and reflected raw bearer tokens and API-key identifiers back to the caller</span>
@@ -917,7 +952,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4749" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4749" data-sev="Low" target="_blank" rel="noopener">
         <span class="ref">PR #4749</span>
         <span class="main">
           <span class="ttl">A partially configured Prometheus Basic Auth (only username or only password set) silently left the metrics endpoint fully unauthenticated</span>
@@ -928,7 +963,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" data-sev="Low" target="_blank" rel="noopener">
         <span class="ref">PR #4742</span>
         <span class="main">
           <span class="ttl">Whitespace-only external TURN secret files silently disabled dynamic credential validation</span>
@@ -939,7 +974,7 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" target="_blank" rel="noopener">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" data-sev="Low" target="_blank" rel="noopener">
         <span class="ref">PR #4742</span>
         <span class="main">
           <span class="ttl">TURN TTL configuration accepted negative values and overflowing duration conversions</span>
@@ -952,6 +987,7 @@
       </a></ul>
       </section>
     </div>
+    <p class="no-results" id="noResults">No findings match the current filters. <button type="button" class="filter-chip" id="resetFilters">Reset filters</button></p>
   </div>
 
   <div class="wrap" id="support">
@@ -962,7 +998,7 @@
     <div class="support">
       <section class="panel">
         <h3>Contribute</h3>
-        <p>Found a false positive, a bug Argo missed, or want to sharpen a prompt? Reports and pull requests are genuinely welcome, the false-positive and false-negative reports most of all. Found a real vulnerability with Argo — or one it missed? Report it, and you'll be credited right here next to the finding.</p>
+        <p>Found a false positive, a bug Argo missed, or want to sharpen a prompt? Reports and pull requests are genuinely welcome, the false-positive and false-negative reports most of all. Found a real vulnerability with Argo, or one it missed? Report it, and you'll be credited right here next to the finding.</p>
         <div class="linkrow">
           <a href="https://github.com/gigioneggiando/argo/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing guide <span class="go" aria-hidden="true">&#8594;</span></a>
           <a href="https://github.com/gigioneggiando/argo/issues" target="_blank" rel="noopener">Open issues <span class="go" aria-hidden="true">&#8594;</span></a>
@@ -1031,6 +1067,64 @@
     };
     requestAnimationFrame(step);
   });
+
+  // Filters (severity + project stars). Pure progressive enhancement: every finding is
+  // already present in the static HTML above (see the maintenance note near the top of this
+  // script) -- this only toggles a CSS class to show/hide rows and cards, it never removes
+  // anything from the DOM. A reader without JS (or an AI fetching raw HTML) still sees every
+  // finding regardless of filter state, since the filter buttons simply do nothing without
+  // this script attached.
+  (function(){
+    const filtersEl = document.getElementById('filters');
+    if (!filtersEl) return;
+    const cases = Array.from(document.querySelectorAll('#cases .case'));
+    const countEl = document.getElementById('filterCount');
+    const noResults = document.getElementById('noResults');
+    const state = { sev: '', stars: 0 };
+
+    function apply(){
+      let visibleFindings = 0, visibleProjects = 0;
+      cases.forEach(sec => {
+        const starsOk = (+sec.dataset.stars || 0) >= state.stars;
+        const rows = Array.from(sec.querySelectorAll('.row'));
+        let anyRowVisible = false;
+        rows.forEach(row => {
+          const sevOk = !state.sev || row.dataset.sev === state.sev;
+          const show = starsOk && sevOk;
+          row.classList.toggle('filtered-out', !show);
+          if (show){ anyRowVisible = true; visibleFindings++; }
+        });
+        const showCase = starsOk && anyRowVisible;
+        sec.classList.toggle('filtered-out', !showCase);
+        if (showCase) visibleProjects++;
+      });
+      const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+      countEl.textContent = visibleFindings
+        ? `${plural(visibleFindings, 'finding')} across ${plural(visibleProjects, 'project')}`
+        : '';
+      noResults.classList.toggle('show', visibleFindings === 0);
+    }
+
+    filtersEl.querySelectorAll('.filter-chip[data-filter]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const group = chip.dataset.filter;
+        filtersEl.querySelectorAll(`.filter-chip[data-filter="${group}"]`).forEach(c => {
+          c.classList.remove('active'); c.setAttribute('aria-pressed', 'false');
+        });
+        chip.classList.add('active'); chip.setAttribute('aria-pressed', 'true');
+        state[group] = group === 'stars' ? +chip.dataset.value : chip.dataset.value;
+        apply();
+      });
+    });
+
+    const resetBtn = document.getElementById('resetFilters');
+    if (resetBtn) resetBtn.addEventListener('click', () => {
+      filtersEl.querySelector('.filter-chip[data-filter="sev"][data-value=""]').click();
+      filtersEl.querySelector('.filter-chip[data-filter="stars"][data-value="0"]').click();
+    });
+
+    apply();
+  })();
 </script>
 <script>
   (function(){

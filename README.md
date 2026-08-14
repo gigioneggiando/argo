@@ -165,7 +165,7 @@ argo/
   cli.py
   models.py            # pydantic models for scope + findings
   runner.py            # AgentRunner interface (Claude headless · Codex · mock)
-  stages/{ingest,research,recon,audit,sca,second_opinion,validate,corroborate,deep_verify,runtime,live,report}.py
+  stages/{ingest,research,recon,audit,sca,second_opinion,validate,corroborate,deep_verify,asan_poc,runtime,live,report}.py
   research.py·fixes.py·verify.py·benchmark.py·chat.py·costs.py·archetype.py
   prompts/             # the assets, version-controlled in git
   ledger.py            # SQLite findings + cost ledger
@@ -242,10 +242,12 @@ argo recon    --run RUN_ID                                     # Stage 2
 argo run      --run RUN_ID                                     # Stage 3
 argo validate --run RUN_ID                                     # Stage 4
 argo verify   --run RUN_ID                                     # Stage VERIFY (opt-in, deep re-derivation)
+argo asan-poc --run RUN_ID                                     # Stage ASAN_POC (opt-in, C/C++ crash traces)
 argo report   --run RUN_ID                                     # Stage 5
 argo second-opinion --run RUN_ID --passes 2                    # extra blind passes merged in (opt-in, standalone)
 argo pipeline --brief ... --links ... --repo ...               # 1-5, stops before submission
 argo pipeline --brief ... --repo ... --verify                  # + deep-verify before reporting
+argo pipeline --brief ... --repo ... --verify --asan-poc        # + real ASan crash traces for C/C++ survivors
 argo pipeline --brief ... --repo ... --second-opinion 1         # + one independent blind re-audit merged in
 argo pipeline --brief ... --repo ... --second-opinion 1 --second-opinion-backend codex  # cross-engine diversity
 argo pipeline --repo ./my-code                                 # 🔐 local/personal review — NO brief, NO URL
@@ -372,6 +374,18 @@ actually walked — so the pass is auditable, not just trusted. Downgrade-don't-
 only `refuted` drops a finding, `merged`/`split` originals are kept in report appendices. Off by
 default (the most expensive annotation stage); enable with `--verify` on `argo pipeline` or run
 `argo verify --run RUN_ID` standalone.
+
+**ASAN_POC — AddressSanitizer PoC generation** *(opt-in, sandboxed, C/C++ only; after verify;
+default off)*. For each already-verified memory-safety survivor, an offline session writes a
+**minimal, single-translation-unit harness** that `#include`s the real vulnerable source directly
+(never reimplements it) and compiles standalone — deliberately narrow, no attempt to drive an
+arbitrary third-party CMake/Autotools/Meson build. A **fixed, non-model** step then compiles it
+with `clang -fsanitize=address,undefined` and runs it inside an egress-blocked (`--network=none`)
+Docker container; a plain regex reads whether a sanitizer actually reported an error — never an LLM
+judgment call. `confirmed` (real sanitizer match) / `not_reproduced` (clean exit — does **not**
+refute the finding) / `crashed_no_sanitizer_output` / `not_attempted` (couldn't isolate/compile,
+reason logged). Best-effort per finding, needs Docker; enable with `--asan-poc` on `argo pipeline`
+or run `argo asan-poc --run RUN_ID` standalone.
 
 **RUNTIME — Runtime verification** *(opt-in, sandboxed; default off)*. Builds the OSS target from
 the cloned source into an **ephemeral, egress-blocked, loopback-only** container (`--network=none`)

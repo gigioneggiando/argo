@@ -17,8 +17,8 @@ from .estimate import estimate_cost, format_estimate
 from .ledger import Ledger
 from .progress import ProgressReporter, read_status
 from .runner import RunnerCancelled, _is_retryable, build_runner, parse_retry_after
-from .stages import (audit, corroborate, deep_verify, freshness, ingest, live, recon, report, research,
-                     runtime, sca, second_opinion, validate)
+from .stages import (asan_poc, audit, corroborate, deep_verify, freshness, ingest, live, recon,
+                     report, research, runtime, sca, second_opinion, validate)
 
 
 class PipelineCancelled(RuntimeError):
@@ -119,6 +119,10 @@ def do_verify(ctx: RunContext):
     return deep_verify.run(ctx)
 
 
+def do_asan_poc(ctx: RunContext):
+    return asan_poc.run(ctx)
+
+
 def do_freshness_check(ctx: RunContext):
     return freshness.run(ctx)
 
@@ -152,6 +156,8 @@ def pipeline_stages(ctx: RunContext, *, dry_run: bool = False,
         stages.append("corroborate")
     if ctx.config.verify_enabled:
         stages.append("verify")
+    if ctx.config.asan_poc_enabled:
+        stages.append("asan_poc")
     if ctx.config.freshness_check_enabled:
         stages.append("freshness_check")
     if ctx.config.runtime_enabled:
@@ -181,6 +187,7 @@ def _stage_functions(
         "validate": lambda: do_validate(ctx),
         "corroborate": lambda: do_corroborate(ctx),
         "verify": lambda: do_verify(ctx),
+        "asan_poc": lambda: do_asan_poc(ctx),
         "freshness_check": lambda: do_freshness_check(ctx),
         "runtime": lambda: do_runtime(ctx),
         "live": lambda: do_live(ctx),

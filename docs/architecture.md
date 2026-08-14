@@ -65,12 +65,14 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | 4 Validate | `stages/validate.run` | `findings/`, `repo/`, `scope.json`, **`ground_truth.json`** | `validated_findings.json` — a **cross-focus semantic dedup** then a deterministic **citation-grounding** pass run first (below), then findings are **batched** (`validate_batch_size`, default 8) into shared sessions that judge each independently, collapsing the old one-session-per-finding fan-out |
 | CORROBORATE | `stages/corroborate.run` | `validated_findings.json` (+ optional `--docs-url`, scope links, repo URL) | `validated_findings.json` rewritten with a per-finding `corroboration` block + a `fixed_upstream` appendix — **opt-out web OSINT** (the 2nd networked stage, with research). Cross-checks each finding against the project's **docs** and the repo's **VCS history** to downgrade documented-by-design findings and exclude already-patched ones. Best-effort; never the live in-scope hosts |
 | VERIFY | `stages/deep_verify.run` | `validated_findings.json`, full `repo/` (no excerpt budget) | `validated_findings.json` rewritten with a per-finding `verification` block, plus `split_originals`/`merged_findings` appendices — **opt-in**, offline, one full session per finding (never batched). Independently RE-DERIVES each surviving finding from the actual source and reasons ACROSS the whole survivor set, catching what validate/corroborate's per-finding isolation cannot: a finding that is actually several distinct bugs (`split`), two findings sharing one root cause (`merged`), or a real finding with a wrong factual detail (`corrected`). Best-effort; never touches a live host |
+| ASAN_POC | `stages/asan_poc.run` | `validated_findings.json`, `repo/` (C/C++ memory-safety survivors only) | `validated_findings.json` rewritten with a per-finding `validation.asan_poc` block (`confirmed`/`not_reproduced`/`crashed_no_sanitizer_output`/`not_attempted`) + `runs/<id>/asan_poc/<finding_id>/{harness.c, NOTES.md, outcome.json}` — **opt-in**, sandboxed, C/C++ only. An offline LLM writes a minimal single-translation-unit harness (`#include`s the real vulnerable source directly); a FIXED, non-model step then compiles it with `clang -fsanitize=address,undefined` and runs it in an egress-blocked container. Best-effort per finding; a clean/failed attempt never refutes the finding. No-op unless enabled + Docker |
 | RUNTIME | `stages/runtime.run` | `validated_findings.json`, `repo/` (+ optional hand-written `runtime_probe_plan.json`) | `runtime_results.json` + per-finding `runtime` verdict — **opt-in**, sandboxed. **R2:** an LLM proposes the probe plan (gated by the loopback/anti-DoS validators) and interprets the observations into confirmed/refuted/inconclusive. No-op unless enabled + Docker + recipe |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
 `pipeline` runs 1→5 (SCA between audit and validate, corroborate after validate — both on by
-default; second-opinion between SCA and validate, verify after corroborate — both opt-in, off by
-default; or 1→2 with `--dry-run`) and **stops before any submission**.
+default; second-opinion between SCA and validate, verify after corroborate, asan_poc after verify
+(C/C++ memory-safety survivors only) — all three opt-in, off by default; or 1→2 with `--dry-run`)
+and **stops before any submission**.
 
 **Why an "unknown"/uncertain verdict happened, not just that it did.** Both validate and corroborate
 are best-effort against session/backend failure: a validate session that dies leaves its findings
@@ -141,6 +143,37 @@ that construction). Deep-verify's prompt now requires grepping the whole repo fo
 of the same field/bytes, checking whether one plausibly runs earlier and could incidentally block
 reachability, and downgrading to `corrected` (not silently `reconfirmed`) when it does — the kind of
 cross-call-site reasoning validate/corroborate cannot do from an excerpt in isolation.
+
+**ASan PoC generation: why V1 is deliberately narrow.** Across every C/C++ disclosure so far
+(nanomq, open62541, coturn) the single most time-consuming manual step has been hand-writing a
+minimal AddressSanitizer harness to turn a static finding into a real crash trace — the most
+credibility-boosting artifact a report can carry. A fully general version of this (auto-detect and
+drive an arbitrary third-party CMake/Autotools/Meson build) is high engineering risk — it would
+mostly produce build failures unless heavily engineered per-target. `stages/asan_poc.py` instead
+targets only the case that is actually tractable: a **single-translation-unit** harness that
+`#include`s the real vulnerable source file(s) directly (never reimplements the function) and
+compiles standalone with one flat `clang -fsanitize=address,undefined harness.c -o poc` — the
+common shape of a parser/decoder/buffer-handling memory-safety bug, and the shape every hand-written
+PoC in this project's own history has actually taken. A finding whose function can't be isolated
+this way, isn't C/C++, or has no CWE a sanitizer can observe (`asan_poc._MEMORY_SAFETY_CWES`) is
+skipped at zero cost before any session runs. The compile-and-run step is a **fixed, non-model
+executor** (same principle as the runtime/live probe runners below): the model only ever writes
+source text into `harness.c`/`NOTES.md`; a plain `subprocess` call compiles and runs it inside an
+`--network=none` Docker container (reusing `verify._copy_repo` for isolation, the same
+cross-stage-shared helper `runtime.py` already relies on), and a plain regex
+(`ERROR: (AddressSanitizer|UndefinedBehaviorSanitizer): ...` / `SUMMARY: ...`) reads the result —
+never an LLM judgment call. A clean exit does **not** refute the finding (a failed harness attempt
+says nothing definitive about the underlying bug); only a genuine sanitizer match yields
+`confirmed`. Runs only on findings that already survived the full triage chain (`verify` if
+enabled, else `validate`) — spending a harness-authoring session is only worth it on findings
+already trusted to be real. The harness-authoring session passes a `neutral_prompt` (the
+`10_asan_harness_prompt.neutral.md` companion) into `AgentRunner.run()` like every other
+Codex-sensitive stage — found necessary the hard way: a real comparison run against two
+already-disclosed findings (nanomq's SCRAM salt overflow, open62541's TPM CTR truncation) hit a
+genuine Claude-side safety refusal on the very first attempt (see `runner._CLAUDE_REFUSAL_SIGNATURE`
+above) — asking a model to write a harness that deliberately overflows a buffer reads as exactly
+the kind of request this stage exists to make routine, so it needed the same recovery path
+validate/deep_verify already have, not a new one.
 
 **Second opinion: an LLM audit is one noisy sample, not the answer.** A single recon+audit pass
 depends on that session's own sampling — the SAME model over the SAME repo can genuinely find a
@@ -294,8 +327,12 @@ Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`
   very different underlying causes. Concretely, Codex's exit_1/0-token crash signature (no
   `api_error_status`, no last-message file, no stdout) is produced by BOTH an immediate moderation
   flag ("flagged for possible cybersecurity risk...") AND genuine credit exhaustion ("...out of
-  credits...") — only the actual stderr text tells them apart. This matters because the right
-  recovery differs by kind:
+  credits...") — only the actual stderr text tells them apart. **`moderation_flagged` is not
+  Codex-specific**: Claude's own API can refuse a legitimate, authorized request with its own
+  safety-classifier wording ("...safeguards flagged this message... can sometimes flag legitimate
+  cybersecurity work...", confirmed live on a real `asan_poc` harness-authoring session) — matched
+  by a second signature and classified identically, since it's the same category of failure just
+  on the other backend. This matters because the right recovery differs by kind:
   - `credits_exhausted` — no amount of waiting fixes an empty account, so the backend is benched for
     a **longer** cooldown (30 minutes) than the generic hint-less default, so the run spends that
     time productively on a different backend instead of re-checking a dead one every few minutes.

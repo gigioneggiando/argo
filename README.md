@@ -282,8 +282,7 @@ paying to run them.
 ## 🖥️ Web UI
 
 A no-build web interface (paste the program, point at the repo, watch the argo run live, read the
-results, then chat with the analysis) ships in `webapp/` and is served by the API. Easiest:
-**double-click `start.cmd`** (Windows) or run `./start.sh`. Or:
+results, then chat with the analysis) ships in `webapp/` and is served by the API:
 
 ```
 python -m argo.cli serve --open    # starts + opens http://127.0.0.1:8000

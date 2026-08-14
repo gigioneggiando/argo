@@ -6,9 +6,6 @@ endpoints documented in [api.md](api.md).
 
 ## Run it
 
-Easiest — **double-click `start.cmd`** (Windows) or run `./start.sh` (macOS / Linux / Git Bash):
-it starts the server and opens the browser. Or manually:
-
 ```bash
 python -m argo.cli serve --open     # starts the API + UI and opens http://127.0.0.1:8000
 # without --open: open http://127.0.0.1:8000 yourself (redirects to /app/)

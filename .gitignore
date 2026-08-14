@@ -20,6 +20,16 @@ chatplugin/
 /run_*.log
 /finish_*.py
 /finish_*.log
+/resume_*.py
+/resume_*.log
+/retry_*.py
+/retry_*.log
+/finalize_*.py
+/finalize_*.log
+/codex_*.log
+/CODEX_TASK_*.md
+/authentik_run.log
+/authentik_resume.log
 /*_build.log
 /*_tail.log
 /*_tail.py

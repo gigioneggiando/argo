@@ -39,6 +39,7 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
     "live": SONNET,     # L2: propose in-scope live probe plans + interpret results (offline, validated)
     "corroborate": SONNET,  # post-validation cross-check vs project docs + repo VCS history (networked)
     "verify": OPUS,     # deep re-derivation: unbounded, full repo access, cross-finding aware (opt-in)
+    "asan_poc": OPUS,   # single-shot, precision-critical harness authoring (opt-in, C/C++ only)
 }
 
 #: Default per-stage wall-clock overrides (seconds). Recon now does deep ground-truth extraction
@@ -49,6 +50,7 @@ DEFAULT_STAGE_TIMEOUTS: dict[str, int] = {
     "recon": 3600,
     "audit": 3600,
     "verify": 3600,  # unbounded per-finding re-derivation; give it the same headroom as audit/recon
+    "asan_poc": 3600,  # full read-only repo access to isolate one function; same headroom as verify
 }
 
 # --- Cost estimation for backends that report tokens but not USD ---------------------
@@ -259,6 +261,25 @@ class PipelineConfig:
     runtime_min_request_interval_s: float = 0.2   # rate cap between probes (anti-DoS)
     runtime_max_payload_bytes: int = 8192   # cap request body size (anti-DoS)
     runtime_allow_state_changing: bool = False    # default: read-only probes (GET/HEAD/OPTIONS)
+
+    # --- ASan PoC generation (opt-in, sandboxed, C/C++ only) ---------------------------------------
+    # OFF by default. When on, runs AFTER verify (or validate if verify is off): for each surviving
+    # memory-safety finding on a C/C++ file, an offline LLM session writes a MINIMAL, single-
+    # translation-unit harness that #includes the real vulnerable source directly (never
+    # reimplements it), then a FIXED (non-model) step compiles it with
+    # `clang -fsanitize=address,undefined` and runs it inside an egress-blocked (--network=none)
+    # Docker container. A real ASan crash trace is the most credibility-boosting artifact a
+    # disclosure can carry, and was the single most time-consuming manual step across every C/C++
+    # campaign so far. V1 is deliberately narrow (see docs/architecture.md): no attempt to drive an
+    # arbitrary third-party CMake/Autotools/Meson build — only the single-file-compile case, which
+    # covers the common shape of a parser/decoder/buffer-handling memory-safety bug. Anything outside
+    # that (can't isolate the function, non-C/C++ finding, no Docker) degrades to an honest, logged
+    # skip per finding — never a silent failure, and NEVER refutes the finding itself.
+    asan_poc_enabled: bool = False
+    asan_poc_image: str = "silkeh/clang"       # a small image with clang + libc dev headers
+    asan_poc_max_findings: int | None = None   # cap how many survivors get a harness (cost control)
+    asan_poc_compile_timeout_s: int = 60
+    asan_poc_run_timeout_s: int = 30
 
     # --- LIVE testing of in-scope hosts (opt-in, heavily gated; see docs ⚠️ WARNING) -------------
     # OFF by default. When on, a FIXED executor makes BOUNDED, IN-SCOPE-ONLY, read-only HTTP requests

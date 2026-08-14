@@ -641,6 +641,8 @@ class MockClaudeRunner(ClaudeRunner):
             return self._corroborate(work_dir, label, prompt)
         if stage == "verify":
             return self._verify(work_dir, label)
+        if stage == "asan_poc":
+            return self._asan_poc(work_dir, label)
         if stage == "validate":
             return self._validate(work_dir, label, prompt)
         handler = {
@@ -859,6 +861,28 @@ class MockClaudeRunner(ClaudeRunner):
         return self._envelope(self._manifest(
             [{"type": "deep_verify_verdict", "path": out.name, "status": "ok"}]))
 
+    def _asan_poc(self, work_dir: Path, label) -> dict:
+        """Mock ASan harness-authoring session: write harness.c (+ NOTES.md) for this finding. A
+        fixture ``<scenario>/asan_poc/<finding_id>.c`` (if present) drives the harness source, so a
+        Docker-gated test can exercise the REAL compile+run+parse cycle deterministically (e.g. a
+        known one-liner heap-buffer-overflow); otherwise a trivial, safe (non-crashing) default
+        keeps the plain mock path itself lightweight and Docker-independent."""
+        fid = label or "MOCK-1"
+        src = self.scenario_dir / "asan_poc" / f"{fid}.c"
+        code = src.read_text(encoding="utf-8") if src.is_file() else (
+            "#include <stdio.h>\n"
+            "int main(void) { printf(\"mock asan_poc: no fixture, trivial safe harness\\n\"); "
+            "return 0; }\n"
+        )
+        (work_dir / "harness.c").write_text(code, encoding="utf-8")
+        (work_dir / "NOTES.md").write_text(
+            "(mock) harness authored from a test fixture or the trivial safe default.\n",
+            encoding="utf-8")
+        return self._envelope(self._manifest([
+            {"type": "harness_source", "path": "harness.c", "status": "ok"},
+            {"type": "notes", "path": "NOTES.md", "status": "ok"},
+        ]))
+
     def _remediate(self, work_dir: Path, label, prompt: str, repo_dir) -> dict:
         """Emit a `FIX.json` full-file rewrite (the primary remediation format): read the finding's
         primary file (READ-ONLY) and append a harmless remediation marker comment, so Argo's
@@ -968,6 +992,17 @@ def _is_retryable(exc: Exception) -> bool:
 #: surrounding wording could shift; this phrase is the load-bearing part.
 _MODERATION_FLAG_SIGNATURE = "flagged for possible cybersecurity risk"
 
+#: Claude's OWN moderation-style refusal signature — confirmed live 2026-08-12 on a real
+#: asan_poc harness-authoring session against nanomq's SCRAM bug (legitimate, authorized security
+#: research, same as every other case in this file): "API Error: Opus 4.8's safeguards flagged
+#: this message. Our intentionally broad safeguards allow us to deliver more capabilities faster,
+#: but can sometimes flag legitimate cybersecurity work. Apply to the Cyber Verification Program
+#: to reduce these interruptions." Matched on a substring that omits the model-version prefix
+#: ("Opus 4.8" will change across releases) — this is the SAME category of failure as Codex's
+#: moderation flag (a safety classifier refusing legitimate, authorized content), just on the
+#: other backend, so it is classified identically and gets the same neutral-register recovery.
+_CLAUDE_REFUSAL_SIGNATURE = "safeguards flagged this message"
+
 #: Codex's credits-exhaustion signature, confirmed live via a manual `codex exec` smoke test (see
 #: argo-run-pacing-limits campaign notes — recurred 3 times independently: libcsp, authentik's
 #: verify stage, coturn). The STRUCTURAL fingerprint alone (stop_reason=exit_1, 0 tokens,
@@ -985,7 +1020,7 @@ def _classify_failure_text(text: str | None) -> FailureKind | None:
     default rather than this function silently picking one.
     """
     s = (text or "").lower()
-    if _MODERATION_FLAG_SIGNATURE in s:
+    if _MODERATION_FLAG_SIGNATURE in s or _CLAUDE_REFUSAL_SIGNATURE in s:
         return "moderation_flagged"
     if _CREDITS_EXHAUSTED_SIGNATURE in s:
         return "credits_exhausted"

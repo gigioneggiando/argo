@@ -26,9 +26,9 @@ import typer
 
 from .config import OPUS, PipelineConfig, load_pipeline_config
 from .estimate import estimate_cost, format_estimate
-from .orchestrator import (build_context, do_audit, do_corroborate, do_freshness_check, do_ingest,
-                           do_live, do_recon, do_report, do_runtime, do_sca, do_second_opinion,
-                           do_validate, do_verify, new_run_id,
+from .orchestrator import (build_context, do_asan_poc, do_audit, do_corroborate,
+                           do_freshness_check, do_ingest, do_live, do_recon, do_report, do_runtime,
+                           do_sca, do_second_opinion, do_validate, do_verify, new_run_id,
                            resume_pipeline, run_pipeline)
 from .progress import read_status
 from .runner import parse_retry_after
@@ -421,6 +421,38 @@ def verify(run: str = RunIdArg,
     _emit({"run_id": run, "validated_findings": str(path)})
 
 
+@app.command(name="asan-poc")
+def asan_poc_cmd(run: str = RunIdArg,
+                 max_findings: Optional[int] = typer.Option(
+                     None, "--max-findings",
+                     help="cap how many eligible survivors get a harness (cost control); "
+                          "omit to attempt every eligible one"),
+                 image: str = typer.Option("silkeh/clang", "--asan-poc-image",
+                     help="Docker image with clang + libc dev headers to compile/run the harness in"),
+                 compile_timeout: int = typer.Option(60, "--asan-poc-compile-timeout",
+                     help="max seconds to compile one harness"),
+                 run_timeout: int = typer.Option(30, "--asan-poc-run-timeout",
+                     help="max seconds to execute one compiled harness"),
+                 runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
+                 calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
+                 parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+    """OPT-IN, SANDBOXED, C/C++ ONLY: turn each already-verified memory-safety finding into a real
+    AddressSanitizer crash trace. An offline LLM session writes a minimal, single-translation-unit
+    harness that #includes the real vulnerable source directly; a FIXED (non-model) step then
+    compiles it with clang -fsanitize=address,undefined and runs it inside an egress-blocked
+    (--network=none) Docker container. Best-effort per finding: a finding that can't be isolated
+    this way, isn't C/C++, or has no memory-safety CWE is skipped, never refuted. Rewrites
+    validated_findings.json in place (adds a validation.asan_poc block per attempted finding)."""
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
+                        ).with_overrides(asan_poc_enabled=True, asan_poc_max_findings=max_findings,
+                                         asan_poc_image=image,
+                                         asan_poc_compile_timeout_s=compile_timeout,
+                                         asan_poc_run_timeout_s=run_timeout)
+    ctx = build_context(cfg, run)
+    path = do_asan_poc(ctx)
+    _emit({"run_id": run, "validated_findings": str(path) if path else None})
+
+
 @app.command()
 def freshness(run: str = RunIdArg,
               lookback_days: int = typer.Option(
@@ -574,6 +606,11 @@ def estimate(
     verify_max_findings: Optional[int] = typer.Option(
         None, "--verify-max-findings",
         help="(--verify) cap how many survivors get deep verify"),
+    asan_poc: bool = typer.Option(False, "--asan-poc/--no-asan-poc",
+                                  help="include/exclude ASan PoC generation in the estimate"),
+    asan_poc_max_findings: Optional[int] = typer.Option(
+        None, "--asan-poc-max-findings",
+        help="(--asan-poc) cap how many eligible survivors get a harness"),
     freshness_check: bool = typer.Option(
         False, "--freshness-check/--no-freshness-check",
         help="include/exclude the late freshness-check stage"),
@@ -610,6 +647,7 @@ def estimate(
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
                              verify_enabled=verify, verify_max_findings=verify_max_findings,
+                             asan_poc_enabled=asan_poc, asan_poc_max_findings=asan_poc_max_findings,
                              freshness_check_enabled=freshness_check,
                              freshness_lookback_days=freshness_lookback_days,
                              second_opinion_passes=second_opinion,
@@ -693,6 +731,17 @@ def pipeline(
     verify_max_findings: Optional[int] = typer.Option(
         None, "--verify-max-findings",
         help="(--verify) cap how many survivors get a deep-verify session (cost control)"),
+    asan_poc: bool = typer.Option(
+        False, "--asan-poc/--no-asan-poc",
+        help="OPT-IN, SANDBOXED, C/C++ ONLY: after verify, turn each eligible memory-safety "
+             "survivor into a real AddressSanitizer crash trace (minimal single-file harness, "
+             "compiled+run in an egress-blocked Docker container). Needs Docker. Off by default."),
+    asan_poc_max_findings: Optional[int] = typer.Option(
+        None, "--asan-poc-max-findings",
+        help="(--asan-poc) cap how many eligible survivors get a harness (cost control)"),
+    asan_poc_image: str = typer.Option(
+        "silkeh/clang", "--asan-poc-image",
+        help="(--asan-poc) Docker image with clang + libc dev headers"),
     freshness_check: bool = typer.Option(
         False, "--freshness-check/--no-freshness-check",
         help="OPT-IN: before reporting, check audited/sibling branch git history for same-file "
@@ -732,6 +781,8 @@ def pipeline(
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
                              verify_enabled=verify, verify_max_findings=verify_max_findings,
+                             asan_poc_enabled=asan_poc, asan_poc_max_findings=asan_poc_max_findings,
+                             asan_poc_image=asan_poc_image,
                              freshness_check_enabled=freshness_check,
                              freshness_lookback_days=freshness_lookback_days,
                              second_opinion_passes=second_opinion,

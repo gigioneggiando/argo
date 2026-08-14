@@ -104,6 +104,29 @@ extended to the probe layer:
   fails the run) when disabled, Docker absent, no launcher recipe, or no probe plan. Full design:
   [runtime-verification-study.md](runtime-verification-study.md).
 
+### 2b-bis. The `asan_poc` stage (sandboxed compile + execute, no live host at all)
+
+ASan PoC generation (`stages/asan_poc.py`, **opt-in** via `--asan-poc`, default **off**, C/C++
+only) compiles and executes code — but that code is a model-authored harness calling the target's
+OWN already-audited source, isolated the same way `runtime` isolates a live instance:
+
+- **Isolated source, ephemeral container** — a fresh `verify._copy_repo` copy of the target (the
+  same helper `runtime.py` reuses), compiled and run inside a throwaway `--network=none` Docker
+  container. The harness's compiled binary never sees a network interface beyond loopback (which it
+  has no reason to use at all — it takes no runtime input).
+- **No model execution primitive** — the model only ever writes `harness.c`/`NOTES.md` source text
+  (offline session, no network/shell tools, same `session_policy` as `validate`/`deep_verify`); a
+  **fixed**, non-model `subprocess` call compiles it (`clang -fsanitize=address,undefined`) and runs
+  the resulting binary, and a **fixed** regex — not an LLM judgment — reads whether a sanitizer
+  actually reported an error.
+- **Bounded, best-effort, isolated per finding** — separate compile/execute wall-clock timeouts
+  (`asan_poc_compile_timeout_s`/`asan_poc_run_timeout_s`), an `asan_poc_max_findings` cost cap,
+  throwaway `--rm` containers per finding. A finding whose function can't be isolated into a single
+  compilable unit, isn't C/C++, has no memory-safety CWE, or hits any infra failure is **skipped**,
+  never fails the run and never refutes the finding — a clean/failed harness attempt says nothing
+  definitive about whether the underlying bug is real. Full design:
+  [architecture.md](architecture.md#asan-poc-generation-why-v1-is-deliberately-narrow).
+
 ### 2c. ⚠️ The opt-in live exception: the `live` stage (in-scope hosts only)
 
 This is the **one** capability that, by design, contacts the program's **real, live in-scope host** —

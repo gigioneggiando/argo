@@ -66,6 +66,15 @@ def test_classify_failure_text():
         "try rephrasing your request. To get authorized for security work, join the Trusted "
         "Access for Cyber program: https://chatgpt.com/cyber") == "moderation_flagged"
     assert _classify_failure_text("FLAGGED FOR POSSIBLE CYBERSECURITY RISK") == "moderation_flagged"
+    # Claude's OWN refusal wording (confirmed live 2026-08-12 on a real asan_poc harness-authoring
+    # session, an authorized security-research call, not just Codex) -- same failure_kind, since
+    # it's the same category of failure (a safety classifier refusing legitimate content) on a
+    # different backend.
+    assert _classify_failure_text(
+        "API Error: Opus 4.8's safeguards flagged this message. Our intentionally broad "
+        "safeguards allow us to deliver more capabilities faster, but can sometimes flag "
+        "legitimate cybersecurity work. Apply to the Cyber Verification Program to reduce these "
+        "interruptions.") == "moderation_flagged"
     assert _classify_failure_text(
         "ERROR: Your workspace is out of credits. Please contact your administrator."
     ) == "credits_exhausted"

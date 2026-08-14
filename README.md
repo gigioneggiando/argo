@@ -2,10 +2,11 @@
 
 [![Tests](https://github.com/gigioneggiando/argo/actions/workflows/tests.yml/badge.svg)](https://github.com/gigioneggiando/argo/actions/workflows/tests.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/gigioneggiando/argo)](https://github.com/gigioneggiando/argo/releases)
 
 > *Argus Panoptes, the all-seeing watchman — a hundred eyes on your code.*
 
-🌐 **Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) — real vulnerabilities Argo found, disclosed as public PRs · 📖 [Wiki](https://github.com/gigioneggiando/argo/wiki) · 💬 [Discussions](https://github.com/gigioneggiando/argo/discussions)
+🌐 **Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) — real vulnerabilities Argo found, disclosed as public PRs · 📖 [Wiki](https://github.com/gigioneggiando/argo/wiki) · 💬 [Discussions](https://github.com/gigioneggiando/argo/discussions) · 📋 [Changelog](CHANGELOG.md)
 
 Argo finds security vulnerabilities in **source code** by driving an LLM as the analyst — it reads
 the code the way a human auditor would, rather than matching rules against a graph. Point it at any

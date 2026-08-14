@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 10 projects, 41 PRs + 4 published advisories, 36 already resolved (15 merged, 21 fixed independently).">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 10 projects, 41 PRs + 4 published advisories, 38 already resolved (17 merged, 21 fixed independently).">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -339,7 +339,7 @@
       <div class="stats" id="stats">
         <div class="stat"><div class="num accent">10</div><div class="lab">Projects</div></div>
         <div class="stat"><div class="num">41</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num">36</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num">38</div><div class="lab">Already resolved</div></div>
         <div class="stat"><div class="num">5</div><div class="lab">Languages (of many)</div></div>
       </div>
 
@@ -601,7 +601,7 @@
             <div class="name"><a href="https://github.com/antirez/ds4" target="_blank" rel="noopener">ds4</a><span class="chip-lang">C</span></div>
             <div class="blurb">A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.</div>
           </div>
-          <div class="case-tally"><span class="tally good">8&nbsp;fixed</span><span class="tally">2&nbsp;open</span></div>
+          <div class="case-tally"><span class="tally good">10&nbsp;resolved</span></div>
         </div>
         <ul class="rows">
       <a class="row fixed" href="https://github.com/antirez/ds4/pull/539" data-sev="Critical" target="_blank" rel="noopener">
@@ -681,14 +681,14 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row open" href="https://github.com/antirez/ds4/pull/548" data-sev="Low" target="_blank" rel="noopener">
-        <span class="ref">PR #548</span>
+      <a class="row merged" href="https://github.com/elkaix/ds4/pull/1" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">Fork PR #1</span>
         <span class="main">
-          <span class="ttl">Bound tokenizer merges count to INT32_MAX like the tokens table</span>
+          <span class="ttl">Bound tokenizer merges count to INT32_MAX like the tokens table (antirez/ds4#548 itself is still open upstream; adopted with authorship preserved into the community fork elkaix/ds4)</span>
           <span class="tags"><span class="sev muted">Low</span><span class="tag">integer bound</span></span>
         </span>
         <span class="rowend">
-          <span class="status open"><span class="dot"></span>Open · in review</span>
+          <span class="status merged"><span class="dot"></span>Merged</span>
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
@@ -703,14 +703,14 @@
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>
-      <a class="row open" href="https://github.com/antirez/ds4/pull/540" data-sev="Low" target="_blank" rel="noopener">
-        <span class="ref">PR #540</span>
+      <a class="row merged" href="https://github.com/elkaix/ds4/pull/1" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">Fork PR #1</span>
         <span class="main">
-          <span class="ttl">Unlink the bash-tool output temp file on job cleanup</span>
+          <span class="ttl">Unlink the bash-tool output temp file on job cleanup (antirez/ds4#540 itself is still open upstream; adopted with authorship preserved into the community fork elkaix/ds4)</span>
           <span class="tags"><span class="sev muted">Low</span><span class="tag">resource cleanup</span></span>
         </span>
         <span class="rowend">
-          <span class="status open"><span class="dot"></span>Open · in review</span>
+          <span class="status merged"><span class="dot"></span>Merged</span>
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a>

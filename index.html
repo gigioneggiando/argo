@@ -337,10 +337,10 @@
       </div>
 
       <div class="stats" id="stats">
-        <div class="stat"><div class="num accent" data-to="10">10</div><div class="lab">Projects</div></div>
-        <div class="stat"><div class="num" data-to="41">41</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num" data-to="36">36</div><div class="lab">Already resolved</div></div>
-        <div class="stat"><div class="num" data-to="5">5</div><div class="lab">Languages (of many)</div></div>
+        <div class="stat"><div class="num accent">10</div><div class="lab">Projects</div></div>
+        <div class="stat"><div class="num">41</div><div class="lab">Public PRs</div></div>
+        <div class="stat"><div class="num">36</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num">5</div><div class="lab">Languages (of many)</div></div>
       </div>
 
       <div class="notes">
@@ -1047,26 +1047,11 @@
   }, {threshold:.12});
   document.querySelectorAll('.case').forEach(el => io.observe(el));
 
-  // Count-up (reduced-motion safe). The markup already shows the real number (matches data-to)
-  // so a reader that never runs this script -- a crawler, an AI fetching raw HTML, no-JS, or a
-  // screen reader before JS settles -- always sees the true value, never a placeholder "0". This
-  // animation is a pure cosmetic overlay: it dips to 0 and counts back up only when it's actually
-  // going to run to completion.
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  document.querySelectorAll('#stats .num').forEach(el => {
-    const to = +el.dataset.to;
-    if (reduce) return; // already showing `to` in the markup -- nothing to do
-    let start = null; const dur = 900;
-    el.textContent = 0;
-    const step = ts => {
-      if (!start) start = ts;
-      const k = Math.min(1, (ts - start)/dur);
-      const eased = 1 - Math.pow(1 - k, 3);
-      el.textContent = Math.round(eased * to);
-      if (k < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  });
+  // The hero stat numbers above are plain static text, not JS-rendered -- there used to be a
+  // count-up animation here, removed entirely (not just made "safe") after a report that some
+  // headless renderers could still capture the DOM mid-animation and see a transient "0" before
+  // requestAnimationFrame finished. The numbers now never move: what's in the HTML is the only
+  // value that ever exists client-side, for every reader (browser, no-JS, crawler, AI) alike.
 
   // Filters (severity + project stars). Pure progressive enhancement: every finding is
   // already present in the static HTML above (see the maintenance note near the top of this

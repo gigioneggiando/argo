@@ -25,6 +25,7 @@ see the [top-level README](../README.md).
 | [testing.md](testing.md) | developers | Running the suite, coverage map, mock vs. headless, fixtures |
 | [runtime-verification-study.md](runtime-verification-study.md) | reviewers / security | The **opt-in, sandboxed runtime verification** design: the loopback-only sealed-container safety model, the propose→validate→execute→interpret flow, provisioning, and the R1–R4 plan |
 | [roadmap.md](roadmap.md) | everyone | Planned UI + advanced features: per-feature analysis (feasibility/utility/priority), phased build order, and the todo list |
+| [releasing.md](releasing.md) | maintainers | The SemVer convention, what bumps what, and the exact steps to cut a release |
 
 ## Diagrams
 

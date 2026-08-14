@@ -14,4 +14,4 @@ Hard guardrails are enforced in code (not just in prompts):
   * every LLM call is logged (prompt hash, model, token cost).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

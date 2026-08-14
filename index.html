@@ -320,10 +320,10 @@
       </div>
 
       <div class="stats" id="stats">
-        <div class="stat"><div class="num accent" data-to="9">0</div><div class="lab">Projects</div></div>
-        <div class="stat"><div class="num" data-to="28">0</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num" data-to="23">0</div><div class="lab">Already resolved</div></div>
-        <div class="stat"><div class="num" data-to="5">0</div><div class="lab">Languages (of many)</div></div>
+        <div class="stat"><div class="num accent" data-to="9">9</div><div class="lab">Projects</div></div>
+        <div class="stat"><div class="num" data-to="28">28</div><div class="lab">Public PRs</div></div>
+        <div class="stat"><div class="num" data-to="23">23</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num" data-to="5">5</div><div class="lab">Languages (of many)</div></div>
       </div>
 
       <div class="notes">
@@ -344,7 +344,461 @@
       <h2>Disclosures</h2>
       <span class="hint" id="ordering">merged fixes first · then open review</span>
     </div>
-    <div class="cases" id="cases"></div>
+    <div class="cases" id="cases">
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/pocketbase/pocketbase" target="_blank" rel="noopener">PocketBase</a><span class="chip-lang">Go</span></div>
+            <div class="blurb">Open-source Go backend — SQLite database, auth and admin dashboard in one file.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">1&nbsp;advisory</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row advisory" href="https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Unhandled panics in internal worker goroutines could terminate the server — fixed in v0.39.7 / v0.22.48, reporter credited</span>
+          <span class="tags"><span class="sev high">High<span class="score">8.7</span></span><span class="tag">worker-goroutine panic (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/evilsocket/legba" target="_blank" rel="noopener">legba</a><span class="chip-lang">Rust</span></div>
+            <div class="blurb">A fast, modern credential brute-forcer and password sprayer.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">5&nbsp;merged</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/98" target="_blank" rel="noopener">
+        <span class="ref">PR #98</span>
+        <span class="main">
+          <span class="ttl">Two remote-triggerable panics (DoS) from untrusted input</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/99" target="_blank" rel="noopener">
+        <span class="ref">PR #99</span>
+        <span class="main">
+          <span class="ttl">Bound two server-controlled allocations (Kerberos, AMQP) + Kerberos read timeout</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">unbounded alloc</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/100" target="_blank" rel="noopener">
+        <span class="ref">PR #100</span>
+        <span class="main">
+          <span class="ttl">Cap the IRC banner read + add a read deadline</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/101" target="_blank" rel="noopener">
+        <span class="ref">PR #101</span>
+        <span class="main">
+          <span class="ttl">Avoid a panic on a multi-byte UTF-8 SMTP reply line</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">panic / DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/evilsocket/legba/pull/102" target="_blank" rel="noopener">
+        <span class="ref">PR #102</span>
+        <span class="main">
+          <span class="ttl">Add read/write timeouts to the RDP connection</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote hang</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/squidowl/halloy" target="_blank" rel="noopener">halloy</a><span class="chip-lang">Rust</span></div>
+            <div class="blurb">A modern IRC client.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">1&nbsp;merged</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row merged" href="https://github.com/squidowl/halloy/pull/2149" target="_blank" rel="noopener">
+        <span class="ref">PR #2149</span>
+        <span class="main">
+          <span class="ttl">Harden against three remote-DoS issues (reported via private advisory)</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS ×3</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/libcsp/libcsp" target="_blank" rel="noopener">libcsp</a><span class="chip-lang">C</span></div>
+            <div class="blurb">The CubeSat Space Protocol: a small network stack used on spacecraft and embedded systems.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">1&nbsp;merged</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row merged" href="https://github.com/libcsp/libcsp/pull/992" target="_blank" rel="noopener">
+        <span class="ref">PR #992</span>
+        <span class="main">
+          <span class="ttl">Fix use-after-free in the CSP_PS service handler</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">use-after-free</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/moquette-io/moquette" target="_blank" rel="noopener">moquette</a><span class="chip-lang">Java</span></div>
+            <div class="blurb">A lightweight MQTT broker.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">6&nbsp;merged</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row advisory" href="https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Pattern-ACL wildcard injection lets an attacker widen per-tenant %c/%u ACL rules via clientId/username</span>
+          <span class="tags"><span class="sev critical">Critical</span><span class="tag">authz bypass</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/959" target="_blank" rel="noopener">
+        <span class="ref">PR #959</span>
+        <span class="main">
+          <span class="ttl">Guard the periodic expiration task so one failing entity can't disable all expirations</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">fail-open / DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/958" target="_blank" rel="noopener">
+        <span class="ref">PR #958</span>
+        <span class="main">
+          <span class="ttl">Reject a malformed $share subscription before parsing it</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/957" target="_blank" rel="noopener">
+        <span class="ref">PR #957</span>
+        <span class="main">
+          <span class="ttl">Keep the session event loop alive when a command throws</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/964" target="_blank" rel="noopener">
+        <span class="ref">PR #964</span>
+        <span class="main">
+          <span class="ttl">Namespace the H2 queue metadata map to prevent a client-id collision</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">durable corruption</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/963" target="_blank" rel="noopener">
+        <span class="ref">PR #963</span>
+        <span class="main">
+          <span class="ttl">Guard pattern ACL substitution against a null username</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/moquette-io/moquette/pull/967" target="_blank" rel="noopener">
+        <span class="ref">PR #967</span>
+        <span class="main">
+          <span class="ttl">Fail closed (not open to PermitAll/AcceptAll) when a configured authorizator/authenticator class fails to load</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">fail-open authz</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/antirez/ds4" target="_blank" rel="noopener">ds4</a><span class="chip-lang">C</span></div>
+            <div class="blurb">A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">8&nbsp;fixed</span><span class="tally">2&nbsp;open</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/539" target="_blank" rel="noopener">
+        <span class="ref">PR #539</span>
+        <span class="main">
+          <span class="ttl">Fix pre-auth double-free in the JSON request parser (applied via commit 8e49a5c, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Critical</span><span class="tag">double-free</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/542" target="_blank" rel="noopener">
+        <span class="ref">PR #542</span>
+        <span class="main">
+          <span class="ttl">Bound file-declared length prefixes in the model loader (applied via commit c7689db, co-authored with antirez, alongside #543 and #545)</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">heap overflow</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/543" target="_blank" rel="noopener">
+        <span class="ref">PR #543</span>
+        <span class="main">
+          <span class="ttl">Cross-check tensor data size against shape in FP8/FP4 dequant (applied via commit c7689db, co-authored with antirez, alongside #542 and #545)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">out-of-bounds read</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/544" target="_blank" rel="noopener">
+        <span class="ref">PR #544</span>
+        <span class="main">
+          <span class="ttl">Cap file-declared lengths in agent KV-cache reads (applied via commit 0fa15c6, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">memory DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/545" target="_blank" rel="noopener">
+        <span class="ref">PR #545</span>
+        <span class="main">
+          <span class="ttl">Bound GGUF metadata / tensor counts by file size before allocating (applied via commit c7689db, co-authored with antirez, alongside #542 and #543)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">resource exhaustion</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/546" target="_blank" rel="noopener">
+        <span class="ref">PR #546</span>
+        <span class="main">
+          <span class="ttl">Reject an oversized snapshot token_count before allocating (applied via commit f02d79c, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">distributed DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/547" target="_blank" rel="noopener">
+        <span class="ref">PR #547</span>
+        <span class="main">
+          <span class="ttl">Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS) (applied via commit a169cff, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">algorithmic DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row open" href="https://github.com/antirez/ds4/pull/548" target="_blank" rel="noopener">
+        <span class="ref">PR #548</span>
+        <span class="main">
+          <span class="ttl">Bound tokenizer merges count to INT32_MAX like the tokens table</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">integer bound</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open · in review</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/antirez/ds4/pull/541" target="_blank" rel="noopener">
+        <span class="ref">PR #541</span>
+        <span class="main">
+          <span class="ttl">Handle NaN in json_int() (undefined double→int cast) (applied via commit 8340f35, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">undefined behavior</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row open" href="https://github.com/antirez/ds4/pull/540" target="_blank" rel="noopener">
+        <span class="ref">PR #540</span>
+        <span class="main">
+          <span class="ttl">Unlink the bash-tool output temp file on job cleanup</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">resource cleanup</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open · in review</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row issue" href="https://github.com/antirez/ds4/issues/549" target="_blank" rel="noopener">
+        <span class="ref">Issue #549</span>
+        <span class="main">
+          <span class="ttl">Follow-up hardening / design items from a security review</span>
+          <span class="tags"><span class="tag">hardening notes</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status issue"><span class="dot"></span>Issue</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/antirez/gguf-tools" target="_blank" rel="noopener">gguf-tools</a><span class="chip-lang">C</span></div>
+            <div class="blurb">A C implementation of the GGUF model-file format used by llama.cpp / ggml.</div>
+          </div>
+          <div class="case-tally"><span class="tally">3&nbsp;open PRs</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row open" href="https://github.com/antirez/gguf-tools/pull/31" target="_blank" rel="noopener">
+        <span class="ref">PR #31</span>
+        <span class="main">
+          <span class="ttl">Fix an out-of-bounds write in the Q4_0/Q4_1 dequantizer's second block loop</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">heap overflow</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open · in review</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row open" href="https://github.com/antirez/gguf-tools/pull/32" target="_blank" rel="noopener">
+        <span class="ref">PR #32</span>
+        <span class="main">
+          <span class="ttl">Grow the split-mixtral tensor array instead of asserting (heap overflow on crafted models)</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">heap overflow</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open · in review</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row open" href="https://github.com/antirez/gguf-tools/pull/33" target="_blank" rel="noopener">
+        <span class="ref">PR #33</span>
+        <span class="main">
+          <span class="ttl">Bound tensor data offset/size against the mapping in gguf_get_tensor</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">out-of-bounds read</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open · in review</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/Lazza/RecuperaBit" target="_blank" rel="noopener">RecuperaBit</a><span class="chip-lang">Python</span></div>
+            <div class="blurb">Reconstructs and recovers files from damaged NTFS file systems.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">2&nbsp;merged</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row merged" href="https://github.com/Lazza/RecuperaBit/pull/143" target="_blank" rel="noopener">
+        <span class="ref">PR #143</span>
+        <span class="main">
+          <span class="ttl">Isolate command dispatch and the deep-parse phase from crashing the whole session</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">crash isolation</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/Lazza/RecuperaBit/pull/144" target="_blank" rel="noopener">
+        <span class="ref">PR #144</span>
+        <span class="main">
+          <span class="ttl">Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">output injection</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/coturn/coturn" target="_blank" rel="noopener">coturn</a><span class="chip-lang">C</span></div>
+            <div class="blurb">A widely-deployed TURN and STUN relay server for WebRTC NAT traversal.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">2&nbsp;advisories</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row advisory" href="https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">addr_less_eq() compares IPv6 range endpoints byte-by-byte instead of numerically, letting an authenticated TURN client bypass denied-peer-ip / allowed-peer-ip IPv6 ranges (a TURN-specific SSRF)</span>
+          <span class="tags"><span class="sev medium">Medium</span><span class="tag">ACL bypass / SSRF</span><span class="tag">CVE-2026-73213</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row advisory" href="https://github.com/coturn/coturn/security/advisories/GHSA-67c2-q5xv-f85p" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">An authenticated client can grow the shared multiplex-peer demux table without limit in multiplex-peer mode</span>
+          <span class="tags"><span class="sev medium">Medium</span><span class="tag">resource exhaustion</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+    </div>
   </div>
 
   <div class="wrap" id="support">
@@ -390,136 +844,11 @@
 </main>
 
 <script>
-  const PROJECTS = [
-    {
-      name:"PocketBase", lang:"Go", upstream:"https://github.com/pocketbase/pocketbase",
-      blurb:"Open-source Go backend — SQLite database, auth and admin dashboard in one file.",
-      items:[
-        {ref:"GHSA", s:"advisory", sev:"High", cvss:"8.7", t:"worker-goroutine panic (DoS)", title:"Unhandled panics in internal worker goroutines could terminate the server — fixed in v0.39.7 / v0.22.48, reporter credited", url:"https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx"}
-      ]
-    },
-    {
-      name:"legba", lang:"Rust", upstream:"https://github.com/evilsocket/legba",
-      blurb:"A fast, modern credential brute-forcer and password sprayer.",
-      items:[
-        {ref:"PR #98",  s:"merged", sev:"High", t:"remote DoS", title:"Two remote-triggerable panics (DoS) from untrusted input", url:"https://github.com/evilsocket/legba/pull/98"},
-        {ref:"PR #99",  s:"merged", sev:"High", t:"unbounded alloc", title:"Bound two server-controlled allocations (Kerberos, AMQP) + Kerberos read timeout", url:"https://github.com/evilsocket/legba/pull/99"},
-        {ref:"PR #100", s:"merged", sev:"High", t:"remote DoS", title:"Cap the IRC banner read + add a read deadline", url:"https://github.com/evilsocket/legba/pull/100"},
-        {ref:"PR #101", s:"merged", sev:"High", t:"panic / DoS", title:"Avoid a panic on a multi-byte UTF-8 SMTP reply line", url:"https://github.com/evilsocket/legba/pull/101"},
-        {ref:"PR #102", s:"merged", sev:"High", t:"remote hang", title:"Add read/write timeouts to the RDP connection", url:"https://github.com/evilsocket/legba/pull/102"}
-      ]
-    },
-    {
-      name:"halloy", lang:"Rust", upstream:"https://github.com/squidowl/halloy",
-      blurb:"A modern IRC client.",
-      items:[
-        {ref:"PR #2149", s:"merged", sev:"High", t:"remote DoS ×3", title:"Harden against three remote-DoS issues (reported via private advisory)", url:"https://github.com/squidowl/halloy/pull/2149"}
-      ]
-    },
-    {
-      name:"libcsp", lang:"C", upstream:"https://github.com/libcsp/libcsp",
-      blurb:"The CubeSat Space Protocol: a small network stack used on spacecraft and embedded systems.",
-      items:[
-        {ref:"PR #992", s:"merged", sev:"High", t:"use-after-free", title:"Fix use-after-free in the CSP_PS service handler", url:"https://github.com/libcsp/libcsp/pull/992"}
-      ]
-    },
-    {
-      name:"moquette", lang:"Java", upstream:"https://github.com/moquette-io/moquette",
-      blurb:"A lightweight MQTT broker.",
-      items:[
-        {ref:"GHSA", s:"advisory", sev:"Critical", t:"authz bypass", title:"Pattern-ACL wildcard injection lets an attacker widen per-tenant %c/%u ACL rules via clientId/username", url:"https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq"},
-        {ref:"PR #959", s:"merged", sev:"Medium", t:"fail-open / DoS", title:"Guard the periodic expiration task so one failing entity can't disable all expirations", url:"https://github.com/moquette-io/moquette/pull/959"},
-        {ref:"PR #958", s:"merged", sev:"High", t:"remote DoS", title:"Reject a malformed $share subscription before parsing it", url:"https://github.com/moquette-io/moquette/pull/958"},
-        {ref:"PR #957", s:"merged", sev:"High", t:"remote DoS", title:"Keep the session event loop alive when a command throws", url:"https://github.com/moquette-io/moquette/pull/957"},
-        {ref:"PR #964", s:"merged", sev:"Medium", t:"durable corruption", title:"Namespace the H2 queue metadata map to prevent a client-id collision", url:"https://github.com/moquette-io/moquette/pull/964"},
-        {ref:"PR #963", s:"merged", sev:"High", t:"remote DoS", title:"Guard pattern ACL substitution against a null username", url:"https://github.com/moquette-io/moquette/pull/963"},
-        {ref:"PR #967", s:"merged", sev:"Medium", t:"fail-open authz", title:"Fail closed (not open to PermitAll/AcceptAll) when a configured authorizator/authenticator class fails to load", url:"https://github.com/moquette-io/moquette/pull/967"}
-      ]
-    },
-    {
-      name:"ds4", lang:"C", upstream:"https://github.com/antirez/ds4",
-      blurb:"A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.",
-      items:[
-        {ref:"PR #539", s:"fixed", sev:"Critical", t:"double-free", title:"Fix pre-auth double-free in the JSON request parser (applied via commit 8e49a5c, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/539"},
-        {ref:"PR #542", s:"fixed", sev:"High", t:"heap overflow", title:"Bound file-declared length prefixes in the model loader (applied via commit c7689db, co-authored with antirez, alongside #543 and #545)", url:"https://github.com/antirez/ds4/pull/542"},
-        {ref:"PR #543", s:"fixed", sev:"Medium", t:"out-of-bounds read", title:"Cross-check tensor data size against shape in FP8/FP4 dequant (applied via commit c7689db, co-authored with antirez, alongside #542 and #545)", url:"https://github.com/antirez/ds4/pull/543"},
-        {ref:"PR #544", s:"fixed", sev:"Medium", t:"memory DoS", title:"Cap file-declared lengths in agent KV-cache reads (applied via commit 0fa15c6, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/544"},
-        {ref:"PR #545", s:"fixed", sev:"Medium", t:"resource exhaustion", title:"Bound GGUF metadata / tensor counts by file size before allocating (applied via commit c7689db, co-authored with antirez, alongside #542 and #543)", url:"https://github.com/antirez/ds4/pull/545"},
-        {ref:"PR #546", s:"fixed", sev:"Low", t:"distributed DoS", title:"Reject an oversized snapshot token_count before allocating (applied via commit f02d79c, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/546"},
-        {ref:"PR #547", s:"fixed", sev:"Medium", t:"algorithmic DoS", title:"Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS) (applied via commit a169cff, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/547"},
-        {ref:"PR #548", s:"open", sev:"Low", t:"integer bound", title:"Bound tokenizer merges count to INT32_MAX like the tokens table", url:"https://github.com/antirez/ds4/pull/548"},
-        {ref:"PR #541", s:"fixed", sev:"Low", t:"undefined behavior", title:"Handle NaN in json_int() (undefined double→int cast) (applied via commit 8340f35, co-authored with antirez)", url:"https://github.com/antirez/ds4/pull/541"},
-        {ref:"PR #540", s:"open", sev:"Low", t:"resource cleanup", title:"Unlink the bash-tool output temp file on job cleanup", url:"https://github.com/antirez/ds4/pull/540"},
-        {ref:"Issue #549", s:"issue", t:"hardening notes", title:"Follow-up hardening / design items from a security review", url:"https://github.com/antirez/ds4/issues/549"}
-      ]
-    },
-    {
-      name:"gguf-tools", lang:"C", upstream:"https://github.com/antirez/gguf-tools",
-      blurb:"A C implementation of the GGUF model-file format used by llama.cpp / ggml.",
-      items:[
-        {ref:"PR #31", s:"open", sev:"High", t:"heap overflow", title:"Fix an out-of-bounds write in the Q4_0/Q4_1 dequantizer's second block loop", url:"https://github.com/antirez/gguf-tools/pull/31"},
-        {ref:"PR #32", s:"open", sev:"High", t:"heap overflow", title:"Grow the split-mixtral tensor array instead of asserting (heap overflow on crafted models)", url:"https://github.com/antirez/gguf-tools/pull/32"},
-        {ref:"PR #33", s:"open", sev:"Medium", t:"out-of-bounds read", title:"Bound tensor data offset/size against the mapping in gguf_get_tensor", url:"https://github.com/antirez/gguf-tools/pull/33"}
-      ]
-    },
-    {
-      name:"RecuperaBit", lang:"Python", upstream:"https://github.com/Lazza/RecuperaBit",
-      blurb:"Reconstructs and recovers files from damaged NTFS file systems.",
-      items:[
-        {ref:"PR #143", s:"merged", sev:"High", t:"crash isolation", title:"Isolate command dispatch and the deep-parse phase from crashing the whole session", url:"https://github.com/Lazza/RecuperaBit/pull/143"},
-        {ref:"PR #144", s:"merged", sev:"Medium", t:"output injection", title:"Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports", url:"https://github.com/Lazza/RecuperaBit/pull/144"}
-      ]
-    },
-    {
-      name:"coturn", lang:"C", upstream:"https://github.com/coturn/coturn",
-      blurb:"A widely-deployed TURN and STUN relay server for WebRTC NAT traversal.",
-      items:[
-        {ref:"GHSA", s:"advisory", sev:"Medium", cve:"CVE-2026-73213", t:"ACL bypass / SSRF", title:"addr_less_eq() compares IPv6 range endpoints byte-by-byte instead of numerically, letting an authenticated TURN client bypass denied-peer-ip / allowed-peer-ip IPv6 ranges (a TURN-specific SSRF)", url:"https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99"},
-        {ref:"GHSA", s:"advisory", sev:"Medium", t:"resource exhaustion", title:"An authenticated client can grow the shared multiplex-peer demux table without limit in multiplex-peer mode", url:"https://github.com/coturn/coturn/security/advisories/GHSA-67c2-q5xv-f85p"}
-      ]
-    }
-  ];
-
-  const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const statusLabel = s => s === 'merged' ? 'Merged' : s === 'advisory' ? 'Advisory · fixed' : s === 'fixed' ? 'Fixed independently' : s === 'issue' ? 'Issue' : s === 'closed' ? 'Closed · not merged' : 'Open · in review';
-
-  const cases = document.getElementById('cases');
-  cases.innerHTML = PROJECTS.map(p => {
-    const advisories = p.items.filter(i => i.s === 'advisory').length;
-    const merged = p.items.filter(i => i.s === 'merged').length;
-    const fixed = p.items.filter(i => i.s === 'fixed').length;
-    const resolved = merged + fixed;
-    const resolvedLabel = merged > 0 && fixed > 0 ? 'resolved' : fixed > 0 ? 'fixed' : 'merged';
-    const prs = p.items.filter(i => i.s !== 'issue' && i.s !== 'advisory').length;
-    const tally = (advisories > 0 && prs === 0)
-      ? `<span class="tally good">${advisories}&nbsp;advisor${advisories>1?'ies':'y'}</span>`
-      : resolved > 0
-        ? `<span class="tally good">${resolved}&nbsp;${resolvedLabel}</span>` + (prs - resolved > 0 ? `<span class="tally">${prs - resolved}&nbsp;open</span>` : '')
-        : `<span class="tally">${prs}&nbsp;open PR${prs>1?'s':''}</span>`;
-    const rows = p.items.map(i => `
-      <a class="row ${i.s}" href="${i.url}" target="_blank" rel="noopener">
-        <span class="ref">${esc(i.ref)}</span>
-        <span class="main">
-          <span class="ttl">${esc(i.title)}</span>
-          <span class="tags">${i.sev ? `<span class="sev ${i.s==='advisory' ? i.sev.toLowerCase() : 'muted'}">${esc(i.sev)}${(i.s==='advisory' && i.cvss) ? `<span class="score">${esc(i.cvss)}</span>` : ''}</span>` : ''}<span class="tag">${esc(i.t)}</span>${i.cve ? `<span class="tag">${esc(i.cve)}</span>` : ''}${i.credit ? `<span class="by">found by <a href="https://github.com/${esc(i.credit.replace(/^@/,''))}" target="_blank" rel="noopener">@${esc(i.credit.replace(/^@/,''))}</a></span>` : ''}</span>
-        </span>
-        <span class="rowend">
-          <span class="status ${i.s}"><span class="dot"></span>${statusLabel(i.s)}</span>
-          <span class="go" aria-hidden="true">→</span>
-        </span>
-      </a>`).join('');
-    return `
-      <section class="case">
-        <div class="case-head">
-          <div class="case-title">
-            <div class="name"><a href="${p.upstream}" target="_blank" rel="noopener">${esc(p.name)}</a><span class="chip-lang">${esc(p.lang)}</span></div>
-            <div class="blurb">${esc(p.blurb)}</div>
-          </div>
-          <div class="case-tally">${tally}</div>
-        </div>
-        <ul class="rows">${rows}</ul>
-      </section>`;
-  }).join('');
+  // The disclosures list above is static HTML now, not JS-rendered -- a crawler, an AI fetching
+  // raw HTML, or a no-JS reader sees every finding immediately, with no script execution needed.
+  // To add a new disclosure: copy an existing <section class="case"> block above and edit it by
+  // hand (name/upstream/blurb/lang, then one <a class="row STATUS"> per finding -- STATUS is one
+  // of merged/advisory/fixed/open/issue/closed, matching the case-tally count above it).
 
   // Reveal on scroll (reduced-motion safe via CSS)
   const io = new IntersectionObserver((entries) => {
@@ -529,12 +858,17 @@
   }, {threshold:.12});
   document.querySelectorAll('.case').forEach(el => io.observe(el));
 
-  // Count-up (reduced-motion safe)
+  // Count-up (reduced-motion safe). The markup already shows the real number (matches data-to)
+  // so a reader that never runs this script -- a crawler, an AI fetching raw HTML, no-JS, or a
+  // screen reader before JS settles -- always sees the true value, never a placeholder "0". This
+  // animation is a pure cosmetic overlay: it dips to 0 and counts back up only when it's actually
+  // going to run to completion.
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   document.querySelectorAll('#stats .num').forEach(el => {
     const to = +el.dataset.to;
-    if (reduce){ el.textContent = to; return; }
+    if (reduce) return; // already showing `to` in the markup -- nothing to do
     let start = null; const dur = 900;
+    el.textContent = 0;
     const step = ts => {
       if (!start) start = ts;
       const k = Math.min(1, (ts - start)/dur);

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 9 projects, 28 PRs + 4 published advisories, 23 already resolved (15 merged, 8 fixed independently).">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 10 projects, 41 PRs + 4 published advisories, 36 already resolved (15 merged, 21 fixed independently).">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -320,9 +320,9 @@
       </div>
 
       <div class="stats" id="stats">
-        <div class="stat"><div class="num accent" data-to="9">9</div><div class="lab">Projects</div></div>
-        <div class="stat"><div class="num" data-to="28">28</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num" data-to="23">23</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num accent" data-to="10">10</div><div class="lab">Projects</div></div>
+        <div class="stat"><div class="num" data-to="41">41</div><div class="lab">Public PRs</div></div>
+        <div class="stat"><div class="num" data-to="36">36</div><div class="lab">Already resolved</div></div>
         <div class="stat"><div class="num" data-to="5">5</div><div class="lab">Languages (of many)</div></div>
       </div>
 
@@ -333,7 +333,7 @@
         </div>
         <div class="note">
           <span class="notepill">Recognition</span>
-          <span>Credited on <a href="https://livekit.com/security/hall-of-fame" target="_blank" rel="noopener">LiveKit's Security Hall of Fame</a> — a private (embargoed) disclosure, so those findings themselves aren't listed below yet, but the acknowledgment itself is public.</span>
+          <span>Credited on <a href="https://livekit.com/security/hall-of-fame" target="_blank" rel="noopener">LiveKit's Security Hall of Fame</a> — the disclosure itself was private, but the findings below that are now confirmed fixed each link to a real, public upstream pull request. The PRs don't individually name the reporter; the Hall of Fame page is where that credit lives. The remaining reported findings stay off this list until they're fixed too.</span>
         </div>
       </div>
     </div>
@@ -794,6 +794,159 @@
         </span>
         <span class="rowend">
           <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+      <section class="case">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/livekit/livekit" target="_blank" rel="noopener">LiveKit</a><span class="chip-lang">Go</span></div>
+            <div class="blurb">Open-source, self-hostable WebRTC infrastructure (SFU) for real-time audio, video, and data.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">13&nbsp;fixed</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4741" target="_blank" rel="noopener">
+        <span class="ref">PR #4741</span>
+        <span class="main">
+          <span class="ttl">Data-track packet header parser allowed hdrSize to exceed buffer length, crashing the whole server process on a single malformed message from any joined participant</span>
+          <span class="tags"><span class="sev muted">Critical</span><span class="tag">OOB slice panic (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4741" target="_blank" rel="noopener">
+        <span class="ref">PR #4741</span>
+        <span class="main">
+          <span class="ttl">Integer wraparound in the same data-track header parser could also cause an out-of-bounds slice read/panic for large extension-size values</span>
+          <span class="tags"><span class="sev muted">Critical</span><span class="tag">integer wraparound</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4739" target="_blank" rel="noopener">
+        <span class="ref">PR #4739</span>
+        <span class="main">
+          <span class="ttl">Unclamped Dependency-Descriptor spatial/temporal IDs could index a fixed array out of bounds and crash the process</span>
+          <span class="tags"><span class="sev muted">Critical</span><span class="tag">array index panic (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4757" target="_blank" rel="noopener">
+        <span class="ref">PR #4757</span>
+        <span class="main">
+          <span class="ttl">Unauthenticated, oversized Twirp request bodies were fully decoded before any bridge-grant check ran</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">pre-auth body decode (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4743" target="_blank" rel="noopener">
+        <span class="ref">PR #4743</span>
+        <span class="main">
+          <span class="ttl">No maximum read-message size was configured on the client-facing signaling WebSocket, allowing unbounded memory growth from a single connection</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unbounded WS message (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4750" target="_blank" rel="noopener">
+        <span class="ref">PR #4750</span>
+        <span class="main">
+          <span class="ttl">Per-participant pendingTracks map grew without bound; a connection could add tracks without publishing them to exhaust server memory</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unbounded map growth (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" target="_blank" rel="noopener">
+        <span class="ref">PR #4742</span>
+        <span class="main">
+          <span class="ttl">Malformed TURN deny_peer_cidrs entries silently disabled the intended deny rule instead of failing closed</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">TURN config parsing</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4744" target="_blank" rel="noopener">
+        <span class="ref">PR #4744</span>
+        <span class="main">
+          <span class="ttl">A single participant credential could open unlimited TURN relay allocations, exhausting the shared relay-port range for everyone else</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">missing per-user quota (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4758" target="_blank" rel="noopener">
+        <span class="ref">PR #4758</span>
+        <span class="main">
+          <span class="ttl">DownTrack.handleRTCP spawned one goroutine per incoming RTCP NACK packet with no cap, letting a peer exhaust server resources</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unthrottled goroutine spawn (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4756" target="_blank" rel="noopener">
+        <span class="ref">PR #4756</span>
+        <span class="main">
+          <span class="ttl">Authentication failures logged and reflected raw bearer tokens and API-key identifiers back to the caller</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">credential logging</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4749" target="_blank" rel="noopener">
+        <span class="ref">PR #4749</span>
+        <span class="main">
+          <span class="ttl">A partially configured Prometheus Basic Auth (only username or only password set) silently left the metrics endpoint fully unauthenticated</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">auth misconfiguration</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" target="_blank" rel="noopener">
+        <span class="ref">PR #4742</span>
+        <span class="main">
+          <span class="ttl">Whitespace-only external TURN secret files silently disabled dynamic credential validation</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">TURN config parsing</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" target="_blank" rel="noopener">
+        <span class="ref">PR #4742</span>
+        <span class="main">
+          <span class="ttl">TURN TTL configuration accepted negative values and overflowing duration conversions</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">TURN config parsing</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a></ul>

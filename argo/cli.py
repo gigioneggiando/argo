@@ -54,6 +54,9 @@ def _build_config(
     fallback: Optional[str] = None,
     claude_accounts: Optional[str] = None,
     codex_accounts: Optional[str] = None,
+    gemini_model: Optional[str] = None,
+    gemini_api_key: Optional[str] = None,
+    gemini_accounts: Optional[str] = None,
 ) -> PipelineConfig:
     cfg = PipelineConfig(
         runner=runner,
@@ -66,11 +69,20 @@ def _build_config(
         codex_model=codex_model,
         codex_oss=codex_oss,
         codex_local_provider=codex_local_provider,
+        gemini_api_key=gemini_api_key,
     )
+    if gemini_model:
+        # Flat override across every stage (mirrors --codex-model's convenience) -- fans out into
+        # the per-stage dict at config-build time rather than adding a redundant flat config field.
+        # Applied BEFORE calibration/--audit-model below, so those can still override individual
+        # stages (e.g. --gemini-model + --calibration => every stage flattened, THEN audit bumped
+        # to Pro) rather than being silently clobbered by a flat override applied after them.
+        cfg = cfg.with_overrides(
+            gemini_stage_models={k: gemini_model for k in cfg.gemini_stage_models})
     if timeout is not None:
         cfg = cfg.with_overrides(session_timeout_s=timeout)
     if calibration:
-        cfg = cfg.calibrated()            # audit -> Opus
+        cfg = cfg.calibrated()            # audit -> Opus (or Gemini Pro, if runner == "gemini")
     if audit_model:
         cfg = cfg.with_stage_model("audit", audit_model)
     if fallback:
@@ -82,17 +94,36 @@ def _build_config(
     if codex_accounts:
         dirs = [d.strip() for d in codex_accounts.split(",") if d.strip()]
         cfg = cfg.with_overrides(codex_accounts=dirs)
+    if gemini_accounts:
+        keys = [k.strip() for k in gemini_accounts.split(",") if k.strip()]
+        cfg = cfg.with_overrides(gemini_accounts=keys)
     return cfg
 
 
 RunnerOpt = typer.Option("headless", "--runner",
-                         help="headless (Claude Code CLI) · codex (Codex CLI / OpenAI / OSS) · mock")
+                         help="headless (Claude Code CLI) · codex (Codex CLI / OpenAI / OSS) · "
+                              "gemini (Gemini CLI) · mock")
 CodexModelOpt = typer.Option(None, "--codex-model",
                              help="(runner=codex) model id, e.g. gpt-5-codex; omit to use the "
                                   "Codex CLI's own default")
 CodexOssOpt = typer.Option(False, "--codex-oss", help="(runner=codex) use the open-source provider (--oss)")
 CodexProviderOpt = typer.Option(None, "--codex-local-provider",
                                 help="(runner=codex --codex-oss) ollama | lmstudio")
+GeminiModelOpt = typer.Option(
+    None, "--gemini-model",
+    help="(runner=gemini) flat override across every stage, e.g. gemini-3.1-pro; applied before "
+         "--calibration/--audit-model so those can still bump individual stages on top. Omit to "
+         "use the built-in per-stage tiering (DEFAULT_GEMINI_STAGE_MODELS).")
+GeminiApiKeyOpt = typer.Option(
+    None, "--gemini-api-key",
+    help="(runner=gemini) GEMINI_API_KEY value for this run; omit to use the ambient env var / "
+         "existing gemini CLI login. A real secret -- redacted in runs/<id>/config.json, so "
+         "`argo resume` on a Gemini run needs it re-supplied.")
+GeminiAccountsOpt = typer.Option(
+    None, "--gemini-accounts",
+    help="comma-separated GEMINI_API_KEY VALUES to chain across (multi-account; limits are "
+         "per-key). Unlike --claude-accounts/--codex-accounts these are raw secret values, not "
+         "directory paths -- e.g. --gemini-accounts key-a,key-b")
 AuditModelOpt = typer.Option(None, "--audit-model", help="override the Stage-3 audit model")
 CalibrationOpt = typer.Option(False, "--calibration", help="run audit on Opus (all-Opus)")
 BudgetOpt = typer.Option(None, "--budget", help="HARD per-run USD ceiling; aborts further sessions")
@@ -645,13 +676,17 @@ def estimate(
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
     codex_accounts: Optional[str] = CodexAccountsOpt,
+    gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
+    gemini_accounts: Optional[str] = GeminiAccountsOpt,
 ):
     """Run ingest+recon only, classify the target, and print a pre-audit cost estimate."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
                         timeout=timeout, max_turns=max_turns, session_budget=session_budget,
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
-                        claude_accounts=claude_accounts, codex_accounts=codex_accounts)
+                        claude_accounts=claude_accounts, codex_accounts=codex_accounts,
+                        gemini_model=gemini_model, gemini_api_key=gemini_api_key,
+                        gemini_accounts=gemini_accounts)
     cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
@@ -778,6 +813,8 @@ def pipeline(
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
     codex_accounts: Optional[str] = CodexAccountsOpt,
+    gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
+    gemini_accounts: Optional[str] = GeminiAccountsOpt,
     attribution: bool = AttributionOpt,
 ):
     """Run stages 1-5 and STOP at human-review drafts. Never submits."""
@@ -785,7 +822,9 @@ def pipeline(
                         timeout=timeout, max_turns=max_turns, session_budget=session_budget,
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
-                        claude_accounts=claude_accounts, codex_accounts=codex_accounts)
+                        claude_accounts=claude_accounts, codex_accounts=codex_accounts,
+                        gemini_model=gemini_model, gemini_api_key=gemini_api_key,
+                        gemini_accounts=gemini_accounts)
     cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
@@ -801,9 +840,10 @@ def pipeline(
         cfg = cfg.with_overrides(audit_critic_passes=critic_passes)
     if smoke:
         cfg = cfg.for_smoke()                              # cheapest model, 1 focus, low caps
-        # for_smoke() defaults to the Claude backend; honor an explicit --runner (e.g. codex).
+        # for_smoke() defaults to the Claude backend; honor an explicit --runner (e.g. codex, gemini).
         cfg = cfg.with_overrides(runner=runner, codex_model=codex_model, codex_oss=codex_oss,
-                                 codex_local_provider=codex_local_provider)
+                                 codex_local_provider=codex_local_provider,
+                                 gemini_api_key=gemini_api_key)
         research = False                                   # a cheap smoke stays fully offline
         cfg = cfg.with_overrides(research_enabled=False,
                                  corroborate_enabled=False)  # ...and skips the networked cross-check

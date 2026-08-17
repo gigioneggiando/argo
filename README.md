@@ -55,8 +55,8 @@ executes the target (a hard guardrail), so it is *not* a DAST, fuzzer, or symbol
   *supposed* to hold before the audit starts, turning the hunt into closed-ended verification
   instead of pattern-guessing that mistakes business logic for a bug.
 - 🔎 **Threat-informed** — opt-out web OSINT (CVEs, advisories, history) feeds every audit.
-- 🔌 **Multi-backend, including fully free** — Claude Code, Codex, or a **local open-source model**
-  (Qwen, DeepSeek via Ollama/LM Studio) — same pipeline, your choice of cost.
+- 🔌 **Multi-backend, including fully free** — Claude Code, Codex, Gemini, or a **local open-source
+  model** (Qwen, DeepSeek via Ollama/LM Studio) — same pipeline, your choice of cost.
 - 💬 **Interrogation chat** — ask *"why didn't you find X?"* and get a real re-validation, not a
   chatty answer ([worked example](docs/chat-example.md)).
 - 🚫 **Detection-only, read-only, never live by default** — guardrails enforced in code, not just
@@ -133,7 +133,7 @@ paraphrases them — see [guardrails](docs/guardrails.md)).
 argo/
   cli.py
   models.py            # pydantic models for scope + findings
-  runner.py            # AgentRunner interface (Claude headless · Codex · mock)
+  runner.py            # AgentRunner interface (Claude headless · Codex · Gemini · mock)
   stages/{ingest,research,recon,audit,sca,second_opinion,validate,corroborate,deep_verify,asan_poc,runtime,live,report}.py
   research.py·fixes.py·verify.py·benchmark.py·chat.py·costs.py·archetype.py
   prompts/             # the assets, version-controlled in git
@@ -204,14 +204,15 @@ argo pipeline --repo ./my-code                                 # 🔐 local/pers
 
 **Auditing your own / private local code?** Omit `--brief` and point `--repo` at a **local folder**
 (it does not need to be a git repo, and is **never pushed anywhere**). Argo synthesizes a minimal
-**source-only** scope from the folder and audits it. A **cloud backend** (Claude / Codex) sends the
-source to that provider's API to analyze it — only a **local / OSS model** (`--codex-oss`) keeps
-everything **fully on-device**.
+**source-only** scope from the folder and audits it. A **cloud backend** (Claude / Codex / Gemini)
+sends the source to that provider's API to analyze it — only a **local / OSS model** (`--codex-oss`)
+keeps everything **fully on-device**.
 
 Pick a backend (default `headless` = Claude Code):
 ```
 argo pipeline ... --runner codex                                  # Codex CLI / OpenAI
 argo pipeline ... --runner codex --codex-oss --codex-local-provider ollama --codex-model qwen2.5-coder:32b
+argo pipeline ... --runner gemini                                 # Gemini CLI / Google
 ```
 
 Low-cost modes:
@@ -264,7 +265,8 @@ Each stage reads the previous one's output and writes its own — full detail, d
 
 Same pipeline, swappable engine — pick what you have: `--runner headless` (Claude Code) ·
 `--runner codex` (Codex CLI → OpenAI, or `--codex-oss --codex-local-provider ollama|lmstudio` for
-**local open-source models** like Qwen/DeepSeek, fully free and on-device) · `--runner mock` (free
+**local open-source models** like Qwen/DeepSeek, fully free and on-device) · `--runner gemini`
+(Gemini CLI → Google, tiered pro/flash/flash-lite per stage like Claude) · `--runner mock` (free
 fixtures). Backends and accounts chain transparently on a rate limit or transient failure, so a long
 run self-heals instead of stalling. Full model-per-stage defaults, the resilience/fallback design,
 and the cross-model study: **[docs/backends.md](docs/backends.md)**.
@@ -299,7 +301,7 @@ This README is the conceptual overview. Deeper, implementation-level docs live i
 | [docs/cli-reference.md](docs/cli-reference.md) | Every command and flag, with examples (`--smoke`, `--budget`, caps, `--calibration`, …) |
 | [docs/guardrails.md](docs/guardrails.md) | The non-negotiable guardrails and **exactly where each is enforced in code** |
 | [docs/design-decisions.md](docs/design-decisions.md) | **Why** Argo is LLM-direct with **no CPG/AST engine**, what it uses instead, when we'd revisit, and threats to validity (paper-facing) |
-| [docs/backends.md](docs/backends.md) | **Multi-backend**: run on Claude Code, the Codex CLI (OpenAI), or local/open-source models — the abstraction, per-backend guardrail mapping, cost, cross-model study |
+| [docs/backends.md](docs/backends.md) | **Multi-backend**: run on Claude Code, the Codex CLI (OpenAI), the Gemini CLI (Google), or local/open-source models — the abstraction, per-backend guardrail mapping, cost, cross-model study |
 | [docs/headless-runner.md](docs/headless-runner.md) | Real Claude Code integration: flags used, the JSON envelope, caps, error handling, partial recovery, the `--smoke` run |
 | [docs/api.md](docs/api.md) | The HTTP API (`server/`) — backend for the web UI: endpoints, run lifecycle, live status/SSE, artifact whitelist |
 | [docs/ui.md](docs/ui.md) | The web UI (`webapp/`) — `python -m argo.cli serve`, the no-build stack, the views |

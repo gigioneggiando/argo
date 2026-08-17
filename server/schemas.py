@@ -11,7 +11,7 @@ class RunConfig(BaseModel):
     """The subset of PipelineConfig a client may set per run. Defaults are deliberately safe:
     ``runner="mock"`` means a request spends **zero tokens** unless the client opts into
     ``headless``."""
-    runner: str = Field("mock", description='"mock" (free) · "headless" (Claude Code) · "codex" (Codex CLI / OpenAI / OSS)')
+    runner: str = Field("mock", description='"mock" (free) · "headless" (Claude Code) · "codex" (Codex CLI / OpenAI / OSS) · "gemini" (Gemini CLI)')
     budget_usd: Optional[float] = Field(None, description="hard per-run USD ceiling")
     audit_model: Optional[str] = Field(None, description="override the Stage-3 audit model")
     calibration: bool = Field(False, description="run audit on Opus (all-Opus)")
@@ -21,6 +21,13 @@ class RunConfig(BaseModel):
     codex_model: Optional[str] = Field(None, description="(runner=codex) model id; omit for the Codex CLI default")
     codex_oss: bool = Field(False, description="(runner=codex) use the open-source provider")
     codex_local_provider: Optional[str] = Field(None, description="(runner=codex+oss) ollama | lmstudio")
+    gemini_model: Optional[str] = Field(
+        None, description="(runner=gemini) flat model override across every stage, e.g. "
+                          "gemini-3.1-pro; omit to use the built-in per-stage tiering")
+    gemini_api_key: Optional[str] = Field(
+        None, description="(runner=gemini) GEMINI_API_KEY for this run; omit to use the ambient "
+                          "env var / existing gemini CLI login. Never echoed back or persisted in "
+                          "the clear (see PipelineConfig._SECRET_FIELDS redaction).")
 
 
 class Settings(BaseModel):

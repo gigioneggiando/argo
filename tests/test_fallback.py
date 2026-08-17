@@ -387,3 +387,39 @@ def test_build_runner_mixed_claude_and_codex_accounts(tmp_path):
             ["HeadlessClaudeRunner", "HeadlessClaudeRunner", "CodexRunner", "CodexRunner"]
     finally:
         ledger.close()
+
+
+def test_build_runner_multi_account_gemini_chain(tmp_path):
+    """Unlike Claude/Codex's directory-based accounts, gemini_accounts holds raw GEMINI_API_KEY
+    VALUES (a deliberate deviation -- see PipelineConfig's docstring) -- assert the chain expands
+    one GeminiRunner per key, each with that key installed on its own config."""
+    from argo.ledger import Ledger
+    from argo.runner import GeminiRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="gemini", gemini_accounts=["key-a", "key-b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 2
+        assert all(isinstance(x, GeminiRunner) for x in r._runners)
+        assert [x.config.gemini_api_key for x in r._runners] == ["key-a", "key-b"]
+    finally:
+        ledger.close()
+
+
+def test_pipeline_config_to_dict_redacts_gemini_secrets():
+    """gemini_api_key/gemini_accounts carry REAL secret material (the credential lives in the
+    field value itself, unlike claude_config_dir/codex_home which are just directory paths) --
+    every PipelineConfig field is serialized verbatim into runs/<id>/config.json, so a live key
+    must never round-trip into that file in the clear."""
+    from argo.config import pipeline_config_to_dict
+    cfg = PipelineConfig(runner="gemini", gemini_api_key="sk-live-secret-value",
+                         gemini_accounts=["sk-a", "sk-b"])
+    d = pipeline_config_to_dict(cfg)
+    blob = str(d)
+    assert "sk-live-secret-value" not in blob
+    assert "sk-a" not in blob and "sk-b" not in blob
+    assert d["gemini_api_key"] == "<redacted>"
+    assert d["gemini_accounts"] == ["<redacted>", "<redacted>"]
+    # a config with no key set stays falsy, not spuriously "<redacted>"
+    empty = pipeline_config_to_dict(PipelineConfig(runner="gemini"))
+    assert empty["gemini_api_key"] is None and empty["gemini_accounts"] == []

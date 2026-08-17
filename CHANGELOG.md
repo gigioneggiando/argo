@@ -9,6 +9,8 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-17
+
 ### Added
 
 - **Cross-backend benchmark**: `argo bench-cross --suite DIR --backends headless,codex,gemini

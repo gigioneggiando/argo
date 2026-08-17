@@ -237,6 +237,13 @@ class PipelineConfig:
     # (seen for real: 1-4M input tokens, $1-4 per session) - worth one retry before giving up on a
     # crash. 1 = no retry (legacy/cheap behavior).
     verify_max_attempts: int = 2
+    # Explicit finding-id scope for this invocation (mirrors `fix --only`). None = the default,
+    # resumable behavior: findings that already carry a real (non-infra-failure) verification are
+    # left untouched and only findings with no verification yet, or an infra-failure `inconclusive`
+    # from a prior interrupted run, get a session. When set, exactly these ids get a (re-)session
+    # regardless of their current state, and every other survivor is left completely untouched -
+    # for deliberately re-verifying specific findings without re-spending on the rest.
+    verify_only: frozenset[str] | None = None
 
     # --- Freshness check (opt-in, networked git history check; informational only) -----------------
     # OFF by default. Late in the pipeline, check whether cited files were touched on the audited

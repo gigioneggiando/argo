@@ -144,6 +144,17 @@ of the same field/bytes, checking whether one plausibly runs earlier and could i
 reachability, and downgrading to `corrected` (not silently `reconfirmed`) when it does — the kind of
 cross-call-site reasoning validate/corroborate cannot do from an excerpt in isolation.
 
+**Deep verify is resumable by default** (added 2026-08-17, after a real run needed two manual
+re-invocations mid-campaign — a backend ran out of credits partway through, and the fallback
+backend then hit its own session limit). Each session is expensive enough (no excerpt budget, real
+runs have seen 1-4M input tokens / $1-4 per finding) that re-running `argo verify` on the same run
+after an interruption must not re-spend on findings that already got a real answer. A finding whose
+`verification` is either unset or an infra-failure `inconclusive` (a session crash, no output, a
+budget/cap cutoff — see `_is_infra_failure`) is treated as needing a session; anything else (
+`reconfirmed`/`corrected`/`split`/`merged`/`refuted`, or a genuine — not infra — `inconclusive`) is
+left completely untouched. `--only ID,ID` overrides this to force specific findings regardless of
+their state, mirroring `fix --only`.
+
 **ASan PoC generation: why V1 is deliberately narrow.** Across every C/C++ disclosure so far
 (nanomq, open62541, coturn) the single most time-consuming manual step has been hand-writing a
 minimal AddressSanitizer harness to turn a static finding into a real crash trace — the most

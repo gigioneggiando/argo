@@ -215,9 +215,28 @@ def run(ctx: RunContext) -> Path:
         _log("no surviving findings to deep-verify")
         return ctx.validated_findings_path
 
+    only = ctx.config.verify_only
+    if only is not None:
+        # Explicit scope: exactly these ids get a session; everyone else is untouched, whatever
+        # their current state (verified, unverified, or infra-failure) — the caller has decided.
+        candidates = [f for f in survivors if f.id in only]
+        untouched = [f for f in survivors if f.id not in only]
+    else:
+        # Default resumable behavior: a finding that already carries a real verdict (anything but
+        # an infra-failure inconclusive) from a prior invocation of this stage is done — re-running
+        # `argo verify` on the same run after a partial failure (credits ran out, a rate limit, a
+        # crash) should only re-spend on what didn't get a real answer last time, not everything.
+        candidates = [f for f in survivors
+                      if f.verification is None or _is_infra_failure(f.verification)]
+        untouched = [f for f in survivors
+                     if f.verification is not None and not _is_infra_failure(f.verification)]
+        if untouched:
+            _log(f"{len(untouched)} finding(s) already have a real deep-verify verdict, skipping "
+                 f"(use --only to force a specific finding to re-verify)")
+
     cap = ctx.config.verify_max_findings
-    eligible = survivors if cap is None else survivors[:cap]
-    beyond_cap_ids = {f.id for f in survivors[len(eligible):]}
+    eligible = candidates if cap is None else candidates[:cap]
+    beyond_cap_ids = {f.id for f in candidates[len(eligible):]}
 
     launch: list[Finding] = []
     for f in eligible:
@@ -228,7 +247,7 @@ def run(ctx: RunContext) -> Path:
             _log(f"budget reached; {len(eligible) - len(launch)} finding(s) left un-deep-verified ({exc})")
             break
     launched_ids = {f.id for f in launch}
-    skipped = [f for f in survivors if f.id not in launched_ids]
+    skipped = [f for f in candidates if f.id not in launched_ids]
 
     verdicts: dict[str, Verification] = {}
     if launch:
@@ -244,7 +263,7 @@ def run(ctx: RunContext) -> Path:
                   else "not deep-verified: per-run budget reached")
         verdicts[f.id] = Verification(verdict="inconclusive", rationale=reason)
 
-    kept: list[Finding] = []
+    kept: list[Finding] = list(untouched)
     split_originals: list[dict] = []
     merged_findings: list[dict] = []
     newly_dropped: list[dict] = []
@@ -252,7 +271,7 @@ def run(ctx: RunContext) -> Path:
     infra_failure = 0
     split_children_total = 0
 
-    for f in survivors:
+    for f in candidates:
         v = verdicts.get(f.id)
         if v is None:   # never launched and not in skipped (shouldn't happen, but never silently drop)
             kept.append(f)

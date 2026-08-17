@@ -405,6 +405,12 @@ def verify(run: str = RunIdArg,
               None, "--max-findings",
               help="cap how many survivors get a deep-verify session (cost control); "
                    "omit to deep-verify every survivor"),
+          only: Optional[str] = typer.Option(
+              None, "--only",
+              help="comma-separated finding ids to (re-)verify; every other survivor is left "
+                   "completely untouched. Omit for the default resumable behavior: findings "
+                   "that already have a real verdict are skipped, only unverified or "
+                   "infra-failure-inconclusive ones get a session."),
           runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
           calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
           parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
@@ -413,9 +419,12 @@ def verify(run: str = RunIdArg,
     the whole survivor set — catches what validate/corroborate's per-finding isolation cannot: a
     finding that is actually several distinct bugs (split), two findings sharing one root cause
     (merged), or a finding whose mechanism is real but a stated detail is wrong (corrected).
-    Offline, opt-in, best-effort. Rewrites validated_findings.json in place."""
+    Offline, opt-in, best-effort. Resumable by default (skips already-verified survivors) and
+    rewrites validated_findings.json in place."""
+    only_ids = frozenset(s.strip() for s in only.split(",") if s.strip()) if only else None
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
-                        ).with_overrides(verify_enabled=True, verify_max_findings=max_findings)
+                        ).with_overrides(verify_enabled=True, verify_max_findings=max_findings,
+                                         verify_only=only_ids)
     ctx = build_context(cfg, run)
     path = do_verify(ctx)
     _emit({"run_id": run, "validated_findings": str(path)})

@@ -1,0 +1,11 @@
+[
+  {
+    "label": "Single-packet service takeover: a goodbye (ttl=0) and a fresh announcement (ttl>0) for the same fqdn in ONE mDNS response are processed by disjoint filters (goodbyes() then buildServicesFor()) with no RFC 6762 grace period, so a hostile LAN peer permanently replaces a legitimate service in one packet",
+    "cwe": "CWE-345",
+    "aliases": ["CWE-290", "CWE-346"],
+    "file": "lib/browser.js",
+    "line": 80,
+    "line_tolerance": 15,
+    "severity": "High"
+  }
+]

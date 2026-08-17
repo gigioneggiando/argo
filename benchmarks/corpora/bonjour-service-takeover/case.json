@@ -1,0 +1,9 @@
+{
+  "name": "bonjour-service-takeover",
+  "repo": "https://github.com/watson/bonjour",
+  "commit": "1449098f6a8dd329c5e06ccc7b50e7dc26fa5fa6",
+  "archetype": "library_sdk",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "watson/bonjour@1449098f6a8dd329c5e06ccc7b50e7dc26fa5fa6",
+  "expected": "expected_findings.json"
+}

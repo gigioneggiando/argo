@@ -1,0 +1,10 @@
+{
+  "name": "coturn-ipv6-acl-bypass",
+  "repo": "https://github.com/coturn/coturn",
+  "commit": "f3ef47fbaafbb13edc6232408e0111ae7b95e81b",
+  "archetype": "other",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "coturn/coturn@f3ef47fbaafbb13edc6232408e0111ae7b95e81b",
+  "cve_ids": ["CVE-2026-73213"],
+  "expected": "expected_findings.json"
+}

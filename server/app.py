@@ -198,6 +198,17 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
     def benchmark_ab():
         return _read_json(runs_dir / "benchmark_ab_report.json")
 
+    @app.get("/benchmark/cross")
+    def benchmark_cross():
+        """The latest cross-backend comparison (`argo bench-cross`), or null. Read-only, same
+        pattern as /benchmark and /benchmark/ab — the real run is a CLI-only, cost-bearing action."""
+        return _read_json(runs_dir / "benchmark_crossbackend_report.json")
+
+    @app.get("/refusal-probe")
+    def refusal_probe_report():
+        """The latest refusal-rate comparison (`argo refusal-probe`), or null."""
+        return _read_json(runs_dir / "refusal_probe_report.json")
+
     @app.get("/costs")
     def costs():
         """Observed cost analytics from the ledger (Phase 8), grouped by archetype when known."""

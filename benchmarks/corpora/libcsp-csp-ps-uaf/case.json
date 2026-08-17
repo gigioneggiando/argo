@@ -1,0 +1,9 @@
+{
+  "name": "libcsp-csp-ps-uaf",
+  "repo": "https://github.com/libcsp/libcsp",
+  "commit": "24486a17713a7db5a7745cc22b6a47bec2b6eaba",
+  "archetype": "library_sdk",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "libcsp/libcsp@24486a17713a7db5a7745cc22b6a47bec2b6eaba",
+  "expected": "expected_findings.json"
+}

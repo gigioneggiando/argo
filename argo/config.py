@@ -28,6 +28,15 @@ GEMINI_PRO = "gemini-3.1-pro"
 GEMINI_FLASH = "gemini-3.5-flash"
 GEMINI_FLASH_LITE = "gemini-3.1-flash-lite"  # cheapest; used for the Gemini smoke run
 
+# --- Model IDs (Codex CLI backend), for the two cases that need a PINNED id rather than
+# "omit codex_model and let the CLI's own configured default apply" (the normal, recommended
+# path -- see docs/backends.md): calibrated() (a controlled top-tier run) and the cross-backend
+# benchmark's --tier flag (a controlled, reproducible comparison point). Unlike Claude/Gemini,
+# Codex has no per-stage tiering (model_for() uses one flat codex_model for every stage), so
+# these are the only two named tiers needed.
+CODEX_TOP = "gpt-5-codex"      # Codex's own coding-focused top model; priced same as gpt-5/gpt-5.5
+CODEX_CHEAP = "o4-mini"        # a real lighter/cheaper OpenAI model, mirrors Haiku/Flash-Lite's role
+
 #: Default per-stage model assignment.
 #:  * ingest   -> Sonnet (never Haiku: misreading scope/RoE has outsized consequences).
 #:  * recon    -> Opus   (judgment-heavy synthesis, low volume).
@@ -406,10 +415,18 @@ class PipelineConfig:
 
     def calibrated(self) -> "PipelineConfig":
         """Calibration default: run the audit stage on the backend's top-tier model
-        (effectively all-Opus / all-Pro) so a weak prompt is never confounded with a
-        weak model when diagnosing missed bugs."""
+        (effectively all-Opus / all-Pro / all-CODEX_TOP) so a weak prompt is never confounded
+        with a weak model when diagnosing missed bugs.
+
+        Codex fix (2026-08-17): this used to call with_stage_model("audit", OPUS) unconditionally,
+        which is a NO-OP for Codex -- model_for() ignores stage_models entirely when
+        runner=="codex" (it reads codex_model instead), so calibrated() silently did nothing for a
+        Codex run. Caught while building the cross-backend benchmark, whose --tier top mode
+        depends on calibrated() actually working per backend to be a fair comparison."""
         if self.runner == "gemini":
             return self.with_stage_model("audit", GEMINI_PRO)
+        if self.runner == "codex":
+            return self.with_overrides(codex_model=CODEX_TOP)
         return self.with_stage_model("audit", OPUS)
 
     def for_smoke(self) -> "PipelineConfig":

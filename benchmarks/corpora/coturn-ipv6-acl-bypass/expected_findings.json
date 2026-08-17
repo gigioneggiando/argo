@@ -1,0 +1,11 @@
+[
+  {
+    "label": "addr_less_eq() does a component-wise (per-byte) IPv6 comparison instead of a lexicographic one, collapsing every IPv6 denied-peer-ip/allowed-peer-ip range into a per-byte 'box' and letting an authenticated peer reach addresses the ACL range was meant to deny",
+    "cwe": "CWE-863",
+    "aliases": ["CWE-284", "CWE-697"],
+    "file": "src/client/ns_turn_ioaddr.c",
+    "line": 447,
+    "line_tolerance": 40,
+    "severity": "High"
+  }
+]

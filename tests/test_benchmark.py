@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from argo.benchmark import ab_compare, load_suite, run_suite, score_run
+from argo.benchmark import (_aggregate_cross_backend, _cheap_tier, ab_compare, compare_backends,
+                            load_suite, run_suite, score_run)
 
 SUITE = Path(__file__).resolve().parent.parent / "benchmarks"
 CORPORA = SUITE / "corpora"
@@ -217,3 +218,77 @@ def test_ab_compare_mock(env):
     # deterministic mock -> identical A and B -> zero delta, but both fully scored
     assert rep["delta_b_minus_a"] == {"precision": 0.0, "recall": 0.0, "f1": 0.0}
     assert rep["a"]["totals"]["f1"] == 1.0 and rep["b"]["totals"]["f1"] == 1.0
+
+
+# ------------------------------------------------------------------- cross-backend (compare_backends)
+def test_cheap_tier_sets_codex_model():
+    """for_smoke()'s own model-selection logic never touches codex_model (Codex has no per-stage
+    tiering to prime) -- _cheap_tier fixes that gap explicitly, or a 'cheap' Codex run would
+    silently use whatever ~/.codex/config.toml happens to default to."""
+    from argo.config import CODEX_CHEAP, PipelineConfig
+    cfg = _cheap_tier(PipelineConfig(runner="codex"))
+    assert cfg.codex_model == CODEX_CHEAP
+
+
+def test_cheap_tier_does_not_import_for_smoke_caps():
+    """_cheap_tier borrows ONLY for_smoke()'s model selection, not its budget/max_focuses/timeout
+    caps -- a real benchmark run must not artificially starve audit fan-out."""
+    from argo.config import PipelineConfig
+    base = PipelineConfig(runner="headless", budget_usd=50.0, max_focuses=None)
+    cfg = _cheap_tier(base)
+    assert cfg.budget_usd == 50.0 and cfg.max_focuses is None
+
+
+def test_compare_backends_derives_from_base_config_not_a_fresh_one(env):
+    """Regression for a bug caught in plan review: an early draft built a fresh PipelineConfig(
+    runner=b) per backend, silently dropping budget_usd/credentials the caller configured.
+    compare_backends must derive from base_config via with_overrides, exactly like ab_compare
+    already does."""
+    cfg = env().config
+    cfg = cfg.with_overrides(budget_usd=17.5)
+    compare_backends(cfg, SUITE, backends=["mock"], tier="cheap")
+    # if budget_usd/runs_dir had been dropped (a fresh PipelineConfig() defaults runs_dir to
+    # "runs"), the report would land somewhere other than THIS caller-configured runs_dir --
+    # proving the derived config carried base_config's settings through rather than defaulting.
+    assert (Path(cfg.runs_dir) / "benchmark_crossbackend_report.json").exists()
+
+
+def test_compare_backends_shape_single_mock_backend(env):
+    cfg = env().config
+    report = compare_backends(cfg, SUITE, backends=["mock"], tier="cheap")
+    assert set(report["backends"].keys()) == {"mock"}
+    assert set(report["totals_by_backend"].keys()) == {"mock"}
+    tb = report["totals_by_backend"]["mock"]
+    assert tb["f1"] == 1.0
+    assert tb["cost_usd_total"] == 0.0
+    assert "mean_latency_ms" in tb
+    assert report["tier"] == "cheap"
+    assert (Path(cfg.runs_dir) / "benchmark_crossbackend_report.json").exists()
+
+
+def test_compare_backends_invalid_tier_raises(env):
+    cfg = env().config
+    with pytest.raises(ValueError):
+        compare_backends(cfg, SUITE, backends=["mock"], tier="bogus")
+
+
+def test_aggregate_cross_backend_is_genuinely_n_way():
+    """Backend-agnostic test of the rollup logic itself, from three HAND-BUILT run_suite-shaped
+    dicts -- no real pipeline runs needed (three real 'mock' backends would collide on the same
+    dict key, see the plan's own note on why backends=['mock','mock','mock'] doesn't work as a
+    shape test). Exercises the actual N-way shape ab_compare's 2-way delta can't express."""
+    def _fake(p, r, f, cost, lat):
+        return {"totals": {"precision": p, "recall": r, "f1": f, "cost_usd_total": cost,
+                           "latency_ms_mean_per_call": lat}}
+    reports = {
+        "headless": _fake(0.9, 0.8, 0.847, 1.20, 500.0),
+        "codex": _fake(0.7, 0.6, 0.646, 0.05, 200.0),
+        "gemini": _fake(0.8, 0.75, 0.774, 0.30, 350.0),
+    }
+    out = _aggregate_cross_backend(reports, suite="demo", tier="top")
+    assert set(out["backends"].keys()) == {"headless", "codex", "gemini"}
+    assert set(out["totals_by_backend"].keys()) == {"headless", "codex", "gemini"}
+    assert out["totals_by_backend"]["codex"]["cost_usd_total"] == 0.05
+    assert out["totals_by_backend"]["gemini"]["mean_latency_ms"] == 350.0
+    assert out["suite"] == "demo" and out["tier"] == "top"
+    assert "generated_at" in out

@@ -102,6 +102,16 @@ def test_model_for_codex(monkeypatch):
     assert PipelineConfig(runner="codex").model_for("audit") == "codex-default"
 
 
+def test_calibrated_actually_sets_codex_model():
+    """calibrated() used to call with_stage_model("audit", OPUS), a no-op for runner=="codex"
+    (model_for() ignores stage_models for codex) -- so calibration silently did nothing on Codex.
+    Fixed to set codex_model=CODEX_TOP directly."""
+    from argo.config import CODEX_TOP
+    cfg = PipelineConfig(runner="codex").calibrated()
+    assert cfg.codex_model == CODEX_TOP
+    assert cfg.model_for("audit") == CODEX_TOP
+
+
 # --------------------------------------------------------------- failure classification (_invoke)
 class _FakeProc:
     def __init__(self, stdout="", stderr="", returncode=0):

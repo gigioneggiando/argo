@@ -214,6 +214,84 @@ def test_exhausts_retries_and_falls_back_to_inconclusive(env, make_scenario):
     assert "deep-verify session failed" in f1["verification"]["rationale"]
 
 
+# --------------------------------------------------------------------------- resumable / --only
+def _verify_call_count(ctx) -> int:
+    return sum(1 for l in (ctx.run_dir / "llm_log.jsonl").read_text(encoding="utf-8")
+               .strip().splitlines() if json.loads(l)["stage"] == "verify")
+
+
+def test_resumable_skips_already_verified_findings(env):
+    """Re-running deep-verify on a run that already has real verdicts must not re-spend on them —
+    this is what makes `argo verify` safely re-invokable after a partial failure (credits ran out,
+    a rate limit, a crash) without redoing every already-completed, expensive session."""
+    from argo.stages import deep_verify
+
+    ctx = env(verify_enabled=True)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    calls_after_first_pass = _verify_call_count(ctx)
+    assert calls_after_first_pass == 3
+
+    deep_verify.run(ctx)  # second invocation, same run, no new fixtures set up
+    assert _verify_call_count(ctx) == calls_after_first_pass   # no new sessions launched
+    vf = _validated(ctx)
+    assert {f["id"] for f in vf["findings"]} == SURVIVORS
+    for f in vf["findings"]:
+        assert f["verification"]["verdict"] == "reconfirmed"    # unchanged from the first pass
+
+
+def test_resumable_retries_infra_failure_findings(env, make_scenario):
+    """The flip side of resumability: a finding that came out of a prior pass as an
+    infra-failure inconclusive (session crash, credits ran out mid-run) is NOT considered "done" —
+    it must get a real session on the next invocation, unlike a genuinely-answered finding."""
+    from argo.stages import deep_verify
+
+    fixtures_dir, scen = make_scenario(lambda d: _fail_once(d, "FULL-001"), name="resumeretry")
+    ctx = env(scen, fixtures_dir=fixtures_dir, verify_enabled=True, verify_max_attempts=1)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    vf = _validated(ctx)
+    f1 = next(f for f in vf["findings"] if f["id"] == "FULL-001")
+    assert f1["verification"]["verdict"] == "inconclusive"
+    assert "deep-verify session failed" in f1["verification"]["rationale"]   # infra failure, not genuine
+
+    # The sentinel fails every fresh (non-retry) attempt by design (see MockClaudeRunner's own
+    # docstring) — remove it to simulate the transient problem being gone by the next invocation,
+    # then confirm the finding gets a real session again rather than being treated as already done.
+    (fixtures_dir / scen / "verify" / "FULL-001._fail_once").unlink()
+    deep_verify.run(ctx)
+    vf = _validated(ctx)
+    f1 = next(f for f in vf["findings"] if f["id"] == "FULL-001")
+    assert f1["verification"]["verdict"] == "reconfirmed"        # re-attempted and got a real verdict
+
+
+def test_only_scopes_to_specific_findings(env, make_scenario):
+    """--only (config verify_only) re-verifies exactly the given ids and leaves every other
+    survivor's existing verification completely untouched, regardless of its state."""
+    from argo.stages import deep_verify
+
+    ctx = env(verify_enabled=True)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    for f in _validated(ctx)["findings"]:
+        assert f["verification"]["verdict"] == "reconfirmed"     # baseline from the first pass
+
+    fixtures_dir, scen = make_scenario(
+        lambda d: _verify_fixture(d, "FULL-001", {
+            "finding_id": "FULL-001", "verdict": "corrected",
+            "rationale": "re-derived on the targeted re-verify pass",
+            "independent_derivation": "opened src/api/search.py:42, re-traced the flow",
+            "corrections": "the sink is actually at line 44, not 42"}),
+        name="onlyscope")
+    ctx.runner.scenario_dir = fixtures_dir / scen   # mock runner bakes scenario_dir in at
+                                                     # construction; point it at the new fixtures
+    ctx.config = ctx.config.with_overrides(verify_only=frozenset({"FULL-001"}))
+
+    deep_verify.run(ctx)
+    vf = _validated(ctx)
+    kept = {f["id"]: f for f in vf["findings"]}
+    assert kept["FULL-001"]["verification"]["verdict"] == "corrected"          # re-verified
+    assert kept["AUTHZ-002"]["verification"]["verdict"] == "reconfirmed"       # untouched
+    assert kept["FULL-003"]["verification"]["verdict"] == "reconfirmed"        # untouched
+
+
 # --------------------------------------------------------------------------- guardrail
 def test_verify_is_offline_with_full_repo_access():
     assert session_policy("verify").network is False

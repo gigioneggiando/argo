@@ -9,6 +9,17 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-17
+
+### Added
+
+- `argo verify` is now **resumable by default**: re-running it on a run that already has some
+  deep-verify verdicts skips findings that got a real answer and only re-attempts unverified or
+  infra-failure (`inconclusive`) ones — safe to re-invoke after a backend runs out of credits, a
+  rate limit, or a crash without re-spending on already-completed sessions.
+- `argo verify --only ID,ID` — force specific findings to (re-)verify regardless of their current
+  state, leaving every other survivor untouched (mirrors `fix --only`).
+
 ## [0.2.0] - 2026-08-14
 
 First formally tracked release. Argo has been under active development since 2026-06-18 (99

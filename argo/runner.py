@@ -270,6 +270,7 @@ class AgentRunner(ABC):
         work_dir.mkdir(parents=True, exist_ok=True)
         prompt_sha = sha256_text(prompt)
 
+        started = time.monotonic()
         raw = self._invoke(
             prompt=prompt,
             work_dir=work_dir,
@@ -284,12 +285,27 @@ class AgentRunner(ABC):
             session_budget_usd=self._session_budget(run_id),
             timeout_s=self.config.timeout_for(stage),
         )
+        duration_ms = int((time.monotonic() - started) * 1000)
 
         # Per-backend parse into the common LLMResult (Claude-strict by default; Codex overrides).
         result = self.parse_envelope(raw, model=model, prompt_sha256=prompt_sha,
                                      work_dir=work_dir)
 
-        # --- cost logging (ledger + per-run JSONL) — ALWAYS, even on error -------------
+        # --- failure classification, computed ONCE and reused by every branch below -----
+        # (previously duplicated: the "hard API error" and "recoverable error" branches each
+        # called _classify_failure_text separately with slightly different input text; now
+        # persisted regardless of which branch fires, so a refusal rate is queryable after the
+        # fact from the ledger/jsonl instead of only visible inside a raised exception's message.)
+        reset_hint = _extract_session_reset_hint(result.text) if result.is_error else None
+        failure_kind = None
+        if result.is_error:
+            classify_text = (f"{result.api_error_status} {result.text}" if result.api_error_status
+                             else result.text)
+            failure_kind = _classify_failure_text(classify_text)
+            if failure_kind is None and result.api_error_status and "429" in str(result.api_error_status):
+                failure_kind = "rate_limited"
+
+        # --- cost/latency/refusal logging (ledger + per-run JSONL) — ALWAYS, even on error -----
         self.ledger.log_call(
             run_id=run_id,
             stage=stage,
@@ -301,8 +317,10 @@ class AgentRunner(ABC):
             num_turns=result.num_turns,
             session_id=result.session_id,
             stop_reason=result.stop_reason,
+            duration_ms=duration_ms,
+            failure_kind=failure_kind,
+            label=label,
         )
-        reset_hint = _extract_session_reset_hint(result.text) if result.is_error else None
         self._append_jsonl(run_dir, {
             "stage": stage,
             "label": label,
@@ -317,19 +335,19 @@ class AgentRunner(ABC):
             "is_error": result.is_error,
             "api_error_status": result.api_error_status,
             "session_limit_reset_hint": reset_hint,
+            "duration_ms": duration_ms,
+            "failure_kind": failure_kind,
         })
 
         # --- surface hard API errors LOUDLY (auth / rate-limit / overloaded) -----------
         # These carry api_error_status and cannot produce usable artifacts -> abort clearly.
         if result.is_error and result.api_error_status:
             reset_suffix = f", session_limit_reset_hint={reset_hint!r}" if reset_hint else ""
-            kind = (_classify_failure_text(f"{result.api_error_status} {result.text}")
-                    or ("rate_limited" if "429" in str(result.api_error_status) else None))
             raise RunnerError(
                 f"claude session API error (stage={stage}, run_id={run_id}, label={label}): "
                 f"api_error_status={result.api_error_status!r}, stop_reason="
                 f"{result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix}",
-                retry_after=reset_hint, failure_kind=kind)
+                retry_after=reset_hint, failure_kind=failure_kind)
 
         # --- per-session caps (no native --max-turns in v2.1.178) ----------------------
         mt = self.config.session_max_turns
@@ -347,13 +365,12 @@ class AgentRunner(ABC):
         # Stages that know how to salvage partial scratch artifacts still catch RunnerError.
         if result.is_error:
             reset_suffix = f", session_limit_reset_hint={reset_hint!r}" if reset_hint else ""
-            kind = _classify_failure_text(result.text) or "unknown_retryable"
             raise RunnerError(
                 f"recoverable is_error session (stage={stage}, run_id={run_id}, label={label}, "
                 f"stop_reason={result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix})",
                 retry_after=reset_hint,
                 retryable=True,
-                failure_kind=kind,
+                failure_kind=failure_kind or "unknown_retryable",
             )
         return result
 

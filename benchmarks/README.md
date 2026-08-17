@@ -53,7 +53,34 @@ sessions — keep N modest.
 
 Output: `precision / recall / F1` overall and by **archetype** and **CWE**, written to
 `<runs_dir>/benchmark_report.json` (A/B → `benchmark_ab_report.json`) and shown on the **Benchmarks**
-page of the web UI.
+page of the web UI. Since this session, each case's report also carries `cost_usd` and
+`latency_ms` (`{total, calls, mean}` — per-LLM-call wall-clock, not just per-stage), rolled up into
+`totals.cost_usd_total` / `totals.latency_ms_mean_per_call`.
+
+## Cross-backend comparison and refusal rate
+
+`argo bench` compares **models within one backend** (`--ab-audit-model`). Two further commands
+compare **backends themselves** (Claude Code vs Codex vs Gemini — see
+[docs/backends.md](../docs/backends.md)):
+
+```bash
+# Same corpus, once per backend, comparable model tier -- cost/latency/precision/recall/F1 side by side
+argo bench-cross --suite benchmarks/corpora --backends headless,codex,gemini --tier cheap
+argo bench-cross --suite benchmarks/corpora --backends headless,codex,gemini --tier top   # real paper numbers -- $$$
+
+# How often each backend's OWN safety classifier false-positives on a legitimate, authorized
+# security-audit prompt (refusal_flag_rate), and how often a same-backend neutral-register retry
+# recovers it (refusal_recovery_rate). NOT jailbreak-resistance testing -- see
+# argo/refusal_probe.py and tests/fixtures/refusal_prompts.json's own notes on that scope boundary.
+argo refusal-probe --backends headless,codex,gemini --trials 3 --tier top
+```
+
+`--tier cheap` (default, both commands) uses each backend's cheapest tier (Haiku / `o4-mini` /
+Flash-Lite) — a full 3-backend sweep costs cents. `--tier top` uses each backend's own top-tier
+model (Opus / `gpt-5-codex` / Gemini Pro) for real, publishable numbers — real, non-trivial spend
+across three paid APIs; run the `--tier cheap` sweep first to confirm everything's wired up before
+spending on `--tier top`. Output: `benchmark_crossbackend_report.json` /
+`refusal_probe_report.json` under `<runs_dir>`.
 
 ## Suite layout — keep the mock harness offline
 
@@ -68,9 +95,20 @@ hit the network. Real, URL-backed corpora therefore live under a **separate** su
 argo bench --suite benchmarks/corpora            # REAL run over the labeled corpora (costs $)
 ```
 
-Bundled real case: `benchmarks/corpora/gguf-tools-oob/` — antirez/gguf-tools pinned at the audited
-commit, labeled with Argo's confirmed heap/OOB/integer-overflow findings (several shipped as fixes
-upstream).
+Bundled real cases (`corpus_id: "argo-confirmed-2026"`) — every label is a REAL, independently
+verified finding from Argo's own disclosure campaigns (not synthetic/seeded), pinned at the
+audited commit, spanning 3 languages and 2 archetypes:
+
+| case | repo | language | CWE | ground truth |
+|---|---|---|---|---|
+| `gguf-tools-oob` | antirez/gguf-tools | C | CWE-787/125/190 (×6) | several fixed upstream |
+| `libcsp-csp-ps-uaf` | libcsp/libcsp | C | CWE-416 (use-after-free) | **fixed** — merged PR libcsp/libcsp#992 |
+| `coturn-ipv6-acl-bypass` | coturn/coturn | C | CWE-863 (authz bypass) | maintainer-acknowledged, **CVE-2026-73213** / GHSA-4v97-rxjj-4f99 |
+| `bonjour-service-takeover` | watson/bonjour | JavaScript | CWE-345 (spoofing) | runtime-verified, disclosed |
+| `jsoup-redirect-header-leak` | jhy/jsoup | Java | CWE-200 (credential leak) | runtime-verified, disclosed |
+
+Each case's single-file/single-line reference was independently re-verified against the real
+pinned commit (not just copied from the Fleece registry) before being added here.
 
 ## Seeded-bug corpora at scale
 

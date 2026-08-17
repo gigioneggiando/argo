@@ -57,3 +57,49 @@ def test_run_cost_with_no_calls_is_zero(tmp_path):
     assert ledger.run_cost("nonexistent") == 0.0
     assert ledger.run_call_count("nonexistent") == 0
     ledger.close()
+
+
+def test_migration_adds_duration_and_failure_kind_to_a_preexisting_db(tmp_path):
+    """A DB created before duration_ms/failure_kind/label existed must open cleanly and gain the
+    new columns (via _MIGRATIONS), not raise or silently keep the old schema."""
+    import sqlite3
+    p = tmp_path / "old.sqlite"
+    conn = sqlite3.connect(str(p))
+    conn.execute("""CREATE TABLE llm_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, run_id TEXT NOT NULL,
+        stage TEXT NOT NULL, model TEXT NOT NULL, prompt_sha256 TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0.0, num_turns INTEGER NOT NULL DEFAULT 0,
+        session_id TEXT, stop_reason TEXT)""")
+    conn.execute("INSERT INTO llm_calls (ts, run_id, stage, model, prompt_sha256) "
+                "VALUES ('t','R','audit','m','h')")
+    conn.commit(); conn.close()
+
+    ledger = Ledger(p)
+    assert ledger.run_calls("R") == [
+        {"stage": "audit", "label": None, "failure_kind": None, "duration_ms": 0, "cost_usd": 0.0}]
+    ledger.log_call(run_id="R", stage="audit", model="m", prompt_sha256="h2", duration_ms=42,
+                    failure_kind="moderation_flagged", label="x")
+    assert ledger.call_durations("R") == [0, 42]
+    ledger.close()
+
+
+def test_call_durations_combines_second_opinion_children(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    ledger.log_call(run_id="R", stage="audit", model="m", prompt_sha256="h", duration_ms=10)
+    ledger.log_call(run_id="R-so1", stage="audit", model="m", prompt_sha256="h", duration_ms=20)
+    assert sorted(ledger.call_durations("R")) == [10, 20]
+    ledger.close()
+
+
+def test_run_calls_returns_rows_for_pairing_flag_and_retry(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    ledger.log_call(run_id="R", stage="audit", model="m", prompt_sha256="h1",
+                    label="p1-t0", failure_kind="moderation_flagged")
+    ledger.log_call(run_id="R", stage="audit", model="m", prompt_sha256="h2",
+                    label="p1-t0-neutral-retry", failure_kind=None)
+    calls = ledger.run_calls("R")
+    assert len(calls) == 2
+    assert calls[0]["label"] == "p1-t0" and calls[0]["failure_kind"] == "moderation_flagged"
+    assert calls[1]["label"] == "p1-t0-neutral-retry" and calls[1]["failure_kind"] is None
+    ledger.close()

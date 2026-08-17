@@ -231,3 +231,15 @@ instrument for a **cross-model study**: same corpus, same prompts, same guardrai
 the precision (registry accept rate) and recall (benchmark) numbers become directly comparable across
 Claude / OpenAI / Google / open-source models. The contribution is the pipeline + methodology; the
 backend is a knob.
+
+**Run the comparison**: `argo bench-cross --suite benchmarks/corpora --backends
+headless,codex,gemini [--tier cheap|top]` runs the SAME labeled corpus once per backend at a
+comparable model tier and reports cost/latency/precision/recall/F1 side by side (a genuinely N-way
+comparison — `bench --ab-audit-model` stays a same-backend, two-model A/B, a different question).
+`argo refusal-probe --backends headless,codex,gemini` measures a complementary, non-adversarial
+axis: how often each backend's OWN safety classifier false-positives on a legitimate, authorized
+security-audit prompt (`refusal_flag_rate`), and how often the same backend's existing neutral-
+register retry recovers it (`refusal_recovery_rate`) — deliberately NOT jailbreak-resistance
+testing, see `argo/refusal_probe.py`'s module docstring. Both default to a cheap tier so a full
+3-backend sweep costs cents; `--tier top` is real, non-trivial spend across three paid APIs — see
+[benchmarks/README.md](../benchmarks/README.md) before running it for actual paper numbers.

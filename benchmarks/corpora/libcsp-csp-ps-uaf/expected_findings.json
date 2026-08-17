@@ -1,0 +1,11 @@
+[
+  {
+    "label": "CSP_PS service handler frees packet then break's (not return's), so the shared post-switch csp_sendto_reply runs on the freed buffer (use-after-free / double-ownership)",
+    "cwe": "CWE-416",
+    "aliases": ["CWE-825", "CWE-672"],
+    "file": "src/csp_service_handler.c",
+    "line": 30,
+    "line_tolerance": 60,
+    "severity": "High"
+  }
+]

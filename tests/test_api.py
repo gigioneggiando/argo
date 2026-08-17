@@ -333,6 +333,23 @@ def test_benchmark_endpoint(tmp_path):
         app.state.ledger.close()
 
 
+def test_benchmark_cross_and_refusal_probe_endpoints(tmp_path):
+    app, client = _client(tmp_path)
+    try:
+        assert client.get("/benchmark/cross").json() is None
+        assert client.get("/refusal-probe").json() is None
+        (tmp_path / "runs").mkdir(exist_ok=True)
+        (tmp_path / "runs" / "benchmark_crossbackend_report.json").write_text(
+            json.dumps({"suite": "s", "tier": "cheap",
+                       "totals_by_backend": {"headless": {"f1": 0.9}}}))
+        (tmp_path / "runs" / "refusal_probe_report.json").write_text(
+            json.dumps({"backends": {"headless": {"refusal_flag_rate": 0.1}}}))
+        assert client.get("/benchmark/cross").json()["totals_by_backend"]["headless"]["f1"] == 0.9
+        assert client.get("/refusal-probe").json()["backends"]["headless"]["refusal_flag_rate"] == 0.1
+    finally:
+        app.state.ledger.close()
+
+
 def test_knowledge_endpoint(tmp_path):
     app, client = _client(tmp_path)
     try:

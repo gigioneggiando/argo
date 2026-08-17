@@ -25,8 +25,10 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
+from .config import CODEX_CHEAP, GEMINI_FLASH, GEMINI_FLASH_LITE, HAIKU, SONNET
 from .context import RunContext
 from .orchestrator import build_context, new_run_id, run_pipeline
 from .stages.ingest import _is_url
@@ -157,6 +159,9 @@ def _aggregate(case_results: list[dict], suite: str) -> dict:
     tp = sum(c["tp"] for c in case_results)
     fp = sum(c["fp"] for c in case_results)
     fn = sum(c["fn"] for c in case_results)
+    cost_total = sum(c.get("cost_usd", 0.0) for c in case_results)
+    call_counts = [c["latency_ms"]["calls"] for c in case_results if c.get("latency_ms")]
+    latency_total = sum(c["latency_ms"]["total"] for c in case_results if c.get("latency_ms"))
     by_arch: dict[str, list[int]] = {}
     by_cwe: dict[str, list[int]] = {}
     for c in case_results:
@@ -165,9 +170,14 @@ def _aggregate(case_results: list[dict], suite: str) -> dict:
         for cwe, counts in (c.get("cwe_breakdown") or {}).items():
             k = by_cwe.setdefault(cwe, [0, 0, 0])
             k[0] += counts[0]; k[1] += counts[1]; k[2] += counts[2]
+    total_calls = sum(call_counts)
     return {
         "suite": suite,
-        "totals": {**_prf(tp, fp, fn), "cases": len(case_results)},
+        "totals": {**_prf(tp, fp, fn), "cases": len(case_results),
+                   "cost_usd_total": round(cost_total, 6),
+                   "latency_ms_total": latency_total,
+                   "latency_ms_mean_per_call": (round(latency_total / total_calls, 1)
+                                                if total_calls else 0.0)},
         "by_archetype": {k: _prf(*v) for k, v in sorted(by_arch.items())},
         "by_cwe": {k: _prf(*v) for k, v in sorted(by_cwe.items(), key=lambda kv: -sum(kv[1]))},
         "cases": case_results,
@@ -211,8 +221,14 @@ def _run_case(base_config, case: Case, *, fixes: bool, re_audit: bool = False) -
         cost = ctx.ledger.run_cost(ctx.run_id)
     except Exception:
         cost = 0.0
+    try:
+        durations = ctx.ledger.call_durations(ctx.run_id)
+    except Exception:
+        durations = []
+    latency_ms = {"total": sum(durations), "calls": len(durations),
+                  "mean": round(sum(durations) / len(durations), 1) if durations else 0.0}
     entry = {"name": case.name, "run_id": ctx.run_id, "archetype": archetype,
-             "cost_usd": round(cost, 6),
+             "cost_usd": round(cost, 6), "latency_ms": latency_ms,
              "cwe_breakdown": _cwe_breakdown(findings, case.expected, score), **score}
     prov = {k: v for k, v in (("corpus_id", case.corpus_id),
                               ("cve_ids", case.cve_ids or None),
@@ -283,5 +299,74 @@ def ab_compare(base_config, suite_dir, *, audit_model_b: str, fixes: bool = Fals
     delta = {k: round(tb[k] - ta[k], 4) for k in ("precision", "recall", "f1")}
     report = {"a": a, "b": b, "audit_model_b": audit_model_b, "delta_b_minus_a": delta}
     out = Path(base_config.runs_dir) / "benchmark_ab_report.json"
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report
+
+
+def _cheap_tier(cfg):
+    """The cheap per-backend model selection ``compare_backends(tier="cheap")`` uses — same
+    model-selection logic as ``PipelineConfig.for_smoke()`` (Haiku/Flash-Lite everywhere, Sonnet/
+    Flash on recon since that stage is guardrail-gated and a too-weak model unreliably reproduces
+    the RoE/prohibited-techniques template), but deliberately WITHOUT for_smoke()'s other caps
+    (budget_usd, max_focuses=1, tight timeouts) — a real benchmark run must not artificially starve
+    audit fan-out or it understates recall relative to a real ``--tier top`` run on the same corpus.
+    Also sets ``codex_model=CODEX_CHEAP`` -- for_smoke() itself never touches codex_model (Codex
+    has no per-stage tiering to prime), which would otherwise leave a "cheap" Codex run on whatever
+    ``~/.codex/config.toml`` happens to default to."""
+    stage_models = {k: HAIKU for k in cfg.stage_models}
+    stage_models["recon"] = SONNET
+    gemini_stage_models = {k: GEMINI_FLASH_LITE for k in cfg.gemini_stage_models}
+    gemini_stage_models["recon"] = GEMINI_FLASH
+    return cfg.with_overrides(stage_models=stage_models, gemini_stage_models=gemini_stage_models,
+                              codex_model=CODEX_CHEAP)
+
+
+def _aggregate_cross_backend(backend_reports: dict[str, dict], *, suite: str, tier: str) -> dict:
+    totals_by_backend = {}
+    for name, rep in backend_reports.items():
+        t = rep["totals"]
+        totals_by_backend[name] = {
+            "precision": t["precision"], "recall": t["recall"], "f1": t["f1"],
+            "cost_usd_total": t["cost_usd_total"],
+            "mean_latency_ms": t["latency_ms_mean_per_call"],
+        }
+    return {
+        "suite": suite, "tier": tier,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "backends": backend_reports,
+        "totals_by_backend": totals_by_backend,
+    }
+
+
+def compare_backends(base_config, suite_dir, *, backends: list[str], tier: str = "cheap",
+                     fixes: bool = False, parallel_cases: int = 1, re_audit: bool = False) -> dict:
+    """Run the SAME suite once per backend (Claude/Codex/Gemini/...), each on a comparable model
+    tier, and report an N-way comparison — the cross-backend counterpart to ``ab_compare``'s
+    same-backend, two-model A/B (which stays untouched; it answers a different question).
+
+    Each backend's config is derived from ``base_config.with_overrides(runner=b)`` — NOT a fresh
+    ``PipelineConfig(runner=b)`` — so budget/runs_dir/credentials (gemini_api_key, codex_home,
+    claude_config_dir) the caller already configured survive, exactly like ``ab_compare`` already
+    derives its B config from ``base_config`` rather than starting over. ``tier="top"`` applies
+    ``.calibrated()`` per backend (now fixed to actually affect Codex too — see
+    ``PipelineConfig.calibrated``); ``tier="cheap"`` applies ``_cheap_tier`` above.
+
+    NOTE: each per-backend ``run_suite`` call still writes the single shared
+    ``benchmark_report.json`` (unchanged, existing behavior) — after this function returns, that
+    file reflects only the LAST backend run. The authoritative output of THIS function is
+    ``benchmark_crossbackend_report.json``, written below; use that, not ``benchmark_report.json``,
+    to read cross-backend results.
+    """
+    if tier not in ("top", "cheap"):
+        raise ValueError(f"tier must be 'top' or 'cheap', got {tier!r}")
+    backend_reports: dict[str, dict] = {}
+    for b in backends:
+        cfg = base_config.with_overrides(runner=b)
+        cfg = cfg.calibrated() if tier == "top" else _cheap_tier(cfg)
+        backend_reports[b] = run_suite(cfg, suite_dir, fixes=fixes,
+                                       parallel_cases=parallel_cases, re_audit=re_audit)
+    report = _aggregate_cross_backend(backend_reports, suite=Path(suite_dir).name, tier=tier)
+    out = Path(base_config.runs_dir) / "benchmark_crossbackend_report.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report

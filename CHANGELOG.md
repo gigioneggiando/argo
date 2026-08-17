@@ -9,6 +9,30 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- **Cross-backend benchmark**: `argo bench-cross --suite DIR --backends headless,codex,gemini
+  [--tier cheap|top]` runs the same labeled corpus once per backend and reports
+  cost/latency/precision/recall/F1 side by side (`compare_backends()` in `argo/benchmark.py`) — a
+  genuinely N-way comparison, distinct from `bench --ab-audit-model`'s same-backend, two-model A/B.
+  `--tier cheap` (default) picks each backend's cheapest model (Haiku/`o4-mini`/Flash-Lite);
+  `--tier top` picks each backend's own top-tier model (fixed a latent bug along the way:
+  `PipelineConfig.calibrated()`'s Codex branch was a no-op, so "top-tier" never actually affected
+  Codex runs before this).
+- **Per-LLM-call latency tracking**: `duration_ms` is now recorded per call in the ledger and
+  per-run `llm_log.jsonl`, alongside a new `failure_kind` column that persists the same
+  classification (`moderation_flagged`, `rate_limited`, ...) a `RunnerError` already carried —
+  previously only visible inside a raised exception's message, never queryable after the fact.
+- **`argo refusal-probe --backends headless,codex,gemini [--trials N] [--tier cheap|top]`**:
+  measures how often each backend's OWN safety classifier false-positives on a legitimate,
+  authorized security-audit prompt (`refusal_flag_rate`), and how often the same backend's
+  existing neutral-register retry recovers it (`refusal_recovery_rate`). Deliberately NOT
+  jailbreak/adversarial-prompt testing — see `argo/refusal_probe.py`'s module docstring and
+  `tests/fixtures/refusal_prompts.json`.
+- **Benchmark corpus**: 4 new real, independently re-verified cases (`libcsp-csp-ps-uaf`,
+  `coturn-ipv6-acl-bypass`, `bonjour-service-takeover`, `jsoup-redirect-header-leak`), spanning
+  C/JavaScript/Java — see `benchmarks/README.md`.
+
 ## [0.4.0] - 2026-08-17
 
 ### Added

@@ -1,0 +1,11 @@
+[
+  {
+    "label": "HttpConnection.execute() follows a redirect by re-resolving req.url() and recursing on the SAME request object without clearing caller-set Authorization/Cookie headers, so a cross-host redirect forwards those credentials to the redirect target",
+    "cwe": "CWE-200",
+    "aliases": ["CWE-522", "CWE-668"],
+    "file": "src/main/java/org/jsoup/helper/HttpConnection.java",
+    "line": 900,
+    "line_tolerance": 40,
+    "severity": "Medium"
+  }
+]

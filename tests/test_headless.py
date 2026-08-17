@@ -89,6 +89,48 @@ def test_api_error_raises_loud_after_logging(tmp_path):
     ledger.close()
 
 
+def test_failure_kind_and_duration_are_persisted_to_the_ledger(tmp_path):
+    """Latency + refusal classification are now persisted at the SAME chokepoint every backend
+    funnels through (_run_attempt), for the cross-backend/refusal-rate benchmarks -- previously
+    failure_kind existed only inside a raised RunnerError's attributes, never queryable after the
+    fact."""
+    ledger = Ledger(tmp_path / "l.sqlite")
+    env = {"is_error": True, "api_error_status": None,
+           "result": "API Error: Opus 4.8's safeguards flagged this message.",
+           "usage": {"input_tokens": 1, "output_tokens": 1}, "total_cost_usd": 0.0,
+           "num_turns": 1, "session_id": "s"}
+    with pytest.raises(RunnerError) as e:
+        _run(PipelineConfig(), ledger, env, tmp_path, stage="audit")
+    assert e.value.failure_kind == "moderation_flagged"
+    rows = ledger.run_calls("R")
+    assert len(rows) == 1
+    assert rows[0]["failure_kind"] == "moderation_flagged"
+    assert rows[0]["duration_ms"] >= 0
+    ledger.close()
+
+
+def test_classify_failure_text_called_exactly_once_per_attempt(tmp_path, monkeypatch):
+    """Regression for the classify-once refactor: previously _classify_failure_text was invoked
+    separately by the 'hard API error' and 'recoverable error' branches -- now it's computed once
+    and reused by both."""
+    import argo.runner as runner_mod
+    calls = []
+    real = runner_mod._classify_failure_text
+
+    def _spy(text):
+        calls.append(text)
+        return real(text)
+
+    monkeypatch.setattr(runner_mod, "_classify_failure_text", _spy)
+    ledger = Ledger(tmp_path / "l.sqlite")
+    env = {"is_error": True, "api_error_status": "authentication_error", "result": "bad key",
+           "usage": {}, "total_cost_usd": 0.0, "num_turns": 0, "session_id": None}
+    with pytest.raises(RunnerError):
+        _run(PipelineConfig(), ledger, env, tmp_path, stage="ingest")
+    assert len(calls) == 1
+    ledger.close()
+
+
 def test_max_turns_tripwire(tmp_path):
     ledger = Ledger(tmp_path / "l.sqlite")
     env = {"is_error": False, "result": "x", "usage": {"input_tokens": 1, "output_tokens": 1},

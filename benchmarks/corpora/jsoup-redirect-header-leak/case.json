@@ -1,0 +1,9 @@
+{
+  "name": "jsoup-redirect-header-leak",
+  "repo": "https://github.com/jhy/jsoup",
+  "commit": "d8c49e5ec72a08ca1ac4e08740e70dc0f47ad911",
+  "archetype": "library_sdk",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "jhy/jsoup@d8c49e5ec72a08ca1ac4e08740e70dc0f47ad911",
+  "expected": "expected_findings.json"
+}

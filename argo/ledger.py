@@ -52,6 +52,15 @@ CREATE INDEX IF NOT EXISTS idx_findings_prog_key ON findings_ledger(program_name
 _MIGRATIONS = {
     "findings_ledger": [("triager_accepted", "INTEGER"), ("triager_feedback", "TEXT"),
                         ("triager_ts", "TEXT")],
+    # duration_ms: per-call wall-clock latency (see AgentRunner._run_attempt), for the cross-backend
+    # efficiency benchmark. failure_kind: the same classification a RunnerError already carries
+    # (see runner._classify_failure_text) -- e.g. "moderation_flagged" -- persisted per call so a
+    # refusal rate is queryable after the fact, not just visible inside a raised exception's message.
+    # label: mirrors the per-run llm_log.jsonl record's own "label" field (a same-session neutral-
+    # register retry is logged as f"{label}-neutral-retry") -- needed to PAIR a flagged first attempt
+    # with its retry outcome when computing refusal_flag_rate vs refusal_recovery_rate.
+    "llm_calls": [("duration_ms", "INTEGER NOT NULL DEFAULT 0"), ("failure_kind", "TEXT"),
+                  ("label", "TEXT")],
 }
 
 
@@ -109,15 +118,18 @@ class Ledger:
         num_turns: int = 0,
         session_id: str | None = None,
         stop_reason: str | None = None,
+        duration_ms: int = 0,
+        failure_kind: str | None = None,
+        label: str | None = None,
     ) -> None:
         with self._lock:
             self._conn.execute(
                 """INSERT INTO llm_calls
                    (ts, run_id, stage, model, prompt_sha256, input_tokens, output_tokens,
-                    cost_usd, num_turns, session_id, stop_reason)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                    cost_usd, num_turns, session_id, stop_reason, duration_ms, failure_kind, label)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (_now(), run_id, stage, model, prompt_sha256, input_tokens, output_tokens,
-                 cost_usd, num_turns, session_id, stop_reason),
+                 cost_usd, num_turns, session_id, stop_reason, duration_ms, failure_kind, label),
             )
             self._conn.commit()
 
@@ -151,6 +163,29 @@ class Ledger:
                 (exact, children_pattern),
             ).fetchone()
         return int(row["n"])
+
+    def call_durations(self, run_id: str) -> list[int]:
+        """Per-call latency (milliseconds) for a run, for the cross-backend efficiency benchmark."""
+        exact, children_pattern = self._run_id_and_children(run_id)
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT duration_ms FROM llm_calls WHERE run_id = ? OR run_id LIKE ? ESCAPE '\\'",
+                (exact, children_pattern),
+            ).fetchall()
+        return [int(r["duration_ms"]) for r in rows]
+
+    def run_calls(self, run_id: str) -> list[dict]:
+        """Every logged call for a run (stage/label/failure_kind/duration_ms/...), for the
+        refusal-probe's flag/retry pairing -- unlike the other rollups above this returns rows, not
+        an aggregate, since pairing needs per-call label/failure_kind, not a sum."""
+        exact, children_pattern = self._run_id_and_children(run_id)
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT stage, label, failure_kind, duration_ms, cost_usd FROM llm_calls "
+                "WHERE run_id = ? OR run_id LIKE ? ESCAPE '\\' ORDER BY id",
+                (exact, children_pattern),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     # ------------------------------------------------------------- cost analytics
     def totals(self) -> dict:

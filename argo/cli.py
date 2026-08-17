@@ -906,6 +906,80 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
         _emit(run_suite(cfg, suite, fixes=fixes, parallel_cases=parallel_cases, re_audit=re_audit))
 
 
+@app.command(name="bench-cross")
+def bench_cross(
+    suite: Path = typer.Option(..., "--suite", exists=True, file_okay=False,
+                               help="suite dir (each <case>/case.json + expected_findings.json)"),
+    backends: str = typer.Option(
+        "headless,codex,gemini", "--backends",
+        help="comma-separated backend names to compare, e.g. headless,codex,gemini"),
+    tier: str = typer.Option(
+        "cheap", "--tier",
+        help="cheap (default) = Haiku / o4-mini / Flash-Lite per backend, keeps a full sweep "
+             "cheap · top = each backend's own top-tier model (Opus / gpt-5-codex / Gemini Pro), "
+             "for real paper numbers -- real, non-trivial spend across all configured backends"),
+    fixes: bool = typer.Option(False, "--fixes", help="also score Phase-6 patch quality"),
+    parallel_cases: int = typer.Option(
+        1, "--parallel-cases", min=1, max=16, metavar="N",
+        help="run N cases concurrently PER BACKEND (real cost adds up fast on --tier top)"),
+    re_audit: bool = typer.Option(False, "--re-audit",
+                                  help="with --fixes: re-audit each patched copy"),
+    budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
+    runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+    codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
+    codex_local_provider: Optional[str] = CodexProviderOpt,
+    claude_accounts: Optional[str] = ClaudeAccountsOpt, codex_accounts: Optional[str] = CodexAccountsOpt,
+    gemini_api_key: Optional[str] = GeminiApiKeyOpt, gemini_accounts: Optional[str] = GeminiAccountsOpt,
+):
+    """Phase 7 cross-backend: run the SAME labeled suite once per backend (Claude/Codex/Gemini/...)
+    at a comparable model tier, and report cost/latency/precision/recall/F1 side by side. Unlike
+    `bench --ab-audit-model` (same backend, two models), this swaps the BACKEND itself."""
+    from .benchmark import compare_backends
+    names = [n.strip() for n in backends.split(",") if n.strip()]
+    cfg = _build_config("mock", None, False, budget, parallel, runs_dir, scenario,
+                        codex_model=codex_model, codex_oss=codex_oss,
+                        codex_local_provider=codex_local_provider,
+                        claude_accounts=claude_accounts, codex_accounts=codex_accounts,
+                        gemini_api_key=gemini_api_key, gemini_accounts=gemini_accounts)
+    _emit(compare_backends(cfg, suite, backends=names, tier=tier, fixes=fixes,
+                           parallel_cases=parallel_cases, re_audit=re_audit))
+
+
+@app.command(name="refusal-probe")
+def refusal_probe(
+    backends: str = typer.Option(
+        "headless,codex,gemini", "--backends",
+        help="comma-separated backend names to probe, e.g. headless,codex,gemini"),
+    prompts_file: Path = typer.Option(
+        Path("tests/fixtures/refusal_prompts.json"), "--prompts", exists=True,
+        help="curated, non-adversarial prompt set (id/prompt/neutral_variant per entry)"),
+    trials: int = typer.Option(1, "--trials", min=1, max=20,
+                               help="repetitions per prompt per backend"),
+    tier: str = typer.Option("cheap", "--tier",
+                             help="cheap (default) or top -- same meaning as `bench-cross --tier`"),
+    runs_dir: Path = RunsDirOpt,
+    codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
+    codex_local_provider: Optional[str] = CodexProviderOpt,
+    claude_accounts: Optional[str] = ClaudeAccountsOpt, codex_accounts: Optional[str] = CodexAccountsOpt,
+    gemini_api_key: Optional[str] = GeminiApiKeyOpt, gemini_accounts: Optional[str] = GeminiAccountsOpt,
+):
+    """Measure how often each backend's OWN safety classifier false-positives on a legitimate,
+    authorized security-audit prompt (refusal_flag_rate), and how often the same backend's
+    existing neutral-register retry recovers it (refusal_recovery_rate). NOT jailbreak/adversarial
+    testing -- see argo/refusal_probe.py's module docstring. Default cheap tier + 1 trial keeps a
+    full multi-backend run to a few cents; the report is never used to fail a command (no exit-code
+    gate) -- it's a measurement, read it in refusal_probe_report.json / the printed JSON."""
+    from .refusal_probe import load_refusal_prompts, run_refusal_probe
+    names = [n.strip() for n in backends.split(",") if n.strip()]
+    prompts = load_refusal_prompts(prompts_file)
+    cfg = _build_config("mock", None, False, None, 1, runs_dir, "happy",
+                        codex_model=codex_model, codex_oss=codex_oss,
+                        codex_local_provider=codex_local_provider,
+                        claude_accounts=claude_accounts, codex_accounts=codex_accounts,
+                        gemini_api_key=gemini_api_key, gemini_accounts=gemini_accounts)
+    _emit(run_refusal_probe(cfg, prompts, backends=names, trials=trials, tier=tier))
+
+
 def _ledger_for(ledger: Optional[Path]):
     from .config import PipelineConfig
     from .ledger import Ledger

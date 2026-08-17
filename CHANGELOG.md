@@ -9,6 +9,8 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-17
+
 ### Added
 
 - **Gemini CLI backend** (`--runner gemini`): a third swappable engine alongside Claude Code and

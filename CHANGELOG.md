@@ -9,6 +9,17 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- **Gemini CLI backend** (`--runner gemini`): a third swappable engine alongside Claude Code and
+  Codex, tiered per stage like Claude (`gemini-3.1-pro` / `gemini-3.5-flash` / `gemini-3.1-flash-lite`
+  — see `DEFAULT_GEMINI_STAGE_MODELS`), fully composable into the existing fallback chain
+  (`--fallback`) and multi-account resilience machinery. Guardrails map onto Gemini's **Policy
+  Engine** (a named-tool denylist, the same dialect Claude uses), not `--sandbox`, which was found
+  to have a hard, unreliable Docker/Podman dependency during empirical verification against a real
+  `gemini` CLI install. `--gemini-model`, `--gemini-api-key`, `--gemini-accounts` CLI flags; matching
+  `RunConfig` fields on the HTTP API. See [docs/backends.md](docs/backends.md#gemini-specifics-runner--gemini).
+
 ## [0.3.0] - 2026-08-17
 
 ### Added

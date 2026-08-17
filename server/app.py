@@ -164,7 +164,8 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
     def models():
         """Available backends, their selectable models, and the token-cost price table — so the UI
         can offer model pickers and show cost estimates instead of free-text guessing."""
-        from argo.config import (DEFAULT_STAGE_MODELS, HAIKU, MODEL_PRICING, OPUS, SONNET,
+        from argo.config import (DEFAULT_GEMINI_STAGE_MODELS, DEFAULT_STAGE_MODELS, GEMINI_FLASH,
+                                 GEMINI_FLASH_LITE, GEMINI_PRO, HAIKU, MODEL_PRICING, OPUS, SONNET,
                                  _codex_default_model)
         return {
             "backends": [
@@ -176,8 +177,13 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
                  "cost": "estimated (token-based)", "default": _codex_default_model(),
                  "oss_providers": ["ollama", "lmstudio"],
                  "models": [{"id": "gpt-5.5"}, {"id": "gpt-5-codex"}, {"id": "o4-mini"}, {"id": "o3"}]},
+                {"id": "gemini", "label": "Gemini CLI", "cost": "estimated (token-based)",
+                 "models": [{"id": GEMINI_PRO, "label": "Gemini 3.1 Pro"},
+                            {"id": GEMINI_FLASH, "label": "Gemini 3.5 Flash"},
+                            {"id": GEMINI_FLASH_LITE, "label": "Gemini 3.1 Flash-Lite"}]},
             ],
             "default_stage_models": DEFAULT_STAGE_MODELS,
+            "default_gemini_stage_models": DEFAULT_GEMINI_STAGE_MODELS,
             "pricing": [{"model": k, "input_per_mtok": v[0], "output_per_mtok": v[1]}
                         for k, v in sorted(MODEL_PRICING.items())],
         }

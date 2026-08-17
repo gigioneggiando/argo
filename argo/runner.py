@@ -598,6 +598,217 @@ class CodexRunner(AgentRunner):
         )
 
 
+# ------------------------------------------------------------------------------- gemini
+#: Policy Engine TOML (see docs/backends.md "Gemini specifics"). A DENY-list, not an allow-list:
+#: enumerating every Gemini tool name Claude's ARTIFACT_TOOLS would map onto is unnecessary and
+#: fragile (some names, e.g. an Edit/MultiEdit equivalent, are unconfirmed) — a small, well-
+#: confirmed deny-list is simpler AND safer. run_shell_command is denied unconditionally (Argo never
+#: needs shell, mirrors Bash living in ALWAYS_DISALLOWED); everything else --approval-mode yolo
+#: auto-approves. Confirmed live 2026-08-17 (gemini-cli v0.49.0): a denied tool is removed from the
+#: model's declared tool set entirely (it reports having no such tool), not merely blocked post-call
+#: — clean, headless-safe, and unlike --sandbox has zero external (Docker/Podman) dependency.
+#:
+#: Repo-write safety does NOT depend on this policy: argo/stages/ingest.py:_make_readonly already
+#: os.chmod's the acquired repo copy read-only, backend-agnostically, before any runner touches it —
+#: a write_file call into repo_dir fails at the OS level regardless of what this policy allows.
+_GEMINI_POLICY_OFFLINE = """\
+[[rule]]
+toolName = "run_shell_command"
+decision = "deny"
+priority = 100
+
+[[rule]]
+toolName = ["google_web_search", "web_fetch"]
+decision = "deny"
+priority = 100
+"""
+
+#: Network carve-out for the research/corroborate stages ONLY — same two tools the OSINT_TOOLS
+#: exception permits on Claude, mirroring CodexRunner._build_codex_cmd's exact
+#: `if policy is not None and policy.network:` branch shape (an extra sandbox cfg flag there;
+#: here, simply omitting the two web-tool deny rules). Shell stays denied even here — no stage
+#: is ever permitted a shell tool, network or not.
+_GEMINI_POLICY_NETWORK = """\
+[[rule]]
+toolName = "run_shell_command"
+decision = "deny"
+priority = 100
+"""
+
+#: Gemini's soft safety refusals arrive as ordinary first-person declining prose inside a NORMAL,
+#: success-shaped envelope (confirmed live 2026-08-17 against gemini-cli v0.49.0 — no structured
+#: finishReason field is surfaced by the CLI's --output-format json output, unlike the raw Gemini
+#: API). Unlike Claude's/Codex's fixed classifier-boilerplate signatures, there is no stable marker
+#: string to match reliably on its own ("I cannot provide ..." also shows up in mundane, non-refusal
+#: replies) — so this requires a first-person refusal phrase to CO-OCCUR with a safety/
+#: authorization-flavored word. A conservative heuristic that trades recall for precision: a genuine
+#: refusal phrased unusually may be missed and surface as a downstream "no artifact produced"
+#: failure instead of a clean moderation_flagged one — a known, documented gap, not a silent one.
+_GEMINI_REFUSAL_PHRASES = ("i cannot provide", "i can't provide", "i cannot assist", "i can't assist",
+                          "i'm not able to provide", "i am not able to provide",
+                          "i cannot help with", "i can't help with")
+_GEMINI_REFUSAL_CONTEXT_WORDS = ("unauthorized", "malicious", "attack", "destroy", "exploit",
+                                 "illegal", "harmful", "victim")
+#: Argo-owned marker prepended to a detected soft refusal's text, so the SHARED, module-level
+#: _classify_failure_text (called from the base class's generic is_error path, which this backend
+#: cannot override in isolation) has something concrete to match — the same bridge mechanism
+#: Claude's/Codex's own fixed signatures use, just fed by a heuristic instead of a literal string.
+_GEMINI_MODERATION_MARKER = "argo-gemini-heuristic-refusal-detected"
+
+
+def _looks_like_gemini_refusal(text: str) -> bool:
+    s = (text or "").lower()
+    return (any(p in s for p in _GEMINI_REFUSAL_PHRASES)
+            and any(w in s for w in _GEMINI_REFUSAL_CONTEXT_WORDS))
+
+
+class GeminiRunner(AgentRunner):
+    """Runs the **Gemini CLI** (`gemini`) — Google's Gemini models, tiered per stage like Claude
+    (pro/flash/flash-lite; see DEFAULT_GEMINI_STAGE_MODELS), unlike Codex's flat single model.
+
+    Every design choice below reflects EMPIRICAL testing against a real `gemini` CLI (v0.49.0,
+    2026-08-17), not docs alone — see the Gemini backend plan's "Phase 0" for the full findings:
+
+      * The prompt is piped via **stdin only** (no `-p`) — confirmed to trigger the identical
+        non-interactive JSON path, and avoids `-p`'s documented stdin-APPENDS-not-replaces quirk.
+      * ``--skip-trust`` is REQUIRED on every call — a fresh, never-interactively-trusted scratch
+        dir otherwise makes the CLI exit 55 ("not running in a trusted directory").
+      * ``--include-directories <repo_dir>`` grants read access to the target repo (confirmed via
+        a real cross-directory read), which stays outside the scratch cwd, same layout as Codex.
+      * Guardrails map onto the **Policy Engine** (``--policy <toml>``), NOT ``--sandbox`` — see
+        `_GEMINI_POLICY_OFFLINE`'s docstring for why (a hard, unreliable Docker/Podman dependency
+        that failed outright in Phase 0 testing, confirmed live, vs. zero-dependency and confirmed
+        working). ``--approval-mode yolo`` auto-approves whatever the policy doesn't deny — every
+        Argo stage's session needs to Write its artifact, mirroring Claude's bypassPermissions /
+        Codex's non-interactive exec.
+      * Cost is **estimated** from token usage (like Codex — Gemini reports tokens, not USD), but
+        MUST be summed across every entry in ``stats.models``: omitting `-m` was found to trigger
+        an extra internal "utility_router" model call that also lands in that dict; Argo always
+        pins `-m`, so in practice there is usually exactly one entry, but the code must not assume
+        that.
+    """
+
+    def __init__(self, config: PipelineConfig, ledger: Ledger, gemini_bin: str = "gemini"):
+        super().__init__(config, ledger)
+        self.gemini_bin = gemini_bin
+        self._resolved_bin: str | None = None
+
+    def _bin(self) -> str:
+        if self._resolved_bin is None:
+            resolved = shutil.which(self.gemini_bin)
+            if not resolved:
+                raise RunnerError(
+                    f"gemini CLI not found on PATH (looked for {self.gemini_bin!r}); "
+                    "install the Gemini CLI or use --runner headless/codex/mock")
+            self._resolved_bin = resolved
+        return self._resolved_bin
+
+    def _build_gemini_cmd(self, *, model, repo_dir, policy_file: Path) -> list[str]:
+        cmd = [
+            self._bin(),
+            "--output-format", "json",
+            "--skip-trust",              # see class docstring — required for a fresh scratch dir
+            "--approval-mode", "yolo",   # non-interactive auto-approve for whatever isn't denied
+            "-m", model,
+            "--policy", str(policy_file),
+        ]
+        if repo_dir is not None:
+            cmd += ["--include-directories", str(Path(repo_dir).resolve())]
+        return cmd
+
+    def _invoke(self, *, prompt, work_dir, model, repo_dir, allowed, disallowed, policy=None,
+               stage, run_id, label, session_budget_usd=None, timeout_s=None) -> dict:
+        policy_toml = (_GEMINI_POLICY_NETWORK if (policy is not None and policy.network)
+                      else _GEMINI_POLICY_OFFLINE)
+        policy_file = Path(work_dir) / ".argo_gemini_policy.toml"
+        policy_file.write_text(policy_toml, encoding="utf-8")
+        cmd = self._build_gemini_cmd(model=model, repo_dir=repo_dir, policy_file=policy_file)
+        timeout = timeout_s or self.config.session_timeout_s
+        # Multi-account: point this invocation at a specific Gemini API key so an account-fallback
+        # can switch keys (limits are per-key/project). See build_runner / _expand_backend. Unlike
+        # Claude/Codex's directory-based env vars, this is a real secret value, not a path.
+        env = None
+        if self.config.gemini_api_key:
+            env = {**os.environ, "GEMINI_API_KEY": self.config.gemini_api_key}
+        try:
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
+        except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
+            raise RunnerError(
+                f"gemini session timed out after {timeout}s "
+                f"(stage={stage}, run_id={run_id}, label={label})",
+                retryable=True, failure_kind="timeout") from exc
+
+        # Exit codes 42 (invalid input) and 53 (turn-limit) are a stable, documented part of the
+        # CLI's exit-code contract, independent of the JSON-envelope shape gap Phase 0 closed —
+        # handled directly here (not via parse_envelope's generic is_error path) because they need
+        # DIFFERENT retryability that the generic path has no way to express: 42 is structurally
+        # unfixable by retrying, 53 is retryable with its own new FailureKind.
+        if proc.returncode == 42:
+            raise RunnerError(
+                f"gemini rejected invalid input (stage={stage}, run_id={run_id}, label={label}, "
+                f"exit=42)\nstderr tail:\n{(proc.stderr or '')[-1500:]}",
+                retryable=False)
+        if proc.returncode == 53:
+            raise RunnerError(
+                f"gemini session hit its turn limit (stage={stage}, run_id={run_id}, "
+                f"label={label}, exit=53)\nstderr tail:\n{(proc.stderr or '')[-1500:]}",
+                retryable=True, failure_kind="turn_limit_exceeded")
+
+        # A result envelope may arrive WITH a non-zero exit (e.g. the quota-error shape confirmed
+        # live: exit 1, a clean {"error": {...}} envelope on stdout) — prefer parsing stdout, and
+        # only fall back to a hard error if there is no usable JSON at all (e.g. the FatalSandbox
+        # Error startup-crash shape confirmed live: nothing on stdout, everything on stderr).
+        out = (proc.stdout or "").strip()
+        if out:
+            try:
+                envelope = json.loads(out)
+            except json.JSONDecodeError:
+                envelope = None
+            if isinstance(envelope, dict):
+                envelope["_exit_code"] = proc.returncode
+                return envelope  # parse_envelope validates shape + classifies is_error
+
+        kind = _classify_failure_text(proc.stderr) or "unknown_retryable"
+        raise RunnerError(
+            f"gemini produced no parseable JSON envelope (stage={stage}, run_id={run_id}, "
+            f"label={label}, exit={proc.returncode}); likely auth/startup/sandbox failure.\n"
+            f"stderr tail:\n{(proc.stderr or '')[-1500:]}",
+            retryable=True, failure_kind=kind)
+
+    def parse_envelope(self, raw: dict, *, model: str, prompt_sha256: str,
+                       work_dir: Path) -> LLMResult:
+        error = raw.get("error")
+        is_error = error is not None
+        if is_error:
+            text = (error.get("message") if isinstance(error, dict) else str(error)) or ""
+        else:
+            text = raw.get("response") or ""
+            if _looks_like_gemini_refusal(text):
+                # Bridge: force is_error so the base class's generic error path (and run()'s
+                # neutral-register retry) treats this the same as Claude's/Codex's moderation
+                # flags, even though the CLI itself returned a nominally successful envelope.
+                is_error = True
+                text = f"{_GEMINI_MODERATION_MARKER}: {text}"
+
+        in_tok = out_tok = 0
+        for entry in ((raw.get("stats") or {}).get("models") or {}).values():
+            tok = (entry or {}).get("tokens") or {}
+            # "prompt" (total context, incl. cached) not "input" (cached-excluded) — a deliberate
+            # safe-direction overestimate when caching is active, matching the same rounding
+            # rationale already documented for MODEL_PRICING's >200k-token Pro tier gap.
+            in_tok += int(tok.get("prompt", tok.get("input", 0)) or 0)
+            out_tok += int(tok.get("candidates", 0) or 0)
+
+        return LLMResult(
+            text=text, model=model, prompt_sha256=prompt_sha256, work_dir=work_dir,
+            input_tokens=in_tok, output_tokens=out_tok,
+            cost_usd=estimate_cost_usd(model, in_tok, out_tok),   # estimated (token-based)
+            num_turns=0, session_id=raw.get("session_id"),
+            stop_reason=f"exit_{raw.get('_exit_code', 0)}",
+            is_error=is_error, api_error_status=None, raw=raw,
+        )
+
+
 # ------------------------------------------------------------------------------- mock
 class MockClaudeRunner(ClaudeRunner):
     """Deterministic, zero-token runner. Writes fixture files into the session scratch dir
@@ -973,8 +1184,12 @@ class MockClaudeRunner(ClaudeRunner):
 
 #: Error-message hints that mark a session failure as RETRYABLE on another backend (vs a real
 #: deterministic failure that should propagate). Matched case-insensitively against the RunnerError.
+#: "quota" already matches Gemini's real observed 429 wording ("you exceeded your current quota",
+#: confirmed live 2026-08-17); resource_exhausted/"resource has been exhausted" are documented
+#: alternate Gemini API phrasings that just didn't happen to be the one that specific call produced.
 _RETRYABLE_HINTS = ("session limit", "rate limit", "rate_limit", "api_error_status=429", " 429",
-                    "overloaded", "quota", "too many requests", "insufficient_quota")
+                    "overloaded", "quota", "too many requests", "insufficient_quota",
+                    "resource_exhausted", "resource has been exhausted")
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -1020,7 +1235,8 @@ def _classify_failure_text(text: str | None) -> FailureKind | None:
     default rather than this function silently picking one.
     """
     s = (text or "").lower()
-    if _MODERATION_FLAG_SIGNATURE in s or _CLAUDE_REFUSAL_SIGNATURE in s:
+    if (_MODERATION_FLAG_SIGNATURE in s or _CLAUDE_REFUSAL_SIGNATURE in s
+            or _GEMINI_MODERATION_MARKER in s):
         return "moderation_flagged"
     if _CREDITS_EXHAUSTED_SIGNATURE in s:
         return "credits_exhausted"
@@ -1239,18 +1455,24 @@ def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner
         return HeadlessClaudeRunner(cfg, ledger)
     if name == "codex":
         return CodexRunner(cfg, ledger)
-    raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', or 'mock')")
+    if name == "gemini":
+        return GeminiRunner(cfg, ledger)
+    raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', 'gemini', or 'mock')")
 
 
 def _expand_backend(config: PipelineConfig, ledger: Ledger, name: str) -> list[AgentRunner]:
     """One backend name -> one or more runners. Multi-account backends expand to one runner per
-    credential dir (limits are per-account): Claude via CLAUDE_CONFIG_DIR, Codex via CODEX_HOME."""
+    credential dir (limits are per-account): Claude via CLAUDE_CONFIG_DIR, Codex via CODEX_HOME,
+    Gemini via a GEMINI_API_KEY value (a real secret, not a directory path — see PipelineConfig)."""
     if name == "headless" and config.claude_accounts:
         return [HeadlessClaudeRunner(config.with_overrides(runner=name, claude_config_dir=d), ledger)
                 for d in config.claude_accounts]
     if name == "codex" and config.codex_accounts:
         return [CodexRunner(config.with_overrides(runner=name, codex_home=d), ledger)
                 for d in config.codex_accounts]
+    if name == "gemini" and config.gemini_accounts:
+        return [GeminiRunner(config.with_overrides(runner=name, gemini_api_key=k), ledger)
+                for k in config.gemini_accounts]
     return [_build_one(config, ledger, name)]
 
 

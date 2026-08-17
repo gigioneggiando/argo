@@ -18,6 +18,16 @@ OPUS = "claude-opus-5"
 SONNET = "claude-sonnet-5"
 HAIKU = "claude-haiku-4-5-20251001"  # cheapest; used for the headless smoke run
 
+# --- Model IDs (Gemini CLI backend). Pinned concrete ids, never the auto-resolving
+# "pro"/"flash" aliases: an alias breaks MODEL_PRICING's substring match, run-to-run
+# reproducibility, and (confirmed empirically against gemini-cli v0.49.0) can trigger an
+# extra internal "which model should handle this" routing call that a pinned id skips
+# entirely. Re-confirm these strings periodically -- preview ids churn; there is no
+# `--list-models` flag, these were read directly off real `stats.models` keys.
+GEMINI_PRO = "gemini-3.1-pro"
+GEMINI_FLASH = "gemini-3.5-flash"
+GEMINI_FLASH_LITE = "gemini-3.1-flash-lite"  # cheapest; used for the Gemini smoke run
+
 #: Default per-stage model assignment.
 #:  * ingest   -> Sonnet (never Haiku: misreading scope/RoE has outsized consequences).
 #:  * recon    -> Opus   (judgment-heavy synthesis, low volume).
@@ -42,6 +52,26 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
     "asan_poc": OPUS,   # single-shot, precision-critical harness authoring (opt-in, C/C++ only)
 }
 
+#: Default per-stage model assignment for the Gemini backend. Same placement rationale as
+#: DEFAULT_STAGE_MODELS above (Pro for judgment-heavy/low-volume stages, Flash for high-volume
+#: fan-out) -- Gemini's pro/flash tier genuinely maps onto that split, unlike Codex's flat model.
+DEFAULT_GEMINI_STAGE_MODELS: dict[str, str] = {
+    "ingest": GEMINI_FLASH,
+    "recon": GEMINI_PRO,
+    "audit": GEMINI_FLASH,
+    "validate": GEMINI_PRO,
+    "report": GEMINI_FLASH,
+    "chat": GEMINI_FLASH,
+    "remediate": GEMINI_PRO,
+    "research": GEMINI_FLASH,
+    "sca": GEMINI_PRO,
+    "runtime": GEMINI_FLASH,
+    "live": GEMINI_FLASH,
+    "corroborate": GEMINI_FLASH,
+    "verify": GEMINI_PRO,
+    "asan_poc": GEMINI_PRO,
+}
+
 #: Default per-stage wall-clock overrides (seconds). Recon now does deep ground-truth extraction
 #: (enumerating variant families, baseline-correct refs, invariants across the whole tree) and the
 #: audit walks every family member — both want more headroom than the 1800s global default. The
@@ -55,12 +85,17 @@ DEFAULT_STAGE_TIMEOUTS: dict[str, int] = {
 
 # --- Cost estimation for backends that report tokens but not USD ---------------------
 # Claude Code returns an authoritative ``total_cost_usd`` per call. The Codex CLI (OpenAI / OSS)
-# reports tokens, not dollars, so for it we ESTIMATE: tokens x this rough price table. Figures are
-# USD per 1M tokens (input, output); used only for the budget guard + cost analytics, never billed.
-# Unknown models (incl. ``--oss`` / local) estimate to $0 — tokens are still logged.
+# and the Gemini CLI report tokens, not dollars, so for both we ESTIMATE: tokens x this rough price
+# table. Figures are USD per 1M tokens (input, output); used only for the budget guard + cost
+# analytics, never billed. Unknown models (incl. ``--oss`` / local) estimate to $0 — tokens are
+# still logged. Gemini figures confirmed 2026-08-17 from ai.google.dev/gemini-api/docs/pricing
+# (standard tier, <=200k-token prompts; Pro steps up to $4/$18 above 200k -- not modeled here,
+# estimate_cost_usd doesn't take a prompt-size argument, so very large Pro-tier prompts undercount
+# slightly rather than justify a tiered lookup for a rare case).
 MODEL_PRICING: dict[str, tuple[float, float]] = {
     "gpt-5.5": (1.25, 10.0), "gpt-5-codex": (1.25, 10.0), "gpt-5": (1.25, 10.0),
     "gpt-4o": (2.5, 10.0), "gpt-4.1": (2.0, 8.0), "o4-mini": (1.1, 4.4), "o3": (2.0, 8.0),
+    GEMINI_PRO: (2.00, 12.00), GEMINI_FLASH: (1.50, 9.00), GEMINI_FLASH_LITE: (0.25, 1.50),
 }
 
 
@@ -122,9 +157,12 @@ class PipelineConfig:
 
     # Model assignment per stage.
     stage_models: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_STAGE_MODELS))
+    # Gemini backend's own per-stage assignment (Gemini is tiered like Claude, not flat like Codex —
+    # see DEFAULT_GEMINI_STAGE_MODELS). Only consulted when runner == "gemini".
+    gemini_stage_models: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_GEMINI_STAGE_MODELS))
 
     # Execution.
-    runner: str = "headless"            # "headless" (Claude Code) | "codex" (Codex CLI) | "mock"
+    runner: str = "headless"            # "headless" (Claude Code) | "codex" (Codex CLI) | "gemini" (Gemini CLI) | "mock"
     # Resilience: ordered fallback backends. When the primary runner hits a retryable limit
     # (session-limit / rate-limit / 429), the same call is transparently retried on the next backend
     # (e.g. ["codex"] => Claude -> Codex). A walled backend is skipped for the rest of the run.
@@ -140,6 +178,13 @@ class PipelineConfig:
     # ordered list of CODEX_HOME dirs -> the codex backend becomes an account-fallback chain.
     codex_home: str | None = None
     codex_accounts: list[str] = field(default_factory=list)
+    # Multi-account Gemini: unlike Claude/Codex's directory-based accounts, Gemini's practical
+    # automation-auth lever is the GEMINI_API_KEY env var, so ``gemini_accounts`` holds ordered KEY
+    # VALUES (not directory paths) -- a deliberate deviation from the Claude/Codex pattern, not an
+    # inconsistency. These are real secrets (the credential lives IN the value, not on disk outside
+    # Argo's state) -- see _SECRET_FIELDS below, which redacts both from runs/<id>/config.json.
+    gemini_api_key: str | None = None
+    gemini_accounts: list[str] = field(default_factory=list)
     max_parallel_audits: int = 3        # concurrency cap for Stage 3 / Stage 4 fan-out
     # Efficiency: validate/corroborate historically span ONE session per finding, which is ~90% of a
     # run's sessions and the main driver of rate-limit exhaustion. Batching groups N findings into a
@@ -332,6 +377,12 @@ class PipelineConfig:
         # real id via -m only when codex_model is set, else the Codex CLI's own default is used).
         if self.runner == "codex":
             return self.codex_model or _codex_default_model() or "codex-default"
+        # Gemini is tiered per stage like Claude, via its own dict (see DEFAULT_GEMINI_STAGE_MODELS).
+        if self.runner == "gemini":
+            try:
+                return self.gemini_stage_models[stage]
+            except KeyError:  # pragma: no cover - defensive
+                raise KeyError(f"No Gemini model configured for stage {stage!r}") from None
         try:
             return self.stage_models[stage]
         except KeyError:  # pragma: no cover - defensive
@@ -345,13 +396,20 @@ class PipelineConfig:
         return replace(self, **kwargs)
 
     def with_stage_model(self, stage: str, model: str) -> "PipelineConfig":
+        if self.runner == "gemini":
+            models = dict(self.gemini_stage_models)
+            models[stage] = model
+            return replace(self, gemini_stage_models=models)
         models = dict(self.stage_models)
         models[stage] = model
         return replace(self, stage_models=models)
 
     def calibrated(self) -> "PipelineConfig":
-        """Calibration default: run the audit stage on Opus (effectively all-Opus) so a
-        weak prompt is never confounded with a weak model when diagnosing missed bugs."""
+        """Calibration default: run the audit stage on the backend's top-tier model
+        (effectively all-Opus / all-Pro) so a weak prompt is never confounded with a
+        weak model when diagnosing missed bugs."""
+        if self.runner == "gemini":
+            return self.with_stage_model("audit", GEMINI_PRO)
         return self.with_stage_model("audit", OPUS)
 
     def for_smoke(self) -> "PipelineConfig":
@@ -361,13 +419,21 @@ class PipelineConfig:
 
         Recon uses Sonnet (not Haiku): the synthesis stage is guardrail-gated (each generated
         prompt must carry the RoE + prohibited techniques + 'Do NOT patch' verbatim), and Haiku
-        is too unreliable at reproducing the template. Every other stage stays on Haiku."""
+        is too unreliable at reproducing the template. Every other stage stays on Haiku.
+
+        Primes BOTH stage_models (Claude) and gemini_stage_models (Gemini) unconditionally, same
+        reasoning either way: the CLI's --smoke flow calls for_smoke() first, then re-applies the
+        actually-requested --runner afterward (see cli.py), so whichever backend ends up selected
+        must already have its cheap dict ready."""
         models = {k: HAIKU for k in self.stage_models}
         models["recon"] = SONNET
+        gemini_models = {k: GEMINI_FLASH_LITE for k in self.gemini_stage_models}
+        gemini_models["recon"] = GEMINI_FLASH
         return replace(
             self,
             runner="headless",
             stage_models=models,
+            gemini_stage_models=gemini_models,
             budget_usd=2.0,
             stage_timeouts={},            # smoke stays cheap: no deep recon/audit overrides
             session_timeout_s=600,        # sonnet recon explores the repo; give it headroom
@@ -381,6 +447,14 @@ class PipelineConfig:
 
 _PATH_FIELDS = {"runs_dir", "prompts_dir", "ledger_path", "fixtures_dir"}
 
+# Fields holding real secret material (as opposed to claude_config_dir/codex_home, which are just
+# directory paths -- the credential lives on disk outside Argo's state, not in the field value
+# itself). Gemini's practical auth lever is GEMINI_API_KEY, so these two DO carry raw key values.
+# Every PipelineConfig field is serialized verbatim into runs/<id>/config.json for `argo resume` /
+# `argo chat` to read back -- redact these two so a run directory never leaks a live API key.
+_SECRET_FIELDS = {"gemini_api_key", "gemini_accounts"}
+_REDACTED = "<redacted>"
+
 
 def _jsonable(value):
     if isinstance(value, Path):
@@ -393,8 +467,18 @@ def _jsonable(value):
 
 
 def pipeline_config_to_dict(config: PipelineConfig) -> dict:
-    """Return a JSON-safe representation of the effective PipelineConfig."""
-    return {f.name: _jsonable(getattr(config, f.name)) for f in fields(PipelineConfig)}
+    """Return a JSON-safe representation of the effective PipelineConfig. Secret-bearing fields
+    (see _SECRET_FIELDS) are redacted -- `argo resume` on a Gemini run needs the key re-supplied,
+    a narrow, deliberate deviation from resume's normal zero-flags-needed behavior."""
+    out = {}
+    for f in fields(PipelineConfig):
+        if f.name in _SECRET_FIELDS:
+            value = getattr(config, f.name)
+            out[f.name] = ([_REDACTED] * len(value)) if isinstance(value, list) else (
+                _REDACTED if value else value)
+        else:
+            out[f.name] = _jsonable(getattr(config, f.name))
+    return out
 
 
 def pipeline_config_from_dict(raw: dict) -> PipelineConfig:

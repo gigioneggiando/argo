@@ -128,10 +128,12 @@ executes. The one hard boundary: a run that stopped **before ingest finished** (
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--runner {headless\|codex\|mock}` | `headless` | `headless` = Claude Code · `codex` = Codex CLI (OpenAI / OSS) · `mock` = zero-token fixtures. See [backends.md](backends.md). |
+| `--runner {headless\|codex\|gemini\|mock}` | `headless` | `headless` = Claude Code · `codex` = Codex CLI (OpenAI / OSS) · `gemini` = Gemini CLI (Google) · `mock` = zero-token fixtures. See [backends.md](backends.md). |
 | `--codex-model MODEL` | — | (runner=codex) model id (e.g. `gpt-5-codex`); **omit to use the Codex CLI default** (recommended) |
 | `--codex-oss` | off | (runner=codex) use the open-source provider (`--oss`) |
 | `--codex-local-provider {ollama\|lmstudio}` | — | (runner=codex --codex-oss) which local provider |
+| `--gemini-model MODEL` | — | (runner=gemini) flat model override across every stage (e.g. `gemini-3.1-pro`); applied before `--calibration`/`--audit-model`. Omit to use the built-in per-stage tiering. |
+| `--gemini-api-key KEY` | — | (runner=gemini) sets `GEMINI_API_KEY` for this run; omit to use the ambient env var / an existing `gemini` CLI login. A real secret — redacted in `runs/<id>/config.json`; `argo resume` needs it re-supplied. |
 | `--audit-model MODEL` | — | override only the Stage-3 audit model |
 | `--calibration` | off | run audit on Opus (effectively all-Opus) |
 | `--budget USD` | none | **HARD** per-run ceiling; aborts remaining sessions once hit |

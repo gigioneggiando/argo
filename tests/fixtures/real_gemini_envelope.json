@@ -1,0 +1,89 @@
+{
+  "session_id": "30fae387-c78c-4f36-8976-48caced18ed5",
+  "response": "OK",
+  "stats": {
+    "models": {
+      "gemini-3.1-flash-lite": {
+        "api": {
+          "totalRequests": 1,
+          "totalErrors": 0,
+          "totalLatencyMs": 9199
+        },
+        "tokens": {
+          "input": 2929,
+          "prompt": 2929,
+          "candidates": 38,
+          "total": 3412,
+          "cached": 0,
+          "thoughts": 445,
+          "tool": 0
+        },
+        "roles": {
+          "utility_router": {
+            "totalRequests": 1,
+            "totalErrors": 0,
+            "totalLatencyMs": 9199,
+            "tokens": {
+              "input": 2929,
+              "prompt": 2929,
+              "candidates": 38,
+              "total": 3412,
+              "cached": 0,
+              "thoughts": 445,
+              "tool": 0
+            }
+          }
+        }
+      },
+      "gemini-3.5-flash": {
+        "api": {
+          "totalRequests": 1,
+          "totalErrors": 0,
+          "totalLatencyMs": 2005
+        },
+        "tokens": {
+          "input": 9373,
+          "prompt": 9373,
+          "candidates": 1,
+          "total": 9610,
+          "cached": 0,
+          "thoughts": 236,
+          "tool": 0
+        },
+        "roles": {
+          "main": {
+            "totalRequests": 1,
+            "totalErrors": 0,
+            "totalLatencyMs": 2005,
+            "tokens": {
+              "input": 9373,
+              "prompt": 9373,
+              "candidates": 1,
+              "total": 9610,
+              "cached": 0,
+              "thoughts": 236,
+              "tool": 0
+            }
+          }
+        }
+      }
+    },
+    "tools": {
+      "totalCalls": 0,
+      "totalSuccess": 0,
+      "totalFail": 0,
+      "totalDurationMs": 0,
+      "totalDecisions": {
+        "accept": 0,
+        "reject": 0,
+        "modify": 0,
+        "auto_accept": 0
+      },
+      "byName": {}
+    },
+    "files": {
+      "totalLinesAdded": 0,
+      "totalLinesRemoved": 0
+    }
+  }
+}

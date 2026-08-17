@@ -32,7 +32,13 @@ class JobManager:
             codex_model=req.config.codex_model,
             codex_oss=req.config.codex_oss,
             codex_local_provider=req.config.codex_local_provider,
+            gemini_api_key=req.config.gemini_api_key,
         )
+        if req.config.gemini_model:
+            # Flat override across every stage, applied BEFORE calibration/audit_model below so
+            # those can still bump individual stages on top -- mirrors the CLI's _build_config.
+            cfg = cfg.with_overrides(
+                gemini_stage_models={k: req.config.gemini_model for k in cfg.gemini_stage_models})
         if req.config.calibration:
             cfg = cfg.calibrated()
         if req.config.audit_model:

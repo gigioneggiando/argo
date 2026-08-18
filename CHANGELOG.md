@@ -9,6 +9,28 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- **Web UI: Gemini as a full runner option.** New Run's runner selector and Settings' default-runner
+  picker now offer Gemini alongside Claude/Codex/Mock (Settings previously only offered Mock/Claude —
+  Codex was missing there too). A Gemini model picker (populated from `GET /models`) + API-key field
+  appear when Gemini is selected, mirroring the existing Codex row. The backend (`RunConfig.gemini_model`/
+  `gemini_api_key`, `GET /models`' `gemini` entry) already supported this since `v0.4.0`; the webapp
+  never wired it up until now.
+- **Web UI: cross-backend benchmark + refusal-probe cards** on the Benchmarks page — reads the
+  already-existing `GET /benchmark/cross` / `GET /refusal-probe` endpoints (added in `v0.5.0`, never
+  surfaced in the UI), rendering per-backend cost/latency/precision/recall/F1 and refusal-flag/
+  recovery rates when a report exists.
+
+### Fixed
+
+- Settings' runner selector was missing **Codex** entirely (only Mock/Claude) — an independent,
+  pre-existing gap now fixed alongside the Gemini addition.
+- The "danger" (real-spend) styling on the runner selector only ever applied to Claude — Codex was
+  silently unflagged. `seg()` now takes an explicit danger set so every real backend gets it.
+- A New-Run submit-error fallback had inverted logic (`runner === "headless" ? real : free`), which
+  would have mislabeled the Start button after a failed Codex/Gemini run. Now checks for `"mock"`.
+
 ## [0.5.0] - 2026-08-17
 
 ### Added

@@ -111,11 +111,13 @@ Detection and remediation are deliberately decoupled so the audit's read-only gu
   registry's real-world **accept rate** (human-judged precision) — see the data pipeline's
   `quality.json`. The two together are the headline result; neither alone is.
 - **Model-dependence (and how the multi-backend design turns it into a result).** Quality depends on
-  the model. Because Argo is backend-swappable (Claude Code, the Codex CLI / OpenAI, or local/OSS — see
-  [backends.md](backends.md)) with the *same* prompts, pipeline, and guardrails, "model" is the only
-  variable that changes between backends. That makes a **cross-model comparison** a clean experiment
-  rather than a confound — and reinforces the no-CPG decision (§2): the thing under study is the
-  LLM's source reasoning, isolated.
+  the model. Because Argo is backend-swappable (Claude Code, the Codex CLI / OpenAI, Gemini CLI, or
+  local/OSS — see [backends.md](backends.md)) with the *same* prompts, pipeline, and guardrails,
+  "model" is the only variable that changes between backends. That makes a **cross-model
+  comparison** a clean experiment rather than a confound — and reinforces the no-CPG decision (§2):
+  the thing under study is the LLM's source reasoning, isolated. `argo bench-cross` and `argo
+  refusal-probe` operationalize this directly (cost/latency/precision/recall/F1 and refusal-rate
+  side by side across backends).
 - **Non-determinism & cost.** LLM runs vary; we pin prompt-asset sha256 + the analyzed commit per
   run, log every call's cost, and report cost-per-accepted-finding. Reproducibility is "same inputs,
   same config, comparable (not identical) output" — a known property of LLM pipelines.

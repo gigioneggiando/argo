@@ -8,7 +8,7 @@ produces a human-review bundle. **It never submits and never touches a live host
 
 Full documentation lives in [`../docs/`](../docs/):
 
-- [architecture.md](../docs/architecture.md) — module map, data flow, the `ClaudeRunner`
+- [architecture.md](../docs/architecture.md) — module map, data flow, the `AgentRunner`
   interface, `RunContext`, the SQLite ledger, the dedup algorithm
 - [cli-reference.md](../docs/cli-reference.md) — every command and flag
 - [guardrails.md](../docs/guardrails.md) — the hard guardrails and where each is enforced here

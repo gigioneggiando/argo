@@ -9,9 +9,18 @@ builds one from flags; tests and the orchestrator can build one directly. Derive
 Model IDs:
 
 ```python
-OPUS   = "claude-opus-4-8"
-SONNET = "claude-sonnet-4-6"
+OPUS   = "claude-opus-5"
+SONNET = "claude-sonnet-5"
 HAIKU  = "claude-haiku-4-5-20251001"   # cheapest; used by --smoke
+
+# Gemini, tiered per stage the same way (DEFAULT_GEMINI_STAGE_MODELS):
+GEMINI_PRO        = "gemini-3.1-pro"
+GEMINI_FLASH      = "gemini-3.5-flash"
+GEMINI_FLASH_LITE = "gemini-3.1-flash-lite"   # cheapest; used by the Gemini --smoke run
+
+# Codex, flat (not per-stage) — see the `runner` field below:
+CODEX_TOP   = "gpt-5-codex"   # Codex's own coding-focused top model
+CODEX_CHEAP = "o4-mini"       # a real lighter/cheaper model, mirrors Haiku/Flash-Lite's role
 ```
 
 Per-stage defaults (`DEFAULT_STAGE_MODELS`), each overridable per run:
@@ -82,11 +91,13 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 
 | Field | Default | Meaning |
 |---|---|---|
-| `runner` | `headless` | `headless` (Claude Code) · `codex` (Codex CLI / OpenAI / OSS) · `mock` — see [backends.md](backends.md) |
-| `runner_fallbacks` | `--fallback` | ordered fallback backends (e.g. `--fallback codex`) — when the primary hits a **retryable** failure (session/rate-limit, timeout, or a classified Codex moderation-flag/credits-exhaustion signature), the same call is transparently retried on the next backend (`FallbackRunner`), with a per-run circuit breaker whose cooldown length depends on the failure's classified kind (longer for credits exhaustion, a real delay before retrying the *same* backend provider again after a moderation flag). Each backend selects its own model for the stage. See [architecture.md](architecture.md#the-agentrunner-abstraction) for the full failure-kind/backoff breakdown. |
+| `runner` | `headless` | `headless` (Claude Code) · `codex` (Codex CLI / OpenAI / OSS) · `gemini` (Gemini CLI) · `mock` — see [backends.md](backends.md) |
+| `runner_fallbacks` | `--fallback` | ordered fallback backends (e.g. `--fallback codex,gemini`) — when the primary hits a **retryable** failure (session/rate-limit, timeout, or a classified moderation-flag/credits-exhaustion signature), the same call is transparently retried on the next backend (`FallbackRunner`), with a per-run circuit breaker whose cooldown length depends on the failure's classified kind (longer for credits exhaustion, a real delay before retrying the *same* backend provider again after a moderation flag). Each backend selects its own model for the stage. See [architecture.md](architecture.md#the-agentrunner-abstraction) for the full failure-kind/backoff breakdown. |
 | `claude_accounts` / `claude_config_dir` | `--claude-accounts` | **multi-account Claude**: an ordered list of `CLAUDE_CONFIG_DIR` paths, each a separate logged-in account (limits are **per-account**). The headless backend becomes an account-fallback chain — `account A → account B → --fallback`. Set up each once with `CLAUDE_CONFIG_DIR=<dir> claude login`. The runner injects `CLAUDE_CONFIG_DIR` (normalized, `~` expanded) per `claude` invocation. |
 | `codex_accounts` / `codex_home` | `--codex-accounts` | **multi-account Codex**: the same via `CODEX_HOME` (default `~/.codex`). Set up each once with `CODEX_HOME=<dir> codex login`. A `codex` backend (primary or fallback) expands to one runner per account. |
-| `codex_model` / `codex_oss` / `codex_local_provider` | `None` / `False` / `None` | (runner=codex) model id; open-source provider toggle; `ollama`/`lmstudio`. Codex cost is **token-estimated** (`MODEL_PRICING`), not authoritative |
+| `codex_model` / `codex_oss` / `codex_local_provider` | `None` / `False` / `None` | (runner=codex) model id (e.g. `CODEX_TOP`/`CODEX_CHEAP`); open-source provider toggle; `ollama`/`lmstudio`. Codex cost is **token-estimated** (`MODEL_PRICING`), not authoritative |
+| `gemini_stage_models` | `DEFAULT_GEMINI_STAGE_MODELS` | (runner=gemini) per-stage model dict, tiered like Claude's `stage_models` (`GEMINI_PRO`/`GEMINI_FLASH`/`GEMINI_FLASH_LITE`) — only consulted when `runner == "gemini"` |
+| `gemini_api_key` / `gemini_accounts` | `--gemini-api-key` / `--gemini-accounts` | (runner=gemini) API key; **multi-account Gemini** via an ordered list of keys (the automation-auth lever is the `GEMINI_API_KEY` env var, so accounts are keys, not config dirs like Claude/Codex) |
 | `excerpt_context_lines` | 40 | ± lines of source attached around each cited `file:line` in Stage 4 |
 | `excerpt_max_bytes` | 60000 | hard cap on total excerpt bytes per finding |
 | `attribution` | `--attribution / --no-attribution` | append a "Produced by **Argo**" provenance footer to `REPORT.md` / drafts + an attribution block to `fixes_report.json` (with `Generated-with:` / `Co-authored-by:` trailers for remediation PRs). **Default on** for every user; opt out with `--no-attribution`. Attribution only — never changes any license. See [`argo/branding.py`](../argo/branding.py). |

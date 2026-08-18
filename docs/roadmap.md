@@ -232,6 +232,12 @@ under `benchmarks/<case>/` (`case.json` + `expected_findings.json`); see [benchm
 - [x] **Seeded-bug corpora at scale** (backlog **A1**) — provenance + `--parallel-cases` + corpus recipe.
 - [x] **Re-audit the patched copy** (backlog **A3**) — `patch_quality.re_audit_confirmed_rate`, `--re-audit`.
 - [x] **Triager accept-rate** (backlog **A2**) — `argo feedback`/`argo quality`, `GET /quality`, `quality.json`.
+- [x] **Cross-backend comparison** (shipped v0.5.0, 2026-08-17) — `argo bench-cross` runs the same
+      suite once per backend (Claude/Codex/Gemini) and reports cost/latency/precision/recall/F1
+      side by side (`compare_backends()`), distinct from `--ab-audit-model`'s same-backend A/B.
+      `argo refusal-probe` measures how often each backend's own safety classifier false-positives
+      on a legitimate, authorized audit prompt (`refusal_flag_rate`/`refusal_recovery_rate`) — see
+      [docs/backends.md](backends.md) and [benchmarks/README.md](../benchmarks/README.md).
 
 ### Phase 8 — Cost model & economics — ✅ DONE (cost side; quality side needs Phase 7)
 Turn the ledger into guidance. Implemented in `argo/costs.py` + `GET /costs` + a **Costs** UI page.
@@ -335,23 +341,34 @@ and audit-logged, and the default tool remains 100% offline against the program'
 
 ## Deferred-feature backlog — feasibility & implementation plan (code-audited 2026-06-18)
 
-### G. Gemini backend — ⬜ BACKLOG (blocked by Google's CLI migration, investigated 2026-06-26)
-Adding Gemini as a 3rd provider in the `AgentRunner`/`FallbackRunner` chain (alongside Claude +
-Codex). **Investigated and parked** — findings so the next attempt doesn't re-investigate:
+### G. Gemini backend — ✅ DONE (shipped v0.4.0, 2026-08-17)
+Gemini is now a full 3rd provider in the `AgentRunner`/`FallbackRunner` chain (alongside Claude +
+Codex) — `GeminiRunner`, `--runner gemini`. Superseded the 2026-06-26 investigation below (kept as
+history): the blocker there was the raw-API path and the then-broken `gemini` CLI; the real fix was
+wrapping the **agentic** `gemini` CLI directly (stdin-only prompt delivery, `--skip-trust`,
+`--include-directories`, `--approval-mode yolo`), tiered per stage like Claude
+(`DEFAULT_GEMINI_STAGE_MODELS`), fully composable into `--fallback` and multi-account resilience.
+Guardrails map onto Gemini's **Policy Engine** (a named-tool denylist, same dialect as Claude's —
+not `--sandbox`, which was found to have a hard, unreliable Docker/Podman dependency during
+empirical verification). Moderation detection is a heuristic (no structured field exposed by the
+CLI) that feeds the same `_classify_failure_text` marker-matching machinery the other two backends
+use. Full detail: [docs/backends.md](backends.md#gemini-specifics-runner--gemini).
+
+<details>
+<summary>Original 2026-06-26 investigation (superseded, kept for history)</summary>
+
+Findings from the first attempt, before the CLI itself was revisited:
 - **The API key WORKS** — a raw `generativelanguage.googleapis.com/.../generateContent` call returns
   HTTP 200 with clean JSON + `usageMetadata` (tokens for cost). An AI-Studio key (new `AQ.Ab8…`
   format) is fine.
-- **The `gemini` CLI (v0.49) is broken for us** — `gemini -p -o json` returns a persistent **503**
-  across models; it routes to the deprecated Code Assist / Antigravity path (Google cut the free
-  Code-Assist tier **2026-06-18** and is migrating users to **Antigravity / Antigravity CLI**).
-- **Architecture implication:** the working path (raw API) is **text-only** — no agentic tools, so it
-  cannot do Argo's agentic **audit/recon** (which need repo grep/read). It *could* serve the
-  **text-reasoning stages** (`validate` — excerpts are already inlined; `sca`) as a fallback, which is
-  exactly where session limits wall.
-- **Two ways to revisit:** (A) build a raw-API `GeminiRunner` (HTTP, text-only) wired in as a
-  fallback for `validate`/`sca` only — inherently safe (no tools = no network/mutation to strip);
-  (B) wait for the `gemini`/Antigravity CLI to stabilize, then wrap it like `CodexRunner` (agentic).
-- Either way it slots into the existing `_expand_backend`/`FallbackRunner` (e.g. `--fallback codex,gemini`).
+- **The `gemini` CLI (v0.49) was broken at the time** — `gemini -p -o json` returned a persistent
+  **503** across models; it routed to the deprecated Code Assist / Antigravity path (Google cut the
+  free Code-Assist tier **2026-06-18** and was migrating users to Antigravity / Antigravity CLI).
+  This had resolved by the time of the real v0.4.0 implementation attempt.
+- The raw-API-only, text-only fallback idea (serving `validate`/`sca` only) was considered but
+  dropped once the real CLI worked agentically end to end — no need for a text-only carve-out.
+
+</details>
 
 Each item below was verified against the current code (exact files, functions, signatures, and
 blockers). Effort is **S/M/L**; "paper value" rates how much it strengthens the research artifact.

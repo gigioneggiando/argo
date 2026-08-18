@@ -18,7 +18,8 @@ argo/
   schemas.py        Draft-07 validation against scope_schema.json / findings_schema.json
   guardrails.py     tool allowlist enforcement, prohibited-technique assertions, scope filter
   rendering.py      placeholder fill, the .j2 template, the artifact-contract epilogue
-  runner.py         AgentRunner interface + HeadlessClaudeRunner · CodexRunner · MockClaudeRunner
+  runner.py         AgentRunner interface + HeadlessClaudeRunner · CodexRunner · GeminiRunner ·
+                    MockClaudeRunner (+ FallbackRunner chaining any of them)
   ranking.py        severity/confidence ordering, ref parsing, dedup_key
   ledger.py         SQLite: llm_calls (cost) + findings_ledger (cross-run dedup)
   progress.py       ProgressReporter -> runs/<id>/status.json (live stage timeline + cost)
@@ -35,6 +36,9 @@ argo/
   fixes.py          Phase-6 remediation: propose a patch per confirmed finding (opt-in)
   verify.py         Phase-6 patch verification on an ISOLATED COPY (applies? compiles? no new errors?)
   benchmark.py      Phase-7 eval: score findings P/R/F1 vs labeled suites (by archetype / CWE) + A/B
+                    (same-backend) + compare_backends (N-way, cross-backend cost/latency/P/R/F1)
+  refusal_probe.py  cross-backend refusal-rate probe: how often each backend's own safety
+                    classifier false-positives on a legitimate, authorized audit prompt
   stages/
     ingest.py  research.py  recon.py  audit.py  sca.py  second_opinion.py  validate.py
     corroborate.py  deep_verify.py  runtime.py  report.py
@@ -314,9 +318,13 @@ Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`
   [headless-runner.md](headless-runner.md).
 - **`CodexRunner`** — shells out to the Codex CLI for OpenAI models or, with `--codex-oss`, a local
   open-source model (Ollama / LM Studio). See [backends.md](backends.md).
+- **`GeminiRunner`** — shells out to the `gemini` CLI (stdin-only prompt delivery, `--skip-trust`,
+  `--include-directories`, `--approval-mode yolo`), tiered per stage like Claude. Guardrails map
+  onto Gemini's **Policy Engine** (a named-tool denylist, not `--sandbox`, which needs Docker/
+  Podman). See [backends.md](backends.md#gemini-specifics-runner--gemini).
 - **`MockClaudeRunner`** — writes fixture files into the scratch dir and returns a synthetic
   manifest. Zero tokens; used by the whole test suite.
-- **`FallbackRunner`** (resilience, `--fallback codex`) — wraps an ordered chain of the above. When
+- **`FallbackRunner`** (resilience, `--fallback codex,gemini`) — wraps an ordered chain of the above. When
   the primary backend hits a **retryable** session/rate-limit (429), the same call is transparently
   retried on the next backend (each picking its own per-stage model), so a long Opus run that walls
   on the Claude session limit mid-`validate` self-heals onto Codex instead of degrading. A walled
@@ -327,9 +335,10 @@ Concrete backends (all subclasses of `AgentRunner`, dispatched by `build_runner`
   (`session_limit_reset_hint`) — so a human (or a future resume script) can `grep` a run log for
   exactly when it is safe to retry, instead of hunting down and re-reading the raw API error text.
   The chain can mix backends **and accounts** (`_expand_backend`): `--claude-accounts dirA,dirB`
-  builds one `HeadlessClaudeRunner` per `CLAUDE_CONFIG_DIR` and `--codex-accounts` one `CodexRunner`
-  per `CODEX_HOME` (limits are per-account), so e.g. `Claude-A → Claude-B → Codex-A → Codex-B`. The
-  runner injects the per-account env var (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`, normalized) per call.
+  builds one `HeadlessClaudeRunner` per `CLAUDE_CONFIG_DIR`, `--codex-accounts` one `CodexRunner`
+  per `CODEX_HOME`, and `--gemini-accounts` one `GeminiRunner` per Gemini API key (limits are
+  per-account), so e.g. `Claude-A → Claude-B → Codex-A → Codex-B → Gemini-A`. The runner injects the
+  per-account env var/key (`CLAUDE_CONFIG_DIR` / `CODEX_HOME` / Gemini API key, normalized) per call.
 
   **Failure-kind classification and kind-aware backoff.** Every `RunnerError` carries an optional
   `failure_kind` (`"moderation_flagged"`, `"credits_exhausted"`, `"rate_limited"`, `"timeout"`,
@@ -504,13 +513,19 @@ first seen); the others' `affected` and `variants` are unioned in. Implemented i
 
 ```sql
 llm_calls(id, ts, run_id, stage, model, prompt_sha256,
-          input_tokens, output_tokens, cost_usd, num_turns, session_id, stop_reason)
+          input_tokens, output_tokens, cost_usd, num_turns, session_id, stop_reason,
+          duration_ms, failure_kind, label)
 
 findings_ledger(id, ts, program_name, run_id, dedup_key, title, verdict, validated_severity,
                 triager_accepted, triager_feedback, triager_ts,
                 UNIQUE(program_name, dedup_key, run_id))
 ```
 
+- `duration_ms`/`failure_kind`/`label` (added v0.5.0, via `_MIGRATIONS`) persist per-call
+  wall-clock latency and the same failure classification a `RunnerError` already carried
+  (`moderation_flagged`, `rate_limited`, ...) — previously only visible inside a raised exception's
+  message, never queryable after the fact. This is what `bench-cross`'s latency numbers and
+  `refusal-probe`'s `refusal_flag_rate`/`refusal_recovery_rate` are computed from.
 - `llm_calls` powers cost control and the hard per-run `--budget` guard (`run_cost()`). A
   second-opinion blind pass (`--second-opinion N`) runs under its own child run_id
   (`f"{run_id}-so{N}"`, its own isolated `run_dir`) but the **same** ledger file — `run_cost()`/
@@ -574,6 +589,18 @@ then matches validated findings to labels: a reported finding matches when the *
 agrees (or is in the label's `aliases`) and the **file** matches (path-suffix), optionally within a
 `line_tolerance`. Labels are treated as exhaustive — unmatched reported = FP, unmatched label = FN —
 yielding **precision / recall / F1** overall and sliced **by archetype** and **by CWE**. `--fixes`
-folds in Phase-6 patch-verified rate; `ab_compare` runs the suite under two configs and reports the
-metric delta. Reports land in `<runs_dir>/benchmark_report.json` (read-only `GET /benchmark`). The
-whole harness runs on the mock runner at zero tokens; headless measures real model quality.
+folds in Phase-6 patch-verified rate; `ab_compare` runs the suite under two configs (same backend,
+two audit models) and reports the metric delta. Reports land in `<runs_dir>/benchmark_report.json`
+(read-only `GET /benchmark`). The whole harness runs on the mock runner at zero tokens; headless
+measures real model quality.
+
+`compare_backends()` / `argo bench-cross` answers a different question: the **same** suite run once
+per **backend** (Claude/Codex/Gemini), reporting cost/latency/precision/recall/F1 side by side — an
+N-way comparison, not a 2-way delta. `argo/refusal_probe.py` / `argo refusal-probe` measures a
+separate axis entirely — how often each backend's own safety classifier false-positives on a
+legitimate, authorized security-audit prompt (`refusal_flag_rate`), and how often a same-backend
+neutral-register retry recovers it (`refusal_recovery_rate`) — using a small curated,
+non-adversarial prompt set (`tests/fixtures/refusal_prompts.json`), deliberately not jailbreak/
+adversarial testing. Both land under `<runs_dir>/benchmark_crossbackend_report.json` /
+`refusal_probe_report.json`. See [backends.md](backends.md) and
+[../benchmarks/README.md](../benchmarks/README.md#cross-backend-comparison-and-refusal-rate).

@@ -43,7 +43,7 @@ an unmatched reported finding is a **false positive**, an unmatched label a **fa
 argo bench --suite benchmarks --runner mock        # zero-token: scores the fixtures harness
 argo bench --suite benchmarks                       # REAL run — measures model quality (costs $)
 argo bench --suite benchmarks --fixes               # also score Phase-6 patch quality
-argo bench --suite benchmarks --ab-audit-model claude-opus-4-8   # A/B vs the default audit model
+argo bench --suite benchmarks --ab-audit-model claude-opus-5   # A/B vs the default audit model
 argo bench --suite benchmarks --parallel-cases 4    # corpora at scale: run 4 cases concurrently
 ```
 

@@ -12,7 +12,7 @@
 
 Not a benchmark score — pull requests, published advisories, and a CVE, on real open-source projects.
 
-**31** projects audited and disclosed · **35** public PRs · **65** already resolved · **93% real-world accuracy**\*
+**11** projects audited and disclosed · **42** public PRs · **38** already resolved · **93% real-world accuracy**\*
 
 | Project | Stars | Severity | Result |
 |---|---:|---|---|
@@ -21,6 +21,7 @@ Not a benchmark score — pull requests, published advisories, and a CVE, on rea
 | [PocketBase](https://github.com/pocketbase/pocketbase) | 61k★ | High (8.7) | [Advisory published](https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx), reporter credited |
 | [LiveKit](https://github.com/livekit/livekit) | 20k★ | Critical + High | 13 of 24 findings fixed, credited on their [Security Hall of Fame](https://livekit.com/security/hall-of-fame) |
 | [coturn](https://github.com/coturn/coturn) | 14k★ | Medium | Real CVE assigned: [CVE-2026-73213](https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99) |
+| [ntfy](https://github.com/binwiederhier/ntfy) | 33k★ | High | Broken access control on revoked subscriptions, [PR open](https://github.com/binwiederhier/ntfy/pull/1845) |
 
 **[See every disclosed finding →](https://gigioneggiando.github.io/argo/)**
 

@@ -39,6 +39,8 @@ class ProgressReporter:
         self._state = str(initial_status.get("state") or "starting") if initial_status else "starting"
         self._error: Optional[str] = initial_status.get("error") if initial_status else None
         self._retry_after: Optional[str] = initial_status.get("retry_after") if initial_status else None
+        self._retry_after_hint: Optional[str] = (
+            initial_status.get("retry_after_hint") if initial_status else None)
         self._started_at = (initial_status.get("started_at") if initial_status else None) or _now()
         self._stage_state = {s: {"name": s, "state": "pending"} for s in self.stages}
         if initial_status:
@@ -57,6 +59,7 @@ class ProgressReporter:
             self._state = "running"
             self._error = None
             self._retry_after = None
+            self._retry_after_hint = None
             self._write()
 
     def start_stage(self, stage: str) -> None:
@@ -67,9 +70,11 @@ class ProgressReporter:
             st.pop("ended_at", None)
             st.pop("error", None)
             st.pop("retry_after", None)
+            st.pop("retry_after_hint", None)
             self._state = "running"
             self._error = None
             self._retry_after = None
+            self._retry_after_hint = None
             self._write()
 
     def finish_stage(self, stage: str) -> None:
@@ -79,9 +84,18 @@ class ProgressReporter:
             st["ended_at"] = _now()
             st.pop("error", None)
             st.pop("retry_after", None)
+            st.pop("retry_after_hint", None)
             self._write()
 
-    def fail_stage(self, stage: str, error: str, retry_after: str | None = None) -> None:
+    def fail_stage(self, stage: str, error: str, retry_after: str | None = None,
+                    retry_after_hint: str | None = None) -> None:
+        """``retry_after`` is an absolute, unambiguous ISO-8601 timestamp (resolved by the caller
+        at the moment of failure, when "now" is unambiguous) -- never a raw human hint like "1:50pm
+        (Europe/Kyiv)". A ``resume --wait`` invocation can run arbitrarily long after this write, so
+        re-interpreting a bare time-of-day string against a LATER "now" is genuinely ambiguous (is
+        1:50pm still today, or did we roll past it and it means tomorrow?) in a way an absolute
+        timestamp never is. ``retry_after_hint`` keeps the original human text for display only --
+        it must never be parsed for scheduling."""
         with self._lock:
             st = self._stage_state.setdefault(stage, {"name": stage, "state": "pending"})
             st["state"] = "failed"
@@ -91,9 +105,14 @@ class ProgressReporter:
                 st["retry_after"] = retry_after
             else:
                 st.pop("retry_after", None)
+            if retry_after_hint:
+                st["retry_after_hint"] = retry_after_hint
+            else:
+                st.pop("retry_after_hint", None)
             self._state = "failed"
             self._error = error
             self._retry_after = retry_after
+            self._retry_after_hint = retry_after_hint
             self._write()
 
     def complete(self) -> None:
@@ -101,6 +120,7 @@ class ProgressReporter:
             self._state = "completed"
             self._error = None
             self._retry_after = None
+            self._retry_after_hint = None
             self._write()
 
     def cancelled(self) -> None:
@@ -116,6 +136,7 @@ class ProgressReporter:
             self._state = "failed"
             self._error = error
             self._retry_after = None
+            self._retry_after_hint = None
             self._write()
 
     # -- snapshot -------------------------------------------------------------------
@@ -136,6 +157,7 @@ class ProgressReporter:
             "cost_usd": round(cost, 6),
             "error": self._error,
             "retry_after": self._retry_after,
+            "retry_after_hint": self._retry_after_hint,
             "started_at": self._started_at,
             "updated_at": _now(),
         }

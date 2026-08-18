@@ -242,10 +242,20 @@ def _run_stage_sequence(ctx: RunContext, stage_fns: list[tuple[str, object]],
             except Exception as exc:
                 wait_s = _auto_retry_wait_seconds(exc) if attempt < _MAX_STAGE_AUTO_RETRIES else None
                 if wait_s is None:
+                    hint = getattr(exc, "retry_after", None)
+                    # Resolve to an absolute timestamp NOW, while "now" is unambiguous -- a later
+                    # `argo resume --wait` may re-read this hint hours or days after this write, and
+                    # re-parsing a bare time-of-day string like "1:50pm (Europe/Kyiv)" against a much
+                    # later "now" is genuinely ambiguous (has that same clock time already passed
+                    # today, meaning it must mean tomorrow -- or did we just cross it a few minutes
+                    # ago, meaning it's already due?). An absolute ISO timestamp has no such
+                    # ambiguity. See progress.ProgressReporter.fail_stage's docstring.
+                    resolved = parse_retry_after(hint)
                     reporter.fail_stage(
                         name,
                         f"{type(exc).__name__}: {exc}",
-                        retry_after=getattr(exc, "retry_after", None),
+                        retry_after=resolved.isoformat() if resolved else None,
+                        retry_after_hint=hint,
                     )
                     raise
                 attempt += 1

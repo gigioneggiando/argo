@@ -227,6 +227,9 @@ def _resume_config(run: str, runs_dir: Path) -> PipelineConfig:
 
 
 def _failed_retry_after(status: dict | None) -> str | None:
+    """The absolute, unambiguous ISO-8601 timestamp to actually schedule against. See
+    progress.ProgressReporter.fail_stage's docstring for why this must never be a raw human hint
+    re-parsed against a later "now"."""
     if not status:
         return None
     for st in status.get("stages") or []:
@@ -235,10 +238,22 @@ def _failed_retry_after(status: dict | None) -> str | None:
     return status.get("retry_after")
 
 
-def _sleep_until_retry_after(retry_after: str, *, max_wait: timedelta) -> None:
+def _failed_retry_after_hint(status: dict | None) -> str | None:
+    """The original human-readable hint (e.g. "1:50pm (Europe/Kyiv)"), display-only -- never
+    parsed for scheduling. Falls back to None on runs written before this field existed."""
+    if not status:
+        return None
+    for st in status.get("stages") or []:
+        if isinstance(st, dict) and st.get("state") == "failed" and st.get("retry_after_hint"):
+            return st.get("retry_after_hint")
+    return status.get("retry_after_hint")
+
+
+def _sleep_until_retry_after(retry_after: str, *, max_wait: timedelta, display: str | None = None) -> None:
     target = parse_retry_after(retry_after)
     if target is None:
         return
+    shown = display or retry_after
     now = datetime.now(timezone.utc).astimezone(target.tzinfo)
     wake = target + timedelta(seconds=60)
     if wake <= now:
@@ -246,13 +261,13 @@ def _sleep_until_retry_after(retry_after: str, *, max_wait: timedelta) -> None:
     wait_for = wake - now
     if wait_for > max_wait:
         raise typer.BadParameter(
-            f"retry_after {retry_after!r} is {wait_for} away, beyond --max-wait {max_wait}")
+            f"retry_after {shown!r} is {wait_for} away, beyond --max-wait {max_wait}")
     while True:
         now = datetime.now(timezone.utc).astimezone(wake.tzinfo)
         remaining = wake - now
         if remaining.total_seconds() <= 0:
             return
-        typer.echo(f"[resume] waiting {remaining} until retry_after={retry_after!r}")
+        typer.echo(f"[resume] waiting {remaining} until retry_after={shown!r}")
         time.sleep(min(300, max(1, remaining.total_seconds())))
 
 
@@ -561,11 +576,13 @@ def resume(
     cfg = _resume_config(run, runs_dir)
     status = read_status(Path(cfg.runs_dir) / run)
     retry_after = _failed_retry_after(status)
+    retry_after_hint = _failed_retry_after_hint(status)
     target = parse_retry_after(retry_after) if retry_after else None
     if target is not None and target > datetime.now(timezone.utc).astimezone(target.tzinfo):
         if not wait:
-            raise typer.BadParameter(f"resume again after {retry_after}")
-        _sleep_until_retry_after(retry_after, max_wait=_parse_duration(max_wait))
+            raise typer.BadParameter(f"resume again after {retry_after_hint or retry_after}")
+        _sleep_until_retry_after(retry_after, max_wait=_parse_duration(max_wait),
+                                 display=retry_after_hint)
     ctx = build_context(cfg, run)
     summary = _run_with_resume_hint(lambda: resume_pipeline(ctx), ctx)
     _emit(summary)

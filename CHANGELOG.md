@@ -9,6 +9,8 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-18
+
 ### Added
 
 - **Web UI: Gemini as a full runner option.** New Run's runner selector and Settings' default-runner

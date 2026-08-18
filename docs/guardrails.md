@@ -40,8 +40,12 @@ With `live` disabled (the default), the absolute "never a live host" rule below 
 **Backend-neutral by design.** The rule is one `SessionPolicy` (`guardrails.session_policy(stage)` —
 *no network except `research`, repo never writable*); each backend enforces it in its own dialect:
 the Claude runner via the tool allow/deny lists above; the **Codex** runner via the OS **sandbox**
-(`-s workspace-write`, network re-enabled only for `research`, never a `danger-*` escape). The Codex
-mapping is re-validated in `tests/test_codex.py` — see [backends.md](backends.md#the-guardrails-are-backend-neutral-enforced-per-backend).
+(`-s workspace-write`, network re-enabled only for `research`, never a `danger-*` escape); the
+**Gemini** runner via its **Policy Engine** (`--policy <toml>`, a named-tool denylist — the same
+dialect as Claude's, structurally distinct from Codex's OS-sandbox approach), not `--sandbox`,
+which was found to have a hard, unreliable Docker/Podman dependency during empirical verification.
+The Codex mapping is re-validated in `tests/test_codex.py`, the Gemini mapping in
+`tests/test_gemini.py` — see [backends.md](backends.md#the-guardrails-are-backend-neutral-enforced-per-backend).
 
 ### 2a. The bounded exception: the OSINT stages `research` + `corroborate`
 

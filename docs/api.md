@@ -25,7 +25,9 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | GET | `/costs` | observed cost economics from the ledger (Phase 8): totals, by-model, by-stage, recent runs |
 | GET | `/quality` | A2: triager **accept-rate** (real-world precision proxy) paired with benchmark **recall** (null until feedback is recorded via `argo feedback` + a benchmark exists) |
 | GET | `/benchmark` | the latest benchmark report (Phase 7): findings P/R/F1 by archetype + CWE, or `null` |
-| GET | `/benchmark/ab` | the latest A/B benchmark report, or `null` |
+| GET | `/benchmark/ab` | the latest A/B (same-backend, two audit models) benchmark report, or `null` |
+| GET | `/benchmark/cross` | the latest **cross-backend** benchmark report (`argo bench-cross`): cost/latency/P/R/F1 per backend (Claude/Codex/Gemini), or `null` |
+| GET | `/refusal-probe` | the latest refusal-rate probe report (`argo refusal-probe`): `refusal_flag_rate`/`refusal_recovery_rate` per backend, or `null` |
 | POST | `/runs` | start a run (202 + `run_id`) |
 | POST | `/uploads` | **C3**: upload a repo `.zip` (multipart `file`) → safely extracted to a staging dir; returns `{repo, files, name}`. Use `repo` in `POST /runs`. Guards: path-traversal, zip-bomb caps, no symlinks |
 | GET | `/runs` | list runs, newest first |
@@ -79,9 +81,10 @@ The target repo is **never** modified, nothing is applied in place, and no PR is
 ### Benchmarks (Phase 7) — read-only
 
 `GET /benchmark` returns the latest `benchmark_report.json` (or `null`). Benchmarks are **run from
-the CLI** (`argo bench` — real runs cost money, so the API does not start them) and surfaced
-read-only here and on the **Benchmarks** UI page: precision/recall/F1 overall and sliced by
-archetype and CWE, plus optional patch-quality and A/B (`GET /benchmark/ab`).
+the CLI** (`argo bench`/`bench-cross`/`refusal-probe` — real runs cost money, so the API does not
+start them) and surfaced read-only here and on the **Benchmarks** UI page: precision/recall/F1
+overall and sliced by archetype and CWE, plus optional patch-quality, A/B (`GET /benchmark/ab`),
+cross-backend comparison (`GET /benchmark/cross`), and refusal rate (`GET /refusal-probe`).
 
 ## Start a run
 
@@ -102,11 +105,16 @@ archetype and CWE, plus optional patch-quality and A/B (`GET /benchmark/ab`).
   path**. **`brief` is optional**: omit it (or send empty) to audit a **local/personal** codebase as a
   source-only review — the scope is synthesized from `repo` and web research is auto-disabled.
 - `config.runner` defaults to **`mock`** — a request spends **zero tokens** unless the client
-  explicitly sets `"headless"` (Claude Code) or `"codex"` (Codex CLI / OpenAI / OSS). This is the
-  safety default; the UI adds an explicit confirm + cost preview before a real run.
+  explicitly sets `"headless"` (Claude Code), `"codex"` (Codex CLI / OpenAI / OSS), or `"gemini"`
+  (Gemini CLI). This is the safety default; the UI adds an explicit confirm + cost preview before a
+  real run.
 - For `"codex"`: `config.codex_model` (omit to use your Codex CLI default, e.g. `"gpt-5-codex"`), `config.codex_oss` (bool), and
   `config.codex_local_provider` (`"ollama"`/`"lmstudio"`) select the model / open-source provider.
   See [backends.md](backends.md).
+- For `"gemini"`: `config.gemini_model` selects the model (omit for the default per-stage tiering,
+  `DEFAULT_GEMINI_STAGE_MODELS`); `config.gemini_api_key` supplies the API key (else `GEMINI_API_KEY`
+  from the environment). See [backends.md](backends.md#gemini-specifics-runner--gemini) and
+  [ui.md](ui.md) (the web UI's runner selector offers Gemini too).
 - `config` maps to `PipelineConfig` (budget is a hard per-run ceiling, etc. — see
   [configuration.md](configuration.md)).
 

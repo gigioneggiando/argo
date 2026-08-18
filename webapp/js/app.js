@@ -64,23 +64,29 @@ render();
 
 // --------------------------------------------------------------- NEW RUN view
 function newRunView() {
-  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "" };
+  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "", gemini_model: "", gemini_api_key: "" };
 
   let mode = "general";  // "general" = audit any code (no brief) · "bounty" = scoped program
   const briefEl = h("textarea", { placeholder: "Paste the bug-bounty program page: scope, rules, rewards, exclusions, “no DoS”…", oninput: (e) => form.brief = e.target.value });
   const linksEl = h("textarea", { placeholder: "https://project.example/docs\nhttps://project.example/security", style: { minHeight: "70px" }, oninput: (e) => form.links = e.target.value });
   const repoEl = h("input", { type: "text", placeholder: "/home/me/project   ·   C:\\dev\\app   ·   https://github.com/org/repo", oninput: (e) => form.repo = e.target.value });
 
-  const runnerSeg = seg([["mock", "Mock · free"], ["headless", "Claude"], ["codex", "Codex"]], "mock", (v) => {
+  const runnerSeg = seg([["mock", "Mock · free"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => {
     form.runner = v; costBanner.classList.toggle("hidden", v === "mock");
     codexRow.classList.toggle("hidden", v !== "codex");
+    geminiRow.classList.toggle("hidden", v !== "gemini");
     startBtn.lastChild.textContent = v === "mock" ? "Start run (free)" : "Start real run";
-  });
+  }, ["headless", "codex", "gemini"]);
   const codexModelEl = h("input", { type: "text", list: "dl-codex-models", placeholder: "blank = your Codex default model", oninput: (e) => form.codex_model = e.target.value.trim() });
   const codexProviderEl = h("input", { type: "text", placeholder: "blank = OpenAI; or ollama / lmstudio", oninput: (e) => { form.codex_local_provider = e.target.value.trim(); form.codex_oss = !!form.codex_local_provider; } });
   const codexRow = h("div", { class: "grid-2 hidden", style: { marginTop: "14px" } },
     field("Codex model", codexModelEl, "Model id for the Codex CLI; blank = its own default."),
     field("Codex provider", codexProviderEl, "Blank uses OpenAI; set ollama/lmstudio to run a local/open-source model via Codex --oss."));
+  const geminiModelEl = h("input", { type: "text", list: "dl-gemini-models", placeholder: "default (per-stage tiering)", oninput: (e) => form.gemini_model = e.target.value.trim() });
+  const geminiKeyEl = h("input", { type: "password", placeholder: "blank = server's GEMINI_API_KEY", oninput: (e) => form.gemini_api_key = e.target.value.trim() });
+  const geminiRow = h("div", { class: "grid-2 hidden", style: { marginTop: "14px" } },
+    field("Gemini model", geminiModelEl, "Flat model override across every stage; blank = the built-in per-stage tiering (Pro for recon/validate, Flash for audit)."),
+    field("Gemini API key", geminiKeyEl, "Blank uses the server's ambient GEMINI_API_KEY / existing gemini CLI login. Never echoed back or persisted in the clear."));
   const drySeg = seg([["false", "Full pipeline"], ["true", "Dry-run (stop after recon)"]], "false", (v) => form.dry_run = v === "true");
   const calSeg = seg([["false", "Off"], ["true", "Calibration (audit→Opus)"]], "false", (v) => form.calibration = v === "true");
   const researchSeg = seg([["true", "On · web OSINT"], ["false", "Off · offline"]], "true", (v) => form.research = v === "true");
@@ -88,18 +94,21 @@ function newRunView() {
   const modelEl = h("input", { type: "text", list: "dl-claude-models", placeholder: "default (per-stage)", oninput: (e) => form.audit_model = e.target.value });
   const claudeDL = h("datalist", { id: "dl-claude-models" });
   const codexDL = h("datalist", { id: "dl-codex-models" });
+  const geminiDL = h("datalist", { id: "dl-gemini-models" });
   api.models().then((mm) => {
     const cl = (mm.backends || []).find((b) => b.id === "headless");
     const cx = (mm.backends || []).find((b) => b.id === "codex");
+    const gm = (mm.backends || []).find((b) => b.id === "gemini");
     (cl ? cl.models : []).forEach((m) => claudeDL.append(h("option", { value: m.id }, m.label || "")));
     (cx ? cx.models : []).forEach((m) => codexDL.append(h("option", { value: m.id })));
+    (gm ? gm.models : []).forEach((m) => geminiDL.append(h("option", { value: m.id }, m.label || "")));
     if (cx && cx.default) codexModelEl.placeholder = `blank = your Codex default (${cx.default})`;
   }).catch(() => {});
   const parallelEl = h("input", { type: "number", min: "1", max: "16", value: "3", oninput: (e) => form.parallel = +e.target.value || 3 });
 
   const adv = h("div", { class: "adv hidden" },
     h("div", { class: "grid-2" },
-      field("Runner", runnerSeg, "Mock replays fixtures (zero tokens). Claude = Claude Code; Codex = Codex CLI (OpenAI / local-OSS)."),
+      field("Runner", runnerSeg, "Mock replays fixtures (zero tokens). Claude = Claude Code; Codex = Codex CLI (OpenAI / local-OSS); Gemini = Gemini CLI (Google)."),
       field("Mode", drySeg, "Dry-run shows the generated prompts before paying for audits.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Budget (USD)", budgetEl, "Hard per-run ceiling in USD. Leave blank for no limit — the default: the audit runs to completion regardless of cost. Set a number to abort once spending reaches it."),
@@ -109,13 +118,13 @@ function newRunView() {
       field("Calibration", calSeg, "Force audit on Opus while prompts are unproven.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Web research (Stage 0)", researchSeg, "On: a web-OSINT pass (CVEs, advisories, the project's history) feeds recon — the ONLY networked step, never the live in-scope hosts. Off: fully offline.")),
-    codexRow);
+    codexRow, geminiRow);
   const advToggle = h("div", { class: "adv-toggle" }, h("span", { class: "chev" }, "▸"), "Advanced configuration");
   advToggle.addEventListener("click", () => { advToggle.classList.toggle("open"); adv.classList.toggle("hidden"); });
 
   const costBanner = h("div", { class: "banner warn hidden", style: { marginTop: "16px" } },
     h("span", {}, "⚠"),
-    h("span", {}, h("strong", {}, "Real run. "), "Spends real tokens on the selected backend (Claude / Codex; a full audit can cost real money). Set a budget and confirm before starting."));
+    h("span", {}, h("strong", {}, "Real run. "), "Spends real tokens on the selected backend (Claude / Codex / Gemini; a full audit can cost real money). Set a budget and confirm before starting."));
 
   const startBtn = h("button", { class: "btn btn-primary btn-lg", onclick: submit },
     h("span", {}, "⏵"), h("span", {}, "Start run (free)"));
@@ -159,12 +168,13 @@ function newRunView() {
     try {
       const cfg = { runner: form.runner, parallel: form.parallel, calibration: form.calibration,
         budget_usd: form.budget ? Number(form.budget) : null, audit_model: form.audit_model.trim() || null,
-        codex_model: form.codex_model || null, codex_oss: form.codex_oss, codex_local_provider: form.codex_local_provider || null };
+        codex_model: form.codex_model || null, codex_oss: form.codex_oss, codex_local_provider: form.codex_local_provider || null,
+        gemini_model: form.gemini_model || null, gemini_api_key: form.gemini_api_key || null };
       const res = await api.startRun({ brief, repo: form.repo, links, dry_run: form.dry_run, research: form.research, config: cfg });
       location.hash = `#/run/${encodeURIComponent(res.run_id)}`;
     } catch (e) {
       toast(e.message, true); startBtn.disabled = false;
-      startBtn.lastChild.textContent = form.runner === "headless" ? "Start real run" : "Start run (free)";
+      startBtn.lastChild.textContent = form.runner === "mock" ? "Start run (free)" : "Start real run";
     }
   }
 
@@ -192,7 +202,7 @@ function newRunView() {
   const repoControl = h("div", {}, repoEl,
     h("div", { class: "row", style: { marginTop: "8px", alignItems: "center" } }, uploadBtn, uploadStatus, fileEl));
   const repoField = field("Code to audit", repoControl,
-    "A local folder path (resolved on the machine running the server) or a git URL (cloned read-only) — or **upload a .zip** of the repo. The repo is mounted read-only and never pushed anywhere — but a cloud backend (Claude / Codex) sends the source to that provider's API to analyze it; only a local / OSS model keeps everything on-device. Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
+    "A local folder path (resolved on the machine running the server) or a git URL (cloned read-only) — or **upload a .zip** of the repo. The repo is mounted read-only and never pushed anywhere — but a cloud backend (Claude / Codex / Gemini) sends the source to that provider's API to analyze it; only a local / OSS model keeps everything on-device. Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
   const modeHint = h("div", { class: "help", style: { marginTop: "8px" } });
   const MODE_COPY = {
     general: "Audit any codebase for vulnerabilities — point at a local folder or repo, no program brief needed. The repo stays read-only and is never pushed anywhere (a local / OSS model keeps it fully on-device; a cloud backend sends the source to its API to analyze).",
@@ -209,7 +219,7 @@ function newRunView() {
   const modeRow = h("div", { class: "field" }, h("label", { class: "lbl" }, "Mode"), modeSeg, modeHint);
 
   return h("div", {},
-    claudeDL, codexDL,
+    claudeDL, codexDL, geminiDL,
     h("div", { class: "page-head" },
       h("h1", {}, "New audit run"),
       h("p", {}, "Point Argo at any codebase — a local folder, a private repo, or a public one — and an LLM audits the source like a human reviewer: it profiles the code, writes target-specific audit prompts, hunts findings, and adversarially validates them, stopping at human-review drafts. Never touches a live host, never patches.")),
@@ -228,15 +238,16 @@ function field(label, control, help, required) {
     h("label", { class: "lbl" }, label, required ? h("span", { class: "req" }, " *") : null),
     control, help ? h("div", { class: "help" }, help) : null);
 }
-function seg(options, current, onChange) {
+function seg(options, current, onChange, dangerVals) {
+  const dangerSet = new Set(dangerVals || []);
   const wrap = h("div", { class: "seg" });
   options.forEach(([val, lab]) => {
     const b = h("button", { "data-val": val, class: val === current ? "on" : "", onclick: () => {
       [...wrap.children].forEach((c) => c.classList.remove("on", "danger"));
-      b.classList.add("on"); if (val === "headless") b.classList.add("danger");
+      b.classList.add("on"); if (dangerSet.has(val)) b.classList.add("danger");
       onChange(val);
     } }, lab);
-    if (val === current && val === "headless") b.classList.add("danger");
+    if (val === current && dangerSet.has(val)) b.classList.add("danger");
     wrap.append(b);
   });
   return wrap;
@@ -248,7 +259,7 @@ function settingsView() {
   const STAGES = ["ingest", "research", "recon", "audit", "validate", "report"];
   const s = { runner: "mock", budget_usd: null, parallel: 3, audit_model: null, calibration: false, models: {} };
 
-  const runnerSeg = seg([["mock", "Mock · free"], ["headless", "Real · claude"]], "mock", (v) => s.runner = v);
+  const runnerSeg = seg([["mock", "Mock · free"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => s.runner = v, ["headless", "codex", "gemini"]);
   const calSeg = seg([["false", "Off"], ["true", "Calibration"]], "false", (v) => s.calibration = v === "true");
   const budgetEl = h("input", { type: "number", min: "0", placeholder: "none", oninput: (e) => s.budget_usd = e.target.value ? Number(e.target.value) : null });
   const parallelEl = h("input", { type: "number", min: "1", max: "16", value: "3", oninput: (e) => s.parallel = +e.target.value || 3 });
@@ -283,7 +294,7 @@ function settingsView() {
       h("p", {}, "Defaults applied to the New Run form. Each run can still override them. Stored server-side (not in the browser).")),
     h("div", { class: "card" },
       h("div", { class: "grid-2" },
-        field("Default runner", runnerSeg, "Mock is free; Claude/Codex spend real tokens."),
+        field("Default runner", runnerSeg, "Mock is free; Claude/Codex/Gemini spend real tokens. Per-backend model/key fields (Codex provider, Gemini API key) are set per-run in New Run, not stored here."),
         field("Default budget (USD)", budgetEl, "Hard per-run ceiling.")),
       h("div", { class: "grid-2", style: { marginTop: "14px" } },
         field("Parallel sessions", parallelEl),
@@ -613,6 +624,9 @@ function chatPanel(id) {
   return root;
 }
 
+// backend ids -> display labels (mirrors GET /models' backend list)
+const BACKEND_LABELS = { headless: "Claude", codex: "Codex", gemini: "Gemini", mock: "Mock" };
+
 // canonical archetype keys -> display labels (mirrors argo/archetype.py)
 const ARCH_LABELS = {
   web_api_cms: "Web / API / CMS", plugin_extension: "Plugin / Extension / Mod",
@@ -756,7 +770,7 @@ function costsView() {
         : h("div", { class: "help" }, "No price table.");
       pricingCard = cardOf("Model pricing & backends", h("div", {}, backends,
         h("div", { class: "help", style: { margin: "8px 0" } },
-          "Claude Code reports real USD per call. Codex (OpenAI / OSS) reports tokens, so its cost is ESTIMATED from this table (local/open-source models ≈ $0)."),
+          "Claude Code reports real USD per call. Codex (OpenAI / OSS) and Gemini report tokens, so their cost is ESTIMATED from this table (local/open-source models ≈ $0)."),
         priceTbl));
     }
     mount(host, head, cheapest, cardOf("By model", models),
@@ -784,7 +798,30 @@ function benchmarkView() {
 
   const host = h("div", {}, h("div", { class: "skeleton", style: { height: "120px" } }));
   Promise.all([api.benchmark().catch(() => null), api.benchmarkAb().catch(() => null),
-               api.quality().catch(() => null)]).then(([rep, ab, qual]) => {
+               api.benchmarkCross().catch(() => null), api.refusalProbe().catch(() => null),
+               api.quality().catch(() => null)]).then(([rep, ab, cross, refusal, qual]) => {
+    let crossCard = null;
+    if (cross && cross.totals_by_backend) {
+      const rows = Object.entries(cross.totals_by_backend).map(([name, m]) =>
+        [BACKEND_LABELS[name] || name, pct(m.precision), pct(m.recall), pct(m.f1),
+         "$" + Number(m.cost_usd_total || 0).toFixed(4), Math.round(m.mean_latency_ms || 0) + " ms"]);
+      crossCard = cardOf(`Cross-backend comparison — “${cross.suite}” (${cross.tier}-tier)`, h("div", {},
+        table(["Backend", "P", "R", "F1", "Cost", "Mean latency"], rows),
+        h("div", { class: "help", style: { marginTop: "10px" } },
+          "Same suite, once per backend, comparable model tier — generated by ", h("code", {}, "argo bench-cross"),
+          ". Distinct from the A/B card above (same backend, two audit models).")));
+    }
+    let refusalCard = null;
+    if (refusal && refusal.backends) {
+      const rows = Object.entries(refusal.backends).map(([name, m]) =>
+        [BACKEND_LABELS[name] || name, m.trials, m.flagged, pct(m.refusal_flag_rate),
+         m.refusal_recovery_rate == null ? "—" : pct(m.refusal_recovery_rate)]);
+      refusalCard = cardOf(`Refusal-rate probe — ${refusal.tier}-tier, ${refusal.trials_per_prompt} trial(s) × ${refusal.prompt_count} prompts`, h("div", {},
+        table(["Backend", "Trials", "Flagged", "Flag rate", "Recovery rate"], rows),
+        h("div", { class: "help", style: { marginTop: "10px" } },
+          "How often each backend's OWN safety classifier false-positives on a legitimate, authorized security-audit prompt (", h("code", {}, "argo refusal-probe"),
+          ") — NOT jailbreak/adversarial testing. Recovery rate is of the flagged calls only; “—” means nothing was ever flagged.")));
+    }
     const qualityCard = () => {
       const ar = qual && qual.accept_rate;
       if (!ar || !ar.judged) return null;   // no triager feedback yet
@@ -798,7 +835,7 @@ function benchmarkView() {
           "Triager accept-rate (human precision proxy, from the Fleece registry via ", h("code", {}, "argo feedback"),
           ") paired with benchmark recall. Small n is noisy.")));
     };
-    if (!rep) return mount(host, qualityCard() || h("div", {}), h("div", { class: "empty" },
+    if (!rep) return mount(host, qualityCard() || h("div", {}), crossCard, refusalCard, h("div", { class: "empty" },
       h("div", { class: "big" }, "No benchmark report yet"),
       h("div", {}, "Run a suite from the CLI: "),
       h("pre", { class: "mono", style: { marginTop: "8px" } }, "argo bench --suite benchmarks --runner mock"),
@@ -830,12 +867,12 @@ function benchmarkView() {
            ["Recall", pct(ab.a.totals.recall), pct(ab.b.totals.recall), sign(d.recall)],
            ["F1", pct(ab.a.totals.f1), pct(ab.b.totals.f1), sign(d.f1)]]));
     }
-    mount(host, head, counts, patch, qualityCard(), cases, byArch, byCwe, abCard);
+    mount(host, head, counts, patch, qualityCard(), cases, byArch, byCwe, abCard, crossCard, refusalCard);
   }).catch((e) => mount(host, h("div", { class: "empty" }, e.message)));
 
   return h("div", {},
     h("div", { class: "page-head" }, h("h1", {}, "Benchmarks"),
-      h("p", {}, "Findings quality — precision / recall / F1 against labeled suites, sliced by archetype and CWE. Generated by ", h("code", {}, "argo bench"), "; this page is read-only.")),
+      h("p", {}, "Findings quality — precision / recall / F1 against labeled suites, sliced by archetype and CWE, plus cross-backend cost/latency/quality and refusal-rate comparisons. Generated by ", h("code", {}, "argo bench"), " / ", h("code", {}, "bench-cross"), " / ", h("code", {}, "refusal-probe"), "; this page is read-only.")),
     host);
 }
 

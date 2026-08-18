@@ -12,22 +12,22 @@
 
 Not a benchmark score — pull requests, published advisories, and a CVE, on real open-source projects.
 
-**10** projects audited and disclosed · **41** public PRs · **38** already resolved · **91% real-world accuracy**\*
+**31** projects audited and disclosed · **35** public PRs · **65** already resolved · **93% real-world accuracy**\*
 
 | Project | Stars | Severity | Result |
 |---|---:|---|---|
 | [ds4](https://github.com/antirez/ds4) — antirez, Redis's original author | 21k★ | Critical | Pre-auth double-free, fixed |
 | [moquette](https://github.com/moquette-io/moquette) | 2.4k★ | Critical | Authz bypass, [advisory published](https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq) |
 | [PocketBase](https://github.com/pocketbase/pocketbase) | 61k★ | High (8.7) | [Advisory published](https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx), reporter credited |
-| [LiveKit](https://github.com/livekit/livekit) | 20k★ | Critical + High | 13 of 19 findings fixed, credited on their [Security Hall of Fame](https://livekit.com/security/hall-of-fame) |
+| [LiveKit](https://github.com/livekit/livekit) | 20k★ | Critical + High | 13 of 24 findings fixed, credited on their [Security Hall of Fame](https://livekit.com/security/hall-of-fame) |
 | [coturn](https://github.com/coturn/coturn) | 14k★ | Medium | Real CVE assigned: [CVE-2026-73213](https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99) |
 
 **[See every disclosed finding →](https://gigioneggiando.github.io/argo/)**
 
-<sub>\* Measured across the 140 findings that reached an independent maintainer verdict — excludes
+<sub>\* Measured across the 134 findings that reached an independent maintainer verdict — excludes
 findings still in triage, duplicates of already-known issues, and out-of-scope rejections, since
-none of those reflect whether the underlying security claim was correct. 127 were confirmed
-genuine, 13 were rejected as false positives.</sub>
+none of those reflect whether the underlying security claim was correct. 124 were confirmed
+genuine, 10 were rejected as false positives.</sub>
 
 ---
 
@@ -300,9 +300,11 @@ This README is the conceptual overview. Deeper, implementation-level docs live i
 | [docs/prompt-synthesis.md](docs/prompt-synthesis.md) | The archetype-driven prompt maker (Stage 2), the specificity self-check, reuse from the legacy generator, safe meta-prompt changes |
 | [docs/cli-reference.md](docs/cli-reference.md) | Every command and flag, with examples (`--smoke`, `--budget`, caps, `--calibration`, …) |
 | [docs/guardrails.md](docs/guardrails.md) | The non-negotiable guardrails and **exactly where each is enforced in code** |
+| [docs/determinism-and-guardrails.md](docs/determinism-and-guardrails.md) | **Anti-hallucination**: every deterministic gate and hard physical limit that constrains the LLM — mechanical diffs, ground-truth verification, budget/timeout/request caps, scope-lock asserts, commit-pin reproducibility |
 | [docs/design-decisions.md](docs/design-decisions.md) | **Why** Argo is LLM-direct with **no CPG/AST engine**, what it uses instead, when we'd revisit, and threats to validity (paper-facing) |
 | [docs/backends.md](docs/backends.md) | **Multi-backend**: run on Claude Code, the Codex CLI (OpenAI), the Gemini CLI (Google), or local/open-source models — the abstraction, per-backend guardrail mapping, cost, cross-model study |
 | [docs/headless-runner.md](docs/headless-runner.md) | Real Claude Code integration: flags used, the JSON envelope, caps, error handling, partial recovery, the `--smoke` run |
+| [docs/runtime-verification-study.md](docs/runtime-verification-study.md) | The **opt-in, sandboxed runtime verification** design: the loopback-only sealed-container safety model, the propose→validate→execute→interpret flow, and the R1–R4 plan |
 | [docs/api.md](docs/api.md) | The HTTP API (`server/`) — backend for the web UI: endpoints, run lifecycle, live status/SSE, artifact whitelist |
 | [docs/ui.md](docs/ui.md) | The web UI (`webapp/`) — `python -m argo.cli serve`, the no-build stack, the views |
 | [docs/chat-example.md](docs/chat-example.md) | 💬 The interrogation chat — a real worked transcript (grounded explanation, false-positive self-correction, honest false negatives) |

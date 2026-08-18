@@ -33,6 +33,8 @@ Everywhere below, `argo` ≡ `python -m argo.cli`.
 | `resume` | any | continue a `pipeline`/`run` invocation that stopped partway (crash, Ctrl+C, a backend rate limit, a session timeout) from wherever it left off — no re-ingest, no re-paying for already-completed stages. See "Recovering a stopped run" below |
 | `fix` | 6 (opt-in) | propose + **verify** a patch per confirmed finding (applies? compiles? no new errors?); never touches the target |
 | `bench` | 7 | score a labeled suite — findings precision/recall/F1 by archetype + CWE (+ optional A/B and patch quality) |
+| `bench-cross` | 7 | run the same suite once **per backend** (Claude/Codex/Gemini) and report cost/latency/precision/recall/F1 side by side — N-way, distinct from `bench --ab-audit-model`'s same-backend 2-way delta |
+| `refusal-probe` | 7 | measure how often each backend's own safety classifier false-positives on a legitimate, authorized audit prompt (`refusal_flag_rate`), and how often a same-backend neutral-register retry recovers it (`refusal_recovery_rate`) |
 | `serve` | — | run the HTTP API + web UI |
 
 There is intentionally **no `submit` command** — submission is a manual human action.
@@ -53,6 +55,8 @@ argo verify   --run RUN_ID [--only ID,ID] [--max-findings N]
 argo asan-poc --run RUN_ID [--max-findings N] [--asan-poc-image IMAGE]
 argo fix      --run RUN_ID [--no-verify] [--re-audit] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
 argo bench    --suite DIR [--fixes] [--re-audit] [--parallel-cases N] [--ab-audit-model MODEL]
+argo bench-cross    --suite DIR --backends headless,codex,gemini [--tier cheap|top]
+argo refusal-probe  --backends headless,codex,gemini [--trials N] [--tier cheap|top]
 argo feedback [--program P --dedup K --accepted/--rejected [--run R] [--note ...]] | [--import FILE]
 argo quality  [--program P] [--runs-dir DIR]
 ```
@@ -207,6 +211,22 @@ required.
 Scores **precision / recall / F1** (overall + by archetype + by CWE) into
 `<runs_dir>/benchmark_report.json`. Use `--runner mock` to exercise the harness for free; headless
 measures real quality (and costs money). The bundled `benchmarks/acme-widgets` case is a mock case.
+
+## `bench-cross` / `refusal-probe`-only options (Phase 7, cross-backend)
+
+| Flag | Meaning |
+|---|---|
+| `--backends headless,codex,gemini` | comma-separated backends to compare (any subset/order) |
+| `--tier {cheap\|top}` | `cheap` (default) — each backend's cheapest model (Haiku/`o4-mini`/Flash-Lite), a full sweep costs cents. `top` — each backend's own top-tier model (Opus/`gpt-5-codex`/Gemini Pro), for real publishable numbers — real, non-trivial spend across three paid APIs |
+| `--trials N` | (`refusal-probe` only, default 1) repeat each prompt N times per backend |
+
+`bench-cross` derives each backend's config from the same base config
+(`base_config.with_overrides(runner=...)`), so `--budget`/credentials/etc. carry over identically
+per backend. `refusal-probe` uses a small curated, **non-adversarial** prompt set
+(`tests/fixtures/refusal_prompts.json`) — deliberately not jailbreak/adversarial-prompt testing.
+Reports: `<runs_dir>/benchmark_crossbackend_report.json` / `refusal_probe_report.json`. Run
+`--tier cheap` first to confirm all backends are wired up/authed before spending on `--tier top`.
+See [benchmarks/README.md](../benchmarks/README.md#cross-backend-comparison-and-refusal-rate).
 
 ## Examples
 

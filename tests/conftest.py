@@ -23,11 +23,42 @@ FIXED_RUN_ID = "TEST-RUN-0001"
 
 
 def _force_rmtree(path: Path) -> None:
-    def _onerror(func, p, _exc):
-        os.chmod(p, stat.S_IWRITE)
-        func(p)
+    """Restore write+execute on every directory under ``path`` before removing it, then retry
+    the actual removal a few times. Two independent reasons this needs to be more than a plain
+    shutil.rmtree:
+      * On POSIX, deleting an entry requires write permission on its PARENT directory, not the
+        entry itself -- _make_readonly's directory hardening (POSIX only, see
+        argo/stages/ingest.py) strips exactly that, so nothing inside a hardened directory can be
+        unlinked without first restoring the parent's own write bit (a per-file onerror chmod on
+        the failing child is not enough).
+      * On Windows, a just-imported module's .pyc under a copied fixture tree can occasionally
+        still be memory-mapped by the interpreter for a brief moment after import, making an
+        immediate delete fail with WinError 5 even though nothing is genuinely still using it a
+        moment later -- retrying with a short backoff clears this without masking a real leak
+        (a persistent failure across all attempts still raises)."""
+    import time
+
+    if not path.exists():
+        return
+    last_exc: OSError | None = None
+    for attempt in range(5):
+        try:
+            for dirpath, dirnames, _filenames in os.walk(path):
+                for name in dirnames:
+                    os.chmod(Path(dirpath) / name, stat.S_IRWXU)
+            os.chmod(path, stat.S_IRWXU)
+
+            def _onerror(func, p, _exc):
+                os.chmod(p, stat.S_IWRITE)
+                func(p)
+
+            shutil.rmtree(path, onerror=_onerror)
+            return
+        except OSError as exc:
+            last_exc = exc
+            time.sleep(0.2 * (attempt + 1))
     if path.exists():
-        shutil.rmtree(path, onerror=_onerror)
+        raise last_exc
 
 
 @pytest.fixture

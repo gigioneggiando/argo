@@ -136,7 +136,9 @@ def census_worksheet(repo_dir: Path) -> str:
         assert t.files is not None
         ordered = sorted(t.files.items(), key=lambda kv: (-kv[1], kv[0]))
         named = ordered[:_FILE_LIST_CAP]
-        file_str = ", ".join(f"`{name}`" for name, _ in named)
+        safe_names = [(re.sub(r"[`\x00-\x1f\x7f]", "?", name)[:160], count)
+                      for name, count in named]
+        file_str = ", ".join(f"`{name}`" for name, _ in safe_names)
         if len(ordered) > _FILE_LIST_CAP:
             file_str += f" (+{len(ordered) - _FILE_LIST_CAP} more files)"
         rows.append(

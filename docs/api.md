@@ -109,12 +109,21 @@ cross-backend comparison (`GET /benchmark/cross`), and refusal rate (`GET /refus
   (Gemini CLI). This is the safety default; the UI adds an explicit confirm + cost preview before a
   real run.
 - For `"codex"`: `config.codex_model` (omit to use your Codex CLI default, e.g. `"gpt-5-codex"`), `config.codex_oss` (bool), and
-  `config.codex_local_provider` (`"ollama"`/`"lmstudio"`) select the model / open-source provider.
+  `config.codex_local_provider` (`"ollama"`/`"lmstudio"`) select the model / open-source provider;
+  `config.codex_api_key` supplies an OpenAI API key (Argo bootstraps a dedicated cached `CODEX_HOME`
+  for it via `codex login --with-api-key` on first use — a bare env var alone does not authenticate
+  `codex exec`; omit to use the CLI's existing login).
   See [backends.md](backends.md).
 - For `"gemini"`: `config.gemini_model` selects the model (omit for the default per-stage tiering,
   `DEFAULT_GEMINI_STAGE_MODELS`); `config.gemini_api_key` supplies the API key (else `GEMINI_API_KEY`
   from the environment). See [backends.md](backends.md#gemini-specifics-runner--gemini) and
   [ui.md](ui.md) (the web UI's runner selector offers Gemini too).
+- For `"headless"` (Claude): `config.claude_api_key` supplies `ANTHROPIC_API_KEY` for this run (else
+  the server's ambient env var / existing Claude Code subscription login).
+- `config.claude_api_key`/`config.codex_api_key` are never echoed back or persisted in the clear
+  (see `PipelineConfig._SECRET_FIELDS`) — same redaction as `config.gemini_api_key`. Multi-account
+  key chaining (`--claude-api-keys`/`--codex-api-keys`) is CLI-only, not exposed over this API
+  (mirrors `gemini_accounts`' own absence from `RunConfig`).
 - `config` maps to `PipelineConfig` (budget is a hard per-run ceiling, etc. — see
   [configuration.md](configuration.md)).
 

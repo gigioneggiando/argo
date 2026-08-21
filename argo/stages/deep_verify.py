@@ -106,6 +106,8 @@ def _build_prompt(ctx: RunContext, scope, scope_json_text: str, finding: Finding
 
     prompt = _finish(rendered)
     neutral_prompt = _finish(neutral_rendered) if neutral_rendered is not None else None
+    if neutral_prompt is not None:
+        assert_prohibited_present(neutral_prompt, scope.prohibited_techniques)
     return prompt, neutral_prompt
 
 

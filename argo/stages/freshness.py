@@ -12,6 +12,7 @@ never changes verdicts/classification/status and never drops findings. It only a
 from __future__ import annotations
 
 import json
+import os
 import re
 import stat
 import subprocess
@@ -52,7 +53,10 @@ def _log(msg: str) -> None:
 def _run_git(repo_dir: Path, args: Sequence[str]) -> subprocess.CompletedProcess[str]:
     """Small subprocess seam for tests. Callers handle every failure best-effort."""
     return subprocess.run(
-        ["git", "-c", f"safe.directory={repo_dir.resolve()}", "-C", str(repo_dir), *args],
+        ["git", "-c", f"safe.directory={repo_dir.resolve()}",
+         "-c", "protocol.ext.allow=never",
+         "-c", "core.hooksPath=NUL" if os.name == "nt" else "core.hooksPath=/dev/null",
+         "-C", str(repo_dir), *args],
         capture_output=True,
         text=True,
         timeout=_GIT_TIMEOUT_S,
@@ -118,7 +122,7 @@ def _paths_by_finding(findings: list[Finding]) -> dict[str, list[str]]:
 
 
 def _is_candidate_branch(branch: str) -> bool:
-    return bool(_BRANCH_RE.search(branch))
+    return bool(branch and not branch.startswith("-") and _BRANCH_RE.search(branch))
 
 
 def _documented_branch_hints(repo_dir: Path) -> set[str]:
@@ -201,7 +205,9 @@ def _since_arg(checked_at: str, days: int) -> str:
 
 
 def _fetch_branch(repo_dir: Path, branch: str) -> bool:
-    cp = _git(repo_dir, ["fetch", "--depth", "50", "origin", branch], f"fetch {branch}")
+    if branch.startswith("-"):
+        return False
+    cp = _git(repo_dir, ["fetch", "--depth", "50", "origin", "--", branch], f"fetch {branch}")
     return cp is not None
 
 
@@ -319,7 +325,13 @@ def run(ctx: RunContext) -> Path:
         return ctx.validated_findings_path
 
     checked_at = _checked_at(ctx)
-    flags_by_path = _collect_flags(ctx, unique_paths, checked_at)
+    try:
+        flags_by_path = _collect_flags(ctx, unique_paths, checked_at)
+    finally:
+        # Fetch needs writable Git metadata, but later stages rely on the acquired copy remaining
+        # read-only. Restore that defense even when discovery/fetch fails partway through.
+        from .ingest import _make_readonly
+        _make_readonly(ctx.repo_dir / ".git")
     if not flags_by_path:
         return ctx.validated_findings_path
 

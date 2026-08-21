@@ -121,6 +121,8 @@ def _harness_session(ctx: RunContext, scope, finding: dict) -> Path | None:
 
     prompt = _finish(rendered)
     neutral_prompt = _finish(neutral_rendered) if neutral_rendered is not None else None
+    if neutral_prompt is not None:
+        assert_prohibited_present(neutral_prompt, scope.prohibited_techniques)
     fid = finding.get("id", "?")
     work = ctx.work_dir("asan_poc", fid)
     try:
@@ -143,8 +145,7 @@ def _find_harness_file(work_dir: Path) -> Path | None:
         p = work_dir / name
         if p.is_file():
             return p
-    matches = sorted(work_dir.glob("harness.*"))
-    return matches[0] if matches else None
+    return None
 
 
 # --------------------------------------------------------------- deterministic compile + execute

@@ -10,7 +10,10 @@ import json
 from pathlib import Path
 
 from argo.guardrails import enforce_session_tools, session_policy
+from argo.config import ARTIFACT_TOOLS, RESEARCH_TOOLS
+from argo.models import Corroboration
 from argo.orchestrator import run_pipeline
+from argo.stages.corroborate import _merge_corroborations
 
 from conftest import BRIEF, REPO
 
@@ -44,11 +47,12 @@ def test_corroborate_runs_after_validate_before_report(env):
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
     stages = [json.loads(l)["stage"] for l in
               (ctx.run_dir / "llm_log.jsonl").read_text(encoding="utf-8").strip().splitlines()]
-    # 5 core + 1 corroborate (survivors batched into one session)
+    # 5 core + 2 isolated passes (offline docs/VCS, then public OSINT)
+    assert stages.count("corroborate_docs") == 1
     assert stages.count("corroborate") == 1
     assert max(i for i, s in enumerate(stages) if s == "validate") \
         < min(i for i, s in enumerate(stages) if s == "corroborate")
-    assert ctx.ledger.run_call_count(ctx.run_id) == 6
+    assert ctx.ledger.run_call_count(ctx.run_id) == 7
 
 
 # --------------------------------------------------------------------------- fixed_upstream
@@ -153,13 +157,53 @@ def test_bad_verdict_coerced_to_unknown(env, make_scenario):
 
 
 # --------------------------------------------------------------------------- guardrail
-def test_corroborate_is_networked_but_no_shell():
+def test_corroborate_stage_keeps_osint_but_offline_pass_requests_none():
     assert session_policy("corroborate").network is True
+    assert session_policy("corroborate_docs").network is False
     allowed, disallowed = enforce_session_tools(
         ["WebSearch", "WebFetch", "Read", "Write", "Bash", "Task"], stage="corroborate")
-    assert "WebSearch" in allowed and "WebFetch" in allowed     # OSINT kept
+    assert "WebSearch" in allowed and "WebFetch" in allowed
     assert "Bash" not in allowed and "Task" not in allowed      # shell / sub-agents dropped
     # a non-networked stage still loses OSINT entirely
     assert session_policy("validate").network is False
     a2, _ = enforce_session_tools(["WebSearch", "Read"], stage="validate")
     assert "WebSearch" not in a2
+
+
+def test_two_pass_capability_and_prompt_boundaries(env):
+    ctx = env(corroborate_enabled=True)
+    calls = []
+    original = ctx.runner.run
+
+    def recording_run(**kwargs):
+        if kwargs.get("stage") in {"corroborate", "corroborate_docs"}:
+            calls.append(kwargs.copy())
+        return original(**kwargs)
+
+    ctx.runner.run = recording_run
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    assert len(calls) == 2
+    docs = next(c for c in calls if c["repo_dir"] is not None)
+    osint = next(c for c in calls if c["repo_dir"] is None)
+    assert tuple(docs["allowed_tools"]) == ARTIFACT_TOOLS
+    assert "WebSearch" not in docs["allowed_tools"] and "WebFetch" not in docs["allowed_tools"]
+    assert tuple(osint["allowed_tools"]) == RESEARCH_TOOLS
+    raw_source = "user-supplied url reaches requests.get -> SSRF / CWE-918"
+    assert raw_source in docs["prompt"]
+    assert raw_source not in osint["prompt"]
+    assert '"title"' in osint["prompt"] and '"why_vulnerable"' in osint["prompt"]
+    assert '"vulnerable_flow"' not in osint["prompt"]
+
+
+def test_two_pass_results_merge_into_one_corroboration():
+    docs = Corroboration(
+        verdict="corroborated", rationale="CHANGELOG still describes the affected path.",
+        evidence_urls=["https://docs.example/local-equivalent"])
+    osint = Corroboration(
+        verdict="fixed_upstream", rationale="Advisory identifies the fixing release.",
+        evidence_urls=["https://example.test/advisory"], fix_commit="abc123")
+    merged = _merge_corroborations(docs, osint)
+    assert merged.verdict == "fixed_upstream" and merged.fix_commit == "abc123"
+    assert "Offline docs/VCS:" in merged.rationale and "Public OSINT:" in merged.rationale
+    assert merged.evidence_urls == [
+        "https://docs.example/local-equivalent", "https://example.test/advisory"]

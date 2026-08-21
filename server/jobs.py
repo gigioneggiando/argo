@@ -33,6 +33,8 @@ class JobManager:
             codex_oss=req.config.codex_oss,
             codex_local_provider=req.config.codex_local_provider,
             gemini_api_key=req.config.gemini_api_key,
+            claude_api_key=req.config.claude_api_key,
+            codex_api_key=req.config.codex_api_key,
         )
         if req.config.gemini_model:
             # Flat override across every stage, applied BEFORE calibration/audit_model below so

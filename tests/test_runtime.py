@@ -163,10 +163,19 @@ def test_r3_explicit_config_wins(env):
     assert l["image"] == "img" and l["run_cmd"] == "run me" and l["port"] == 7000
 
 
-def test_r3_recipe_file_prebuilt_image(env):
+def test_r3_repo_recipe_is_not_executable_config(env):
     ctx = env(runtime_enabled=True)
     ctx.repo_dir.mkdir(parents=True, exist_ok=True)
     (ctx.repo_dir / "argo-runtime.json").write_text(json.dumps({
+        "image": "myapp:latest", "run_cmd": "./serve", "port": 9000, "env": {"A": "B"}}),
+        encoding="utf-8")
+    assert rt._resolve_launcher(ctx, None) is None
+
+
+def test_r3_operator_recipe_prebuilt_image(env):
+    ctx = env(runtime_enabled=True)
+    ctx.run_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.run_dir / "runtime_recipe.json").write_text(json.dumps({
         "image": "myapp:latest", "run_cmd": "./serve", "port": 9000, "env": {"A": "B"}}),
         encoding="utf-8")
     l = rt._resolve_launcher(ctx, None)

@@ -136,7 +136,7 @@ def neutralize_audit_prompt(text: str) -> str:
         stripped = line.strip()
         if protected and _TOP_HEADING_RE.match(line):
             protected = False
-        if "prohibited techniques" in stripped.lower():
+        if "scope & rules of engagement" in stripped.lower():
             protected = True
         if protected:
             out_lines.append(line)

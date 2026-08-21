@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from .config import ALWAYS_DISALLOWED, MUTATION_TOOLS, NETWORK_TOOLS, OSINT_TOOLS
 
@@ -197,8 +198,7 @@ def _probe_host(path_or_url: str) -> str | None:
     loopback by the runner). An absolute URL must carry an explicit host."""
     s = (path_or_url or "").strip()
     if s.startswith(("http://", "https://")):
-        rest = s.split("://", 1)[1]
-        return rest.split("/", 1)[0].split("@")[-1].split(":")[0] or None
+        return urlsplit(s).hostname
     if s.startswith("//"):                         # protocol-relative -> //host/...
         return s[2:].split("/", 1)[0].split(":")[0] or None
     return None                                    # host-relative path: loopback by construction
@@ -294,9 +294,8 @@ _LIVE_DESTRUCTIVE_METHODS = frozenset({"DELETE"})
 
 def _host_of(url: str) -> str:
     s = (url or "").strip()
-    if "://" in s:
-        s = s.split("://", 1)[1]
-    return s.split("/", 1)[0].split("@")[-1].split("?")[0].rsplit(":", 1)[0].strip("[]").lower()
+    parsed = urlsplit(s if "://" in s else "//" + s)
+    return (parsed.hostname or "").lower()
 
 
 def _inscope_matchers(scope) -> list[tuple[str, str]]:
@@ -363,6 +362,11 @@ def assert_inscope_only(probe_plan: list[dict], scope) -> None:
     for entry in probe_plan:
         for req in _entry_requests(entry):
             target = str(req.get("url") or req.get("path") or "")
+            parsed = urlsplit(target)
+            if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+                raise LiveScopeError(
+                    f"live probe must use an absolute HTTP(S) URL to an in-scope host "
+                    f"(finding {entry.get('finding_id')!r}); got {target!r}")
             if "://" not in target:
                 raise LiveScopeError(
                     f"live probe must use an absolute URL to an in-scope host (finding "
@@ -372,6 +376,11 @@ def assert_inscope_only(probe_plan: list[dict], scope) -> None:
                 raise LiveScopeError(
                     f"live probe targets {host!r}, which is NOT an in-scope asset (finding "
                     f"{entry.get('finding_id')!r}) — refusing to touch it")
+            for k, v in (req.get("headers") or {}).items():
+                if str(k).strip().lower() == "host" and _host_of(str(v)) != host:
+                    raise LiveScopeError(
+                        f"live probe Host header {v!r} does not match URL host {host!r} "
+                        f"(finding {entry.get('finding_id')!r})")
             blob = _normalize(target)
             for t in oos:
                 if t and len(t) > 3 and t in blob:
@@ -416,9 +425,15 @@ def out_of_scope_match(affected: list[str], out_of_scope: list[str]) -> str | No
     substring on normalized path separators — deliberately conservative (prefer dropping a
     borderline finding over reporting against an excluded asset).
     """
-    norm_aff = [a.replace("\\", "/").lower() for a in affected]
+    def _norm_path(value: str) -> str:
+        value = value.replace("\\", "/").strip().lower()
+        while value.startswith("./"):
+            value = value[2:]
+        return value.lstrip("/")
+
+    norm_aff = [_norm_path(a) for a in affected]
     for token in out_of_scope:
-        t = token.replace("\\", "/").strip().lower()
+        t = _norm_path(token)
         if not t:
             continue
         if any(t in a for a in norm_aff):

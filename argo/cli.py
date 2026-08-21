@@ -57,6 +57,10 @@ def _build_config(
     gemini_model: Optional[str] = None,
     gemini_api_key: Optional[str] = None,
     gemini_accounts: Optional[str] = None,
+    claude_api_key: Optional[str] = None,
+    claude_api_keys: Optional[str] = None,
+    codex_api_key: Optional[str] = None,
+    codex_api_keys: Optional[str] = None,
 ) -> PipelineConfig:
     cfg = PipelineConfig(
         runner=runner,
@@ -70,6 +74,8 @@ def _build_config(
         codex_oss=codex_oss,
         codex_local_provider=codex_local_provider,
         gemini_api_key=gemini_api_key,
+        claude_api_key=claude_api_key,
+        codex_api_key=codex_api_key,
     )
     if gemini_model:
         # Flat override across every stage (mirrors --codex-model's convenience) -- fans out into
@@ -97,6 +103,12 @@ def _build_config(
     if gemini_accounts:
         keys = [k.strip() for k in gemini_accounts.split(",") if k.strip()]
         cfg = cfg.with_overrides(gemini_accounts=keys)
+    if claude_api_keys:
+        keys = [k.strip() for k in claude_api_keys.split(",") if k.strip()]
+        cfg = cfg.with_overrides(claude_api_keys=keys)
+    if codex_api_keys:
+        keys = [k.strip() for k in codex_api_keys.split(",") if k.strip()]
+        cfg = cfg.with_overrides(codex_api_keys=keys)
     return cfg
 
 
@@ -124,6 +136,35 @@ GeminiAccountsOpt = typer.Option(
     help="comma-separated GEMINI_API_KEY VALUES to chain across (multi-account; limits are "
          "per-key). Unlike --claude-accounts/--codex-accounts these are raw secret values, not "
          "directory paths -- e.g. --gemini-accounts key-a,key-b")
+ClaudeApiKeyOpt = typer.Option(
+    None, "--claude-api-key", envvar="ARGO_CLAUDE_API_KEY",
+    help="(runner=headless) ANTHROPIC_API_KEY for this run. Prefer the ARGO_CLAUDE_API_KEY "
+         "environment variable so the secret is not exposed in Argo's process argv; omit both "
+         "to use the ambient ANTHROPIC_API_KEY / "
+         "existing Claude Code subscription login. Coexists with --claude-accounts (both env vars "
+         "are injected together, no collision). A real secret -- redacted in runs/<id>/config.json; "
+         "`argo resume` needs it re-supplied.")
+ClaudeApiKeysOpt = typer.Option(
+    None, "--claude-api-keys", envvar="ARGO_CLAUDE_API_KEYS",
+    help="comma-separated ANTHROPIC_API_KEY values to chain across (prefer the "
+         "ARGO_CLAUDE_API_KEYS environment variable to keep them out of argv; "
+         "limits are per-key). A SEPARATE mechanism from --claude-accounts (directory-based "
+         "logins) -- pick one per chain; --claude-accounts wins if both are set.")
+CodexApiKeyOpt = typer.Option(
+    None, "--codex-api-key", envvar="ARGO_CODEX_API_KEY",
+    help="(runner=codex) OpenAI API key for this run. Prefer the ARGO_CODEX_API_KEY environment "
+         "variable so the secret is not exposed in Argo's process argv. A bare OPENAI_API_KEY "
+         "does NOT authenticate codex "
+         "exec -- Argo bootstraps (once, cached under ~/.argo/codex_homes) a dedicated logged-in "
+         "CODEX_HOME for it via `codex login --with-api-key` (stdin only, never argv). Omit to use "
+         "the Codex CLI's existing login; --codex-home wins if both are set. A real secret -- "
+         "redacted in runs/<id>/config.json; `argo resume` needs it re-supplied.")
+CodexApiKeysOpt = typer.Option(
+    None, "--codex-api-keys", envvar="ARGO_CODEX_API_KEYS",
+    help="comma-separated OpenAI API keys to chain across (prefer the ARGO_CODEX_API_KEYS "
+         "environment variable to keep them out of argv; each gets "
+         "its own bootstrapped CODEX_HOME). A SEPARATE mechanism from --codex-accounts -- pick one "
+         "per chain; --codex-accounts wins if both are set.")
 AuditModelOpt = typer.Option(None, "--audit-model", help="override the Stage-3 audit model")
 CalibrationOpt = typer.Option(False, "--calibration", help="run audit on Opus (all-Opus)")
 BudgetOpt = typer.Option(None, "--budget", help="HARD per-run USD ceiling; aborts further sessions")
@@ -571,9 +612,22 @@ def resume(
     max_wait: str = typer.Option("12h", "--max-wait",
                                  help="maximum time to wait with --wait, e.g. 30m, 12h, 1d"),
     runs_dir: Path = RunsDirOpt,
+    gemini_api_key: Optional[str] = GeminiApiKeyOpt,
+    claude_api_key: Optional[str] = ClaudeApiKeyOpt,
+    codex_api_key: Optional[str] = CodexApiKeyOpt,
 ):
-    """Resume an existing pipeline run using the run's persisted config.json."""
+    """Resume an existing pipeline run using the run's persisted config.json. API keys are
+    redacted in config.json (see PipelineConfig._SECRET_FIELDS) -- re-supply here if the original
+    run used one. List variants (--claude-api-keys/--codex-api-keys/--gemini-accounts) are not
+    re-suppliable on resume; only the single-value case is supported."""
     cfg = _resume_config(run, runs_dir)
+    overrides = {k: v for k, v in (
+        ("gemini_api_key", gemini_api_key),
+        ("claude_api_key", claude_api_key),
+        ("codex_api_key", codex_api_key),
+    ) if v}
+    if overrides:
+        cfg = cfg.with_overrides(**overrides)
     status = read_status(Path(cfg.runs_dir) / run)
     retry_after = _failed_retry_after(status)
     retry_after_hint = _failed_retry_after_hint(status)
@@ -695,6 +749,10 @@ def estimate(
     codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
     gemini_accounts: Optional[str] = GeminiAccountsOpt,
+    claude_api_key: Optional[str] = ClaudeApiKeyOpt,
+    claude_api_keys: Optional[str] = ClaudeApiKeysOpt,
+    codex_api_key: Optional[str] = CodexApiKeyOpt,
+    codex_api_keys: Optional[str] = CodexApiKeysOpt,
 ):
     """Run ingest+recon only, classify the target, and print a pre-audit cost estimate."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
@@ -703,7 +761,9 @@ def estimate(
                         codex_local_provider=codex_local_provider, fallback=fallback,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
-                        gemini_accounts=gemini_accounts)
+                        gemini_accounts=gemini_accounts,
+                        claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
+                        codex_api_key=codex_api_key, codex_api_keys=codex_api_keys)
     cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
@@ -832,6 +892,10 @@ def pipeline(
     codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
     gemini_accounts: Optional[str] = GeminiAccountsOpt,
+    claude_api_key: Optional[str] = ClaudeApiKeyOpt,
+    claude_api_keys: Optional[str] = ClaudeApiKeysOpt,
+    codex_api_key: Optional[str] = CodexApiKeyOpt,
+    codex_api_keys: Optional[str] = CodexApiKeysOpt,
     attribution: bool = AttributionOpt,
 ):
     """Run stages 1-5 and STOP at human-review drafts. Never submits."""
@@ -841,7 +905,9 @@ def pipeline(
                         codex_local_provider=codex_local_provider, fallback=fallback,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
-                        gemini_accounts=gemini_accounts)
+                        gemini_accounts=gemini_accounts,
+                        claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
+                        codex_api_key=codex_api_key, codex_api_keys=codex_api_keys)
     cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
@@ -860,7 +926,8 @@ def pipeline(
         # for_smoke() defaults to the Claude backend; honor an explicit --runner (e.g. codex, gemini).
         cfg = cfg.with_overrides(runner=runner, codex_model=codex_model, codex_oss=codex_oss,
                                  codex_local_provider=codex_local_provider,
-                                 gemini_api_key=gemini_api_key)
+                                 gemini_api_key=gemini_api_key,
+                                 claude_api_key=claude_api_key, codex_api_key=codex_api_key)
         research = False                                   # a cheap smoke stays fully offline
         cfg = cfg.with_overrides(research_enabled=False,
                                  corroborate_enabled=False)  # ...and skips the networked cross-check
@@ -947,6 +1014,8 @@ def bench_cross(
     codex_local_provider: Optional[str] = CodexProviderOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt, codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_api_key: Optional[str] = GeminiApiKeyOpt, gemini_accounts: Optional[str] = GeminiAccountsOpt,
+    claude_api_key: Optional[str] = ClaudeApiKeyOpt, claude_api_keys: Optional[str] = ClaudeApiKeysOpt,
+    codex_api_key: Optional[str] = CodexApiKeyOpt, codex_api_keys: Optional[str] = CodexApiKeysOpt,
 ):
     """Phase 7 cross-backend: run the SAME labeled suite once per backend (Claude/Codex/Gemini/...)
     at a comparable model tier, and report cost/latency/precision/recall/F1 side by side. Unlike
@@ -957,7 +1026,9 @@ def bench_cross(
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
-                        gemini_api_key=gemini_api_key, gemini_accounts=gemini_accounts)
+                        gemini_api_key=gemini_api_key, gemini_accounts=gemini_accounts,
+                        claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
+                        codex_api_key=codex_api_key, codex_api_keys=codex_api_keys)
     _emit(compare_backends(cfg, suite, backends=names, tier=tier, fixes=fixes,
                            parallel_cases=parallel_cases, re_audit=re_audit))
 
@@ -979,6 +1050,8 @@ def refusal_probe(
     codex_local_provider: Optional[str] = CodexProviderOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt, codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_api_key: Optional[str] = GeminiApiKeyOpt, gemini_accounts: Optional[str] = GeminiAccountsOpt,
+    claude_api_key: Optional[str] = ClaudeApiKeyOpt, claude_api_keys: Optional[str] = ClaudeApiKeysOpt,
+    codex_api_key: Optional[str] = CodexApiKeyOpt, codex_api_keys: Optional[str] = CodexApiKeysOpt,
 ):
     """Measure how often each backend's OWN safety classifier false-positives on a legitimate,
     authorized security-audit prompt (refusal_flag_rate), and how often the same backend's
@@ -993,7 +1066,9 @@ def refusal_probe(
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
-                        gemini_api_key=gemini_api_key, gemini_accounts=gemini_accounts)
+                        gemini_api_key=gemini_api_key, gemini_accounts=gemini_accounts,
+                        claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
+                        codex_api_key=codex_api_key, codex_api_keys=codex_api_keys)
     _emit(run_refusal_probe(cfg, prompts, backends=names, trials=trials, tier=tier))
 
 

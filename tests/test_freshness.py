@@ -226,6 +226,26 @@ def test_git_failure_does_not_crash_or_modify_findings(tmp_path, monkeypatch):
     assert ctx.validated_findings_path.read_text(encoding="utf-8") == before
 
 
+def test_git_commands_disable_executable_transports_and_hooks(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["argv"] = argv
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(freshness.subprocess, "run", fake_run)
+    freshness._run_git(tmp_path, ["status"])
+
+    argv = captured["argv"]
+    assert "protocol.ext.allow=never" in argv
+    assert any(arg.startswith("core.hooksPath=") for arg in argv)
+
+
+def test_fetch_rejects_option_shaped_branch(tmp_path, monkeypatch):
+    monkeypatch.setattr(freshness, "_git", lambda *args, **kwargs: pytest.fail("git invoked"))
+    assert freshness._fetch_branch(tmp_path, "--upload-pack=evil") is False
+
+
 def test_report_renders_freshness_appendix(env):
     ctx = env()
     ctx.run_dir.mkdir(parents=True, exist_ok=True)

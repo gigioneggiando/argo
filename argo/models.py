@@ -171,7 +171,7 @@ class Grounding(BaseModel):
 class Finding(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    id: str
+    id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._#-]{0,127}$")
     title: str
     severity: Severity
     confidence: Confidence

@@ -64,7 +64,7 @@ render();
 
 // --------------------------------------------------------------- NEW RUN view
 function newRunView() {
-  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "", gemini_model: "", gemini_api_key: "" };
+  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "", gemini_model: "", gemini_api_key: "", claude_api_key: "", codex_api_key: "" };
 
   let mode = "general";  // "general" = audit any code (no brief) · "bounty" = scoped program
   const briefEl = h("textarea", { placeholder: "Paste the bug-bounty program page: scope, rules, rewards, exclusions, “no DoS”…", oninput: (e) => form.brief = e.target.value });
@@ -73,15 +73,23 @@ function newRunView() {
 
   const runnerSeg = seg([["mock", "Mock · free"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => {
     form.runner = v; costBanner.classList.toggle("hidden", v === "mock");
+    claudeRow.classList.toggle("hidden", v !== "headless");
     codexRow.classList.toggle("hidden", v !== "codex");
+    codexKeyRow.classList.toggle("hidden", v !== "codex");
     geminiRow.classList.toggle("hidden", v !== "gemini");
     startBtn.lastChild.textContent = v === "mock" ? "Start run (free)" : "Start real run";
   }, ["headless", "codex", "gemini"]);
+  const claudeApiKeyEl = h("input", { type: "password", placeholder: "blank = server's Claude Code login / ANTHROPIC_API_KEY", oninput: (e) => form.claude_api_key = e.target.value.trim() });
+  const claudeRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
+    field("Claude API key", claudeApiKeyEl, "Blank uses the server's ambient ANTHROPIC_API_KEY / existing Claude Code subscription login. Never echoed back or persisted in the clear."));
   const codexModelEl = h("input", { type: "text", list: "dl-codex-models", placeholder: "blank = your Codex default model", oninput: (e) => form.codex_model = e.target.value.trim() });
   const codexProviderEl = h("input", { type: "text", placeholder: "blank = OpenAI; or ollama / lmstudio", oninput: (e) => { form.codex_local_provider = e.target.value.trim(); form.codex_oss = !!form.codex_local_provider; } });
   const codexRow = h("div", { class: "grid-2 hidden", style: { marginTop: "14px" } },
     field("Codex model", codexModelEl, "Model id for the Codex CLI; blank = its own default."),
     field("Codex provider", codexProviderEl, "Blank uses OpenAI; set ollama/lmstudio to run a local/open-source model via Codex --oss."));
+  const codexApiKeyEl = h("input", { type: "password", placeholder: "blank = your Codex CLI login", oninput: (e) => form.codex_api_key = e.target.value.trim() });
+  const codexKeyRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
+    field("Codex API key", codexApiKeyEl, "Blank uses your existing `codex login`. Setting a key makes Argo bootstrap (once, cached) a dedicated logged-in Codex profile for it via `codex login --with-api-key`. Never echoed back or persisted in the clear."));
   const geminiModelEl = h("input", { type: "text", list: "dl-gemini-models", placeholder: "default (per-stage tiering)", oninput: (e) => form.gemini_model = e.target.value.trim() });
   const geminiKeyEl = h("input", { type: "password", placeholder: "blank = server's GEMINI_API_KEY", oninput: (e) => form.gemini_api_key = e.target.value.trim() });
   const geminiRow = h("div", { class: "grid-2 hidden", style: { marginTop: "14px" } },
@@ -118,7 +126,7 @@ function newRunView() {
       field("Calibration", calSeg, "Force audit on Opus while prompts are unproven.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Web research (Stage 0)", researchSeg, "On: a web-OSINT pass (CVEs, advisories, the project's history) feeds recon — the ONLY networked step, never the live in-scope hosts. Off: fully offline.")),
-    codexRow, geminiRow);
+    codexRow, codexKeyRow, claudeRow, geminiRow);
   const advToggle = h("div", { class: "adv-toggle" }, h("span", { class: "chev" }, "▸"), "Advanced configuration");
   advToggle.addEventListener("click", () => { advToggle.classList.toggle("open"); adv.classList.toggle("hidden"); });
 
@@ -169,7 +177,8 @@ function newRunView() {
       const cfg = { runner: form.runner, parallel: form.parallel, calibration: form.calibration,
         budget_usd: form.budget ? Number(form.budget) : null, audit_model: form.audit_model.trim() || null,
         codex_model: form.codex_model || null, codex_oss: form.codex_oss, codex_local_provider: form.codex_local_provider || null,
-        gemini_model: form.gemini_model || null, gemini_api_key: form.gemini_api_key || null };
+        gemini_model: form.gemini_model || null, gemini_api_key: form.gemini_api_key || null,
+        claude_api_key: form.claude_api_key || null, codex_api_key: form.codex_api_key || null };
       const res = await api.startRun({ brief, repo: form.repo, links, dry_run: form.dry_run, research: form.research, config: cfg });
       location.hash = `#/run/${encodeURIComponent(res.run_id)}`;
     } catch (e) {

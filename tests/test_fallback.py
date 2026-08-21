@@ -44,6 +44,9 @@ def test_is_retryable():
     assert _is_retryable(RunnerError("model overloaded"))
     assert not _is_retryable(RunnerError("findings file is not valid JSON"))
     assert not _is_retryable(RunnerError("codex CLI not found on PATH"))
+    assert not _is_retryable(RunnerError(
+        "bootstrap failed: provider stderr mentioned quota 429",
+        failure_kind="credential_bootstrap"))
 
 
 def test_extract_session_reset_hint():
@@ -423,3 +426,152 @@ def test_pipeline_config_to_dict_redacts_gemini_secrets():
     # a config with no key set stays falsy, not spuriously "<redacted>"
     empty = pipeline_config_to_dict(PipelineConfig(runner="gemini"))
     assert empty["gemini_api_key"] is None and empty["gemini_accounts"] == []
+
+
+def test_build_runner_multi_account_claude_api_key_chain(tmp_path):
+    """claude_api_keys is a SEPARATE, key-based chaining mechanism from claude_accounts (directory
+    logins) -- mirrors gemini_accounts' shape exactly."""
+    from argo.ledger import Ledger
+    from argo.runner import HeadlessClaudeRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="headless", claude_api_keys=["sk-ant-a", "sk-ant-b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 2
+        assert all(isinstance(x, HeadlessClaudeRunner) for x in r._runners)
+        assert [x.config.claude_api_key for x in r._runners] == ["sk-ant-a", "sk-ant-b"]
+        assert all(x.config.claude_config_dir is None for x in r._runners)
+    finally:
+        ledger.close()
+
+
+def test_build_runner_multi_account_codex_api_key_chain(tmp_path):
+    """codex_api_keys mirrors codex_accounts' shape but chains by key, not directory -- each
+    resulting CodexRunner's codex_home stays unset (the real CODEX_HOME resolution happens lazily
+    at _invoke time via the bootstrap helper, not here)."""
+    from argo.ledger import Ledger
+    from argo.runner import CodexRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="codex", codex_api_keys=["sk-oai-a", "sk-oai-b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 2
+        assert all(isinstance(x, CodexRunner) for x in r._runners)
+        assert [x.config.codex_api_key for x in r._runners] == ["sk-oai-a", "sk-oai-b"]
+        assert all(x.config.codex_home is None for x in r._runners)
+    finally:
+        ledger.close()
+
+
+def test_expand_backend_claude_accounts_win_over_claude_api_keys(tmp_path):
+    """Directory-based claude_accounts wins over key-based claude_api_keys when both are set --
+    avoids a Cartesian-product chain-expansion nobody asked for."""
+    from argo.ledger import Ledger
+    from argo.runner import HeadlessClaudeRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="headless", claude_accounts=["/acct/a", "/acct/b"],
+                             claude_api_keys=["sk-ant-a", "sk-ant-b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 2
+        assert [x.config.claude_config_dir for x in r._runners] == ["/acct/a", "/acct/b"]
+        assert all(x.config.claude_api_key is None for x in r._runners)
+    finally:
+        ledger.close()
+
+
+def test_expand_backend_codex_accounts_win_over_codex_api_keys(tmp_path):
+    from argo.ledger import Ledger
+    from argo.runner import CodexRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="codex", codex_accounts=["/cdx/a", "/cdx/b"],
+                             codex_api_keys=["sk-oai-a", "sk-oai-b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 2
+        assert [x.config.codex_home for x in r._runners] == ["/cdx/a", "/cdx/b"]
+        assert all(x.config.codex_api_key is None for x in r._runners)
+    finally:
+        ledger.close()
+
+
+def test_expand_backend_scalar_codex_home_wins_without_repeating_key_chain(tmp_path):
+    from argo.ledger import Ledger
+    from argo.runner import CodexRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="codex", codex_home="/cdx/explicit",
+                             codex_api_keys=["sk-oai-a", "sk-oai-b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, CodexRunner)
+        assert r.config.codex_home == "/cdx/explicit"
+        assert r.config.codex_api_key is None and r.config.codex_api_keys == []
+    finally:
+        ledger.close()
+
+
+def test_expand_backend_claude_accounts_clear_all_key_credentials(tmp_path):
+    from argo.ledger import Ledger
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="headless", claude_accounts=["/acct/a", "/acct/b"],
+                             claude_api_key="sk-ant-scalar",
+                             claude_api_keys=["sk-ant-a", "sk-ant-b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner)
+        assert all(x.config.claude_api_key is None for x in r._runners)
+        assert all(x.config.claude_api_keys == [] for x in r._runners)
+    finally:
+        ledger.close()
+
+
+def test_pipeline_config_to_dict_redacts_claude_and_codex_api_keys():
+    from argo.config import pipeline_config_to_dict
+    cfg = PipelineConfig(runner="headless", claude_api_key="sk-ant-live",
+                         claude_api_keys=["sk-ant-a", "sk-ant-b"],
+                         codex_api_key="sk-oai-live", codex_api_keys=["sk-oai-a", "sk-oai-b"])
+    d = pipeline_config_to_dict(cfg)
+    blob = str(d)
+    for secret in ("sk-ant-live", "sk-ant-a", "sk-ant-b", "sk-oai-live", "sk-oai-a", "sk-oai-b"):
+        assert secret not in blob
+    assert d["claude_api_key"] == "<redacted>"
+    assert d["claude_api_keys"] == ["<redacted>", "<redacted>"]
+    assert d["codex_api_key"] == "<redacted>"
+    assert d["codex_api_keys"] == ["<redacted>", "<redacted>"]
+
+
+def test_pipeline_config_from_dict_never_resurrects_a_redacted_secret():
+    """Regression test for a real bug found during this session's design pass:
+    pipeline_config_from_dict previously did no _SECRET_FIELDS handling at all, so loading a
+    written config.json back would set e.g. cfg.gemini_api_key = "<redacted>" (a truthy string)
+    instead of None -- GeminiRunner._invoke would then inject GEMINI_API_KEY=<redacted> into the
+    subprocess, silently clobbering any real ambient key. Round-trips all 6 secret fields
+    (scalar + list) through write -> load and asserts every one comes back unset, never the
+    literal sentinel string."""
+    from argo.config import pipeline_config_from_dict, pipeline_config_to_dict
+    cfg = PipelineConfig(runner="gemini", gemini_api_key="sk-g", gemini_accounts=["sk-g1", "sk-g2"],
+                         claude_api_key="sk-c", claude_api_keys=["sk-c1", "sk-c2"],
+                         codex_api_key="sk-x", codex_api_keys=["sk-x1", "sk-x2"])
+    written = pipeline_config_to_dict(cfg)
+    loaded = pipeline_config_from_dict(written)
+    assert loaded.gemini_api_key is None and loaded.gemini_accounts == []
+    assert loaded.claude_api_key is None and loaded.claude_api_keys == []
+    assert loaded.codex_api_key is None and loaded.codex_api_keys == []
+    # never the literal sentinel, for good measure
+    for value in (loaded.gemini_api_key, loaded.claude_api_key, loaded.codex_api_key,
+                 *loaded.gemini_accounts, *loaded.claude_api_keys, *loaded.codex_api_keys):
+        assert value != "<redacted>"
+    # a config with real values unset stays unset through the same round trip (no false positive)
+    empty_loaded = pipeline_config_from_dict(pipeline_config_to_dict(PipelineConfig(runner="mock")))
+    assert empty_loaded.gemini_api_key is None and empty_loaded.claude_api_key is None
+    assert empty_loaded.codex_api_key is None
+
+
+def test_runtime_credentials_are_redacted_and_not_resurrected():
+    from argo.config import pipeline_config_from_dict, pipeline_config_to_dict
+    written = pipeline_config_to_dict(PipelineConfig(
+        runtime_credentials={"username": "alice", "password": "correct-horse"}))
+    assert written["runtime_credentials"] == {
+        "username": "<redacted>", "password": "<redacted>"}
+    assert "correct-horse" not in str(written)
+    assert pipeline_config_from_dict(written).runtime_credentials == {}

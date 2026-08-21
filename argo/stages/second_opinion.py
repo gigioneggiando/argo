@@ -46,6 +46,7 @@ from pathlib import Path
 
 from ..config import PipelineConfig
 from ..context import RunContext, atomic_write_json
+from ..guardrails import GuardrailError
 from ..runner import build_runner
 from . import audit, ingest, recon
 
@@ -134,6 +135,8 @@ def _run_one_pass(ctx: RunContext, pass_index: int) -> int:
         recon.run(sub_ctx)
         audit.run(sub_ctx)
         return _merge_findings_back(ctx, sub_ctx, pass_label)
+    except GuardrailError:
+        raise  # safety controls are run-level hard stops, including inside optional blind passes
     except Exception as exc:  # noqa: BLE001 — one failed blind pass must never abort the run
         _log(f"{pass_label}: failed ({type(exc).__name__}: {exc}); skipping this pass, "
             f"primary findings are unaffected")

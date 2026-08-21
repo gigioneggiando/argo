@@ -6,15 +6,18 @@ equivalent of the Claude `--disallowedTools` sandbox test.
 """
 
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
+import argo.runner as runner_mod
 from argo.config import PipelineConfig, estimate_cost_usd
 from argo.guardrails import session_policy
 from argo.ledger import Ledger
 from argo.runner import (CodexRunner, RunnerError, _CODEX_NETWORK_CFG, _scan_codex_tokens,
-                         build_runner)
+                         _codex_home_for_api_key, _ensure_codex_api_key_home, build_runner)
 
 
 def _runner(tmp_path, **cfg):
@@ -192,11 +195,168 @@ def test_api_and_cli_codex_config_passthrough(tmp_path):
     from server.schemas import RunConfig, RunRequest
     jm = JobManager(PipelineConfig(runs_dir=tmp_path / "runs", ledger_path=tmp_path / "l.sqlite"))
     cfg = jm._config_for(RunRequest(brief="b", repo="r", config=RunConfig(
-        runner="codex", codex_model="o3", codex_oss=True, codex_local_provider="ollama")))
+        runner="codex", codex_model="o3", codex_oss=True, codex_local_provider="ollama",
+        codex_api_key="sk-oai-api-test")))
     assert cfg.runner == "codex" and cfg.codex_model == "o3"
     assert cfg.codex_oss is True and cfg.codex_local_provider == "ollama"
-    # CLI: _build_config passthrough
+    assert cfg.codex_api_key == "sk-oai-api-test"
+    # CLI: _build_config passthrough (single value + comma-split multi-account list)
     from argo.cli import _build_config
     c2 = _build_config("codex", None, False, None, 3, tmp_path / "runs", "happy",
-                       codex_model="gpt-5-codex", codex_oss=True, codex_local_provider="lmstudio")
+                       codex_model="gpt-5-codex", codex_oss=True, codex_local_provider="lmstudio",
+                       codex_api_key="sk-oai-cli-test", codex_api_keys="sk-a,sk-b")
     assert c2.runner == "codex" and c2.codex_model == "gpt-5-codex" and c2.codex_local_provider == "lmstudio"
+    assert c2.codex_api_key == "sk-oai-cli-test"
+    assert c2.codex_api_keys == ["sk-a", "sk-b"]
+
+
+# --------------------------------------------------------------- API-key bootstrap (Codex only --
+# unlike Claude/Gemini, a bare ambient OPENAI_API_KEY does NOT authenticate `codex exec`; a real,
+# stateful `codex login --with-api-key` bootstrap into a dedicated CODEX_HOME is required)
+
+def test_codex_home_for_api_key_hash_never_contains_literal_key(tmp_path):
+    home = _codex_home_for_api_key("sk-super-secret-value", cache_root=tmp_path)
+    assert "sk-super-secret-value" not in str(home)
+    # same key -> same dir (caching/reuse depends on this)
+    assert _codex_home_for_api_key("sk-super-secret-value", cache_root=tmp_path) == home
+    # different key -> different dir
+    assert _codex_home_for_api_key("sk-a-totally-different-key", cache_root=tmp_path) != home
+
+
+def test_ensure_codex_api_key_home_pipes_key_via_stdin_not_argv(tmp_path, monkeypatch):
+    calls = []
+    def fake_run(args, *, codex_home, input_text=None, timeout=30):
+        calls.append((list(args), input_text))
+        if args[1:] == ["login", "status"]:
+            return subprocess.CompletedProcess(args, 1, stdout="Not logged in", stderr="")
+        return subprocess.CompletedProcess(args, 0, stdout="Logged in", stderr="")
+    monkeypatch.setattr(runner_mod, "_run_codex_cli", fake_run)
+    _ensure_codex_api_key_home("sk-secret-argv-test", codex_bin="codex", cache_root=tmp_path)
+    login_calls = [c for c in calls if c[0][1:] == ["login", "--with-api-key"]]
+    assert len(login_calls) == 1
+    args, input_text = login_calls[0]
+    assert "sk-secret-argv-test" not in args           # never in argv
+    assert input_text == "sk-secret-argv-test"          # only ever via stdin
+
+
+def test_ensure_codex_api_key_home_bootstraps_once_then_reuses(tmp_path, monkeypatch):
+    status_calls = {"n": 0}
+    login_calls = {"n": 0}
+    def fake_run(args, *, codex_home, input_text=None, timeout=30):
+        if args[1:] == ["login", "status"]:
+            status_calls["n"] += 1
+            already = status_calls["n"] > 1   # not logged in on the first check, logged in after
+            return subprocess.CompletedProcess(args, 0 if already else 1,
+                                               stdout="Logged in" if already else "Not logged in")
+        login_calls["n"] += 1
+        return subprocess.CompletedProcess(args, 0, stdout="ok")
+    monkeypatch.setattr(runner_mod, "_run_codex_cli", fake_run)
+    home1 = _ensure_codex_api_key_home("sk-reuse-test", cache_root=tmp_path)
+    home2 = _ensure_codex_api_key_home("sk-reuse-test", cache_root=tmp_path)
+    assert home1 == home2
+    assert login_calls["n"] == 1   # bootstrapped once, reused on the second call
+
+
+def test_ensure_codex_api_key_home_raises_on_login_failure_without_leaking_key(tmp_path, monkeypatch):
+    def fake_run(args, *, codex_home, input_text=None, timeout=30):
+        if args[1:] == ["login", "status"]:
+            return subprocess.CompletedProcess(args, 1, stdout="Not logged in")
+        return subprocess.CompletedProcess(
+            args, 1, stdout="", stderr="invalid sk-should-never-leak quota 429 rejected")
+    monkeypatch.setattr(runner_mod, "_run_codex_cli", fake_run)
+    with pytest.raises(RunnerError) as exc_info:
+        _ensure_codex_api_key_home("sk-should-never-leak", cache_root=tmp_path)
+    assert "sk-should-never-leak" not in str(exc_info.value)
+    assert "<redacted>" in str(exc_info.value)
+    assert exc_info.value.failure_kind == "credential_bootstrap"
+    assert not exc_info.value.retryable
+
+
+def test_ensure_codex_api_key_home_rejects_non_directory_cache_leaf(tmp_path):
+    key = "sk-unsafe-cache-test"
+    home = _codex_home_for_api_key(key, cache_root=tmp_path)
+    home.write_text("not a directory", encoding="utf-8")
+    with pytest.raises(RunnerError) as exc_info:
+        _ensure_codex_api_key_home(key, cache_root=tmp_path)
+    assert exc_info.value.failure_kind == "credential_bootstrap"
+
+
+def test_codex_cli_key_options_offer_non_argv_environment_ingress():
+    from argo.cli import CodexApiKeyOpt, CodexApiKeysOpt
+    assert CodexApiKeyOpt.envvar == "ARGO_CODEX_API_KEY"
+    assert CodexApiKeysOpt.envvar == "ARGO_CODEX_API_KEYS"
+
+
+def test_ensure_codex_api_key_home_serializes_concurrent_bootstraps_for_the_same_key(tmp_path, monkeypatch):
+    login_calls = {"n": 0}
+    logged_in = {"ok": False}
+    lock = threading.Lock()
+    def fake_run(args, *, codex_home, input_text=None, timeout=30):
+        if args[1:] == ["login", "status"]:
+            return subprocess.CompletedProcess(
+                args, 0 if logged_in["ok"] else 1,
+                stdout="Logged in" if logged_in["ok"] else "Not logged in")
+        with lock:
+            login_calls["n"] += 1
+        time.sleep(0.05)   # widen the race window so a real bug would actually be caught
+        logged_in["ok"] = True
+        return subprocess.CompletedProcess(args, 0, stdout="ok")
+    monkeypatch.setattr(runner_mod, "_run_codex_cli", fake_run)
+    threads = [threading.Thread(target=_ensure_codex_api_key_home,
+                                kwargs={"key": "sk-concurrent-test", "cache_root": tmp_path})
+              for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert login_calls["n"] == 1   # exactly one real login attempt despite 5 concurrent callers
+
+
+def test_codex_runner_uses_bootstrapped_home_for_api_key(tmp_path, monkeypatch):
+    r = _runner(tmp_path, codex_api_key="sk-runner-test")
+    fake_home = tmp_path / "fake_codex_home"
+    monkeypatch.setattr(runner_mod, "_ensure_codex_api_key_home",
+                        lambda key, **kw: fake_home)
+    captured = {}
+    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+        captured["env"] = env
+        return _FakeProc("", "boom", 1)
+    monkeypatch.setattr(r, "_exec", fake_exec)
+    with pytest.raises(RunnerError):
+        _invoke(r, tmp_path)
+    assert captured["env"]["CODEX_HOME"] == str(fake_home)
+    r.ledger.close()
+
+
+def test_codex_runner_explicit_codex_home_wins_over_api_key(tmp_path, monkeypatch):
+    r = _runner(tmp_path, codex_home="/explicit/home", codex_api_key="sk-should-be-ignored")
+    def fail_if_called(key, **kw):
+        raise AssertionError("bootstrap should not be attempted when codex_home is explicit")
+    monkeypatch.setattr(runner_mod, "_ensure_codex_api_key_home", fail_if_called)
+    captured = {}
+    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+        captured["env"] = env
+        return _FakeProc("", "boom", 1)
+    monkeypatch.setattr(r, "_exec", fake_exec)
+    with pytest.raises(RunnerError):
+        _invoke(r, tmp_path)
+    import os as _os
+    expected = _os.path.abspath(_os.path.expanduser("/explicit/home"))
+    assert captured["env"]["CODEX_HOME"] == expected
+    r.ledger.close()
+
+
+def test_codex_runner_memoizes_bootstrap_across_invokes(tmp_path, monkeypatch):
+    r = _runner(tmp_path, codex_api_key="sk-memoize-test")
+    calls = {"n": 0}
+    def fake_ensure(key, **kw):
+        calls["n"] += 1
+        return tmp_path / "home"
+    monkeypatch.setattr(runner_mod, "_ensure_codex_api_key_home", fake_ensure)
+    monkeypatch.setattr(r, "_exec", lambda *a, **k: _FakeProc("", "boom", 1))
+    with pytest.raises(RunnerError):
+        _invoke(r, tmp_path)
+    with pytest.raises(RunnerError):
+        _invoke(r, tmp_path)
+    assert calls["n"] == 1   # bootstrapped once, memoized on the instance across both _invoke calls
+    r.ledger.close()

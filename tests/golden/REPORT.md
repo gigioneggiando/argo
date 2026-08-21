@@ -68,7 +68,7 @@
 
 - Severity: **High** (audit: High) | Confidence: **Medium** | Verdict: **needs_runtime_verification**
 - CWE: CWE-918 | OWASP: A10:2021 SSRF
-- Affected: `src/net/fetch.py:88`
+- Affected: `src/net/fetch.py:4`
 
 **Vulnerable flow.** user url -> fetch(url) -> http.get(url) with no allow-list visible in source
 
@@ -87,7 +87,7 @@
 ## Residual unknowns
 
 These need human runtime verification (static evidence strong; exploitability depends on runtime/config not visible from source):
-- **SSRF via user-controlled outbound fetch** (CWE-918, `src/net/fetch.py:88`) - SSRF sink is reachable, but whether an egress allow-list blocks internal ranges depends on deploy-time config not visible from source.
+- **SSRF via user-controlled outbound fetch** (CWE-918, `src/net/fetch.py:4`) - SSRF sink is reachable, but whether an egress allow-list blocks internal ranges depends on deploy-time config not visible from source.
 - (recon) Whether an upstream WAF or auth middleware gates /api/* in production (not visible from source).
 - (recon) Whether the SSRF allow-list is enforced at deploy time via config.
 

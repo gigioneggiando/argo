@@ -50,6 +50,8 @@ def test_mechanical_diff_noop_and_new_file(tmp_path):
     assert "new file mode 100644" in d and "+++ b/pkg/new.py" in d and "--- /dev/null" in d
     # malformed entries are ignored, not crashed on
     assert _mechanical_diff(repo, ["nope", {"path": "", "new_content": "y"}, {"path": "z"}]) == ""
+    assert _mechanical_diff(repo, [{"path": "../escape.py", "new_content": "bad\n"}]) == ""
+    assert _mechanical_diff(repo, [{"path": "C:/escape.py", "new_content": "bad\n"}]) == ""
 
 
 @needs_patch

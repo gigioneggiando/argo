@@ -8,8 +8,10 @@ is readable by anyone watching the run dir, with no in-memory coupling to the pr
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -186,7 +188,7 @@ class ProgressReporter:
         Readers (``read_status``) tolerate a missing/partial read."""
         self.ctx.run_dir.mkdir(parents=True, exist_ok=True)
         path = self.ctx.run_dir / "status.json"
-        tmp = path.with_suffix(".json.tmp")
+        tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
         data = json.dumps(self.snapshot(), indent=2)
         for _ in range(5):
             try:

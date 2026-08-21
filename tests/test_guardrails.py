@@ -117,6 +117,7 @@ def test_out_of_scope_match():
     assert out_of_scope_match(["src/api/search.py:42"], ["/legacy/"]) is None
     # windows-style separators normalize
     assert out_of_scope_match(["src\\legacy\\x.py:1"], ["/legacy/"]) == "/legacy/"
+    assert out_of_scope_match(["docs/architecture.md:1"], ["./docs/"]) == "./docs/"
 
 
 def test_fill_placeholders_unresolved_raises():

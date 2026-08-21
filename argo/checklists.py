@@ -33,6 +33,7 @@ _CRYPTO_HINTS = (
 
 #: Cap the repo walk so detection stays cheap on large trees.
 _SCAN_FILE_CAP = 6000
+_FILE_BYTE_CAP = 600_000
 
 
 def _iter_repo_files(repo_dir: Path):
@@ -92,6 +93,8 @@ def detect_free_then_reparse(repo_dir: Path) -> bool:
             if p.suffix.lower() not in _NATIVE_EXTS:
                 continue
             try:
+                if p.stat().st_size > _FILE_BYTE_CAP:
+                    continue
                 lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
             except OSError:
                 continue

@@ -41,6 +41,7 @@ _SOURCE_EXTS = frozenset({
 
 #: Cap the repo walk so grounding stays cheap on large trees (mirrors checklists._SCAN_FILE_CAP).
 _SCAN_FILE_CAP = 8000
+_FILE_BYTE_CAP = 2 * 1024 * 1024
 
 #: A cited symbol must be at least this long to be checked (shorter tokens are too generic).
 _SYMBOL_MIN_LEN = 6
@@ -92,6 +93,11 @@ def _iter_source_files(repo_dir: Path):
         if ".git" in p.parts:
             continue
         if p.is_file() and p.suffix.lower() in _SOURCE_EXTS:
+            try:
+                if p.stat().st_size > _FILE_BYTE_CAP:
+                    continue
+            except OSError:
+                continue
             seen += 1
             if seen > _SCAN_FILE_CAP:
                 return

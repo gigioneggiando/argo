@@ -5,7 +5,10 @@ missing or the session died mid-write)."""
 from __future__ import annotations
 
 import json
+import os
+import re
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,7 +37,7 @@ def atomic_write_json(path: Path, data: Any, *, indent: int = 2) -> None:
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     text = json.dumps(data, indent=indent)
     last_exc: OSError | None = None
     for attempt in range(5):
@@ -61,6 +64,13 @@ class RunContext:
     ledger: Ledger
     scope: Optional[Scope] = None
     now: Optional[str] = None  # ISO timestamp; injectable for deterministic report output
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", self.run_id):
+            raise ValueError("run_id must be 1-64 filename-safe characters")
+        root = Path(self.config.runs_dir).resolve()
+        if not (root / self.run_id).resolve().is_relative_to(root):
+            raise ValueError("run_id must stay within runs_dir")
 
     # ---- paths -------------------------------------------------------------------
     @property
@@ -161,11 +171,14 @@ def collect_output_files(result: LLMResult, glob_pattern: str) -> list[Path]:
     found: list[Path] = []
     manifest = extract_manifest(result.text)
     if manifest:
+        root = work_dir.resolve()
         for art in manifest.get("artifacts", []):
             rel = art.get("path")
             if not rel:
                 continue
-            p = (work_dir / rel)
+            p = (work_dir / rel).resolve()
+            if not p.is_relative_to(root):
+                continue
             if p.exists():
                 found.append(p)
     # Always union with a scratch-dir glob: covers missing/partial manifests and any file the

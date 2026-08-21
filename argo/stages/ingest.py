@@ -70,11 +70,12 @@ PROGRAM BRIEF (raw):
 
 
 def _make_readonly(root: Path) -> None:
-    """Best-effort: strip write bits from every file so no session can patch the repo. The
-    primary guarantee is the runner's tool restriction (no Edit/Write into the repo); this is
-    defense-in-depth."""
-    for dirpath, _dirnames, filenames in os.walk(root):
-        for name in filenames:
+    """Best-effort: strip write bits from the repo tree so sessions cannot patch it."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        # chmod cannot remove directory-create permission on Windows; doing so only sets the
+        # directory's read-only attribute and interferes with later cleanup.
+        names = filenames if os.name == "nt" else dirnames + filenames
+        for name in names:
             p = Path(dirpath) / name
             try:
                 mode = p.stat().st_mode
@@ -101,6 +102,13 @@ def _is_url(source: str) -> bool:
         s.startswith(("http://", "https://", "git@", "ssh://", "git://"))
         or s.endswith(".git")
     )
+
+
+def _validate_git_source(source: str) -> None:
+    """Reject values Git could reinterpret as options or executable transports."""
+    value = source.strip()
+    if not value or value.startswith("-") or value.lower().startswith("ext::"):
+        raise ValueError(f"unsafe git repository source: {source!r}")
 
 
 def _log(msg: str) -> None:
@@ -197,23 +205,27 @@ def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = 
         raise FileExistsError(f"repo dir already exists: {dest}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     if is_url:
+        _validate_git_source(source)
         if commit:
             _clone_at_commit(source, dest, commit)
         else:
             subprocess.run(
-                ["git", "clone", "--depth", "1", source, str(dest)],
+                ["git", "-c", "protocol.ext.allow=never", "clone", "--depth", "1", "--",
+                 source, str(dest)],
                 check=True, capture_output=True, text=True,
             )
     else:
         src = Path(source).expanduser().resolve()
         if not src.is_dir():
             raise NotADirectoryError(f"local repo path is not a directory: {src}")
-        shutil.copytree(src, dest)
+        shutil.copytree(src, dest, symlinks=True)
         if commit:
             if not (dest / ".git").exists():
                 shutil.rmtree(dest, ignore_errors=True)
                 raise RuntimeError(f"cannot pin commit {commit}: '{src}' is not a git repository")
-            subprocess.run(["git", "-C", str(dest), "checkout", "--quiet", commit],
+            subprocess.run(["git", "-c", "core.hooksPath=NUL" if os.name == "nt" else
+                            "core.hooksPath=/dev/null", "-C", str(dest), "checkout", "--quiet",
+                            commit],
                            check=True, capture_output=True, text=True)
     _make_readonly(dest)
 
@@ -221,17 +233,19 @@ def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = 
 def _clone_at_commit(url: str, dest: Path, commit: str) -> None:
     """Materialize ``url`` at exactly ``commit``. Prefer a shallow fetch of that single revision
     (fast, minimal); fall back to a full clone + checkout for hosts that reject fetch-by-sha."""
+    _validate_git_source(url)
+    git_prefix = ["git", "-c", "protocol.ext.allow=never"]
     try:
         dest.mkdir(parents=True)
         for args in (["init", "--quiet"],
                      ["remote", "add", "origin", url],
                      ["fetch", "--depth", "1", "--quiet", "origin", commit],
                      ["checkout", "--quiet", "FETCH_HEAD"]):
-            subprocess.run(["git", "-C", str(dest), *args],
+            subprocess.run([*git_prefix, "-C", str(dest), *args],
                            check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError:
         shutil.rmtree(dest, ignore_errors=True)          # start clean for the fallback
-        subprocess.run(["git", "clone", "--quiet", url, str(dest)],
+        subprocess.run([*git_prefix, "clone", "--quiet", "--", url, str(dest)],
                        check=True, capture_output=True, text=True)
         subprocess.run(["git", "-C", str(dest), "checkout", "--quiet", commit],
                        check=True, capture_output=True, text=True)
@@ -272,7 +286,7 @@ def _local_scope(repo: str, is_url: bool) -> dict:
         "in_scope": [{"asset": repo, "type": "source_repo"}],
         "out_of_scope": [],
         "prohibited_techniques": list(_DEFAULT_PROHIBITED),
-        "automation_allowed": True,
+        "automation_allowed": False,
         "reference_links": [],
         "program_brief_raw": (
             f"Local source-only security review of '{name}'. The owner's own or private codebase, "

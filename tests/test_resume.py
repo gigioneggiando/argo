@@ -152,3 +152,64 @@ def test_parse_retry_after_malformed_timezone_does_not_raise():
     # ZoneInfoNotFoundError) for a malformed key (path-traversal-shaped, embedded NUL, ...).
     for hint in ("5pm (Not/AZone)", "5pm (../../etc)", "5pm (\x00)"):
         assert parse_retry_after(hint) is not None
+
+
+def test_resume_cli_resupplies_a_redacted_api_key(tmp_path, monkeypatch):
+    """Regression coverage for a real bug found this session: config.json redacts API keys
+    (PipelineConfig._SECRET_FIELDS) and, before this feature, `argo resume` had no way to
+    re-supply one at all despite docs/backends.md claiming it did. Writes a run whose config.json
+    used a real claude_api_key (so it's persisted as "<redacted>"), then confirms
+    `--claude-api-key` on the CLI overrides it back to a real value before resume_pipeline runs."""
+    import argo.cli as cli_mod
+    run_id = "OLD-RUN-KEY"
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / run_id
+    run_dir.mkdir(parents=True)
+    cfg = PipelineConfig(runner="headless", runs_dir=runs_dir, claude_api_key="sk-original-secret")
+    from argo.config import write_pipeline_config
+    write_pipeline_config(run_dir / "config.json", cfg)
+    (run_dir / "status.json").write_text(json.dumps({
+        "run_id": run_id, "state": "failed",
+        "stages": [{"name": "validate", "state": "failed"}],
+    }), encoding="utf-8")
+
+    captured = {}
+    def fake_resume_pipeline(ctx):
+        captured["claude_api_key"] = ctx.config.claude_api_key
+        return {"resumed_from": "validate"}
+    monkeypatch.setattr(cli_mod, "resume_pipeline", fake_resume_pipeline)
+
+    result = CliRunner().invoke(cli_mod.app, [
+        "resume", "--run", run_id, "--runs-dir", str(runs_dir),
+        "--claude-api-key", "sk-resupplied-secret"])
+    assert result.exit_code == 0, result.output
+    assert captured["claude_api_key"] == "sk-resupplied-secret"
+
+
+def test_resume_cli_without_resupply_stays_deredacted(tmp_path, monkeypatch):
+    """Without a re-supplied key, the loaded config must have None (from the de-redaction fix in
+    pipeline_config_from_dict), never the literal "<redacted>" string clobbering a real ambient
+    key at invocation time."""
+    import argo.cli as cli_mod
+    run_id = "OLD-RUN-NOKEY"
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / run_id
+    run_dir.mkdir(parents=True)
+    cfg = PipelineConfig(runner="headless", runs_dir=runs_dir, claude_api_key="sk-original-secret")
+    from argo.config import write_pipeline_config
+    write_pipeline_config(run_dir / "config.json", cfg)
+    (run_dir / "status.json").write_text(json.dumps({
+        "run_id": run_id, "state": "failed",
+        "stages": [{"name": "validate", "state": "failed"}],
+    }), encoding="utf-8")
+
+    captured = {}
+    def fake_resume_pipeline(ctx):
+        captured["claude_api_key"] = ctx.config.claude_api_key
+        return {"resumed_from": "validate"}
+    monkeypatch.setattr(cli_mod, "resume_pipeline", fake_resume_pipeline)
+
+    result = CliRunner().invoke(cli_mod.app,
+                                ["resume", "--run", run_id, "--runs-dir", str(runs_dir)])
+    assert result.exit_code == 0, result.output
+    assert captured["claude_api_key"] is None

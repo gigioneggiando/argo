@@ -9,6 +9,29 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- **Explicit API keys for the Claude and Codex backends** (`--claude-api-key`/`--claude-api-keys`,
+  `--codex-api-key`/`--codex-api-keys`), matching what Gemini already had. Claude needs only a bare
+  `ANTHROPIC_API_KEY` (coexists additively with `--claude-accounts`); Codex does not accept a bare
+  env var — Argo bootstraps a dedicated, cached `CODEX_HOME` for it via `codex login
+  --with-api-key` (key piped over stdin only, never argv; cached under
+  `~/.argo/codex_homes/<sha256-of-key>`, never the literal key in a path). Both are real secrets —
+  redacted in `runs/<id>/config.json`, `type="password"` in the web UI, never echoed back over the
+  HTTP API. `argo resume` gained `--claude-api-key`/`--codex-api-key` (alongside the pre-existing,
+  now-actually-working `--gemini-api-key`) to re-supply a redacted key on resume.
+
+### Fixed
+
+- **`pipeline_config_from_dict` never de-redacted a secret on load.** A `config.json` written by a
+  Gemini run stored the literal string `"<redacted>"` for `gemini_api_key`; loading it back (`argo
+  resume`/`argo chat`) set the field to that literal string — truthy, so it was injected as the
+  actual `GEMINI_API_KEY`, clobbering any real ambient key and silently breaking auth. Found and
+  fixed while adding the Claude/Codex key fields (which would have tripled the blast radius);
+  redacted secrets now come back `None`/`[]` on load, never resurrected as the sentinel string.
+- `argo resume --gemini-api-key` didn't actually exist as a CLI option despite `docs/backends.md`
+  documenting it — `resume` now genuinely accepts it (and the new Claude/Codex equivalents).
+
 ## [0.6.0] - 2026-08-18
 
 ### Added

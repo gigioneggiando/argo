@@ -150,6 +150,8 @@ def _match_known(pins: list[dict]) -> list[dict]:
     idx = 1
     for pin in pins:
         nm, ver = pin["name"].lower(), pin["version"]
+        if not re.fullmatch(r"\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.-]+)?", str(ver)):
+            continue
         for e in known:
             if e.get("name", "").lower() != nm:
                 continue

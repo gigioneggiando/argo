@@ -219,6 +219,58 @@ def test_invoke_returns_envelope_even_on_nonzero_exit(tmp_path, monkeypatch):
     ledger.close()
 
 
+@needs_claude_cli
+def test_invoke_injects_anthropic_api_key_env(tmp_path, monkeypatch):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    runner = HeadlessClaudeRunner(PipelineConfig(claude_api_key="sk-ant-test"), ledger)
+    captured = {}
+    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+        captured["env"] = env
+        return _FakeProc("not json {")
+    monkeypatch.setattr(runner, "_exec", fake_exec)
+    with pytest.raises(RunnerError):
+        _invoke(runner, tmp_path)
+    assert captured["env"]["ANTHROPIC_API_KEY"] == "sk-ant-test"
+    ledger.close()
+
+
+@needs_claude_cli
+def test_invoke_injects_both_claude_config_dir_and_api_key_additively(tmp_path, monkeypatch):
+    """claude_api_key is a SEPARATE mechanism from claude_config_dir (a directory path, not a
+    secret value) -- when both are set they're additive (two different env vars, no collision),
+    not mutually exclusive."""
+    ledger = Ledger(tmp_path / "l.sqlite")
+    runner = HeadlessClaudeRunner(
+        PipelineConfig(claude_config_dir=str(tmp_path), claude_api_key="sk-ant-test"), ledger)
+    captured = {}
+    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+        captured["env"] = env
+        return _FakeProc("not json {")
+    monkeypatch.setattr(runner, "_exec", fake_exec)
+    with pytest.raises(RunnerError):
+        _invoke(runner, tmp_path)
+    assert captured["env"]["ANTHROPIC_API_KEY"] == "sk-ant-test"
+    assert captured["env"]["CLAUDE_CONFIG_DIR"] == str(tmp_path)
+    ledger.close()
+
+
+@needs_claude_cli
+def test_invoke_env_stays_none_when_neither_claude_knob_set(tmp_path, monkeypatch):
+    """Regression: byte-identical to pre-feature behavior when neither claude_config_dir nor
+    claude_api_key is configured."""
+    ledger = Ledger(tmp_path / "l.sqlite")
+    runner = HeadlessClaudeRunner(PipelineConfig(), ledger)
+    captured = {}
+    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+        captured["env"] = env
+        return _FakeProc("not json {")
+    monkeypatch.setattr(runner, "_exec", fake_exec)
+    with pytest.raises(RunnerError):
+        _invoke(runner, tmp_path)
+    assert captured["env"] is None
+    ledger.close()
+
+
 # --------------------------------------------------------------------- partial recovery (Step 4)
 class _DyingRunner(ClaudeRunner):
     """Writes a valid findings file into the scratch dir, then dies hard (RunnerError)."""
@@ -248,3 +300,38 @@ def test_audit_recovers_partial_artifact_on_hard_failure(env, monkeypatch):
     findings = do_audit(ctx)
     assert findings, "partial findings should be recovered from the scratch dir"
     assert all(p.exists() for p in findings)
+
+
+def test_api_and_cli_claude_api_key_passthrough(tmp_path):
+    # API: RunConfig -> PipelineConfig mapping
+    from server.jobs import JobManager
+    from server.schemas import RunConfig, RunRequest
+    jm = JobManager(PipelineConfig(runs_dir=tmp_path / "runs", ledger_path=tmp_path / "l.sqlite"))
+    cfg = jm._config_for(RunRequest(brief="b", repo="r", config=RunConfig(
+        runner="headless", claude_api_key="sk-ant-api-test")))
+    assert cfg.runner == "headless" and cfg.claude_api_key == "sk-ant-api-test"
+    # CLI: _build_config passthrough (single value + comma-split multi-account list)
+    from argo.cli import _build_config
+    c2 = _build_config("headless", None, False, None, 3, tmp_path / "runs", "happy",
+                       claude_api_key="sk-ant-cli-test", claude_api_keys="sk-a,sk-b")
+    assert c2.claude_api_key == "sk-ant-cli-test"
+    assert c2.claude_api_keys == ["sk-a", "sk-b"]
+
+
+def test_claude_cli_key_options_offer_non_argv_environment_ingress():
+    from argo.cli import ClaudeApiKeyOpt, ClaudeApiKeysOpt
+    assert ClaudeApiKeyOpt.envvar == "ARGO_CLAUDE_API_KEY"
+    assert ClaudeApiKeysOpt.envvar == "ARGO_CLAUDE_API_KEYS"
+
+
+@needs_claude_cli
+def test_claude_failure_diagnostics_redact_configured_key(tmp_path, monkeypatch):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    key = "sk-ant-must-not-persist"
+    runner = HeadlessClaudeRunner(PipelineConfig(claude_api_key=key), ledger)
+    monkeypatch.setattr(runner, "_exec", lambda *a, **k: _FakeProc("bad " + key, "oops " + key, 1))
+    with pytest.raises(RunnerError) as exc_info:
+        _invoke(runner, tmp_path)
+    assert key not in str(exc_info.value)
+    assert str(exc_info.value).count("<redacted>") == 2
+    ledger.close()

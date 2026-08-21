@@ -7,7 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 [docs/releasing.md](docs/releasing.md) for what that means concretely for this project, in
 particular while the version stays `0.y.z`.
 
-## [Unreleased]
+## [0.7.0] - 2026-08-21
 
 ### Added
 
@@ -39,6 +39,25 @@ particular while the version stays `0.y.z`.
   redacted secrets now come back `None`/`[]` on load, never resurrected as the sentinel string.
 - `argo resume --gemini-api-key` didn't actually exist as a CLI option despite `docs/backends.md`
   documenting it — `resume` now genuinely accepts it (and the new Claude/Codex equivalents).
+- **`corroborate` mixed repo content and network access in one session**, contradicting its own
+  documented guarantee. Now runs two isolated passes per finding: an offline docs/VCS-history pass
+  (repo-mounted, no network) and a separate OSINT pass (networked, no repo mount, no source
+  excerpts in its prompt) — closing the gap without losing the OSINT capability.
+- A full self-audit pass (Argo audited its own codebase, then a dedicated pass over the new
+  API-key code) surfaced and fixed dozens more real issues: git clone/checkout hardened against
+  option and `ext::` transport injection, guardrail scope/host/redirect checks tightened, secrets
+  redacted consistently across config/logs/failure diagnostics, several path-containment and
+  permission gaps closed, and Codex credential-bootstrap directory validation hardened.
+- A guardrail's audit-prompt check required one exact safety-instruction phrasing; a model that
+  paraphrases it equivalently no longer fails the check.
+- `runtime.py` was missing an import that would crash any real run with Docker actually available
+  (a live-Docker-only code path, so untested by CI).
+- `report.py` could leave a stale submission draft behind for a finding a later stage went on to
+  refute — drafts are now cleaned up to match the current survivor set on every regeneration.
+- Two spots (`argo/stages/second_opinion.py`, the test suite's own cleanup helper) restored write
+  permission on the wrong path when removing a hardened repo copy — POSIX needs it on the *parent*
+  directory to delete anything inside, not the entry itself; this passed on every prior CI run
+  purely because nothing had exercised a hardened directory tree deeply enough to hit it before.
 
 ## [0.6.0] - 2026-08-18
 

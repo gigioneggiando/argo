@@ -18,6 +18,7 @@ R1: the probe plan is hand-written at ``runs/<id>/runtime_probe_plan.json`` (LLM
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys

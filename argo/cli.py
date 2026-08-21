@@ -472,6 +472,10 @@ def corroborate(run: str = RunIdArg,
                 docs_url: Optional[list[str]] = typer.Option(
                     None, "--docs-url",
                     help="documentation URL to ground corroboration (repeatable); omit to web-search"),
+                only: Optional[str] = typer.Option(
+                    None, "--only",
+                    help="comma-separated finding ids to (re-)corroborate; every other survivor "
+                         "and its existing corroboration are left completely untouched"),
                 runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
                 calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
                 parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
@@ -479,8 +483,9 @@ def corroborate(run: str = RunIdArg,
     (commits/releases/advisories) over public web OSINT, to confirm or discard it (downgrade
     by-design, move already-fixed to an appendix). Networked, best-effort. Rewrites
     validated_findings.json in place."""
+    only_ids = frozenset(s.strip() for s in only.split(",") if s.strip()) if only else None
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
-                        ).with_overrides(doc_links=list(docs_url or []))
+                        ).with_overrides(doc_links=list(docs_url or []), corroborate_only=only_ids)
     ctx = build_context(cfg, run)
     path = do_corroborate(ctx)
     _emit({"run_id": run, "validated_findings": str(path)})

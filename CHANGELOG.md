@@ -11,6 +11,12 @@ particular while the version stays `0.y.z`.
 
 ### Added
 
+- `argo corroborate --only ID,ID` for targeted re-corroboration that preserves every other
+  survivor's existing verdict; deep-verify now prints the exact follow-up command when a finding
+  splits into new children.
+- Deterministic, zero-LLM grounding metadata now flags conservative "possible composite finding"
+  signals for human review in logs and `REPORT.md`, without changing verdict or severity.
+
 - **Explicit API keys for the Claude and Codex backends** (`--claude-api-key`/`--claude-api-keys`,
   `--codex-api-key`/`--codex-api-keys`), matching what Gemini already had. Claude needs only a bare
   `ANTHROPIC_API_KEY` (coexists additively with `--claude-accounts`); Codex does not accept a bare
@@ -23,6 +29,8 @@ particular while the version stays `0.y.z`.
 
 ### Fixed
 
+- Citation grounding now detects numeric `affected` line citations beyond the actual file length,
+  downgrading confidence and warning the validator without auto-dropping the finding.
 - **`pipeline_config_from_dict` never de-redacted a secret on load.** A `config.json` written by a
   Gemini run stored the literal string `"<redacted>"` for `gemini_api_key`; loading it back (`argo
   resume`/`argo chat`) set the field to that literal string — truthy, so it was injected as the

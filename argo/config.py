@@ -104,6 +104,11 @@ DEFAULT_STAGE_TIMEOUTS: dict[str, int] = {
 MODEL_PRICING: dict[str, tuple[float, float]] = {
     "gpt-5.5": (1.25, 10.0), "gpt-5-codex": (1.25, 10.0), "gpt-5": (1.25, 10.0),
     "gpt-4o": (2.5, 10.0), "gpt-4.1": (2.0, 8.0), "o4-mini": (1.1, 4.4), "o3": (2.0, 8.0),
+    # GPT-5.6 family (confirmed 2026-08-21 from developers.openai.com/api/docs/models): the plain
+    # "gpt-5.6" alias resolves to Sol server-side but is NOT accepted by Codex CLI 0.149.0 when
+    # authenticated via a ChatGPT-plan CODEX_HOME (rejected: "not supported when using Codex with a
+    # ChatGPT account") -- always pass the exact suffixed name (gpt-5.6-sol/-terra/-luna).
+    "gpt-5.6-sol": (5.0, 30.0), "gpt-5.6-terra": (2.5, 15.0), "gpt-5.6-luna": (1.0, 6.0),
     GEMINI_PRO: (2.00, 12.00), GEMINI_FLASH: (1.50, 9.00), GEMINI_FLASH_LITE: (0.25, 1.50),
 }
 
@@ -282,6 +287,10 @@ class PipelineConfig:
     # silently deleted). Best-effort: a failure never fails the run. Uses the same scope forbidden-
     # live-hosts rail as research (repo host + docs are public OSINT; live in-scope hosts are not).
     corroborate_enabled: bool = True
+    # Explicit finding-id scope for this invocation. None preserves the normal behavior of
+    # corroborating every survivor; when set, every other finding and its existing verdict are left
+    # completely untouched.
+    corroborate_only: frozenset[str] | None = None
     # Curated documentation URLs to ground the cross-check (additive to the scope's reference_links +
     # source repo). If empty, the stage searches the web for the project's official docs + repo.
     doc_links: list[str] = field(default_factory=list)

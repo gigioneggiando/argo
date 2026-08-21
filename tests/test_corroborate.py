@@ -207,3 +207,25 @@ def test_two_pass_results_merge_into_one_corroboration():
     assert "Offline docs/VCS:" in merged.rationale and "Public OSINT:" in merged.rationale
     assert merged.evidence_urls == [
         "https://docs.example/local-equivalent", "https://example.test/advisory"]
+
+
+def test_only_scopes_corroboration_and_leaves_other_verdicts_untouched(env):
+    from argo.stages import corroborate
+
+    ctx = env(corroborate_enabled=False)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    doc = _validated(ctx)
+    untouched = next(f for f in doc["findings"] if f["id"] == "AUTHZ-002")
+    untouched["corroboration"] = {"verdict": "unknown", "rationale": "preserve this sentinel"}
+    ctx.validated_findings_path.write_text(json.dumps(doc), encoding="utf-8")
+    ctx.config = ctx.config.with_overrides(corroborate_only=frozenset({"FULL-001"}))
+
+    corroborate.run(ctx)
+    kept = {f["id"]: f for f in _validated(ctx)["findings"]}
+    assert kept["FULL-001"]["corroboration"]["verdict"] == "corroborated"
+    # AUTHZ-002 itself is never re-corroborated, but every *kept* finding still round-trips
+    # through the Finding/Corroboration model on write -- that normalizes the hand-written sentinel
+    # (adds default fields like evidence_urls=[]) without changing its actual verdict/rationale.
+    assert kept["AUTHZ-002"]["corroboration"]["verdict"] == "unknown"
+    assert kept["AUTHZ-002"]["corroboration"]["rationale"] == "preserve this sentinel"
+    assert "corroboration" not in kept["FULL-003"]

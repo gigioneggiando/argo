@@ -209,7 +209,9 @@ Each generated audit prompt MUST conform to the template in
 the **scope + prohibited techniques verbatim**, the discovered tech stack and attack surfaces,
 the working method, the required per-finding format, the required deliverables, and the
 anti-false-positive / variant-hunting constraints. Fill every slot with target-specific
-content — no generic filler, no placeholders left unresolved.
+content — no generic filler, no placeholders left unresolved. Carry the template's own
+**"Do NOT patch anything"** safety line verbatim too — do not paraphrase or reword it (a
+downstream check rejects the generated prompt if this exact phrase is missing).
 
 Critically, fill the four GROUND-TRUTH sections of the template with the real, enumerated content
 from METHOD step 8 — they are the difference between a generic and a target-specific prompt, and

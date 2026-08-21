@@ -78,6 +78,10 @@ default; second-opinion between SCA and validate, verify after corroborate, asan
 (C/C++ memory-safety survivors only) — all three opt-in, off by default; or 1→2 with `--dry-run`)
 and **stops before any submission**.
 
+Deep-verify can split a previously corroborated finding into more precise children. When that
+happens it prints the new IDs; run `argo corroborate --run <run_id> --only <id,id>` to corroborate
+just those children without re-spending on, or changing the verdicts of, the other survivors.
+
 **Why an "unknown"/uncertain verdict happened, not just that it did.** Both validate and corroborate
 are best-effort against session/backend failure: a validate session that dies leaves its findings
 `needs_runtime_verification`, and a corroborate session that dies leaves its findings `unknown` —

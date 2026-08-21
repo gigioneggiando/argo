@@ -96,12 +96,21 @@ def run(ctx: RunContext) -> Path:
     # --- submission drafts (confirmed only), marked DRAFT ----------------------------
     ctx.drafts_dir.mkdir(parents=True, exist_ok=True)
     n_drafts = 0
+    wanted_ids: set[str] = set()
     for f in survivors:
         # Don't draft a submission for something corroboration found to be vendor-documented by design.
         if _verdict(f) == "confirmed" and _corr_verdict(f) != "design_accepted":
             draft = _render_draft(ctx, scope, f)
             (ctx.drafts_dir / f"{f.get('id', 'finding')}.md").write_text(draft + sig, encoding="utf-8")
             n_drafts += 1
+            wanted_ids.add(f.get("id", "finding"))
+    # A finding refuted/dropped by a later stage (deep-verify, corroborate) after an earlier
+    # report run already drafted it must not leave a stale submission draft behind -- a human
+    # skimming submission_drafts/ has no reason to re-check validated_findings.json for every
+    # file, and a disproven finding sitting there is a real risk of being sent by mistake.
+    for stale in ctx.drafts_dir.glob("*.md"):
+        if stale.stem not in wanted_ids:
+            stale.unlink()
 
     print(f"[report] REPORT.md + {n_drafts} draft(s); {len(survivors)} survivor(s); "
           f"cost ${total_cost:.4f} over {n_calls} call(s)")
@@ -330,6 +339,10 @@ def _finding_section(f: dict) -> list[str]:
              f"Confidence: **{_eff_conf(f)}** | Verdict: **{_verdict(f)}**")
     L.append(f"- CWE: {f.get('cwe')}" + (f" | OWASP: {f.get('owasp')}" if f.get('owasp') else ""))
     L.append(f"- Affected: {', '.join('`' + a + '`' for a in f.get('affected', []))}")
+    grounding = f.get("grounding") or {}
+    if grounding.get("composite_suspect"):
+        L.append(f"- **Possible composite finding (informational):** "
+                 f"{grounding.get('composite_reason') or 'may bundle multiple distinct issues'}")
     passes = f.get("corroborating_passes") or []
     if len(passes) > 1:
         L.append(f"- **Independently confirmed by {len(passes)} blind audit passes**: {', '.join(passes)}")

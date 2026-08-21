@@ -163,13 +163,22 @@ _REQUIRED_AUDIT_ANCHORS = (
     "SCOPE & RULES OF ENGAGEMENT",
     "PROHIBITED TECHNIQUES",
     "REQUIRED PER-FINDING FORMAT",
-    "Do NOT patch",
 )
+
+#: The template's "Do NOT patch anything" line is described to the synthesizing model but not
+#: contractually copied verbatim (only scope + prohibited techniques are) -- some models paraphrase
+#: it (confirmed live: gpt-5.6-sol writes "No patching or live interaction" on n8n, 2026-08-21,
+#: failing 3 real runs in a row over pure wording). Accept any equivalent phrasing for the same
+#: safety intent rather than rejecting an otherwise-compliant, safety-respecting prompt.
+_NO_PATCH_PHRASES = ("do not patch", "do not attempt to patch", "no patching")
 
 
 def assert_audit_prompt_wellformed(prompt_text: str, prohibited_techniques: list[str]) -> None:
     """Validate a model-generated audit prompt before it is used to drive a session."""
-    missing_anchors = [a for a in _REQUIRED_AUDIT_ANCHORS if a.lower() not in prompt_text.lower()]
+    text_lower = prompt_text.lower()
+    missing_anchors = [a for a in _REQUIRED_AUDIT_ANCHORS if a.lower() not in text_lower]
+    if not any(phrase in text_lower for phrase in _NO_PATCH_PHRASES):
+        missing_anchors.append("Do NOT patch")
     if missing_anchors:
         raise PromptGuardrailError(
             "Generated audit prompt does not conform to the safety template; missing "

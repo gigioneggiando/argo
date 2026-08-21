@@ -271,10 +271,16 @@ def _ground_citations(ctx: RunContext, findings: list[Finding]) -> tuple[list[Fi
             kept.append(f)
             continue
         missing_files, missing_symbols = res["missing_files"], res["missing_symbols"]
+        out_of_range_lines = res["out_of_range_lines"]
+        grounding_kwargs = dict(missing_files=missing_files, missing_symbols=missing_symbols,
+                                out_of_range_lines=out_of_range_lines,
+                                composite_suspect=res["composite_suspect"],
+                                composite_reason=res["composite_reason"])
+        if res["composite_suspect"]:
+            _log(f"{f.id}: possible composite finding ({res['composite_reason']}); informational only")
         primary = f.affected[0] if f.affected else ""
         if primary and primary in missing_files:
-            f.grounding = Grounding(status="ungrounded", missing_files=missing_files,
-                                    missing_symbols=missing_symbols)
+            f.grounding = Grounding(status="ungrounded", **grounding_kwargs)
             f.validation = Validation(
                 verdict="out_of_scope",
                 rationale=f"ungrounded citation: primary affected file '{primary}' does not exist "
@@ -282,15 +288,14 @@ def _ground_citations(ctx: RunContext, findings: list[Finding]) -> tuple[list[Fi
             dropped.append(_drop_record(f, "ungrounded_citation (primary file not in repo)"))
             _log(f"{f.id}: dropped pre-validation (ungrounded citation: {primary} not in repo)")
             continue
-        if missing_files or missing_symbols:
-            f.grounding = Grounding(status="ungrounded", missing_files=missing_files,
-                                    missing_symbols=missing_symbols)
+        if missing_files or missing_symbols or out_of_range_lines:
+            f.grounding = Grounding(status="ungrounded", **grounding_kwargs)
             f.confidence = _downgrade_confidence(f.confidence)
             n_downgraded += 1
-            _log(f"{f.id}: ungrounded citation {missing_symbols or missing_files}; confidence "
+            _log(f"{f.id}: ungrounded citation {missing_symbols or missing_files or out_of_range_lines}; confidence "
                  f"downgraded to {f.confidence}, flagged for the validator")
         else:
-            f.grounding = Grounding(status="grounded")
+            f.grounding = Grounding(status="grounded", **grounding_kwargs)
         kept.append(f)
     if dropped or n_downgraded:
         _log(f"citation grounding: {len(dropped)} dropped, {n_downgraded} downgraded")
@@ -309,6 +314,9 @@ def _grounding_note(f: Finding) -> str:
                      + ", ".join(g.missing_symbols))
     if g.missing_files:
         parts.append("file(s) cited but NOT FOUND in this repo: " + ", ".join(g.missing_files))
+    if g.out_of_range_lines:
+        parts.append("line citation(s) exceed the actual file length: "
+                     + ", ".join(g.out_of_range_lines))
     if not parts:
         return ""
     return ("!!! CITATION GROUNDING WARNING (deterministic pre-check) !!!\n"

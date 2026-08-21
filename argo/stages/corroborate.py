@@ -349,14 +349,17 @@ def run(ctx: RunContext) -> Path:
         _log("no surviving findings to corroborate")
         return ctx.validated_findings_path
 
+    only = ctx.config.corroborate_only
+    candidates = survivors if only is None else [f for f in survivors if f.id in only]
+
     # Budget-guarded launch set (parallel fan-out). Findings past the budget stay uncorroborated.
     launch: list[Finding] = []
-    for f in survivors:
+    for f in candidates:
         try:
             ctx.assert_budget()
             launch.append(f)
         except BudgetExceeded as exc:
-            _log(f"budget reached; {len(survivors) - len(launch)} finding(s) left uncorroborated ({exc})")
+            _log(f"budget reached; {len(candidates) - len(launch)} finding(s) left uncorroborated ({exc})")
             break
 
     verdicts: dict[str, Corroboration] = {}

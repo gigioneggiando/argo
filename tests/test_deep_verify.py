@@ -87,7 +87,7 @@ def test_corrected_kept_with_note(env, make_scenario):
 
 
 # --------------------------------------------------------------------------- split
-def test_split_replaces_finding_with_children(env, make_scenario):
+def test_split_replaces_finding_with_children(env, make_scenario, capsys):
     fixtures_dir, scen = make_scenario(
         lambda d: _verify_fixture(d, "FULL-001", {
             "finding_id": "FULL-001", "verdict": "split",
@@ -118,6 +118,9 @@ def test_split_replaces_finding_with_children(env, make_scenario):
     assert child["verification"]["verdict"] == "reconfirmed"      # each child stands on its own
     report = (ctx.run_dir / "REPORT.md").read_text(encoding="utf-8")
     assert "Split at deep-verify" in report and "FULL-001-split-1" in report
+    stderr = capsys.readouterr().err
+    assert "consider re-corroborating just the new ones" in stderr
+    assert "--only FULL-001-split-1,FULL-001-split-2" in stderr
 
 
 # --------------------------------------------------------------------------- merged

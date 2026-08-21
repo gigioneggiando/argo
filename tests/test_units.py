@@ -12,8 +12,15 @@ from argo.schemas import SchemaValidationError, validate_findings, validate_scop
 from argo.runner import LLMResult
 from argo.context import collect_output_files
 from argo.stages.validate import _build_excerpts
+from argo.stages.ingest import _validate_git_source
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.mark.parametrize("source", ["--upload-pack=evil", "ext::sh -c evil x.git", ""])
+def test_git_source_rejects_executable_or_option_values(source):
+    with pytest.raises(ValueError):
+        _validate_git_source(source)
 
 
 def test_split_ref_variants():
@@ -89,6 +96,25 @@ def test_collect_output_files_glob_fallback(tmp_path):
                     work_dir=tmp_path)
     files = collect_output_files(res, "SECURITY_FINDINGS__*.json")
     assert [f.name for f in files] == ["SECURITY_FINDINGS__x.json"]
+
+
+def test_collect_output_files_rejects_manifest_path_outside_work_dir(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    secret = tmp_path / "secret.json"
+    secret.write_text("{}", encoding="utf-8")
+    text = '```json\n{"artifacts":[{"path":"../secret.json"}]}\n```'
+    res = LLMResult(text=text, model="m", prompt_sha256="h", work_dir=work)
+    assert collect_output_files(res, "*.json") == []
+
+
+def test_build_excerpts_rejects_path_outside_repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (tmp_path / "secret.txt").write_text("do not disclose", encoding="utf-8")
+    out = _build_excerpts(repo, ["../secret.txt:1"], 2, 4000)
+    assert "do not disclose" not in out
+    assert "source not found in repo copy" in out
 
 
 def test_findings_fixture_conforms_to_schema():
@@ -186,7 +212,7 @@ def test_local_scope_synthesis():
     s = _local_scope("/home/me/secret-proj", False)
     assert s["program_name"] == "secret-proj" and s["target_type"] == "source_only"
     assert s["platform"] == "local" and s["in_scope"][0]["type"] == "source_repo"
-    assert len(s["prohibited_techniques"]) >= 3 and s["automation_allowed"] is True
+    assert len(s["prohibited_techniques"]) >= 3 and s["automation_allowed"] is False
 
 
 def test_recon_detect_archetype():

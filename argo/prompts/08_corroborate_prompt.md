@@ -1,7 +1,7 @@
 # Corroboration — cross-check one finding against the project's docs + the repo's VCS history
 
 You are a security analyst doing a **public-OSINT corroboration pass** on a single, already-validated
-finding. Your job is NOT to re-audit the code. Your job is to decide, using the project's **own
+finding. You have no repository access and receive no source content. Decide using the project's **public
 documentation** and the source repository's **version-control history**, whether this finding is:
 
 - **`corroborated`** — still real and not addressed; nothing in the docs or history contradicts it.
@@ -47,11 +47,6 @@ The audit ran against this version of the source (corroborate against newer hist
 
 ```json
 {{FINDING_JSON}}
-```
-
-Relevant source excerpts (from the audited revision — the behavior to corroborate):
-```
-{{CODE_EXCERPTS}}
 ```
 
 ## WHERE TO LOOK

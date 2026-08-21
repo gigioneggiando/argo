@@ -28,6 +28,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,7 +78,7 @@ def _run(cmd: list[str], cwd: Path, timeout_s: int) -> subprocess.CompletedProce
 
 
 def _copy_repo(repo_dir: Path, dst: Path) -> None:
-    shutil.copytree(repo_dir, dst, dirs_exist_ok=True,
+    shutil.copytree(repo_dir, dst, dirs_exist_ok=True, symlinks=True,
                     ignore=shutil.ignore_patterns(".git", "node_modules", "__pycache__"))
     # The audit repo mount is hardened read-only; copytree preserves those bits. Restore write
     # so the patch tool can modify THE COPY (the original is never touched).
@@ -145,20 +146,6 @@ def _check(workspace: Path, files: list[str], *, docker: str | None,
         if js:
             tools.append("node --check")
 
-    if shutil.which("go") and any(f.endswith(".go") for f in files):
-        ran = True
-        tools.append("go build")
-        r = _run(["go", "build", "./..."], workspace, timeout_s)
-        if r.returncode != 0:
-            errors |= _norm_errors(r.stderr + r.stdout, workspace)
-
-    if shutil.which("cargo") and any(f.endswith(".rs") for f in files):
-        ran = True
-        tools.append("cargo check")
-        r = _run(["cargo", "check", "--quiet"], workspace, timeout_s)
-        if r.returncode != 0:
-            errors |= _norm_errors(r.stderr + r.stdout, workspace)
-
     return CheckOutcome(ran=ran, ok=not errors, errors=errors, tool="+".join(tools) or "none")
 
 
@@ -167,7 +154,8 @@ def _check_build_cmd(workspace: Path, build_cmd: str, *, docker: str | None,
     if docker:
         if not shutil.which("docker"):
             return CheckOutcome(ran=False, ok=True, tool=f"docker:{docker} (unavailable)")
-        cmd = ["docker", "run", "--rm", "--network=none",
+        container_name = f"argo-verify-{uuid.uuid4().hex[:16]}"
+        cmd = ["docker", "run", "--rm", "--name", container_name, "--network=none",
                "-v", f"{workspace}:/src", "-w", "/src", docker, "sh", "-lc", build_cmd]
         cwd = workspace
         tool = f"docker:{docker}"
@@ -178,7 +166,11 @@ def _check_build_cmd(workspace: Path, build_cmd: str, *, docker: str | None,
         cmd = [sh, "-lc", build_cmd]
         cwd = workspace
         tool = build_cmd
-    r = _run(cmd, cwd, timeout_s)
+    try:
+        r = _run(cmd, cwd, timeout_s)
+    finally:
+        if docker:
+            subprocess.run(["docker", "rm", "-f", container_name], capture_output=True)
     errors = _norm_errors(r.stdout + r.stderr, workspace) if r.returncode != 0 else set()
     return CheckOutcome(ran=True, ok=r.returncode == 0, errors=errors, tool=tool)
 

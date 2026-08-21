@@ -52,6 +52,27 @@ def test_inscope_absolute_url_ok():
     assert_inscope_only(plan, _scope())                           # no raise
 
 
+def test_live_targets_reject_non_http_schemes():
+    plan = [{"finding_id": "F1", "requests": [
+        {"method": "GET", "url": "ftp://api.acme.com/pub/file"}]}]
+    with pytest.raises(LiveScopeError):
+        assert_inscope_only(plan, _scope())
+
+
+def test_query_at_sign_cannot_spoof_inscope_host():
+    plan = [{"finding_id": "F", "requests": [
+        {"method": "GET", "url": "https://evil.test?@api.acme.com/"}]}]
+    with pytest.raises(LiveScopeError):
+        assert_inscope_only(plan, _scope())
+
+
+def test_host_header_must_match_url_host():
+    plan = [{"finding_id": "F", "requests": [{"method": "GET",
+             "url": "https://api.acme.com/x", "headers": {"Host": "evil.test"}}]}]
+    with pytest.raises(LiveScopeError):
+        assert_inscope_only(plan, _scope())
+
+
 def test_inscope_wildcard_subdomain_ok():
     plan = [{"finding_id": "F1", "requests": [
         {"method": "GET", "url": "https://app.acme.com/health"}]}]

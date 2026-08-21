@@ -11,9 +11,9 @@ Inputs: ``validated_findings.json`` (validate's survivors). Output: the same fil
 ``corroboration`` block attached to each finding and a new top-level ``fixed_upstream`` list.
 
 Guardrails (defense in depth):
-  * One of the only two networked stages (with ``research``): keeps the OSINT tools
-    (``WebSearch``/``WebFetch``) but no shell, no sub-agents, no repo mount. The audited code is
-    passed as excerpts in the prompt (network OR repo, never both in one session).
+  * Split into isolated sessions: ``corroborate_docs`` mounts the repo and has no network tools;
+    ``corroborate`` keeps OSINT tools but has no repo mount and receives no source excerpts
+    (network OR repo, never both in one session).
   * It must NEVER contact the program's live in-scope hosts (passed as a forbidden list, like research).
   * Best-effort: a failure here never fails the run — the finding is simply left ``unknown``.
   * Self-consistency backstop: the model occasionally writes a ``rationale`` that itself asserts
@@ -31,7 +31,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from ..config import RESEARCH_TOOLS
+from ..config import ARTIFACT_TOOLS, RESEARCH_TOOLS
 from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
 from ..models import Corroboration, Finding
 from ..rendering import design_context_block, fill_placeholders, with_artifact_contract
@@ -48,6 +48,8 @@ _VALID_VERDICTS = {"corroborated", "design_accepted", "fixed_upstream", "unknown
 #: report the split explicitly instead of collapsing them into one opaque "unknown" count.
 _INFRA_FAILURE_RATIONALE_PREFIXES = (
     "corroboration session failed:",
+    "corroboration docs session failed:",
+    "corroboration osint session failed:",
     "corroboration session produced no verdict file",
     "corroboration verdict was not valid JSON",
     "no verdict returned for this finding in the batch",
@@ -56,7 +58,7 @@ _INFRA_FAILURE_RATIONALE_PREFIXES = (
 
 def _is_infra_failure(corr: Corroboration) -> bool:
     return (corr.verdict == "unknown" and bool(corr.rationale)
-            and corr.rationale.startswith(_INFRA_FAILURE_RATIONALE_PREFIXES))
+            and any(prefix in corr.rationale for prefix in _INFRA_FAILURE_RATIONALE_PREFIXES))
 
 
 # Self-consistency backstop for a real, observed LLM failure mode: the model's free-text ``rationale``
@@ -130,19 +132,45 @@ def _bullets(items: list[str], empty: str) -> str:
     return "\n".join(f"  - {i}" for i in items) if items else f"  {empty}"
 
 
-def _build_prompt(ctx: RunContext, scope, finding: Finding) -> str:
-    template = (ctx.assets_dir / "08_corroborate_prompt.md").read_text(encoding="utf-8")
+def _public_finding(finding: Finding) -> dict:
+    """The strict data boundary for the networked pass: no source-derived fields or excerpts."""
+    return {
+        "id": finding.id,
+        "title": finding.title,
+        "cwe": finding.cwe,
+        "why_vulnerable": finding.why_vulnerable,
+        "affected": finding.affected,
+    }
+
+
+def _build_docs_prompt(ctx: RunContext, scope, finding: Finding) -> str:
+    template = (ctx.assets_dir / "08c_corroborate_docs_prompt.md").read_text(encoding="utf-8")
     excerpts = _build_excerpts(
         ctx.repo_dir, finding.affected,
         ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes,
     )
+    rendered = fill_placeholders(template, {
+        "REPO_REF": _repo_ref(ctx, scope),
+        "FINDING_JSON": json.dumps(finding.model_dump(exclude_none=True), indent=2),
+        "CODE_EXCERPTS": excerpts,
+        "FINDING_ID": finding.id,
+    })
+    if scope.accepted_risks and scope.accepted_risks.strip():
+        rendered = rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks)
+    return with_artifact_contract(rendered, artifacts=[{
+        "type": "corroboration", "filename": f"corroboration_{finding.id}.json", "schema": None,
+        "desc": "the offline docs/VCS corroboration verdict for this finding",
+    }])
+
+
+def _build_osint_prompt(ctx: RunContext, scope, finding: Finding) -> str:
+    template = (ctx.assets_dir / "08_corroborate_prompt.md").read_text(encoding="utf-8")
     live = [a.asset.strip() for a in scope.in_scope
             if a.type in _LIVE_ASSET_TYPES and a.asset.strip()]
     rendered = fill_placeholders(template, {
         "MAX_SEARCHES": str(ctx.config.corroborate_max_searches),
         "REPO_REF": _repo_ref(ctx, scope),
-        "FINDING_JSON": json.dumps(finding.model_dump(exclude_none=True), indent=2),
-        "CODE_EXCERPTS": excerpts,
+        "FINDING_JSON": json.dumps(_public_finding(finding), indent=2),
         "DOC_LINKS": _bullets(ctx.config.doc_links,
                               "(none provided — search the web for the official documentation)"),
         "REPO_URL": _repo_url(scope),
@@ -150,10 +178,6 @@ def _build_prompt(ctx: RunContext, scope, finding: Finding) -> str:
         "FORBIDDEN_HOSTS": _bullets(live, "(none listed in scope)"),
         "FINDING_ID": finding.id,
     })
-    if scope.accepted_risks and scope.accepted_risks.strip():
-        # If the maintainers' accepted-by-design list already covers this finding, that alone is
-        # enough to return design_accepted (no doc search needed).
-        rendered = rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks)
     return with_artifact_contract(
         rendered,
         artifacts=[{
@@ -163,8 +187,8 @@ def _build_prompt(ctx: RunContext, scope, finding: Finding) -> str:
     )
 
 
-def _build_batch_prompt(ctx: RunContext, scope, batch: list[Finding]) -> str:
-    template = (ctx.assets_dir / "08b_corroborate_batch_prompt.md").read_text(encoding="utf-8")
+def _build_docs_batch_prompt(ctx: RunContext, scope, batch: list[Finding]) -> str:
+    template = (ctx.assets_dir / "08d_corroborate_docs_batch_prompt.md").read_text(encoding="utf-8")
     items = [{
         "finding_id": f.id,
         "finding": f.model_dump(exclude_none=True),
@@ -172,6 +196,21 @@ def _build_batch_prompt(ctx: RunContext, scope, batch: list[Finding]) -> str:
             ctx.repo_dir, f.affected,
             ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes),
     } for f in batch]
+    rendered = fill_placeholders(template, {
+        "REPO_REF": _repo_ref(ctx, scope),
+        "FINDINGS_BATCH": json.dumps(items, indent=2),
+    })
+    if scope.accepted_risks and scope.accepted_risks.strip():
+        rendered = rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks)
+    return with_artifact_contract(rendered, artifacts=[{
+        "type": "corroborations", "filename": "corroborations.json", "schema": None,
+        "desc": "one offline docs/VCS verdict per finding_id",
+    }])
+
+
+def _build_osint_batch_prompt(ctx: RunContext, scope, batch: list[Finding]) -> str:
+    template = (ctx.assets_dir / "08b_corroborate_batch_prompt.md").read_text(encoding="utf-8")
+    items = [{"finding_id": f.id, "finding": _public_finding(f)} for f in batch]
     live = [a.asset.strip() for a in scope.in_scope
             if a.type in _LIVE_ASSET_TYPES and a.asset.strip()]
     rendered = fill_placeholders(template, {
@@ -184,8 +223,6 @@ def _build_batch_prompt(ctx: RunContext, scope, batch: list[Finding]) -> str:
         "REFERENCE_LINKS": _bullets(scope.reference_links, "(none provided)"),
         "FORBIDDEN_HOSTS": _bullets(live, "(none listed in scope)"),
     })
-    if scope.accepted_risks and scope.accepted_risks.strip():
-        rendered = rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks)
     return with_artifact_contract(rendered, artifacts=[{
         "type": "corroborations", "filename": "corroborations.json", "schema": None,
         "desc": "a JSON object {\"corroborations\": [...]} with ONE verdict per finding_id in the batch",
@@ -202,24 +239,25 @@ def _coerce_corroboration(row: dict) -> Corroboration:
         return Corroboration(verdict="unknown", rationale="corroboration row failed schema validation")
 
 
-def _corroborate_batch(ctx: RunContext, scope, batch: list[Finding]) -> dict[str, Corroboration]:
-    """Corroborate a GROUP of findings in ONE networked session. Returns {finding_id: Corroboration};
-    any finding missing/failed -> unknown (best-effort, never fails the run)."""
+def _run_batch_pass(ctx: RunContext, scope, batch: list[Finding], *, online: bool) -> dict[str, Corroboration]:
+    """Run one isolated corroboration pass; repo access and network access never coexist."""
     ids = [f.id for f in batch]
+    pass_name = "osint" if online else "docs"
     try:
         result = ctx.runner.run(
-            prompt=_build_batch_prompt(ctx, scope, batch),
+            prompt=(_build_osint_batch_prompt(ctx, scope, batch) if online
+                    else _build_docs_batch_prompt(ctx, scope, batch)),
             run_dir=ctx.run_dir,
-            work_dir=ctx.work_dir("corroborate", "batch-" + ids[0]),
+            work_dir=ctx.work_dir("corroborate", f"batch-{pass_name}-" + ids[0]),
             model=ctx.config.model_for("corroborate"),
-            stage="corroborate", run_id=ctx.run_id,
-            repo_dir=None,                                       # networked session never mounts the repo
-            allowed_tools=RESEARCH_TOOLS,
-            label="corroborate-batch-" + ids[0])
+            stage="corroborate" if online else "corroborate_docs", run_id=ctx.run_id,
+            repo_dir=None if online else ctx.repo_dir,
+            allowed_tools=RESEARCH_TOOLS if online else ARTIFACT_TOOLS,
+            label=f"corroborate-{pass_name}-batch-" + ids[0])
         files = collect_output_files(result, "corroborations*.json")
     except RunnerError as exc:
         return {fid: Corroboration(verdict="unknown",
-                                   rationale=f"corroboration session failed: {exc}") for fid in ids}
+                                   rationale=f"corroboration {pass_name} session failed: {exc}") for fid in ids}
     out: dict[str, Corroboration] = {}
     for fp in files:
         try:
@@ -237,23 +275,25 @@ def _corroborate_batch(ctx: RunContext, scope, batch: list[Finding]) -> dict[str
     return out
 
 
-def _corroborate_one(ctx: RunContext, scope, finding: Finding) -> Corroboration:
+def _run_one_pass(ctx: RunContext, scope, finding: Finding, *, online: bool) -> Corroboration:
+    pass_name = "osint" if online else "docs"
     try:
         result = ctx.runner.run(
-            prompt=_build_prompt(ctx, scope, finding),
+            prompt=(_build_osint_prompt(ctx, scope, finding) if online
+                    else _build_docs_prompt(ctx, scope, finding)),
             run_dir=ctx.run_dir,
-            work_dir=ctx.work_dir("corroborate", finding.id),   # fresh, isolated context
+            work_dir=ctx.work_dir("corroborate", f"{pass_name}-{finding.id}"),
             model=ctx.config.model_for("corroborate"),
-            stage="corroborate",
+            stage="corroborate" if online else "corroborate_docs",
             run_id=ctx.run_id,
-            repo_dir=None,                                       # networked session never mounts the repo
-            allowed_tools=RESEARCH_TOOLS,                        # OSINT + Write (sanitized by the runner)
+            repo_dir=None if online else ctx.repo_dir,
+            allowed_tools=RESEARCH_TOOLS if online else ARTIFACT_TOOLS,
             label=finding.id,
         )
         files = collect_output_files(result, "corroboration_*.json")
     except RunnerError as exc:
         return Corroboration(verdict="unknown",
-                             rationale=f"corroboration session failed: {exc}")
+                             rationale=f"corroboration {pass_name} session failed: {exc}")
     if not files:
         return Corroboration(verdict="unknown",
                              rationale="corroboration session produced no verdict file")
@@ -267,6 +307,40 @@ def _corroborate_one(ctx: RunContext, scope, finding: Finding) -> Corroboration:
     return Corroboration.model_validate(data)
 
 
+_VERDICT_PRIORITY = {"unknown": 0, "corroborated": 1, "design_accepted": 2, "fixed_upstream": 3}
+
+
+def _merge_corroborations(docs: Corroboration, osint: Corroboration) -> Corroboration:
+    """Combine both independent checks into the existing single-result contract."""
+    winner = max((docs, osint), key=lambda c: _VERDICT_PRIORITY[c.verdict])
+    rationales = []
+    if docs.rationale:
+        rationales.append(f"Offline docs/VCS: {docs.rationale}")
+    if osint.rationale:
+        rationales.append(f"Public OSINT: {osint.rationale}")
+    urls = list(dict.fromkeys([*docs.evidence_urls, *osint.evidence_urls]))
+    return Corroboration(
+        verdict=winner.verdict,
+        rationale=" ".join(rationales) or None,
+        evidence_urls=urls,
+        fix_commit=winner.fix_commit or docs.fix_commit or osint.fix_commit,
+        doc_url=winner.doc_url or docs.doc_url or osint.doc_url,
+        adjusted_severity=winner.adjusted_severity,
+    )
+
+
+def _corroborate_batch(ctx: RunContext, scope, batch: list[Finding]) -> dict[str, Corroboration]:
+    docs = _run_batch_pass(ctx, scope, batch, online=False)
+    osint = _run_batch_pass(ctx, scope, batch, online=True)
+    return {f.id: _merge_corroborations(docs[f.id], osint[f.id]) for f in batch}
+
+
+def _corroborate_one(ctx: RunContext, scope, finding: Finding) -> Corroboration:
+    docs = _run_one_pass(ctx, scope, finding, online=False)
+    osint = _run_one_pass(ctx, scope, finding, online=True)
+    return _merge_corroborations(docs, osint)
+
+
 def run(ctx: RunContext) -> Path:
     scope = ctx.load_scope()
     doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
@@ -275,14 +349,17 @@ def run(ctx: RunContext) -> Path:
         _log("no surviving findings to corroborate")
         return ctx.validated_findings_path
 
+    only = ctx.config.corroborate_only
+    candidates = survivors if only is None else [f for f in survivors if f.id in only]
+
     # Budget-guarded launch set (parallel fan-out). Findings past the budget stay uncorroborated.
     launch: list[Finding] = []
-    for f in survivors:
+    for f in candidates:
         try:
             ctx.assert_budget()
             launch.append(f)
         except BudgetExceeded as exc:
-            _log(f"budget reached; {len(survivors) - len(launch)} finding(s) left uncorroborated ({exc})")
+            _log(f"budget reached; {len(candidates) - len(launch)} finding(s) left uncorroborated ({exc})")
             break
 
     verdicts: dict[str, Corroboration] = {}
@@ -290,7 +367,7 @@ def run(ctx: RunContext) -> Path:
         bs = ctx.config.corroborate_batch_size
         batches = [launch[i:i + max(1, bs)] for i in range(0, len(launch), max(1, bs))]
         max_workers = max(1, min(ctx.config.max_parallel_audits, len(batches)))
-        _log(f"corroborating {len(launch)} finding(s) in {len(batches)} session(s) "
+        _log(f"corroborating {len(launch)} finding(s) in {len(batches) * 2} isolated sessions "
              f"(batch size {max(1, bs)})")
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
             if bs <= 1:

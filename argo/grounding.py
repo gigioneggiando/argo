@@ -18,6 +18,10 @@ This module closes that gap cheaply and deterministically:
   auto-drop on it: we attach a grounding note and downgrade confidence one notch, letting
   the adversarial validator make the final call with the evidence in hand.
 
+The same pass also records two conservative warnings without auto-dropping: numeric citations past
+the end of a real file, and list-like findings that may bundle three or more distinct issues. The
+latter is informational only and never changes confidence, severity, or verdict.
+
 Fail-closed on precision, but conservatively: only *project-specific-looking* identifiers
 (underscore or interior capital, length >= 6, not a common word) are checked, so ordinary
 stdlib/system calls (``read``, ``len``, ``strtod``) are never mistaken for hallucinations.
@@ -41,6 +45,7 @@ _SOURCE_EXTS = frozenset({
 
 #: Cap the repo walk so grounding stays cheap on large trees (mirrors checklists._SCAN_FILE_CAP).
 _SCAN_FILE_CAP = 8000
+_FILE_BYTE_CAP = 2 * 1024 * 1024
 
 #: A cited symbol must be at least this long to be checked (shorter tokens are too generic).
 _SYMBOL_MIN_LEN = 6
@@ -92,6 +97,11 @@ def _iter_source_files(repo_dir: Path):
         if ".git" in p.parts:
             continue
         if p.is_file() and p.suffix.lower() in _SOURCE_EXTS:
+            try:
+                if p.stat().st_size > _FILE_BYTE_CAP:
+                    continue
+            except OSError:
+                continue
             seen += 1
             if seen > _SCAN_FILE_CAP:
                 return
@@ -107,11 +117,19 @@ class RepoIndex:
         self._basenames: set[str] = set()
         self._present: set[str] = set()
         self._wanted = {s for s in symbols if s}
+        self._paths: dict[str, Path] = {}
+        self._basename_paths: dict[str, list[Path]] = {}
+        self._line_counts: dict[Path, int] = {}
         combined = (re.compile(r"\b(?:%s)\b" % "|".join(re.escape(s) for s in sorted(self._wanted)))
                     if self._wanted else None)
         try:
             for p in _iter_source_files(self.repo_dir):
                 self._basenames.add(p.name)
+                try:
+                    self._paths[p.relative_to(self.repo_dir).as_posix()] = p
+                    self._basename_paths.setdefault(p.name, []).append(p)
+                except ValueError:
+                    pass
                 if combined is not None and self._wanted - self._present:
                     text = p.read_text(encoding="utf-8", errors="replace")
                     for hit in combined.findall(text):
@@ -136,16 +154,58 @@ class RepoIndex:
             return True
         return sym in self._present
 
+    def line_in_range(self, ref: str) -> bool:
+        """False only when a numeric citation resolves unambiguously and exceeds the file length."""
+        file, line = split_ref(ref)
+        if not line:
+            return True
+        path = self._paths.get(Path(file).as_posix())
+        if path is None:
+            matches = self._basename_paths.get(Path(file).name, [])
+            path = matches[0] if len(matches) == 1 else None
+        if path is None:
+            return True
+        try:
+            if path not in self._line_counts:
+                self._line_counts[path] = len(path.read_text(
+                    encoding="utf-8", errors="replace").splitlines())
+            return int(line) <= self._line_counts[path]
+        except (OSError, ValueError):
+            return True
+
+
+def composite_signal(finding) -> tuple[bool, str | None]:
+    """Conservative, informational-only signal that one finding bundles 3+ distinct things."""
+    files = {split_ref(ref)[0].replace("\\", "/").lower()
+             for ref in (finding.affected or []) if split_ref(ref)[0]}
+    if len(files) >= 3:
+        return True, f"affected citations span {len(files)} distinct files/modules"
+    for label, text in (("title", finding.title), ("rationale", finding.why_vulnerable)):
+        for clause in re.split(r"[.!?]\s+", text or ""):
+            if len(clause.split()) > 40:
+                continue
+            if clause.count(";") >= 2:
+                return True, f"{label} contains a list of at least 3 semicolon-separated items"
+            if clause.count(",") >= 2 and re.search(r"\b(?:and|or)\b", clause, re.I):
+                return True, f"{label} contains a list of at least 3 comma-separated items"
+            if len(re.findall(r"\b(?:and|or)\b", clause, re.I)) >= 2:
+                return True, f"{label} coordinates at least 3 distinct phrases"
+    return False, None
+
 
 def ground_finding(index: RepoIndex, finding) -> dict:
-    """Return ``{"missing_files": [...], "missing_symbols": [...]}`` for one finding against a
-    prebuilt :class:`RepoIndex`. Empty lists mean fully grounded."""
+    """Return deterministic citation and composite signals for one finding against an index."""
     missing_files = [ref for ref in (finding.affected or []) if not index.file_grounded(ref)]
     symbols = extract_cited_symbols(
         finding.title, finding.why_vulnerable, finding.vulnerable_flow, finding.recommended_fix,
     )
     missing_symbols = sorted(s for s in symbols if not index.symbol_present(s))
-    return {"missing_files": missing_files, "missing_symbols": missing_symbols}
+    out_of_range_lines = [ref for ref in (finding.affected or [])
+                          if index.file_grounded(ref) and not index.line_in_range(ref)]
+    composite_suspect, composite_reason = composite_signal(finding)
+    return {"missing_files": missing_files, "missing_symbols": missing_symbols,
+            "out_of_range_lines": out_of_range_lines,
+            "composite_suspect": composite_suspect, "composite_reason": composite_reason}
 
 
 def build_index(repo_dir: Path, findings) -> RepoIndex:

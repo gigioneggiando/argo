@@ -7,7 +7,7 @@ the adversarial validator."""
 
 import json
 
-from argo.grounding import RepoIndex, build_index, extract_cited_symbols, ground_finding
+from argo.grounding import RepoIndex, build_index, composite_signal, extract_cited_symbols, ground_finding
 from argo.models import Finding
 from argo.orchestrator import run_pipeline
 
@@ -66,6 +66,32 @@ def test_ground_finding_flags_missing_file_and_symbol():
 
     clean = ground_finding(idx, good)               # get_order really exists in the fixture repo
     assert clean["missing_files"] == [] and clean["missing_symbols"] == []
+
+
+def test_ground_finding_flags_out_of_range_line_without_missing_file():
+    finding = _finding(affected=["src/api/orders.py:9999"])
+    res = ground_finding(build_index(REPO, [finding]), finding)
+    assert res["missing_files"] == []
+    assert res["out_of_range_lines"] == ["src/api/orders.py:9999"]
+
+
+def test_composite_signal_is_conservative_and_informational():
+    composite = _finding(
+        title="Missing resource ceilings",
+        why_vulnerable="Ships without a memory ceiling, execution-time ceiling, KV entry-count "
+                       "ceiling, or KV value-size ceiling.")
+    ordinary = _finding(why_vulnerable="Input reaches the parser and triggers one unchecked read.")
+    assert composite_signal(composite)[0] is True
+    assert composite_signal(ordinary) == (False, None)
+
+
+def test_report_surfaces_composite_signal():
+    from argo.stages.report import _finding_section
+
+    finding = _finding().model_dump(exclude_none=True)
+    finding["grounding"] = {"status": "grounded", "composite_suspect": True,
+                            "composite_reason": "rationale contains a list of 4 items"}
+    assert "Possible composite finding" in "\n".join(_finding_section(finding))
 
 
 # --------------------------------------------------------------------------- integration: pipeline
@@ -128,9 +154,11 @@ def test_grounded_findings_pass_through_untouched(env):
     ctx = env("happy")
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
     vf = _validated(ctx)
-    # every happy finding cites a real fixture file and only the real symbol get_order -> nothing
-    # dropped by grounding, and any attached grounding block reads "grounded".
+    # Every happy finding cites a real fixture file and only the real symbol get_order, so none is
+    # dropped. The tiny fixture files intentionally do not extend to the mocked citation lines;
+    # those are now retained as narrow, non-dropping line-bound warnings.
     assert vf["stats"]["grounding_dropped"] == 0
     for f in vf["findings"]:
         if f.get("grounding"):
-            assert f["grounding"]["status"] == "grounded"
+            assert not f["grounding"]["missing_files"]
+            assert not f["grounding"]["missing_symbols"]

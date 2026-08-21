@@ -26,7 +26,7 @@ EXTRA_FINDINGS = [
     },
     {
         "id": "EXTRA-002", "title": "Config value X used unsafely as a divisor downstream",
-        "severity": "Medium", "confidence": "High", "cwe": "CWE-369",
+        "severity": "Medium", "confidence": "High", "cwe": "CWE-20",
         "affected": ["src/net/fetch.py:200"],
         "vulnerable_flow": "config X (unchecked) reaches a modulo with no zero-guard", "why_vulnerable": "x",
         "exploit_scenario": "x", "impact": "x", "recommended_fix": "validate X at its source",

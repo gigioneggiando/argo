@@ -21,7 +21,7 @@ needs_git = pytest.mark.skipif(not shutil.which("git"), reason="needs git")
 _F = [
     {"id": "FULL-001", "cwe": "CWE-89", "affected": ["src/api/search.py:42"]},
     {"id": "AUTHZ-002", "cwe": "CWE-639", "affected": ["src/api/orders.py:120"]},
-    {"id": "FULL-003", "cwe": "CWE-918", "affected": ["src/net/fetch.py:88"]},
+    {"id": "FULL-003", "cwe": "CWE-918", "affected": ["src/net/fetch.py:4"]},
 ]
 _E = [
     {"label": "sqli", "cwe": "CWE-89", "file": "src/api/search.py"},

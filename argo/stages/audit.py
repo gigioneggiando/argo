@@ -135,7 +135,7 @@ def _normalize_findings_doc(raw_doc: dict, ctx: RunContext, scope, slug: str):
     rather than drop — a drifted finding kept-for-review beats a whole focus silently lost."""
     doc = dict(raw_doc)
     doc.setdefault("program_name", scope.program_name)
-    doc.setdefault("audit_focus", slug)
+    doc["audit_focus"] = slug
     if not isinstance(doc.get("generated_at"), str) or not doc.get("generated_at"):
         doc["generated_at"] = ctx.timestamp()
     kept: list[dict] = []
@@ -297,7 +297,8 @@ def _critic_pass(ctx: RunContext, scope, slug: str, prompt_path: Path,
         "findings file with an empty `findings` array. Be precise — do not pad with low-value or "
         "duplicate items.\n\n"
         "### Already-reported findings (do NOT repeat)\n" + titles + "\n\n"
-        "### VARIANT_HUNT_LOG produced so far\n```\n" + variant_log[:12000] + "\n```\n"
+        "### VARIANT_HUNT_LOG produced so far\n```\n" +
+        variant_log[:12000].replace("```", "` ` `") + "\n```\n"
     )
     prompt = with_artifact_contract(
         base + addendum,

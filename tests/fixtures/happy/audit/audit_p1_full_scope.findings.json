@@ -43,7 +43,7 @@
       "confidence": "Medium",
       "cwe": "CWE-918",
       "owasp": "A10:2021 SSRF",
-      "affected": ["src/net/fetch.py:88"],
+      "affected": ["src/net/fetch.py:4"],
       "vulnerable_flow": "user url -> fetch(url) -> http.get(url) with no allow-list visible in source",
       "why_vulnerable": "A user-influenced URL reaches an outbound HTTP client with no source-visible allow-list.",
       "exploit_scenario": "Attacker points the URL at an internal metadata service to read credentials.",

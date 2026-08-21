@@ -119,9 +119,10 @@ Argo. Options:
 - `--gemini-api-key <key>` — sets `GEMINI_API_KEY` for this run; omit to use the ambient env var or
   an existing `gemini` CLI login (OAuth). **This is a real secret** (unlike `--claude-accounts`/
   `--codex-accounts`, which are directory paths) — it is redacted to `<redacted>` in
-  `runs/<id>/config.json`, so `argo resume` on a Gemini run needs the key re-supplied via
-  `--gemini-api-key` again. A narrow, deliberate deviation from `resume`'s normal zero-flags
-  behavior.
+  `runs/<id>/config.json`, so `argo resume --gemini-api-key <key>` needs the key re-supplied to use
+  it again (`resume` accepts the equivalent `--claude-api-key`/`--codex-api-key` for those two
+  backends too — see [API keys](#api-keys----claude-api-key----codex-api-key) below). A narrow,
+  deliberate deviation from `resume`'s normal zero-flags behavior.
 - `--gemini-accounts key-a,key-b` — chain multiple `GEMINI_API_KEY` **values** (multi-account,
   limits are per-key). Unlike Claude's `CLAUDE_CONFIG_DIR` dirs or Codex's `CODEX_HOME` dirs, Gemini's
   practical automation-auth lever is the key value itself, so this list holds raw secrets, not paths
@@ -185,13 +186,41 @@ the same `moderation_flagged` handling Claude/Codex get. A refusal phrased unusu
 the heuristic will instead surface as a downstream "no artifact produced" failure — worth knowing if
 a Gemini run behaves oddly on a sensitive-sounding brief.
 
+## API keys (`--claude-api-key` / `--codex-api-key`)
+
+Gemini has always supported an explicit per-run API key (above); Claude and Codex now do too,
+closing a real gap — a real self-audit run this session needed the key set by hand in the shell
+(`export ANTHROPIC_API_KEY=...`) before Argo itself could use it. Both are real secrets — redacted
+to `<redacted>` in `runs/<id>/config.json`, never echoed back over the HTTP API, `type="password"`
+in the web UI — see `PipelineConfig._SECRET_FIELDS`.
+
+- **Claude — `--claude-api-key <key>`**: sets `ANTHROPIC_API_KEY` for this run. A bare key is
+  enough on its own — no login step needed (confirmed empirically), unlike Codex below. Coexists
+  **additively** with `--claude-accounts`/`CLAUDE_CONFIG_DIR` (two different env vars, no
+  collision) — the Claude CLI itself gives billing precedence to `ANTHROPIC_API_KEY` when present.
+  `--claude-api-keys key-a,key-b` chains multiple keys (multi-account via key, a separate mechanism
+  from directory-based `--claude-accounts` — the directory list wins if both are set).
+- **Codex — `--codex-api-key <key>`**: unlike Claude/Gemini, a bare ambient `OPENAI_API_KEY` env
+  var does **not** authenticate `codex exec` (confirmed empirically: `codex login status` against
+  a fresh `CODEX_HOME` with only the env var set reports "Not logged in"). Codex needs a real,
+  stateful `codex login --with-api-key` bootstrap into a dedicated `CODEX_HOME` first. Argo does
+  this for you: the key is piped over **stdin only** (never a CLI argument, so it never appears in
+  process listings), into a directory cached under `~/.argo/codex_homes/<sha256-of-key>` (never the
+  literal key in a path) — bootstrapped once, then reused on every later call/run with the same
+  key. `--codex-home`/`--codex-accounts` (an explicit, already-logged-in directory) **win** if both
+  are set for the same run — resolving to one `CODEX_HOME` value is a real collision, and an
+  explicit directory is the stronger signal. `--codex-api-keys key-a,key-b` chains multiple keys
+  (each gets its own bootstrapped `CODEX_HOME`; `--codex-accounts` wins if both are set).
+
 ## Verify your backend
 
 ```bash
 # Claude
 python -m argo.cli pipeline --smoke                          # the bundled ~$1 Claude smoke
+python -m argo.cli pipeline --smoke --claude-api-key "$ANTHROPIC_API_KEY"   # via API-key billing
 # Codex (OpenAI)            — needs `codex login`
 python -m argo.cli pipeline --smoke --runner codex          # uses your Codex default model
+python -m argo.cli pipeline --smoke --runner codex --codex-api-key "$OPENAI_API_KEY"   # via API-key bootstrap
 # Codex (local / open-source) — free, needs Ollama/LM Studio running
 python -m argo.cli pipeline --smoke --runner codex --codex-oss --codex-local-provider ollama
 # Gemini (Google)           — needs GEMINI_API_KEY or an existing `gemini` CLI login

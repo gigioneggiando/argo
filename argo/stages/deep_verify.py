@@ -106,6 +106,8 @@ def _build_prompt(ctx: RunContext, scope, scope_json_text: str, finding: Finding
 
     prompt = _finish(rendered)
     neutral_prompt = _finish(neutral_rendered) if neutral_rendered is not None else None
+    if neutral_prompt is not None:
+        assert_prohibited_present(neutral_prompt, scope.prohibited_techniques)
     return prompt, neutral_prompt
 
 
@@ -324,4 +326,11 @@ def run(ctx: RunContext) -> Path:
         f"{len(merged_findings)} merged, {len(newly_dropped)} refuted, "
         f"{counts.get('inconclusive', 0)} inconclusive ({infra_failure} infra-failure) "
         f"-> {len(kept)} active survivor(s)")
+    new_child_ids = [f["id"] for f in doc["findings"]
+                     if any(f["id"].startswith(original["id"] + "-split-")
+                            for original in split_originals)]
+    if new_child_ids:
+        _log(f"{len(split_originals)} finding(s) were split into {len(new_child_ids)} new finding(s) "
+             f"— consider re-corroborating just the new ones: argo corroborate --run {ctx.run_id} "
+             f"--only {','.join(new_child_ids)}")
     return ctx.validated_findings_path

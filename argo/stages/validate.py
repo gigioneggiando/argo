@@ -185,6 +185,10 @@ def _semantic_dedup(ctx: RunContext, findings: list[Finding]) -> tuple[list[Find
         return findings, []
 
     drop_of: dict[str, str] = {}         # duplicate_id -> primary_id
+    affected_files = {
+        f.id: {split_ref(ref)[0].replace("\\", "/").lower() for ref in f.affected}
+        for f in findings
+    }
     for cluster in clusters:
         if not isinstance(cluster, dict):
             continue
@@ -192,7 +196,11 @@ def _semantic_dedup(ctx: RunContext, findings: list[Finding]) -> tuple[list[Find
         if primary_id not in by_id or primary_id in drop_of:
             continue                     # unknown, or already merged into someone else: skip cluster
         for d in cluster.get("duplicate_ids") or []:
-            if d in by_id and d != primary_id and d not in drop_of:
+            if (d in by_id and d != primary_id and d not in drop_of
+                    and (by_id[d].cwe.lower() == by_id[primary_id].cwe.lower()
+                         or affected_files[d] & affected_files[primary_id])
+                    and severity_rank(by_id[primary_id].severity)
+                    >= severity_rank(by_id[d].severity)):
                 drop_of[d] = primary_id
 
     if not drop_of:
@@ -263,10 +271,16 @@ def _ground_citations(ctx: RunContext, findings: list[Finding]) -> tuple[list[Fi
             kept.append(f)
             continue
         missing_files, missing_symbols = res["missing_files"], res["missing_symbols"]
+        out_of_range_lines = res["out_of_range_lines"]
+        grounding_kwargs = dict(missing_files=missing_files, missing_symbols=missing_symbols,
+                                out_of_range_lines=out_of_range_lines,
+                                composite_suspect=res["composite_suspect"],
+                                composite_reason=res["composite_reason"])
+        if res["composite_suspect"]:
+            _log(f"{f.id}: possible composite finding ({res['composite_reason']}); informational only")
         primary = f.affected[0] if f.affected else ""
         if primary and primary in missing_files:
-            f.grounding = Grounding(status="ungrounded", missing_files=missing_files,
-                                    missing_symbols=missing_symbols)
+            f.grounding = Grounding(status="ungrounded", **grounding_kwargs)
             f.validation = Validation(
                 verdict="out_of_scope",
                 rationale=f"ungrounded citation: primary affected file '{primary}' does not exist "
@@ -274,15 +288,14 @@ def _ground_citations(ctx: RunContext, findings: list[Finding]) -> tuple[list[Fi
             dropped.append(_drop_record(f, "ungrounded_citation (primary file not in repo)"))
             _log(f"{f.id}: dropped pre-validation (ungrounded citation: {primary} not in repo)")
             continue
-        if missing_files or missing_symbols:
-            f.grounding = Grounding(status="ungrounded", missing_files=missing_files,
-                                    missing_symbols=missing_symbols)
+        if missing_files or missing_symbols or out_of_range_lines:
+            f.grounding = Grounding(status="ungrounded", **grounding_kwargs)
             f.confidence = _downgrade_confidence(f.confidence)
             n_downgraded += 1
-            _log(f"{f.id}: ungrounded citation {missing_symbols or missing_files}; confidence "
+            _log(f"{f.id}: ungrounded citation {missing_symbols or missing_files or out_of_range_lines}; confidence "
                  f"downgraded to {f.confidence}, flagged for the validator")
         else:
-            f.grounding = Grounding(status="grounded")
+            f.grounding = Grounding(status="grounded", **grounding_kwargs)
         kept.append(f)
     if dropped or n_downgraded:
         _log(f"citation grounding: {len(dropped)} dropped, {n_downgraded} downgraded")
@@ -301,6 +314,9 @@ def _grounding_note(f: Finding) -> str:
                      + ", ".join(g.missing_symbols))
     if g.missing_files:
         parts.append("file(s) cited but NOT FOUND in this repo: " + ", ".join(g.missing_files))
+    if g.out_of_range_lines:
+        parts.append("line citation(s) exceed the actual file length: "
+                     + ", ".join(g.out_of_range_lines))
     if not parts:
         return ""
     return ("!!! CITATION GROUNDING WARNING (deterministic pre-check) !!!\n"
@@ -316,7 +332,11 @@ def _build_excerpts(repo_dir: Path, affected: list[str], ctx_lines: int, max_byt
     total = 0
     for ref in affected:
         file, line = split_ref(ref)
-        path = repo_dir / file
+        root = repo_dir.resolve()
+        path = (repo_dir / file).resolve()
+        if not path.is_relative_to(root):
+            chunks.append(f"--- {ref} (source not found in repo copy) ---")
+            continue
         try:
             if not path.is_file():
                 chunks.append(f"--- {ref} (source not found in repo copy) ---")
@@ -380,6 +400,8 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
 
     prompt = _finish(rendered)
     neutral_prompt = _finish(neutral_rendered) if neutral_rendered is not None else None
+    if neutral_prompt is not None:
+        assert_prohibited_present(neutral_prompt, scope.prohibited_techniques)
     try:
         result = ctx.runner.run(
             prompt=prompt,
@@ -398,7 +420,7 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         # candidate. Keep it, flagged for human runtime review.
         _log(f"{finding.id}: validation session failed ({exc}); flagging for human review")
         return Validation(verdict="needs_runtime_verification",
-                          rationale=f"validation session failed: {exc}")
+                          rationale="validation session failed; see the local LLM log for diagnostics")
     files = collect_output_files(result, "verdict_*.json")
     if not files:
         # No verdict produced: do not auto-confirm. Flag for human runtime review.
@@ -457,6 +479,8 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
 
     prompt = _finish(rendered)
     neutral_prompt = _finish(neutral_rendered) if neutral_rendered is not None else None
+    if neutral_prompt is not None:
+        assert_prohibited_present(neutral_prompt, scope.prohibited_techniques)
     ids = [f.id for f in batch]
     try:
         result = ctx.runner.run(
@@ -468,8 +492,10 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
     except RunnerError as exc:
         _log(f"batch {ids[0]}+{len(ids) - 1}: validation session failed ({exc}); "
              f"flagging {len(ids)} finding(s) for human review")
-        return {fid: Validation(verdict="needs_runtime_verification",
-                                rationale=f"validation session failed: {exc}") for fid in ids}
+        return {fid: Validation(
+            verdict="needs_runtime_verification",
+            rationale="validation session failed; see the local LLM log for diagnostics",
+        ) for fid in ids}
     out: dict[str, Validation] = {}
     for fp in collect_output_files(result, "verdicts*.json"):
         try:

@@ -27,7 +27,7 @@ from .branding import attribution_trailer, coauthored_by
 from .config import ARTIFACT_TOOLS
 from .context import RunContext, collect_output_files
 from .runner import RunnerError
-from .verify import verify_patch
+from .verify import patch_targets, verify_patch
 
 _SYSTEM = """You are a senior application-security engineer producing a REMEDIATION for one \
 confirmed vulnerability from an AUTHORIZED source-only review. You have READ-ONLY access to the \
@@ -122,10 +122,13 @@ def _mechanical_diff(repo_dir: Path, files: list) -> str:
     for entry in files or []:
         if not isinstance(entry, dict):
             continue
-        rel = str(entry.get("path") or "").replace("\\", "/").strip().lstrip("./")
-        if not rel:
+        raw_rel = str(entry.get("path") or "").replace("\\", "/").strip()
+        rel = raw_rel[2:] if raw_rel.startswith("./") else raw_rel
+        candidate = (repo_dir / rel).resolve()
+        if (not rel or Path(rel).is_absolute() or re.match(r"^[A-Za-z]:", rel)
+                or ".." in Path(rel).parts or not candidate.is_relative_to(repo_dir.resolve())):
             continue
-        old_file = repo_dir / rel
+        old_file = candidate
         is_new = not old_file.exists()
         old = "" if is_new else old_file.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n")
         new = _new_content_for(entry, old)
@@ -304,6 +307,14 @@ def _generate_one(ctx: RunContext, finding: dict) -> str | None:
         diff = next((f for f in files if f.name == "fix.diff"), None) \
             or next((p for p in work.glob("*.diff") if p.is_file()), None)
         text = diff.read_text(encoding="utf-8", errors="replace") if diff is not None else None
+        if text is not None:
+            for target in patch_targets(text):
+                normalized = target.replace("\\", "/")
+                candidate = (ctx.repo_dir / normalized).resolve()
+                if (Path(normalized).is_absolute() or re.match(r"^[A-Za-z]:", normalized)
+                        or ".." in Path(normalized).parts
+                        or not candidate.is_relative_to(ctx.repo_dir.resolve())):
+                    return None
     if not text or not text.strip():
         return None
     if not text.endswith("\n"):     # a unified diff's final line MUST be newline-terminated

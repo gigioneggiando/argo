@@ -28,6 +28,20 @@ class RunConfig(BaseModel):
         None, description="(runner=gemini) GEMINI_API_KEY for this run; omit to use the ambient "
                           "env var / existing gemini CLI login. Never echoed back or persisted in "
                           "the clear (see PipelineConfig._SECRET_FIELDS redaction).")
+    claude_api_key: Optional[str] = Field(
+        None, description="(runner=headless) ANTHROPIC_API_KEY for this run; omit to use the "
+                          "ambient env var / existing Claude Code subscription login. Never "
+                          "echoed back or persisted in the clear (see "
+                          "PipelineConfig._SECRET_FIELDS redaction).")
+    codex_api_key: Optional[str] = Field(
+        None, description="(runner=codex) OpenAI API key for this run; Argo bootstraps a "
+                          "dedicated cached CODEX_HOME for it via `codex login --with-api-key` on "
+                          "first use (a bare env var alone does not authenticate codex exec). "
+                          "Never echoed back or persisted in the clear (see "
+                          "PipelineConfig._SECRET_FIELDS redaction).")
+    # NOTE: no claude_api_keys/codex_api_keys here, deliberately -- mirrors gemini_accounts' own
+    # absence from RunConfig. Multi-account fallback chains are a CLI concept (one process, many
+    # accounts); one HTTP request = one run = one identity.
 
 
 class Settings(BaseModel):

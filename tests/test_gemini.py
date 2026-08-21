@@ -88,7 +88,7 @@ def test_offline_stage_denies_shell_and_web_tools(tmp_path, monkeypatch):
     r.ledger.close()
 
 
-def test_only_research_and_corroborate_get_network(tmp_path, monkeypatch):
+def test_only_research_gets_network(tmp_path, monkeypatch):
     r = _runner(tmp_path)
     monkeypatch.setattr(r, "_exec", lambda *a, **k: _FakeProc(_success_envelope(), "", 0))
     for stage in ("research", "corroborate"):
@@ -97,7 +97,7 @@ def test_only_research_and_corroborate_get_network(tmp_path, monkeypatch):
         assert written == _GEMINI_POLICY_NETWORK
         assert "google_web_search" not in written and "web_fetch" not in written
         assert "run_shell_command" in written   # shell stays denied even here
-    for stage in ("ingest", "recon", "audit", "validate", "report", "remediate", "verify"):
+    for stage in ("ingest", "recon", "audit", "validate", "corroborate_docs", "report", "remediate", "verify"):
         _invoke(r, tmp_path, policy=session_policy(stage))
         assert (tmp_path / ".argo_gemini_policy.toml").read_text(encoding="utf-8") == _GEMINI_POLICY_OFFLINE
     r.ledger.close()

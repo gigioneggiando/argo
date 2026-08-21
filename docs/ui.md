@@ -50,9 +50,12 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
   server-side (path-traversal + zip-bomb guarded) and its path fills the field. The
   **Web research (Stage 0)** toggle (default **On**) runs the opt-out web-OSINT pass before recon
   (one of two networked steps, with corroborate; never the live in-scope hosts); **Off** keeps the run fully offline.
-  The **runner** selector offers **Mock** (free) · **Claude** · **Codex** (with a Codex model +
-  local/OSS provider field, shown when Codex is picked) · **Gemini** (with a Gemini model + API-key
-  field, shown when Gemini is picked — see [backends.md](backends.md)). The model inputs are
+  The **runner** selector offers **Mock** (free) · **Claude** (with an API-key field, shown when
+  Claude is picked — blank uses the server's ambient login) · **Codex** (with a Codex model +
+  local/OSS provider field, plus an API-key field that makes Argo bootstrap a dedicated Codex
+  profile for it) · **Gemini** (with a Gemini model + API-key field, shown when Gemini is picked —
+  see [backends.md](backends.md)). All three key fields are `type="password"`, never echoed back or
+  persisted in the clear. The model inputs are
   **pickers** populated from `GET /models` (Claude opus/sonnet/haiku; Codex examples + the
   **detected Codex default**, shown in the placeholder; Gemini pro/flash/flash-lite). The **Costs**
   page adds a **Model pricing & backends** card (the `$/1M token` table + which backend reports real
@@ -62,9 +65,9 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
   Mock). Start → navigates to the live run.
 - **Settings** (`#/settings`) — persisted defaults for the New Run form: **default runner** (Mock /
   Claude / Codex / Gemini), budget, parallelism, audit model, calibration, and **per-stage Claude
-  models**. Per-backend sub-fields (Codex provider, Gemini model/API key) are set per-run in New Run,
-  not persisted here — `Settings` (`server/schemas.py`) is deliberately a narrower shape than
-  `RunConfig`. Saved server-side via `GET/PUT /settings`.
+  models**. Per-backend sub-fields (Codex provider/API key, Gemini model/API key, Claude API key)
+  are set per-run in New Run, not persisted here — `Settings` (`server/schemas.py`) is deliberately
+  a narrower shape than `RunConfig`. Saved server-side via `GET/PUT /settings`.
 - **Vuln index** (`#/knowledge`) — the curated vulnerability-class index by archetype (the same
   reference injected into recon). Browsable / educational; from `GET /knowledge`.
 - **Costs** (`#/costs`) — observed economics from the ledger: average cost per run, by-model

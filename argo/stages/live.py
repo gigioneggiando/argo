@@ -127,10 +127,13 @@ def _send(opener, req: dict, cfg, in_scope) -> tuple[dict, dict]:
                     chain.append({"status": status, "location": loc, "followed": False, "reason": "max_redirects"})
                 break
             nxt = urllib.parse.urljoin(cur_url, loc)
-            if not in_scope(host_of(nxt)):
+            if not in_scope(nxt):
                 chain.append({"status": status, "location": nxt, "followed": False, "reason": "out_of_scope"})
                 rec["redirect_out_of_scope"] = nxt          # a real signal (e.g. redirect to login/SSO)
                 break
+            if host_of(nxt) != host_of(cur_url):
+                headers = {k: v for k, v in headers.items()
+                           if str(k).lower() not in {"authorization", "cookie", "proxy-authorization"}}
             chain.append({"status": status, "location": nxt, "followed": True})
             cur_url = nxt
             if status == 303:                               # 303 -> always GET, drop body
@@ -161,7 +164,15 @@ def _send(opener, req: dict, cfg, in_scope) -> tuple[dict, dict]:
 def _execute(ctx: RunContext, plan: list[dict], scope) -> tuple[dict, list[dict]]:
     cfg = ctx.config
     matchers = inscope_matchers(scope)
-    in_scope = lambda h: host_in_scope(h, matchers)         # redirect-guard predicate
+    oos = [str(x).replace("\\", "/").strip().lower()
+           for x in getattr(scope, "out_of_scope", []) if x]
+
+    def in_scope(url: str) -> bool:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme.lower() not in {"http", "https"} or not host_in_scope(parsed.hostname or "", matchers):
+            return False
+        blob = url.replace("\\", "/").strip().lower()
+        return not any(token and len(token) > 3 and token in blob for token in oos)
     results: dict = {"findings": []}
     audit: list[dict] = []
     sent = 0

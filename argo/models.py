@@ -166,12 +166,15 @@ class Grounding(BaseModel):
     status: Literal["grounded", "ungrounded"]
     missing_files: list[str] = Field(default_factory=list)
     missing_symbols: list[str] = Field(default_factory=list)
+    out_of_range_lines: list[str] = Field(default_factory=list)
+    composite_suspect: bool = False
+    composite_reason: Optional[str] = None
 
 
 class Finding(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    id: str
+    id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._#-]{0,127}$")
     title: str
     severity: Severity
     confidence: Confidence

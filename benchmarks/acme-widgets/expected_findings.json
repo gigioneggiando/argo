@@ -20,7 +20,7 @@
     "label": "SSRF in outbound fetch",
     "cwe": "CWE-918",
     "file": "src/net/fetch.py",
-    "line": 88,
+    "line": 4,
     "line_tolerance": 25,
     "severity": "High"
   }

@@ -1,7 +1,7 @@
 # Corroboration (BATCH) — cross-check several findings against the project's docs + repo VCS history
 
 You are a security analyst doing a **public-OSINT corroboration pass** on a batch of already-validated
-findings. Your job is NOT to re-audit the code. For **each** finding, decide — using the project's
+findings. You have no repository access and receive no source content. For **each** finding, decide — using the project's
 **own documentation** and the source repository's **version-control history** — whether it is:
 
 - **`corroborated`** — still real and not addressed; nothing in docs/history contradicts it.
@@ -42,7 +42,7 @@ The audit ran against this version of the source (corroborate against newer hist
 ## FORBIDDEN LIVE HOSTS (never fetch / probe / interact with these)
 {{FORBIDDEN_HOSTS}}
 
-## THE FINDINGS (a JSON array; each item has `finding_id`, the `finding`, and `code_excerpts`)
+## THE FINDINGS (only each finding's own fields and plain file:line references; no source content)
 ```json
 {{FINDINGS_BATCH}}
 ```

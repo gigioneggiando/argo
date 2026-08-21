@@ -16,11 +16,13 @@ an interface so it can be swapped").
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -32,7 +34,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config import ARTIFACT_TOOLS, PipelineConfig, estimate_cost_usd
-from .guardrails import assert_no_network_tools, enforce_session_tools, session_policy
+from .guardrails import GuardrailError, assert_no_network_tools, enforce_session_tools, session_policy
 from .ledger import Ledger
 from .rendering import sha256_text
 
@@ -77,6 +79,15 @@ class RunnerError(RuntimeError):
         self.retry_after = retry_after
         self.retryable = retryable
         self.failure_kind = failure_kind
+
+
+def _redact_secrets(text: str | None, *secrets: str | None) -> str:
+    """Remove configured credential values from untrusted child diagnostics."""
+    scrubbed = text or ""
+    for secret in secrets:
+        if secret:
+            scrubbed = scrubbed.replace(secret, "<redacted>")
+    return scrubbed
 
 
 class RunnerCancelled(RuntimeError):
@@ -454,12 +465,20 @@ class HeadlessClaudeRunner(AgentRunner):
         timeout = timeout_s or self.config.session_timeout_s
         # Multi-account: point this invocation at a specific Claude credential store so an
         # account-fallback can switch accounts (limits are per-account). See build_runner.
+        # claude_api_key is a SEPARATE, additive mechanism (an env var, not a directory) -- both
+        # can be set at once with no collision, so both get injected when present. A bare
+        # ANTHROPIC_API_KEY is enough on its own (confirmed empirically: no `claude login` needed),
+        # unlike Codex's stateful login requirement -- see CodexRunner._codex_home_env_value.
         env = None
-        if self.config.claude_config_dir:
-            # Normalize to a native absolute path (expanduser handles ~; a bash-style /c/.. path
-            # the launched CLI cannot resolve is made absolute). Pass via CLAUDE_CONFIG_DIR.
-            cfg_dir = os.path.abspath(os.path.expanduser(str(self.config.claude_config_dir)))
-            env = {**os.environ, "CLAUDE_CONFIG_DIR": cfg_dir}
+        if self.config.claude_config_dir or self.config.claude_api_key:
+            env = dict(os.environ)
+            if self.config.claude_config_dir:
+                # Normalize to a native absolute path (expanduser handles ~; a bash-style /c/..
+                # path the launched CLI cannot resolve is made absolute). Pass via CLAUDE_CONFIG_DIR.
+                cfg_dir = os.path.abspath(os.path.expanduser(str(self.config.claude_config_dir)))
+                env["CLAUDE_CONFIG_DIR"] = cfg_dir
+            if self.config.claude_api_key:
+                env["ANTHROPIC_API_KEY"] = self.config.claude_api_key
         try:
             proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
@@ -480,11 +499,13 @@ class HeadlessClaudeRunner(AgentRunner):
             if isinstance(envelope, dict):
                 return envelope  # base run() validates shape + classifies is_error/api errors
 
+        stderr = _redact_secrets(proc.stderr, self.config.claude_api_key)
+        stdout = _redact_secrets(out, self.config.claude_api_key)
         raise RunnerError(
             f"claude produced no parseable JSON envelope (stage={stage}, run_id={run_id}, "
             f"label={label}, exit={proc.returncode}). This usually means an auth/startup "
-            f"failure.\nstderr tail:\n{(proc.stderr or '')[-1500:]}\n"
-            f"stdout tail:\n{out[-500:]}")
+            f"failure.\nstderr tail:\n{stderr[-1500:]}\n"
+            f"stdout tail:\n{stdout[-500:]}")
 
 
 # -------------------------------------------------------------------------------- codex
@@ -516,6 +537,126 @@ def _scan_codex_tokens(stdout_jsonl: str) -> tuple[int, int]:
     return in_tok, out_tok
 
 
+_CODEX_HOME_CACHE_ROOT = Path.home() / ".argo" / "codex_homes"
+
+# Serializes bootstrap of a given key's CODEX_HOME across concurrent CodexRunner instances IN THIS
+# PROCESS (Argo's fan-out is thread-based -- ThreadPoolExecutor in audit.py/validate.py/
+# corroborate.py/deep_verify.py/benchmark.py -- never multiprocessing, so a plain threading.Lock
+# genuinely serializes every real caller). Does NOT protect against two SEPARATE `argo` process
+# invocations racing the same key at the same time -- an accepted, low-severity residual: both
+# would attempt the same login with the same key and land on the same correct end state, at worst
+# wasting one redundant `codex login` call, never corrupting or mismatching credentials.
+_codex_api_key_locks: dict[str, threading.Lock] = {}
+_codex_api_key_locks_guard = threading.Lock()
+
+
+def _codex_home_for_api_key(key: str, *, cache_root: Path | None = None) -> Path:
+    """Deterministic cache dir for a given OpenAI API key -- keyed by a HASH so the literal key
+    value never appears in a filesystem path (process listings, shell history expansions, `ls`
+    output, backup tooling, crash dumps that include argv/cwd). Same key -> same directory ->
+    bootstrap runs at most once per key per machine (cache_root lets tests point elsewhere)."""
+    root = cache_root if cache_root is not None else _CODEX_HOME_CACHE_ROOT
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
+    return root / digest
+
+
+def _run_codex_cli(args: list[str], *, codex_home: Path, input_text: str | None = None,
+                   timeout: int = 30) -> subprocess.CompletedProcess:
+    """Thin, mockable wrapper around a short-lived (non-session) Codex CLI call -- login / login
+    status. Deliberately NOT AgentRunner._exec: that machinery models a cancellable LLM session
+    with ledger/jsonl logging and a cancel_event; this is a one-off setup step that must never be
+    logged as an LLM call (no tokens, no cost, no prompt) and has no cancellation semantics."""
+    env = {**os.environ, "CODEX_HOME": str(codex_home)}
+    return subprocess.run(args, input=input_text, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=env, timeout=timeout)
+
+
+def _codex_login_status_ok(codex_home: Path, *, codex_bin: str = "codex") -> bool:
+    """Idempotency check: ask the CLI itself (`codex login status`) rather than inferring from an
+    auth-file's presence/name/format, which is an internal implementation detail that can change
+    across Codex CLI versions. Best-effort: ANY failure (timeout, missing binary, ambiguous exit)
+    is treated as "not logged in", so the caller falls through to a (re-)bootstrap rather than
+    silently trusting a broken/expired login."""
+    try:
+        proc = _run_codex_cli([codex_bin, "login", "status"], codex_home=codex_home, timeout=20)
+    except Exception:
+        return False
+    out = f"{proc.stdout or ''}\n{proc.stderr or ''}".lower()
+    return proc.returncode == 0 and "not logged in" not in out
+
+
+def _ensure_codex_api_key_home(key: str, *, codex_bin: str = "codex",
+                               cache_root: Path | None = None) -> Path:
+    """Idempotently bootstrap (or reuse) a CODEX_HOME directory authenticated against `key` via
+    `codex login --with-api-key`, piping the key over STDIN only -- NEVER as an argv element (argv
+    is visible in process listings / crash dumps / some shell histories; stdin is not). Returns the
+    CODEX_HOME path; callers plug it straight into the SAME env["CODEX_HOME"] slot the existing
+    codex_home/codex_accounts mechanism already uses (CodexRunner._codex_home_env_value) -- every
+    other line of CodexRunner._invoke/_build_codex_cmd needs ZERO changes.
+
+    Serialized per key-digest (module-level lock, not per-runner-instance): multiple CodexRunner
+    instances built from the SAME key (e.g. a --codex-api-keys chain reused across --parallel-cases
+    threads) must never race two concurrent `codex login --with-api-key` calls into the same
+    directory. Different keys bootstrap fully in parallel (no cross-key contention).
+    """
+    home = _codex_home_for_api_key(key, cache_root=cache_root)
+    digest = home.name
+    with _codex_api_key_locks_guard:
+        lock = _codex_api_key_locks.setdefault(digest, threading.Lock())
+    with lock:
+        root = home.parent
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+            home.mkdir(exist_ok=True)
+        except OSError as exc:
+            raise RunnerError(
+                f"could not create Codex credential cache directory {home}: {exc}",
+                failure_kind="credential_bootstrap") from exc
+        for directory in (root, home):
+            info = directory.lstat()
+            is_reparse = bool(getattr(info, "st_file_attributes", 0)
+                              & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
+            if stat.S_ISLNK(info.st_mode) or is_reparse or not stat.S_ISDIR(info.st_mode):
+                raise RunnerError(
+                    f"refusing unsafe Codex credential cache path: {directory}",
+                    failure_kind="credential_bootstrap")
+            if hasattr(os, "getuid") and info.st_uid != os.getuid():
+                raise RunnerError(
+                    f"refusing Codex credential cache path not owned by the current user: "
+                    f"{directory}", failure_kind="credential_bootstrap")
+        if os.name == "posix":
+            try:
+                os.chmod(root, 0o700)
+                os.chmod(home, 0o700)
+            except OSError as exc:
+                raise RunnerError(
+                    f"could not secure Codex credential cache directory {home}: {exc}",
+                    failure_kind="credential_bootstrap") from exc
+            for directory in (root, home):
+                if stat.S_IMODE(directory.stat().st_mode) != 0o700:
+                    raise RunnerError(
+                        f"Codex credential cache directory is not private (expected mode 0700): "
+                        f"{directory}", failure_kind="credential_bootstrap")
+        if _codex_login_status_ok(home, codex_bin=codex_bin):
+            return home
+        try:
+            proc = _run_codex_cli([codex_bin, "login", "--with-api-key"], codex_home=home,
+                                  input_text=key, timeout=60)
+        except Exception as exc:
+            raise RunnerError(
+                f"codex login --with-api-key failed to run while bootstrapping a Codex API-key "
+                f"session (codex_home={home}): "
+                f"{_redact_secrets(str(exc), key)}",
+                failure_kind="credential_bootstrap") from exc
+        if proc.returncode != 0:
+            raise RunnerError(
+                f"codex login --with-api-key exited {proc.returncode} while bootstrapping a Codex "
+                f"API-key session (codex_home={home}); stderr tail:\n"
+                f"{_redact_secrets(proc.stderr, key)[-1500:]}",
+                failure_kind="credential_bootstrap")
+        return home
+
+
 class CodexRunner(AgentRunner):
     """Runs the **Codex CLI** (`codex exec`) — OpenAI models, or local/open-source via `--oss`.
 
@@ -533,6 +674,7 @@ class CodexRunner(AgentRunner):
         super().__init__(config, ledger)
         self.codex_bin = codex_bin
         self._resolved_bin: str | None = None
+        self._resolved_api_key_home: Path | None = None  # memoized across many _invoke calls
 
     def _bin(self) -> str:
         if self._resolved_bin is None:
@@ -542,6 +684,22 @@ class CodexRunner(AgentRunner):
                                   "install the Codex CLI or use --runner headless/mock")
             self._resolved_bin = resolved
         return self._resolved_bin
+
+    def _codex_home_env_value(self) -> str | None:
+        """codex_home (an explicit, already-set-up directory) always wins over codex_api_key -- both
+        ultimately resolve to one CODEX_HOME value, a real collision, and an explicit directory is
+        the stronger signal. Bootstrap is LAZY (first real call, not __init__): _expand_backend
+        builds one CodexRunner per --codex-api-keys entry up front, most of which may never actually
+        fire in a FallbackRunner chain -- eager bootstrap in __init__ would force a real subprocess
+        call (and a `codex` CLI PATH requirement) for every configured account."""
+        if self.config.codex_home:
+            return os.path.abspath(os.path.expanduser(str(self.config.codex_home)))
+        if self.config.codex_api_key:
+            if self._resolved_api_key_home is None:
+                self._resolved_api_key_home = _ensure_codex_api_key_home(
+                    self.config.codex_api_key, codex_bin=self._bin())
+            return str(self._resolved_api_key_home)
+        return None
 
     def _build_codex_cmd(self, *, model, policy, last_msg_file: Path) -> list[str]:
         cmd = [self._bin(), "exec",            # `exec` is non-interactive (never prompts for approval)
@@ -568,10 +726,12 @@ class CodexRunner(AgentRunner):
         timeout = timeout_s or self.config.session_timeout_s
         # Multi-account: point this invocation at a specific Codex config home (CODEX_HOME) so an
         # account-fallback can switch Codex accounts (limits are per-account). See build_runner.
+        # codex_api_key resolves (once, memoized, cached on disk) to a bootstrapped CODEX_HOME via
+        # _codex_home_env_value -- see that method for the codex_home-wins precedence rule.
         env = None
-        if self.config.codex_home:
-            env = {**os.environ,
-                   "CODEX_HOME": os.path.abspath(os.path.expanduser(str(self.config.codex_home)))}
+        home_value = self._codex_home_env_value()
+        if home_value:
+            env = {**os.environ, "CODEX_HOME": home_value}
         try:
             proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
@@ -591,14 +751,17 @@ class CodexRunner(AgentRunner):
             # path was NOT marked retryable at all, so Argo never even tried a configured fallback
             # backend on exactly the failure shape fallback exists for -- fixed: always retryable,
             # a wasted retry here costs ~0 tokens and sub-second wall clock either way.
-            kind = _classify_failure_text(proc.stderr) or "unknown_retryable"
+            stderr = _redact_secrets(proc.stderr, self.config.codex_api_key)
+            kind = _classify_failure_text(stderr) or "unknown_retryable"
             raise RunnerError(
                 f"codex produced no output (stage={stage}, run_id={run_id}, label={label}, "
                 f"exit={proc.returncode}); likely auth/startup failure.\nstderr tail:\n"
-                f"{(proc.stderr or '')[-1500:]}",
+                f"{stderr[-1500:]}",
                 retryable=True, failure_kind=kind)
+        stdout = _redact_secrets(proc.stdout, self.config.codex_api_key)
+        stderr = _redact_secrets(proc.stderr, self.config.codex_api_key)
         return {"_backend": "codex", "returncode": proc.returncode, "text": text,
-                "stdout": proc.stdout or "", "stderr": (proc.stderr or "")[-2000:]}
+                "stdout": stdout, "stderr": stderr[-2000:]}
 
     def parse_envelope(self, raw: dict, *, model: str, prompt_sha256: str,
                        work_dir: Path) -> LLMResult:
@@ -865,7 +1028,7 @@ class MockClaudeRunner(ClaudeRunner):
             return self._runtime(work_dir, label)
         if stage == "live":
             return self._live(work_dir, label, prompt)
-        if stage == "corroborate":
+        if stage in {"corroborate", "corroborate_docs"}:
             return self._corroborate(work_dir, label, prompt)
         if stage == "verify":
             return self._verify(work_dir, label)
@@ -1210,6 +1373,12 @@ _RETRYABLE_HINTS = ("session limit", "rate limit", "rate_limit", "api_error_stat
 
 
 def _is_retryable(exc: Exception) -> bool:
+    if isinstance(exc, GuardrailError):
+        return False
+    # Credential resolution happens before a model session exists. Its vendor diagnostics must
+    # never enter the generic rate-limit text classifier and silently switch paying identities.
+    if getattr(exc, "failure_kind", None) == "credential_bootstrap":
+        return False
     if bool(getattr(exc, "retryable", False)):
         return True
     s = str(exc).lower()
@@ -1480,13 +1649,30 @@ def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner
 def _expand_backend(config: PipelineConfig, ledger: Ledger, name: str) -> list[AgentRunner]:
     """One backend name -> one or more runners. Multi-account backends expand to one runner per
     credential dir (limits are per-account): Claude via CLAUDE_CONFIG_DIR, Codex via CODEX_HOME,
-    Gemini via a GEMINI_API_KEY value (a real secret, not a directory path — see PipelineConfig)."""
+    Gemini via a GEMINI_API_KEY value (a real secret, not a directory path — see PipelineConfig).
+    claude_api_keys/codex_api_keys are a SEPARATE, key-based chaining mechanism (mirrors
+    gemini_accounts) -- directory-based *_accounts wins if both are configured for the same
+    backend (avoids a Cartesian-product chain nobody asked for; consistent with the single-value
+    codex_home-wins-over-codex_api_key precedence in CodexRunner._codex_home_env_value)."""
     if name == "headless" and config.claude_accounts:
-        return [HeadlessClaudeRunner(config.with_overrides(runner=name, claude_config_dir=d), ledger)
+        return [HeadlessClaudeRunner(config.with_overrides(
+                    runner=name, claude_config_dir=d, claude_api_key=None, claude_api_keys=[]), ledger)
                 for d in config.claude_accounts]
+    if name == "headless" and config.claude_api_keys:
+        return [HeadlessClaudeRunner(config.with_overrides(
+                    runner=name, claude_config_dir=None, claude_api_key=k), ledger)
+                for k in config.claude_api_keys]
     if name == "codex" and config.codex_accounts:
-        return [CodexRunner(config.with_overrides(runner=name, codex_home=d), ledger)
+        return [CodexRunner(config.with_overrides(
+                    runner=name, codex_home=d, codex_api_key=None, codex_api_keys=[]), ledger)
                 for d in config.codex_accounts]
+    if name == "codex" and config.codex_home:
+        return [CodexRunner(config.with_overrides(
+                    runner=name, codex_api_key=None, codex_api_keys=[]), ledger)]
+    if name == "codex" and config.codex_api_keys:
+        return [CodexRunner(config.with_overrides(
+                    runner=name, codex_home=None, codex_api_key=k), ledger)
+                for k in config.codex_api_keys]
     if name == "gemini" and config.gemini_accounts:
         return [GeminiRunner(config.with_overrides(runner=name, gemini_api_key=k), ledger)
                 for k in config.gemini_accounts]

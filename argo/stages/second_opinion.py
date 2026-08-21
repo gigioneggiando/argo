@@ -57,7 +57,17 @@ def _log(msg: str) -> None:
 
 def _rmtree_readonly_safe(path: Path) -> None:
     """A sub-run's repo copy is deliberately made read-only by ingest._make_readonly (defense in
-    depth), so a plain shutil.rmtree fails on it. Clear the write bit and retry on error."""
+    depth). On POSIX this hardens DIRECTORIES too (not just files) -- deleting an entry needs
+    write permission on its PARENT directory, not the entry itself, so chmod'ing only the failing
+    path (the old approach here) can never succeed. Restore write+execute on every directory
+    top-down first, then remove; a per-file onerror chmod is still kept as a second line of
+    defense for anything the top-down pass didn't anticipate (e.g. a file whose own read-only
+    attribute matters, as on Windows)."""
+    for dirpath, dirnames, _filenames in os.walk(path):
+        for name in dirnames:
+            os.chmod(Path(dirpath) / name, stat.S_IRWXU)
+    os.chmod(path, stat.S_IRWXU)
+
     def _onerror(func, p, _exc):
         os.chmod(p, stat.S_IWRITE)
         func(p)

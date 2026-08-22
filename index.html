@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 11 projects, 42 PRs + 4 published advisories, 38 already resolved (17 merged, 21 fixed independently).">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 11 projects, 43 PRs + 4 published advisories, 39 already resolved (17 merged, 22 fixed independently).">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -338,8 +338,8 @@
 
       <div class="stats" id="stats">
         <div class="stat"><div class="num accent">11</div><div class="lab">Projects</div></div>
-        <div class="stat"><div class="num">42</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num">38</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num">43</div><div class="lab">Public PRs</div></div>
+        <div class="stat"><div class="num">39</div><div class="lab">Already resolved</div></div>
         <div class="stat"><div class="num">5</div><div class="lab">Languages (of many)</div></div>
       </div>
 
@@ -599,7 +599,7 @@
         <div class="case-head">
           <div class="case-title">
             <div class="name"><a href="https://github.com/antirez/ds4" target="_blank" rel="noopener">ds4</a><span class="chip-lang">C</span></div>
-            <div class="blurb">A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.</div>
+            <div class="blurb">A compact C engine for running DeepSeek-class LLMs with an agent / tool loop. <a href="https://github.com/antirez/ds4/commits?author=gigioneggiando" target="_blank" rel="noopener">Six of these fixes are merged into antirez/ds4 under my authorship&nbsp;→</a></div>
           </div>
           <div class="case-tally"><span class="tally good">10&nbsp;resolved</span></div>
         </div>
@@ -839,9 +839,20 @@
             <div class="name"><a href="https://github.com/livekit/livekit" target="_blank" rel="noopener">LiveKit</a><span class="chip-lang">Go</span></div>
             <div class="blurb">Open-source, self-hostable WebRTC infrastructure (SFU) for real-time audio, video, and data.</div>
           </div>
-          <div class="case-tally"><span class="tally good">13&nbsp;fixed</span></div>
+          <div class="case-tally"><span class="tally good">14&nbsp;fixed</span></div>
         </div>
         <ul class="rows">
+      <a class="row fixed" href="https://github.com/livekit/livekit/pull/4782" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #4782</span>
+        <span class="main">
+          <span class="ttl">MigrationDataCache buffered an unbounded number and size of reliable data packets during the 2-second migration window; now capped at 4&nbsp;MiB with excess dropped</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unbounded buffering (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
       <a class="row fixed" href="https://github.com/livekit/livekit/pull/4741" data-sev="Critical" target="_blank" rel="noopener">
         <span class="ref">PR #4741</span>
         <span class="main">

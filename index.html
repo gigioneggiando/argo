@@ -205,7 +205,8 @@
   .row.open{border-left-color:var(--pend-line)}
   .row.closed{border-left-color:var(--line)}
   .row:hover{background:var(--surface-2)}
-  .row .ref{font-family:var(--font-mono); font-size:.82rem; color:var(--muted); font-variant-numeric:tabular-nums}
+  .row .ref{font-family:var(--font-mono); font-size:.82rem; color:var(--muted); font-variant-numeric:tabular-nums; transition:color .14s}
+  .row:hover .ref, .row:hover .reflink{color:var(--accent)}
   .reflink{color:var(--ink-soft); text-decoration:none; border-bottom:1px dotted var(--line); white-space:nowrap}
   .reflink:hover{color:var(--accent); border-bottom-color:var(--accent)}
   .reflink.stretch::after{content:""; position:absolute; inset:0; z-index:0}

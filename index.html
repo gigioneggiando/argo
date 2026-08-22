@@ -196,7 +196,7 @@
   .row{
     display:grid; grid-template-columns:64px 1fr auto; align-items:center; gap:14px;
     padding:12px 22px 12px 19px; border-left:3px solid transparent; text-decoration:none; color:inherit;
-    transition:background .14s;
+    transition:background .14s; position:relative;
   }
   .row + .row{border-top:1px solid var(--line)}
   .row.merged{border-left-color:var(--good-line)}
@@ -208,7 +208,8 @@
   .row .ref{font-family:var(--font-mono); font-size:.82rem; color:var(--muted); font-variant-numeric:tabular-nums}
   .reflink{color:var(--ink-soft); text-decoration:none; border-bottom:1px dotted var(--line); white-space:nowrap}
   .reflink:hover{color:var(--accent); border-bottom-color:var(--accent)}
-  .mergelink{font-family:var(--font-mono); font-size:.7rem; color:var(--muted); text-decoration:none; border-bottom:1px dotted var(--line); white-space:nowrap}
+  .reflink.stretch::after{content:""; position:absolute; inset:0; z-index:0}
+  .mergelink{position:relative; z-index:1; font-family:var(--font-mono); font-size:.7rem; color:var(--muted); text-decoration:none; border-bottom:1px dotted var(--line); white-space:nowrap}
   .mergelink:hover{color:var(--accent); border-bottom-color:var(--accent)}
   .row .main{min-width:0}
   .row .ttl{font-size:.95rem; line-height:1.35}
@@ -609,7 +610,7 @@
         </div>
         <ul class="rows">
       <div class="row fixed" data-sev="Critical">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/539" target="_blank" rel="noopener">PR #539</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/539" target="_blank" rel="noopener">PR #539</a></span>
         <span class="main">
           <span class="ttl">Fix pre-auth double-free in the JSON request parser (applied via commit 8e49a5c, co-authored with antirez)</span>
           <span class="tags"><span class="sev muted">Critical</span><span class="tag">double-free</span></span>
@@ -620,7 +621,7 @@
         </span>
       </div>
       <div class="row fixed" data-sev="High">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/542" target="_blank" rel="noopener">PR #542</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/542" target="_blank" rel="noopener">PR #542</a></span>
         <span class="main">
           <span class="ttl">Bound file-declared length prefixes in the model loader (applied via commit c7689db, co-authored with antirez, alongside #543 and #545)</span>
           <span class="tags"><span class="sev muted">High</span><span class="tag">heap overflow</span></span>
@@ -631,7 +632,7 @@
         </span>
       </div>
       <div class="row fixed" data-sev="Medium">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/543" target="_blank" rel="noopener">PR #543</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/543" target="_blank" rel="noopener">PR #543</a></span>
         <span class="main">
           <span class="ttl">Cross-check tensor data size against shape in FP8/FP4 dequant (applied via commit c7689db, co-authored with antirez, alongside #542 and #545)</span>
           <span class="tags"><span class="sev muted">Medium</span><span class="tag">out-of-bounds read</span></span>
@@ -642,7 +643,7 @@
         </span>
       </div>
       <div class="row fixed" data-sev="Medium">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/544" target="_blank" rel="noopener">PR #544</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/544" target="_blank" rel="noopener">PR #544</a></span>
         <span class="main">
           <span class="ttl">Cap file-declared lengths in agent KV-cache reads (applied via commit 0fa15c6, co-authored with antirez)</span>
           <span class="tags"><span class="sev muted">Medium</span><span class="tag">memory DoS</span></span>
@@ -653,7 +654,7 @@
         </span>
       </div>
       <div class="row fixed" data-sev="Medium">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/545" target="_blank" rel="noopener">PR #545</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/545" target="_blank" rel="noopener">PR #545</a></span>
         <span class="main">
           <span class="ttl">Bound GGUF metadata / tensor counts by file size before allocating (applied via commit c7689db, co-authored with antirez, alongside #542 and #543)</span>
           <span class="tags"><span class="sev muted">Medium</span><span class="tag">resource exhaustion</span></span>
@@ -664,7 +665,7 @@
         </span>
       </div>
       <div class="row fixed" data-sev="Low">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/546" target="_blank" rel="noopener">PR #546</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/546" target="_blank" rel="noopener">PR #546</a></span>
         <span class="main">
           <span class="ttl">Reject an oversized snapshot token_count before allocating (applied via commit f02d79c, co-authored with antirez)</span>
           <span class="tags"><span class="sev muted">Low</span><span class="tag">distributed DoS</span></span>
@@ -675,7 +676,7 @@
         </span>
       </div>
       <div class="row fixed" data-sev="Medium">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/547" target="_blank" rel="noopener">PR #547</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/547" target="_blank" rel="noopener">PR #547</a></span>
         <span class="main">
           <span class="ttl">Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS) (applied via commit a169cff, co-authored with antirez)</span>
           <span class="tags"><span class="sev muted">Medium</span><span class="tag">algorithmic DoS</span></span>
@@ -686,7 +687,7 @@
         </span>
       </div>
       <div class="row merged" data-sev="Low">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/548" target="_blank" rel="noopener">PR #548</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/548" target="_blank" rel="noopener">PR #548</a></span>
         <span class="main">
           <span class="ttl">Bound tokenizer merges count to INT32_MAX like the tokens table (antirez/ds4#548 itself is still open upstream; adopted with authorship preserved into the community fork elkaix/ds4)</span>
           <span class="tags"><span class="sev muted">Low</span><span class="tag">integer bound</span></span>
@@ -697,7 +698,7 @@
         </span>
       </div>
       <div class="row fixed" data-sev="Low">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/541" target="_blank" rel="noopener">PR #541</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/541" target="_blank" rel="noopener">PR #541</a></span>
         <span class="main">
           <span class="ttl">Handle NaN in json_int() (undefined double→int cast) (applied via commit 8340f35, co-authored with antirez)</span>
           <span class="tags"><span class="sev muted">Low</span><span class="tag">undefined behavior</span></span>
@@ -708,7 +709,7 @@
         </span>
       </div>
       <div class="row merged" data-sev="Low">
-        <span class="ref"><a class="reflink" href="https://github.com/antirez/ds4/pull/?" target="_blank" rel="noopener">PR #?</a></span>
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/?" target="_blank" rel="noopener">PR #?</a></span>
         <span class="main">
           <span class="ttl">Unlink the bash-tool output temp file on job cleanup (antirez/ds4#540 itself is still open upstream; adopted with authorship preserved into the community fork elkaix/ds4)</span>
           <span class="tags"><span class="sev muted">Low</span><span class="tag">resource cleanup</span></span>

@@ -24,10 +24,13 @@ they land, a ticking cost meter), not build complexity.
 ```
 webapp/
   index.html        shell
-  styles.css        design system (dark, token-based)
+  styles.css        design system (dark, token-based; Inter + JetBrains Mono)
+  assets/fonts/     self-hosted Inter + JetBrains Mono variable woff2 (no CDN, offline-safe)
   js/api.js         API client + SSE wrapper
   js/ui.js          DOM helpers + components (pills, chips, hyperscript h())
-  js/app.js         hash router + the three views
+  js/charts.js      dependency-free, theme-aware chart primitives (donut, bars, stat tile)
+  js/icons.js       monochrome feather-style SVG icon set (currentColor) — no emoji glyphs
+  js/app.js         hash router + the views
   vendor/marked.min.js   markdown renderer (vendored)
 ```
 
@@ -39,7 +42,17 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
 
 ## The views
 
-- **New run** (`#/`) — a **mode** toggle picks the workflow: **🔍 General audit** (default — audit any
+- **Overview** (`#/`, the landing) — a dashboard over **all** runs, rendered with the `js/charts.js`
+  primitives (dependency-free inline SVG, theme-aware via the CSS severity/status tokens, hover
+  tooltips). Four KPI stat tiles (total runs, validated findings, total spend, avg/run) over: a
+  **findings-by-severity** donut (status-colored, lazily aggregated across completed runs), a
+  **findings-by-verification** donut (confirmed vs. needs-runtime-check — the "prove, don't just
+  detect" ratio), a **runs-by-outcome** donut, a **top-CWEs** bar, a **spend-by-run** bar, and a
+  **runs-by-archetype** bar. Cheap charts render from one `GET /runs`; the severity/verification/CWE
+  charts fill in after a bounded
+  (concurrency-4) fan-out over each completed run's `validated_findings`. Chart forms follow the
+  dataviz method — parts-of-whole → labeled donut, magnitude → single-hue bars.
+- **New run** (`#/new`) — a **mode** toggle picks the workflow: **🔍 General audit** (default — audit any
   codebase: point *Code to audit* at a local folder path or repo, **no brief**; the brief/links fields
   are hidden) or **🎯 Bug bounty** (reveals *Program description* + *Reference links* for a scoped
   program). Both feed the same engine. Plus *Code to audit* (a local folder path — resolved on the
@@ -90,7 +103,8 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
     → report → drafts);
   - a **Cancel** button while running;
   - when it finishes, results appear inline as tabs: **Report** (rendered `REPORT.md`), **Findings**
-    (sortable/filterable table with a detail drawer per finding), **Fixes** (see below), **Chat**
+    (a **severity-mix donut** over the survivors, plus the sortable/filterable table with a detail
+    drawer per finding), **Fixes** (see below), **Chat**
     (see below), **Drafts**, **Artifacts** (scope / repo profile / synthesis / validated JSON). A
     dry-run shows the prompts.
 - **Fixes** (a results tab, Phase 6) — opt-in remediation. "Propose & verify fixes" generates a

@@ -4,6 +4,8 @@ import {
   h, mount, toast, sevPill, verdictPill, stateChip, costChip,
   SEVERITIES, sevRank, confRank, effSev, effConf, verdict, primaryRef,
 } from "./ui.js";
+import { donut, barsH, statTile, chartCard, SEV_COLOR, STATE_COLOR } from "./charts.js";
+import { icon } from "./icons.js";
 
 const app = () => document.getElementById("app");
 const STAGES = ["ingest", "recon", "audit", "validate", "report"];
@@ -19,7 +21,8 @@ function parseRoute() {
   if (hash.startsWith("/knowledge")) return { name: "knowledge" };
   if (hash.startsWith("/costs")) return { name: "costs" };
   if (hash.startsWith("/benchmark")) return { name: "benchmark" };
-  return { name: "new" };
+  if (hash.startsWith("/new")) return { name: "new" };
+  return { name: "overview" };
 }
 
 function render() {
@@ -27,7 +30,9 @@ function render() {
   const r = parseRoute();
   document.querySelectorAll("#nav a").forEach((a) => {
     const target = a.getAttribute("href").replace(/^#/, "");
-    a.classList.toggle("active", (r.name === "new" && target === "/") ||
+    a.classList.toggle("active",
+      (r.name === "overview" && (target === "/" || target === "/overview")) ||
+      (r.name === "new" && target === "/new") ||
       (r.name === "history" && target === "/history") ||
       (r.name === "settings" && target === "/settings") ||
       (r.name === "knowledge" && target === "/knowledge") ||
@@ -35,6 +40,7 @@ function render() {
       (r.name === "benchmark" && target === "/benchmark"));
   });
   const view = r.name === "run" ? runView(r.id)
+    : r.name === "overview" ? overviewView()
     : r.name === "history" ? historyView()
     : r.name === "settings" ? settingsView()
     : r.name === "knowledge" ? knowledgeView()
@@ -49,18 +55,120 @@ window.addEventListener("hashchange", render);
 function setupTheme() {
   const btn = document.getElementById("themeToggle");
   if (!btn) return;
-  const icon = () => { btn.textContent = document.documentElement.getAttribute("data-theme") === "light" ? "☾" : "☀"; };
-  icon();
+  const paint = () => {
+    const light = document.documentElement.getAttribute("data-theme") === "light";
+    mount(btn, icon(light ? "moon" : "sun", 17));
+  };
+  paint();
   btn.addEventListener("click", () => {
     const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", next);
     try { localStorage.setItem("theme", next); } catch (_) {}
-    icon();
+    paint();
   });
 }
 
 setupTheme();
 render();
+
+// -------------------------------------------------------------- OVERVIEW (dashboard)
+function countBy(items, keyFn) {
+  const m = new Map();
+  for (const it of items) { const k = keyFn(it); if (k == null || k === "") continue; m.set(k, (m.get(k) || 0) + 1); }
+  return m;
+}
+function topN(map, n) {
+  return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([label, value]) => ({ label, value }));
+}
+function cweLabel(c) {
+  if (Array.isArray(c)) c = c[0];
+  if (c == null || c === "") return null;
+  c = String(c).trim();
+  return /^\d+$/.test(c) ? "CWE-" + c : c;
+}
+// Verification mix — surfaces the "prove, don't just detect" ratio (xalgorix idea).
+const VERDICT_META = {
+  confirmed: { label: "Confirmed", color: "var(--ok)" },
+  needs_runtime_verification: { label: "Needs runtime check", color: "var(--warn)" },
+};
+const verdictMeta = (v) => VERDICT_META[v] || { label: (v || "unverified").replace(/_/g, " "), color: "var(--info)" };
+async function pool(items, worker, limit = 4) {
+  const out = []; let i = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) { const idx = i++; try { out[idx] = await worker(items[idx]); } catch (_) { out[idx] = null; } }
+  }));
+  return out;
+}
+
+function kpiTiles(runs, findingsCount) {
+  const total = runs.length;
+  const completed = runs.filter((r) => r.state === "completed").length;
+  const spend = runs.reduce((a, r) => a + (r.cost_usd || 0), 0);
+  return [
+    statTile({ label: "Total runs", value: total, sub: `${completed} completed` }),
+    statTile({ label: "Findings", value: findingsCount == null ? "…" : findingsCount,
+      sub: findingsCount == null ? "aggregating…" : "validated", accent: true }),
+    statTile({ label: "Total spend", value: "$" + spend.toFixed(2), sub: "across all runs" }),
+    statTile({ label: "Avg / run", value: "$" + (total ? spend / total : 0).toFixed(2), sub: "mean cost" }),
+  ];
+}
+
+function overviewView() {
+  const statRow = h("div", { class: "stat-row" }, ...Array.from({ length: 4 }, () => h("div", { class: "skeleton", style: { height: "94px" } })));
+  const grid = h("div", { class: "dash-grid" }, ...Array.from({ length: 4 }, () => h("div", { class: "skeleton", style: { height: "260px" } })));
+  const root = h("div", {},
+    h("div", { class: "page-head dash-head" },
+      h("div", {}, h("h1", {}, "Overview"),
+        h("p", {}, "Every audit at a glance — severity mix, outcomes, and spend across all runs.")),
+      h("a", { class: "btn btn-primary", href: "#/new" }, "＋ New run")),
+    statRow, grid);
+  api.listRuns().then((runs) => renderOverview(runs, statRow, grid)).catch((e) => mount(grid, h("div", { class: "empty" }, e.message)));
+  return root;
+}
+
+function renderOverview(runs, statRow, grid) {
+  if (!runs.length) {
+    mount(statRow);
+    mount(grid, h("div", { class: "empty" },
+      h("div", { class: "big" }, "No runs yet"),
+      h("a", { class: "btn btn-primary", href: "#/new" }, "Start your first audit →")));
+    return;
+  }
+  mount(statRow, ...kpiTiles(runs, null));
+
+  const stateData = [...countBy(runs, (r) => r.state).entries()]
+    .map(([label, value]) => ({ label, value, color: STATE_COLOR[label] || "var(--text-faint)" }));
+  const archData = topN(countBy(runs, (r) => (ARCH_LABELS[r.archetype] || r.archetype)), 8);
+  const spendData = runs.filter((r) => (r.cost_usd || 0) > 0)
+    .sort((a, b) => (b.cost_usd || 0) - (a.cost_usd || 0)).slice(0, 8)
+    .map((r) => ({ label: r.program_name || r.run_id, value: r.cost_usd || 0 }));
+
+  const sevBody = h("div", {}, h("div", { class: "skeleton", style: { height: "180px" } }));
+  const verBody = h("div", {}, h("div", { class: "skeleton", style: { height: "180px" } }));
+  const cweBody = h("div", {}, h("div", { class: "skeleton", style: { height: "180px" } }));
+
+  mount(grid,
+    chartCard("Findings by severity", sevBody, "validated · all completed runs"),
+    chartCard("Findings by verification", verBody, "proven vs. needs runtime check"),
+    chartCard("Runs by outcome", donut(stateData, { centerBottom: "runs" })),
+    chartCard("Top CWEs", cweBody, "by finding count"),
+    chartCard("Spend by run", barsH(spendData, { color: "var(--accent)", fmt: (v) => "$" + v.toFixed(2) }), "top 8"),
+    archData.length ? chartCard("Runs by archetype", barsH(archData)) : null);
+
+  const done = runs.filter((r) => r.state === "completed");
+  pool(done, (r) => api.validated(r.run_id).catch(() => null), 4).then((all) => {
+    const findings = all.filter(Boolean).flat().filter(Boolean);
+    const sevMap = countBy(findings, (f) => effSev(f));
+    const sevData = SEVERITIES.filter((sv) => sevMap.get(sv)).map((sv) => ({ label: sv, value: sevMap.get(sv), color: SEV_COLOR[sv] }));
+    const cweData = topN(countBy(findings, (f) => cweLabel(f.cwe)), 8);
+    const verMap = countBy(findings, (f) => verdict(f) || "unverified");
+    const verData = [...verMap.entries()].map(([v, n]) => ({ label: verdictMeta(v).label, value: n, color: verdictMeta(v).color }));
+    mount(statRow, ...kpiTiles(runs, findings.length));
+    mount(sevBody, findings.length ? donut(sevData, { centerBottom: "findings" }) : h("div", { class: "chart-empty" }, "No validated findings yet"));
+    mount(verBody, findings.length ? donut(verData, { centerBottom: "findings" }) : h("div", { class: "chart-empty" }, "No validated findings yet"));
+    mount(cweBody, cweData.length ? barsH(cweData) : h("div", { class: "chart-empty" }, "No CWE data"));
+  });
+}
 
 // --------------------------------------------------------------- NEW RUN view
 function newRunView() {
@@ -131,11 +239,11 @@ function newRunView() {
   advToggle.addEventListener("click", () => { advToggle.classList.toggle("open"); adv.classList.toggle("hidden"); });
 
   const costBanner = h("div", { class: "banner warn hidden", style: { marginTop: "16px" } },
-    h("span", {}, "⚠"),
+    icon("alert", 18),
     h("span", {}, h("strong", {}, "Real run. "), "Spends real tokens on the selected backend (Claude / Codex / Gemini; a full audit can cost real money). Set a budget and confirm before starting."));
 
   const startBtn = h("button", { class: "btn btn-primary btn-lg", onclick: submit },
-    h("span", {}, "⏵"), h("span", {}, "Start run (free)"));
+    icon("play"), h("span", {}, "Start run (free)"));
 
   // ---- "Let the AI choose" ---------------------------------------------------
   let recoTarget = "standard";
@@ -147,13 +255,13 @@ function newRunView() {
       const r = await api.recommend({ repo: form.repo || null, target: recoTarget });
       applyConfig(r.config);
       advToggle.classList.add("open"); adv.classList.remove("hidden");
-      mount(recoBanner, h("span", {}, "✨"), h("span", {}, h("strong", {}, "Recommended. "), r.rationale));
+      mount(recoBanner, icon("sparkle"), h("span", {}, h("strong", {}, "Recommended. "), r.rationale));
       recoBanner.classList.remove("hidden");
     } catch (e) { toast(e.message, true); } finally { recoBtn.disabled = false; }
-  } }, h("span", {}, "✨"), h("span", {}, "Recommend settings"));
-  const recoCard = h("div", { class: "card" },
+  } }, icon("sparkle"), h("span", {}, "Recommend settings"));
+  const recoCard = h("div", { class: "card reco-card" },
     h("div", { class: "spread" },
-      h("div", { class: "grow" }, h("h2", {}, "✨ Let the pipeline choose"),
+      h("div", { class: "grow" }, h("h2", {}, "Let the pipeline choose"),
         h("div", { class: "hint" }, "Pick how thorough this run should be — models, budget and parallelism are set for you (runner stays Mock until you switch it).")),
       recoSeg, recoBtn),
     recoBanner);
@@ -202,44 +310,51 @@ function newRunView() {
       try {
         const r = await api.uploadRepo(f);
         form.repo = r.repo; repoEl.value = r.repo;
-        uploadStatus.textContent = `✓ ${r.name}: ${r.files} files extracted`;
+        uploadStatus.textContent = `${r.name}: ${r.files} files extracted`;
       } catch (err) { uploadStatus.textContent = ""; toast(err.message, true); }
       e.target.value = "";                         // allow re-selecting the same file
     } });
   const uploadBtn = h("button", { type: "button", class: "btn btn-ghost", style: { padding: "8px 13px" },
-    onclick: () => fileEl.click() }, "⬆ Upload .zip");
+    onclick: () => fileEl.click() }, icon("upload"), h("span", {}, "Upload .zip"));
   const repoControl = h("div", {}, repoEl,
     h("div", { class: "row", style: { marginTop: "8px", alignItems: "center" } }, uploadBtn, uploadStatus, fileEl));
   const repoField = field("Code to audit", repoControl,
     "A local folder path (resolved on the machine running the server) or a git URL (cloned read-only) — or **upload a .zip** of the repo. The repo is mounted read-only and never pushed anywhere — but a cloud backend (Claude / Codex / Gemini) sends the source to that provider's API to analyze it; only a local / OSS model keeps everything on-device. Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
-  const modeHint = h("div", { class: "help", style: { marginTop: "8px" } });
-  const MODE_COPY = {
-    general: "Audit any codebase for vulnerabilities — point at a local folder or repo, no program brief needed. The repo stays read-only and is never pushed anywhere (a local / OSS model keeps it fully on-device; a cloud backend sends the source to its API to analyze).",
-    bounty: "Triage a scoped bug-bounty program — paste the program brief; scope, rules and submission drafts come from it.",
-  };
   function setMode(m) {
     mode = m;
     briefField.classList.toggle("hidden", m === "general");
     linksField.classList.toggle("hidden", m === "general");
-    modeHint.textContent = MODE_COPY[m];
+    genCard.classList.toggle("on", m === "general");
+    bountyCard.classList.toggle("on", m === "bounty");
   }
-  const modeSeg = seg([["general", "🔍 General audit"], ["bounty", "🎯 Bug bounty"]], "general", setMode);
+  const genCard = optionCard("General audit", "Audit any codebase — a local folder or repo, no program brief needed.", () => setMode("general"));
+  const bountyCard = optionCard("Bug bounty", "Triage a scoped program — paste the brief; scope, rules and submission drafts come from it.", () => setMode("bounty"));
+  const modeField = h("div", { class: "field" },
+    h("label", { class: "lbl" }, "Audit mode"),
+    h("div", { class: "opt-cards" }, genCard, bountyCard));
   setMode("general");
-  const modeRow = h("div", { class: "field" }, h("label", { class: "lbl" }, "Mode"), modeSeg, modeHint);
 
-  return h("div", {},
+  return h("div", { class: "newrun" },
     claudeDL, codexDL, geminiDL,
     h("div", { class: "page-head" },
       h("h1", {}, "New audit run"),
-      h("p", {}, "Point Argo at any codebase — a local folder, a private repo, or a public one — and an LLM audits the source like a human reviewer: it profiles the code, writes target-specific audit prompts, hunts findings, and adversarially validates them, stopping at human-review drafts. Never touches a live host, never patches.")),
+      h("p", {}, "Point Argo at any codebase and an LLM audits the source like a human reviewer — it profiles the code, writes target-specific prompts, hunts findings, and adversarially validates them, stopping at human-review drafts. Never touches a live host; never patches.")),
     recoCard,
-    h("div", { class: "card" },
-      modeRow,
-      briefField, linksField, repoField,
+    h("div", { class: "card newrun-card" },
+      repoField,
+      modeField,
+      briefField, linksField,
       advToggle, adv, costBanner,
-      h("div", { class: "spread", style: { marginTop: "22px" } },
-        h("span", { class: "grow faint", style: { fontSize: "13px" } }, "Default runner is Mock (free). Switch to Real in Advanced."),
+      h("div", { class: "run-footer" },
+        h("span", { class: "faint", style: { fontSize: "13px" } }, "Runner: Mock (free) by default — switch to a real backend in Advanced."),
         startBtn)));
+}
+
+function optionCard(title, desc, onclick) {
+  return h("div", { class: "opt-card", role: "button", tabindex: "0", onclick,
+    onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onclick(); } } },
+    h("div", { class: "opt-title" }, title),
+    h("div", { class: "opt-desc" }, desc));
 }
 
 function field(label, control, help, required) {
@@ -362,7 +477,7 @@ function runView(id) {
 function renderTimeline(host, stages) {
   const prog = h("div", { class: "progress" });
   const steps = stages.map((s, i) => h("div", { class: `step ${s.state}` },
-    h("div", { class: "node" }, s.state === "done" ? "✓" : s.state === "failed" ? "!" : String(i + 1)),
+    h("div", { class: "node" }, s.state === "done" ? icon("check", 15) : s.state === "failed" ? "!" : String(i + 1)),
     h("div", { class: "lab" }, s.name)));
   const n = stages.length;
   let lastActive = -1;
@@ -392,7 +507,7 @@ function renderResults(host, id, st) {
   if (st.state === "failed") {
     const err = st.error || "Unknown error";
     const budget = /budget|ceiling|exceed|cost cap/i.test(err);
-    return mount(host, h("div", { class: "banner danger" }, h("span", {}, budget ? "💸" : "✖"),
+    return mount(host, h("div", { class: "banner danger" }, icon("alert", 18),
       h("span", {}, h("strong", {}, budget ? "Run stopped — budget reached. " : "Run failed. "), err,
         budget ? h("div", { class: "help", style: { marginTop: "4px" } }, "Raise the per-run budget in Advanced and start a new run.") : null)));
   }
@@ -474,11 +589,17 @@ function findingsTable(doc) {
   const active = new Set(SEVERITIES);
   const wrap = h("div", {});
 
-  const summary = h("div", { class: "row", style: { marginBottom: "14px" } },
+  const summary = h("div", { class: "row" },
     statChip("Survivors", findings.length),
     statChip("Confirmed", findings.filter((f) => verdict(f) === "confirmed").length),
     statChip("Needs runtime check", findings.filter((f) => verdict(f) === "needs_runtime_verification").length),
     statChip("Dropped", (doc.dropped || []).length));
+
+  const sevMap = countBy(findings, (f) => effSev(f));
+  const sevData = SEVERITIES.filter((s) => sevMap.get(s)).map((s) => ({ label: s, value: sevMap.get(s), color: SEV_COLOR[s] }));
+  const head = h("div", { class: "findings-head" },
+    findings.length ? donut(sevData, { noLegend: true, size: 132, thickness: 22, centerBottom: "findings" }) : null,
+    summary);
 
   const filters = h("div", { class: "filters" }, ...SEVERITIES.map((s) => {
     const c = h("span", { class: `pill sev-${s}`, onclick: () => { active.has(s) ? active.delete(s) : active.add(s); c.classList.toggle("off", !active.has(s)); draw(); } },
@@ -506,10 +627,10 @@ function findingsTable(doc) {
     mount(tableHost, table);
   }
   if (!findings.length) {
-    mount(wrap, summary, h("div", { class: "empty" }, h("div", { class: "big" }, "No findings survived validation")));
+    mount(wrap, head, h("div", { class: "empty" }, h("div", { class: "big" }, "No findings survived validation")));
     return wrap;
   }
-  mount(wrap, summary, filters, tableHost, detailHost);
+  mount(wrap, head, filters, tableHost, detailHost);
   draw();
   return wrap;
 }
@@ -547,7 +668,7 @@ function historyView() {
   const host = h("div", { class: "runlist" }, h("div", { class: "skeleton", style: { height: "70px" } }));
   api.listRuns().then((runs) => {
     if (!runs.length) return mount(host, h("div", { class: "empty" },
-      h("div", { class: "big" }, "No runs yet"), h("a", { href: "#/" }, "Start your first audit →")));
+      h("div", { class: "big" }, "No runs yet"), h("a", { href: "#/new" }, "Start your first audit →")));
     mount(host, ...runs.map((r) => h("div", { class: "runrow", onclick: () => location.hash = `#/run/${encodeURIComponent(r.run_id)}` },
       h("div", { class: "grow" },
         h("div", { class: "rprog" }, r.program_name || "(unnamed run)"),
@@ -601,13 +722,13 @@ function chatPanel(id) {
         res.generated.forEach((name) => {
           const f = files.find((x) => x.name === name);
           list.append(h("div", { class: "detail" },
-            h("h3", { class: "mono", style: { fontSize: "13px" } }, "✚ " + name),
+            h("h3", { class: "mono", style: { fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" } }, icon("plus", 13), name),
             h("pre", { class: "mono", style: { whiteSpace: "pre-wrap", fontSize: "12.5px", margin: 0 } }, f ? f.content : "")));
         });
         scroll();
       }
     } catch (e) {
-      pending.remove(); addAssistant("⚠ " + e.message); toast(e.message, true);
+      pending.remove(); addAssistant(e.message); toast(e.message, true);
     } finally { busy = false; sendBtn.disabled = false; }
   }
 
@@ -652,9 +773,9 @@ function fixesPanel(id) {
 
   const verdict = (v) => {
     if (!v) return h("span", { class: "pill" }, "not verified");
-    if (v.verified) return h("span", { class: "chip ok" }, "✓ verified — compiles, no new errors");
+    if (v.verified) return h("span", { class: "chip ok" }, icon("check", 13), h("span", {}, "verified — compiles, no new errors"));
     const why = v.reason || (v.applied ? "build/verify failed" : "did not apply");
-    return h("span", { class: "chip warn" }, "⚠ " + why);
+    return h("span", { class: "chip warn" }, icon("alert", 13), h("span", {}, why));
   };
 
   function render(report, patches) {
@@ -743,12 +864,18 @@ function costsView() {
   const host = h("div", {}, h("div", { class: "skeleton", style: { height: "120px" } }));
   Promise.all([api.costs(), api.models().catch(() => null)]).then(([c, mm]) => {
     const t = c.totals;
-    const head = h("div", { class: "artifacts" },
-      kv("Avg / run", usd(t.avg_cost_per_run)), kv("Total spent", usd(t.cost_usd)),
-      kv("Runs", t.runs), kv("LLM calls", t.calls));
+    const usd2 = (n) => "$" + Number(n || 0).toFixed(2);
+    const head = h("div", { class: "stat-row" },
+      statTile({ label: "Total spent", value: usd2(t.cost_usd), sub: `${t.runs} runs` }),
+      statTile({ label: "Avg / run", value: usd2(t.avg_cost_per_run), sub: "mean cost", accent: true }),
+      statTile({ label: "Runs", value: t.runs, sub: "with cost data" }),
+      statTile({ label: "LLM calls", value: t.calls, sub: "total" }));
+    const costCharts = h("div", { class: "dash-grid" },
+      chartCard("Cost by model", barsH((c.by_model || []).slice(0, 8).map((m) => ({ label: m.model, value: m.cost_usd })), { color: "var(--accent)", fmt: usd2 }), "top 8"),
+      chartCard("Cost by stage", barsH((c.by_stage || []).map((s) => ({ label: s.stage, value: s.cost_usd })), { color: "var(--primary)", fmt: usd2 })));
     const cheapest = c.cheapest_model_per_1k_output
       ? h("div", { class: "banner info", style: { marginTop: "16px", marginBottom: "4px" } },
-          h("span", {}, "💡"),
+          icon("bolt", 16),
           h("span", {}, "Most cost-effective by output tokens: ", h("strong", {}, c.cheapest_model_per_1k_output)))
       : null;
     const models = dataTable(["Model", "Calls", "Cost", "$/call", "$/1k out", "%"],
@@ -782,7 +909,7 @@ function costsView() {
           "Claude Code reports real USD per call. Codex (OpenAI / OSS) and Gemini report tokens, so their cost is ESTIMATED from this table (local/open-source models ≈ $0)."),
         priceTbl));
     }
-    mount(host, head, cheapest, cardOf("By model", models),
+    mount(host, head, costCharts, cheapest, cardOf("By model", models),
       cardOf("By stage — where the money goes", stages), archCard, cardOf("Recent runs", runs),
       pricingCard);
   }).catch((e) => mount(host, h("div", { class: "empty" }, e.message)));

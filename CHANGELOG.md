@@ -7,6 +7,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); ver
 [docs/releasing.md](docs/releasing.md) for what that means concretely for this project, in
 particular while the version stays `0.y.z`.
 
+## [Unreleased]
+
+### Added
+
+- Web UI **Overview dashboard** (the new landing at `#/`): KPI stat tiles plus theme-aware,
+  dependency-free charts — findings by severity, findings by verification (proven vs.
+  needs-runtime-check), runs by outcome, top CWEs, spend by run, runs by archetype — aggregated
+  across all runs. A severity-mix donut also appears on each run's Findings tab.
+- Self-hosted **Inter + JetBrains Mono** variable fonts (`webapp/assets/fonts/`) — no runtime CDN,
+  offline-safe with system fallbacks.
+
+### Changed
+
+- Web UI restyle: refreshed dark palette and typography, a redesigned New-run page (focal
+  code-to-audit input, mode option cards), the Costs page upgraded to stat tiles + cost-by-model/stage
+  charts, and a monochrome SVG icon set (`webapp/js/icons.js`) replacing all emoji glyphs.
+
 ## [0.7.0] - 2026-08-21
 
 ### Added

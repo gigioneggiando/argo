@@ -5,12 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 11 projects, 43 PRs + 4 published advisories, 39 already resolved.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 11 projects, 47 PRs + 4 published advisories, 40 already resolved.">
 <meta property="og:type" content="website">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2288%22>👁</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%23C1732E' stroke-width='8'/><circle cx='50' cy='50' r='13' fill='%23C1732E'/></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <title>Argo · Real-world findings</title>
 <style>
+  /* Self-hosted variable fonts (no CDN, offline-safe with system fallbacks). */
+  @font-face{font-family:"Fraunces";font-style:normal;font-weight:100 900;font-display:swap;
+    src:url("assets/fonts/fraunces-var.woff2") format("woff2");}
+  @font-face{font-family:"Inter Variable";font-style:normal;font-weight:100 900;font-display:swap;
+    src:url("assets/fonts/inter-var.woff2") format("woff2");}
+  @font-face{font-family:"JetBrains Mono Variable";font-style:normal;font-weight:100 800;font-display:swap;
+    src:url("assets/fonts/jetbrains-mono-var.woff2") format("woff2");}
   :root {
     --bg:#ECEEF0; --surface:#F6F7F8; --surface-2:#FFFFFF;
     --ink:#191C22; --ink-soft:#464B54; --muted:#767C86; --line:#D6D9DE;
@@ -19,8 +26,9 @@
     --pend:#4C6C8C; --pend-bg:rgba(76,108,140,.10); --pend-line:rgba(76,108,140,.30);
     --sev-crit:#C4283A; --sev-crit-bg:rgba(196,40,58,.11); --sev-crit-line:rgba(196,40,58,.34); --sev-high:#C05617; --sev-high-bg:rgba(192,86,23,.12); --sev-high-line:rgba(192,86,23,.34); --sev-mod:#8F6B00; --sev-mod-bg:rgba(143,107,0,.13); --sev-mod-line:rgba(143,107,0,.32); --sev-low:#647084; --sev-low-bg:rgba(100,112,132,.10); --sev-low-line:rgba(100,112,132,.28);
     --shadow:0 1px 2px rgba(20,25,35,.05), 0 8px 30px rgba(20,25,35,.06);
-    --font-mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
-    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:"JetBrains Mono Variable",ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --font-sans:"Inter Variable",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-display:"Fraunces","Inter Variable",Georgia,serif;
     --maxw:1080px;
   }
   @media (prefers-color-scheme:dark){
@@ -57,8 +65,9 @@
   html{scroll-behavior:smooth}
   body{
     margin:0; background:var(--bg); color:var(--ink);
-    font-family:var(--font-sans); line-height:1.5; overflow-x:clip;
-    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    font-family:var(--font-sans); line-height:1.55; overflow-x:clip;
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    font-optical-sizing:auto; text-rendering:optimizeLegibility; letter-spacing:-.003em;
   }
   .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
   a{color:inherit}
@@ -119,8 +128,9 @@
     90%,100%{transform:translate(0,0)}
   }
   h1{
-    font-size:clamp(2.15rem,5.2vw,3.55rem); line-height:1.04; letter-spacing:-.02em;
-    font-weight:800; margin:.5rem 0 0; max-width:16ch; text-wrap:balance;
+    font-family:var(--font-display); font-optical-sizing:auto;
+    font-size:clamp(2.3rem,5.4vw,3.75rem); line-height:1.02; letter-spacing:-.018em;
+    font-weight:600; margin:.5rem 0 0; max-width:15ch; text-wrap:balance;
   }
   h1 em{font-style:normal; color:var(--accent)}
   .lede{margin:20px 0 0; max-width:60ch; color:var(--ink-soft); font-size:1.06rem}
@@ -153,7 +163,7 @@
 
   /* Section head */
   .sec-head{display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin:54px 0 18px; flex-wrap:wrap}
-  .sec-head h2{font-size:1.15rem; margin:0; letter-spacing:-.01em}
+  .sec-head h2{font-family:var(--font-display); font-optical-sizing:auto; font-weight:600; font-size:1.6rem; margin:0; letter-spacing:-.01em}
   .sec-head .hint{font-family:var(--font-mono); font-size:.74rem; color:var(--muted)}
 
   /* Filters */
@@ -294,6 +304,44 @@
     .eye .iris, .eye .gaze{animation:none}
     *{scroll-behavior:auto}
   }
+
+  /* ---- brand mark ---- */
+  .brand .eye-mark{color:var(--accent); flex:0 0 auto; display:block}
+
+  /* ---- at-a-glance charts (built client-side from the static rows below) ---- */
+  .charts-strip{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:30px 0 4px}
+  .chart-card{background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); padding:16px 18px}
+  .chart-card h3{font-family:var(--font-mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600; margin:0 0 13px}
+  .donut-wrap{display:flex; align-items:center; gap:16px}
+  .donut-plot{position:relative; width:104px; height:104px; flex:0 0 auto}
+  .donut-plot svg{width:100%; height:100%; display:block}
+  .donut-seg{stroke:var(--surface); stroke-width:2}
+  .donut-plot .center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none}
+  .donut-plot .center b{font-family:var(--font-mono); font-size:1.35rem; font-variant-numeric:tabular-nums; letter-spacing:-.02em; color:var(--ink)}
+  .donut-plot .center span{font-family:var(--font-mono); font-size:.55rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+  .legend{display:flex; flex-direction:column; gap:6px; font-family:var(--font-mono); font-size:.72rem; min-width:96px; flex:1 1 auto}
+  .legend .li{display:flex; align-items:center; gap:7px}
+  .legend .dot{width:8px; height:8px; border-radius:2px; flex:0 0 auto}
+  .legend .ll{color:var(--ink-soft)}
+  .legend .lv{margin-left:auto; color:var(--ink); font-variant-numeric:tabular-nums}
+  .cbars{display:flex; flex-direction:column; gap:10px}
+  .cbar{display:grid; grid-template-columns:minmax(52px,38%) 1fr auto; align-items:center; gap:10px; font-family:var(--font-mono); font-size:.74rem}
+  .cbar .cl{color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .cbar .ct{height:9px; border-radius:999px; background:var(--surface-2); overflow:hidden; border:1px solid var(--line)}
+  .cbar .cf{height:100%; border-radius:999px; min-width:2px}
+  .cbar .cv{color:var(--ink); font-variant-numeric:tabular-nums}
+
+  /* ---- search ---- */
+  .searchbox{position:relative; flex:1 1 220px; min-width:170px; max-width:360px}
+  .searchbox svg{position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none}
+  .searchbox input{width:100%; font-family:var(--font-sans); font-size:.88rem; color:var(--ink);
+    background:var(--surface); border:1px solid var(--line); border-radius:999px; padding:9px 14px 9px 35px; outline:none; transition:border-color .15s}
+  .searchbox input:focus{border-color:var(--accent)}
+  .searchbox input::placeholder{color:var(--muted)}
+  .filter-reset{font-family:var(--font-mono); font-size:.7rem; color:var(--muted); background:transparent; border:0; cursor:pointer; padding:5px 8px; border-radius:8px; text-decoration:underline; text-underline-offset:3px}
+  .filter-reset:hover{color:var(--accent)}
+
+  @media (max-width:720px){ .charts-strip{grid-template-columns:1fr} }
 </style>
 <style>
   .theme-btn{font-family:var(--font-mono); font-size:.95rem; color:var(--ink-soft); background:transparent; border:1px solid transparent; padding:6px 10px; border-radius:8px; cursor:pointer; line-height:1; transition:background .15s, border-color .15s, color .15s}
@@ -304,7 +352,7 @@
 <body>
 <header class="top">
   <div class="wrap">
-    <div class="brand"><span class="eye">👁</span> argo <small>findings</small></div>
+    <div class="brand"><svg class="eye-mark" viewBox="0 0 100 100" width="19" height="19" aria-hidden="true"><circle cx="50" cy="50" r="37" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="50" cy="50" r="13" fill="currentColor"/></svg> argo <small>findings</small></div>
     <nav>
       <a class="hideable" href="https://github.com/gigioneggiando/argo" target="_blank" rel="noopener">Repository</a>
       <a class="hideable" href="https://github.com/gigioneggiando/argo/wiki" target="_blank" rel="noopener">Wiki</a>
@@ -344,8 +392,8 @@
 
       <div class="stats" id="stats">
         <div class="stat"><div class="num accent">11</div><div class="lab">Projects</div></div>
-        <div class="stat"><div class="num">43</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num">39</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num">47</div><div class="lab">Public PRs</div></div>
+        <div class="stat"><div class="num">40</div><div class="lab">Already resolved</div></div>
         <div class="stat"><div class="num">5</div><div class="lab">Languages (of many)</div></div>
       </div>
 
@@ -367,7 +415,12 @@
       <h2>Disclosures</h2>
       <span class="hint" id="ordering">merged fixes first · then open review</span>
     </div>
+    <div class="charts-strip" id="chartsStrip" aria-hidden="true"></div>
     <div class="filters" id="filters">
+      <div class="searchbox">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+        <input type="search" id="searchInput" placeholder="Search findings, projects, tags…" aria-label="Search disclosures" autocomplete="off">
+      </div>
       <div class="filter-group" role="group" aria-label="Filter by finding severity">
         <span class="filter-label">Severity</span>
         <button type="button" class="filter-chip active" data-filter="sev" data-value="" aria-pressed="true">All</button>
@@ -376,6 +429,14 @@
         <button type="button" class="filter-chip" data-filter="sev" data-value="Medium" aria-pressed="false">Medium</button>
         <button type="button" class="filter-chip" data-filter="sev" data-value="Low" aria-pressed="false">Low</button>
       </div>
+      <div class="filter-group" role="group" aria-label="Filter by disclosure status" id="statusGroup">
+        <span class="filter-label">Status</span>
+        <button type="button" class="filter-chip active" data-filter="status" data-value="" aria-pressed="true">All</button>
+      </div>
+      <div class="filter-group" role="group" aria-label="Filter by language" id="langGroup">
+        <span class="filter-label">Language</span>
+        <button type="button" class="filter-chip active" data-filter="lang" data-value="" aria-pressed="true">All</button>
+      </div>
       <div class="filter-group" role="group" aria-label="Filter by project GitHub stars">
         <span class="filter-label">Stars</span>
         <button type="button" class="filter-chip active" data-filter="stars" data-value="0" aria-pressed="true">Any</button>
@@ -383,6 +444,7 @@
         <button type="button" class="filter-chip" data-filter="stars" data-value="5000" aria-pressed="false">5k+</button>
         <button type="button" class="filter-chip" data-filter="stars" data-value="20000" aria-pressed="false">20k+</button>
       </div>
+      <button type="button" class="filter-reset">Reset</button>
       <span class="filter-count" id="filterCount" aria-live="polite"></span>
     </div>
     <div class="cases" id="cases">
@@ -478,7 +540,7 @@
             <div class="name"><a href="https://github.com/squidowl/halloy" target="_blank" rel="noopener">halloy</a><span class="chip-lang">Rust</span></div>
             <div class="blurb">A modern IRC client.</div>
           </div>
-          <div class="case-tally"><span class="tally good">1&nbsp;merged</span></div>
+          <div class="case-tally"><span class="tally good">2&nbsp;merged</span><span class="tally">3&nbsp;open</span></div>
         </div>
         <ul class="rows">
       <a class="row merged" href="https://github.com/squidowl/halloy/pull/2149" data-sev="High" target="_blank" rel="noopener">
@@ -489,6 +551,50 @@
         </span>
         <span class="rowend">
           <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/squidowl/halloy/pull/2331" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #2331</span>
+        <span class="main">
+          <span class="ttl">Bound the number of concurrently open IRCv3 batches from a server</span>
+          <span class="tags"><span class="sev moderate">Medium</span><span class="tag">unbounded batches (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row open" href="https://github.com/squidowl/halloy/pull/2329" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #2329</span>
+        <span class="main">
+          <span class="ttl">Harden DCC filename sanitization against reserved names and illegal characters</span>
+          <span class="tags"><span class="sev moderate">Medium</span><span class="tag">DCC filename sanitization</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row open" href="https://github.com/squidowl/halloy/pull/2330" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #2330</span>
+        <span class="main">
+          <span class="ttl">Guard server-icon decoding against oversized (decompression-bomb) images</span>
+          <span class="tags"><span class="sev moderate">Medium</span><span class="tag">decompression bomb</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row open" href="https://github.com/squidowl/halloy/pull/2332" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #2332</span>
+        <span class="main">
+          <span class="ttl">Redact credentials from the IRC protocol log</span>
+          <span class="tags"><span class="sev moderate">Medium</span><span class="tag">credential logging</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open</span>
           <span class="go" aria-hidden="true">→</span>
         </span>
       </a></ul>
@@ -1103,50 +1209,162 @@
     const cases = Array.from(document.querySelectorAll('#cases .case'));
     const countEl = document.getElementById('filterCount');
     const noResults = document.getElementById('noResults');
-    const state = { sev: '', stars: 0 };
+    const searchEl = document.getElementById('searchInput');
+    const STATUS_TOKENS = ['merged','advisory','fixed','open','issue','closed'];
+    const state = { sev:'', stars:0, status:'', lang:'', q:'' };
+    const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+    // Precompute per-row metadata + tallies from the static rows (the list is the
+    // source of truth; charts and chips are derived from it, never the reverse).
+    const langCounts = new Map(), statusCounts = new Map(), sevCounts = new Map(), projCounts = new Map();
+    cases.forEach(sec => {
+      const lang = (sec.querySelector('.chip-lang')?.textContent || '').trim();
+      sec.dataset.lang = lang;
+      const name = (sec.querySelector('.case-title .name a')?.textContent || '').trim();
+      const blurb = (sec.querySelector('.blurb')?.textContent || '').trim();
+      const rows = Array.from(sec.querySelectorAll('.row'));
+      rows.forEach(row => {
+        const status = STATUS_TOKENS.find(t => row.classList.contains(t)) || 'open';
+        row.dataset.status = status;
+        row._search = (name + ' ' + lang + ' ' + blurb + ' ' + row.textContent).toLowerCase().replace(/\s+/g,' ');
+        const sev = row.dataset.sev || '';
+        sevCounts.set(sev, (sevCounts.get(sev)||0)+1);
+        statusCounts.set(status, (statusCounts.get(status)||0)+1);
+        projCounts.set(name, (projCounts.get(name)||0)+1);
+      });
+      if (lang) langCounts.set(lang, (langCounts.get(lang)||0)+1);
+    });
+
+    // Populate the Status + Language chips from the data (auto-updates with the list).
+    const addChips = (groupId, key, entries) => {
+      const g = document.getElementById(groupId); if (!g) return;
+      entries.forEach(([val,label]) => {
+        const b = document.createElement('button');
+        b.type='button'; b.className='filter-chip'; b.dataset.filter=key; b.dataset.value=val;
+        b.setAttribute('aria-pressed','false'); b.textContent=label; g.appendChild(b);
+      });
+    };
+    addChips('statusGroup','status', STATUS_TOKENS.filter(t=>statusCounts.get(t)).map(t=>[t,cap(t)]));
+    addChips('langGroup','lang', [...langCounts.keys()].sort().map(l=>[l,l]));
 
     function apply(){
+      const q = state.q;
       let visibleFindings = 0, visibleProjects = 0;
       cases.forEach(sec => {
         const starsOk = (+sec.dataset.stars || 0) >= state.stars;
-        const rows = Array.from(sec.querySelectorAll('.row'));
+        const langOk = !state.lang || sec.dataset.lang === state.lang;
         let anyRowVisible = false;
-        rows.forEach(row => {
+        sec.querySelectorAll('.row').forEach(row => {
           const sevOk = !state.sev || row.dataset.sev === state.sev;
-          const show = starsOk && sevOk;
+          const statusOk = !state.status || row.dataset.status === state.status;
+          const searchOk = !q || row._search.indexOf(q) !== -1;
+          const show = starsOk && langOk && sevOk && statusOk && searchOk;
           row.classList.toggle('filtered-out', !show);
           if (show){ anyRowVisible = true; visibleFindings++; }
         });
-        const showCase = starsOk && anyRowVisible;
-        sec.classList.toggle('filtered-out', !showCase);
-        if (showCase) visibleProjects++;
+        sec.classList.toggle('filtered-out', !anyRowVisible);
+        if (anyRowVisible) visibleProjects++;
       });
-      const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-      countEl.textContent = visibleFindings
-        ? `${plural(visibleFindings, 'finding')} across ${plural(visibleProjects, 'project')}`
-        : '';
-      noResults.classList.toggle('show', visibleFindings === 0);
+      const plural = (n,w)=>`${n} ${w}${n===1?'':'s'}`;
+      countEl.textContent = visibleFindings ? `${plural(visibleFindings,'finding')} across ${plural(visibleProjects,'project')}` : '';
+      if (noResults) noResults.classList.toggle('show', visibleFindings===0);
     }
 
-    filtersEl.querySelectorAll('.filter-chip[data-filter]').forEach(chip => {
-      chip.addEventListener('click', () => {
-        const group = chip.dataset.filter;
-        filtersEl.querySelectorAll(`.filter-chip[data-filter="${group}"]`).forEach(c => {
-          c.classList.remove('active'); c.setAttribute('aria-pressed', 'false');
-        });
-        chip.classList.add('active'); chip.setAttribute('aria-pressed', 'true');
-        state[group] = group === 'stars' ? +chip.dataset.value : chip.dataset.value;
-        apply();
+    // Chip clicks via delegation so dynamically-added Status/Language chips work too.
+    filtersEl.addEventListener('click', e => {
+      const chip = e.target.closest('.filter-chip[data-filter]');
+      if (!chip || !filtersEl.contains(chip)) return;
+      const group = chip.dataset.filter;
+      filtersEl.querySelectorAll(`.filter-chip[data-filter="${group}"]`).forEach(c => {
+        c.classList.remove('active'); c.setAttribute('aria-pressed','false');
       });
+      chip.classList.add('active'); chip.setAttribute('aria-pressed','true');
+      state[group] = group==='stars' ? +chip.dataset.value : chip.dataset.value;
+      apply();
     });
 
-    const resetBtn = document.getElementById('resetFilters');
-    if (resetBtn) resetBtn.addEventListener('click', () => {
-      filtersEl.querySelector('.filter-chip[data-filter="sev"][data-value=""]').click();
-      filtersEl.querySelector('.filter-chip[data-filter="stars"][data-value="0"]').click();
-    });
+    if (searchEl){
+      let t; searchEl.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(() => { state.q = searchEl.value.trim().toLowerCase(); apply(); }, 120);
+      });
+    }
 
+    function doReset(){
+      state.sev=''; state.stars=0; state.status=''; state.lang=''; state.q='';
+      if (searchEl) searchEl.value='';
+      filtersEl.querySelectorAll('.filter-chip').forEach(c => {
+        const on = c.dataset.value==='' || c.dataset.value==='0';
+        c.classList.toggle('active', on); c.setAttribute('aria-pressed', on?'true':'false');
+      });
+      apply();
+    }
+    document.querySelectorAll('.filter-reset, #resetFilters').forEach(b => b.addEventListener('click', doReset));
+
+    buildCharts();
     apply();
+
+    // At-a-glance charts, drawn from the tallies above. aria-hidden on the strip:
+    // the full findings list follows, so a screen reader isn't read the numbers twice.
+    function buildCharts(){
+      const strip = document.getElementById('chartsStrip'); if (!strip) return;
+      const NS='http://www.w3.org/2000/svg';
+      const el=(t,c,txt)=>{const e=document.createElement(t); if(c)e.className=c; if(txt!=null)e.textContent=txt; return e;};
+      const card=(title,body)=>{const c=el('div','chart-card'); c.appendChild(el('h3',null,title)); c.appendChild(body); return c;};
+
+      const SEV_ORDER=['Critical','High','Medium','Low'];
+      const SEV_COLOR={Critical:'var(--sev-crit)',High:'var(--sev-high)',Medium:'var(--sev-mod)',Low:'var(--sev-low)'};
+      strip.appendChild(card('Findings by severity',
+        donut(SEV_ORDER.filter(s=>sevCounts.get(s)).map(s=>({label:s,value:sevCounts.get(s),color:SEV_COLOR[s]})))));
+
+      const STATUS_COLOR={merged:'var(--good)',advisory:'var(--good)',fixed:'var(--good)',open:'var(--pend)',issue:'var(--muted)',closed:'var(--muted)'};
+      strip.appendChild(card('Findings by status',
+        bars([...statusCounts.entries()].sort((a,b)=>b[1]-a[1]).map(([k,v])=>({label:cap(k),value:v,color:STATUS_COLOR[k]||'var(--muted)'})))));
+
+      strip.appendChild(card('Most findings',
+        bars([...projCounts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6).map(([k,v])=>({label:k,value:v,color:'var(--accent)'})))));
+
+      function donut(data){
+        const total=data.reduce((a,d)=>a+d.value,0)||1;
+        const th=17,cx=52,cy=52,R=50,r=R-th;
+        const svg=document.createElementNS(NS,'svg'); svg.setAttribute('viewBox','0 0 104 104');
+        const pt=(rad,a)=>[cx+rad*Math.cos(a),cy+rad*Math.sin(a)];
+        if(data.length<=1){
+          const c=document.createElementNS(NS,'circle');
+          c.setAttribute('cx',cx);c.setAttribute('cy',cy);c.setAttribute('r',(R+r)/2);
+          c.setAttribute('fill','none');c.setAttribute('stroke',(data[0]&&data[0].color)||'var(--line)');
+          c.setAttribute('stroke-width',th);c.setAttribute('class','donut-seg'); svg.appendChild(c);
+        } else {
+          let a=-Math.PI/2; const gap=.02;
+          data.forEach(d=>{
+            const f=d.value/total, a0=a+gap/2, a1=a+f*2*Math.PI-gap/2; a+=f*2*Math.PI;
+            const [x0,y0]=pt(R,a0),[x1,y1]=pt(R,a1),[x2,y2]=pt(r,a1),[x3,y3]=pt(r,a0);
+            const large=(a1-a0)>Math.PI?1:0;
+            const p=document.createElementNS(NS,'path');
+            p.setAttribute('d',`M ${x0} ${y0} A ${R} ${R} 0 ${large} 1 ${x1} ${y1} L ${x2} ${y2} A ${r} ${r} 0 ${large} 0 ${x3} ${y3} Z`);
+            p.setAttribute('fill',d.color); p.setAttribute('class','donut-seg'); svg.appendChild(p);
+          });
+        }
+        const plot=el('div','donut-plot'); plot.appendChild(svg);
+        const ctr=el('div','center'); ctr.appendChild(el('b',null,String(total))); ctr.appendChild(el('span',null,'findings')); plot.appendChild(ctr);
+        const leg=el('div','legend');
+        data.forEach(d=>{
+          const li=el('div','li'); const dot=el('span','dot'); dot.style.background=d.color;
+          li.appendChild(dot); li.appendChild(el('span','ll',d.label)); li.appendChild(el('span','lv',String(d.value))); leg.appendChild(li);
+        });
+        const wrap=el('div','donut-wrap'); wrap.appendChild(plot); wrap.appendChild(leg); return wrap;
+      }
+      function bars(data){
+        const max=Math.max(1,...data.map(d=>d.value)); const wrap=el('div','cbars');
+        data.forEach(d=>{
+          const row=el('div','cbar'); row.appendChild(el('span','cl',d.label));
+          const track=el('div','ct'), fill=el('div','cf');
+          fill.style.width=Math.max(3,(d.value/max)*100)+'%'; fill.style.background=d.color;
+          track.appendChild(fill); row.appendChild(track); row.appendChild(el('span','cv',String(d.value))); wrap.appendChild(row);
+        });
+        return wrap;
+      }
+    }
   })();
 </script>
 <script>

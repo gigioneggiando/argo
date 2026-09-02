@@ -244,6 +244,8 @@
   .sev.moderate, .sev.medium{color:var(--sev-mod); background:var(--sev-mod-bg); border:1px solid var(--sev-mod-line)}
   .sev.low{color:var(--sev-low); background:var(--sev-low-bg); border:1px solid var(--sev-low-line)}
   .sev.muted{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
+  /* Only published advisories (GHSA) carry a colour-coded severity pill; PR rows show severity neutrally. */
+  .row:not(.advisory) .sev{color:var(--muted); background:var(--surface-2); border:1px solid var(--line)}
   .row .go{font-family:var(--font-mono); color:var(--muted); font-size:1rem; transition:transform .14s, color .14s}
   .row:hover .go{color:var(--accent); transform:translateX(3px)}
   .rowend{display:flex; align-items:center; gap:12px}
@@ -558,7 +560,7 @@
         <span class="ref">PR #2331</span>
         <span class="main">
           <span class="ttl">Bound the number of concurrently open IRCv3 batches from a server</span>
-          <span class="tags"><span class="sev moderate">Medium</span><span class="tag">unbounded batches (DoS)</span></span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unbounded batches (DoS)</span></span>
         </span>
         <span class="rowend">
           <span class="status merged"><span class="dot"></span>Merged</span>
@@ -569,7 +571,7 @@
         <span class="ref">PR #2329</span>
         <span class="main">
           <span class="ttl">Harden DCC filename sanitization against reserved names and illegal characters</span>
-          <span class="tags"><span class="sev moderate">Medium</span><span class="tag">DCC filename sanitization</span></span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">DCC filename sanitization</span></span>
         </span>
         <span class="rowend">
           <span class="status open"><span class="dot"></span>Open</span>
@@ -580,7 +582,7 @@
         <span class="ref">PR #2330</span>
         <span class="main">
           <span class="ttl">Guard server-icon decoding against oversized (decompression-bomb) images</span>
-          <span class="tags"><span class="sev moderate">Medium</span><span class="tag">decompression bomb</span></span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">decompression bomb</span></span>
         </span>
         <span class="rowend">
           <span class="status merged"><span class="dot"></span>Merged</span>
@@ -591,7 +593,7 @@
         <span class="ref">PR #2332</span>
         <span class="main">
           <span class="ttl">Redact credentials from the IRC protocol log</span>
-          <span class="tags"><span class="sev moderate">Medium</span><span class="tag">credential logging</span></span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">credential logging</span></span>
         </span>
         <span class="rowend">
           <span class="status open"><span class="dot"></span>Open</span>

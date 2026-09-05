@@ -9,6 +9,17 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Fixed
+- **Audit: a focus whose session never started is now retried once instead of abandoned.**
+  Both backends can fail inside the same minute (a transient limit, `exit_1` with zero
+  tokens and no partial artifact) and the stage used to drop that focus permanently — a run
+  could finish clean having audited one of three focus areas, which makes its finding count a
+  property of when it ran rather than of the target. Retried once after `audit_retry_delay_s`
+  (90 s), controlled by `audit_retry_passes` (0 restores the old behaviour). Only SESSION
+  failures retry: a malformed or schema-invalid findings file is a result and stands, because
+  re-rolling until the model emits something parseable would be selecting on the output.
+
+
 ### Added
 
 - Web UI **Overview dashboard** (the new landing at `#/`): KPI stat tiles plus theme-aware,

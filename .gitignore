@@ -44,3 +44,21 @@ __pycache__/
 build/
 dist/
 .eggs/
+
+# Scratch output from manual audit runs — never part of the repo
+*_audit.log
+*_audit.err.log
+*_audit.out.log
+*_verify.log
+*_variant_check.log
+
+# One-off PoC scratch from manual verification (cookie jars, API dumps from local test instances)
+/a2.txt
+/a3.txt
+/attack.txt
+/cj.txt
+/adm.json
+/appnew.json
+/org.json
+/org2.json
+/pocapp.json

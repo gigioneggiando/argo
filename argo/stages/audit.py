@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -165,7 +166,15 @@ def _normalize_findings_doc(raw_doc: dict, ctx: RunContext, scope, slug: str):
     return doc, repaired_ids, unrecoverable, coerced
 
 
-def _audit_one(ctx: RunContext, scope, prompt_path: Path) -> tuple[str, Path | None, str | None]:
+def _audit_one(ctx: RunContext, scope, prompt_path: Path
+               ) -> tuple[str, Path | None, str | None, bool]:
+    """Audit one focus. Returns (slug, findings_path, error, retryable).
+
+    ``retryable`` is True only when the SESSION itself never produced anything -- a transient
+    backend failure, not a bad answer. A malformed or schema-invalid findings file is a real
+    result and is never retried: re-rolling until the model emits something parseable would be
+    selecting on the output.
+    """
     slug = prompt_path.stem  # e.g. "audit_p1_full_scope"
     prompt_text = prompt_path.read_text(encoding="utf-8")
 
@@ -216,16 +225,16 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path) -> tuple[str, Path | N
         partial = True
         files = sorted(work.glob("SECURITY_FINDINGS__*.json"))
         if not files:
-            return slug, None, f"session failed, no partial artifact ({exc})"
+            return slug, None, f"session failed, no partial artifact ({exc})", True
         _log(f"{slug}: session failed ({exc}); recovered partial artifact from scratch dir")
     if not files:
-        return slug, None, "no findings JSON produced"
+        return slug, None, "no findings JSON produced", True
     # Prefer the exactly-named file; else take the first JSON found (glob fallback).
     chosen = next((f for f in files if f.name == findings_filename), files[0])
     try:
         raw_doc = json.loads(chosen.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
-        return slug, None, f"findings file is not valid JSON: {exc}"
+        return slug, None, f"findings file is not valid JSON: {exc}", False
 
     doc, repaired_ids, unrecoverable, coerced = _normalize_findings_doc(raw_doc, ctx, scope, slug)
     if repaired_ids:
@@ -236,18 +245,18 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path) -> tuple[str, Path | N
     if coerced:
         _log(f"{slug}: coerced structured fields to strings in {coerced} finding(s)")
     if not doc.get("findings"):
-        return slug, None, "no schema-conformant findings after normalization"
+        return slug, None, "no schema-conformant findings after normalization", False
     try:
         validate_findings(doc, ctx.assets_dir)     # final gate on the normalized doc
     except SchemaValidationError as exc:
-        return slug, None, f"findings still invalid after normalization: {exc}"
+        return slug, None, f"findings still invalid after normalization: {exc}", False
 
     out = ctx.findings_dir / f"{slug}.json"
     atomic_write_json(out, doc)
     _collect_variant_log(ctx, slug, work)
     n = len(doc.get("findings", []))
     _log(f"{slug}: {n} finding(s){' [partial session]' if partial else ''}")
-    return slug, out, None
+    return slug, out, None, False
 
 
 def _collect_variant_log(ctx: RunContext, slug: str, work: Path) -> Path | None:
@@ -396,15 +405,40 @@ def run(ctx: RunContext) -> list[Path]:
 
     max_workers = max(1, min(ctx.config.max_parallel_audits, len(launch)))
     produced: dict[str, Path] = {}   # slug -> focus findings doc
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        futures = {ex.submit(_audit_one, ctx, scope, p): p for p in launch}
-        for fut in as_completed(futures):
-            slug, path, err = fut.result()
-            if err:
-                _log(f"{slug}: SKIPPED ({err})")
-            elif path is not None:
-                results.append(path)
-                produced[slug] = path
+
+    def _pass(paths: list[Path], attempt: int) -> list[Path]:
+        """Run a set of focuses; return the ones whose SESSION failed and may be retried."""
+        retryable: list[Path] = []
+        workers = max(1, min(ctx.config.max_parallel_audits, len(paths)))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {ex.submit(_audit_one, ctx, scope, p): p for p in paths}
+            for fut in as_completed(futures):
+                slug, path, err, can_retry = fut.result()
+                if err:
+                    _log(f"{slug}: {'FAILED' if can_retry else 'SKIPPED'} ({err})"
+                         + (f" [attempt {attempt}]" if attempt > 1 else ""))
+                    if can_retry:
+                        retryable.append(futures[fut])
+                elif path is not None:
+                    results.append(path)
+                    produced[slug] = path
+        return retryable
+
+    # A focus whose session never started is lost work, not a result: both backends can blip
+    # inside the same minute and cost a whole focus permanently, leaving one target audited on
+    # fewer focuses than the rest and making their finding counts incomparable. Retried once,
+    # after a pause long enough for a short backend backoff to clear. Only SESSION failures are
+    # retried (see _audit_one); a malformed answer is a result and stands.
+    failed = _pass(launch, 1)
+    if failed and ctx.config.audit_retry_passes > 0:
+        delay = ctx.config.audit_retry_delay_s
+        _log(f"{len(failed)} focus(es) failed at session level: {[p.stem for p in failed]}; "
+             f"retrying once in {delay}s")
+        time.sleep(delay)
+        still = _pass(failed, 2)
+        if still:
+            _log(f"still failing after the retry: {[p.stem for p in still]} — these focuses are "
+                 f"absent from this run's coverage")
 
     # Completeness-critic round: per focus, re-pass to surface missed variant-family members /
     # unverified invariants. Appends new findings in place. Cost-gated; parallel across focuses.

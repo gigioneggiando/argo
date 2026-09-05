@@ -254,6 +254,13 @@ class PipelineConfig:
     # session, re-invoke it to find what was MISSED — uncovered variant-family members, unverified
     # invariants, 🟡 rows not promoted. Each pass appends only NEW findings; passes stop early when
     # a pass yields nothing new (loop-until-dry, capped). 0 disables. Trades tokens for recall.
+    # A focus whose SESSION never produced anything is lost work, not a result: both backends
+    # can blip inside the same minute and cost a whole focus permanently, which leaves one
+    # target audited on fewer focuses than the rest. Retried once by default, after a pause
+    # long enough for a short backend backoff to clear. Set passes to 0 to restore the old
+    # abandon-on-failure behaviour.
+    audit_retry_passes: int = 1
+    audit_retry_delay_s: int = 90
     audit_critic_passes: int = 1
     # Software-composition analysis: read dependency manifests and flag pinned versions with known
     # advisories. Emits a synthetic `dependencies` focus that joins the normal validate+report flow.

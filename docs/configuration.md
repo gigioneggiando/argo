@@ -67,7 +67,7 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `session_timeout_s` | `--timeout` | default per-session wall-clock cap (1800s) |
 | `stage_timeouts` | — | per-stage timeout overrides (`timeout_for(stage)`); seeded with `DEFAULT_STAGE_TIMEOUTS` (recon + audit → 3600s, since the deep ground-truth extraction and per-family walk need headroom) |
 | `max_parallel_audits` | `--parallel` | concurrency cap for Stage 3 / Stage 4 fan-out (default 3) |
-| `max_focuses` | (set by `--smoke`) | cap the audit fan-out to the first N focuses; truncation is logged |
+| `max_focuses` | none (`--max-focuses`; `--smoke` pins it to 1) | cap the audit fan-out to the first N focuses in slug order, fixed before any focus runs; truncation is logged with the skipped slugs. Pin it when finding counts must be comparable across targets — recon otherwise decides the fan-out per repository |
 | `audit_critic_passes` | `--critic-passes` | completeness-critic re-passes per audit focus (depth lever; default 1, 0 disables; loops until a pass adds nothing) |
 | `audit_retry_passes` | — | retry a focus whose SESSION never produced anything (default 1, 0 disables). Only session failures retry; a malformed or schema-invalid answer is a result and stands. |
 | `audit_retry_delay_s` | — | pause before that retry (default 90 s), long enough for a short backend backoff to clear |

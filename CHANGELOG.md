@@ -22,6 +22,14 @@ particular while the version stays `0.y.z`.
 
 ### Added
 
+- **`--max-focuses N`** on `pipeline`, `run` and `estimate` — cap the audit fan-out to the first N
+  of the focus areas recon planned, in slug order. The config field already existed but was
+  reachable only through `--smoke` (which pins it to 1). Recon decides the fan-out from the
+  repository, and across 108 real runs it chose anywhere from 1 to 7 focuses (mode 3), so a raw
+  finding count is only comparable across targets when the audited surface is held constant. The
+  cut is content-blind and fixed before any focus runs, so it cannot depend on what a focus found,
+  and the skipped slugs are named in the log rather than dropped silently. A cap below 1 is
+  rejected at parse time.
 - Web UI **Overview dashboard** (the new landing at `#/`): KPI stat tiles plus theme-aware,
   dependency-free charts — findings by severity, findings by verification (proven vs.
   needs-runtime-check), runs by outcome, top CWEs, spend by run, runs by archetype — aggregated

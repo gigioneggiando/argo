@@ -71,8 +71,10 @@ capped by wall-clock and cost ceilings that fire regardless of what the model is
 - **Cost ceilings.** `budget_usd` is a **hard per-run USD ceiling** (deterministic abort, surfaced in
   the UI); `session_max_cost_usd` caps a single session natively (`--max-budget-usd`);
   `session_max_turns` is a per-session turn tripwire.
-- **Concurrency + fan-out caps.** `max_parallel_audits` (default 3); `max_focuses` bounds audit fan-out
-  (used by `--smoke`).
+- **Concurrency + fan-out caps.** `max_parallel_audits` (default 3); `max_focuses`
+  (`--max-focuses`, unset by default; `--smoke` pins it to 1) bounds audit fan-out to the
+  first N planned focuses in slug order — fixed before any focus runs, and the skipped
+  slugs are logged.
 - **Sandbox anti-DoS caps.** Runtime: `runtime_max_requests` (50), `runtime_max_payload_bytes`,
   boot/request timeouts. Live: `live_max_requests` (30), `live_max_writes` (5, **DELETE always
   blocked**), `live_max_redirects` (3, each re-validated in-scope), a per-request interval and payload

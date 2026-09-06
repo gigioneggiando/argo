@@ -9,7 +9,7 @@ real calls).
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests/ -q          # 453 tests (incl. the HTTP API + UI serving on the mock runner)
+python -m pytest tests/ -q          # 490 tests (incl. the HTTP API + UI serving on the mock runner)
 ```
 
 `pytest.ini` pins `--basetemp=.pytest_tmp` so the read-only repo copies the pipeline creates do
@@ -43,6 +43,8 @@ not trip Windows' global temp rotation.
 | `test_refusal_probe.py` | **cross-backend refusal-rate probe**: loading/validating the curated `refusal_prompts.json` fixture (malformed entries rejected), `_score_backend`'s pairing math — never flagged, flagged-then-recovered-on-retry, flagged-and-retry-also-flagged (not counted as recovered), flagged-with-no-retry-row (not recovered) — and an end-to-end `run_refusal_probe` on the mock runner |
 | `test_context.py` | **`atomic_write_json`**: writes correct content and leaves no leftover `.tmp` file, creates missing parent directories, a write that fails before the atomic replace never touches the last-good file on disk, retries a transient Windows `PermissionError` then succeeds, and raises (rather than silently dropping the write) after a persistent one |
 | `test_cli_resume_hint.py` | **`cli._run_with_resume_hint`**: returns the wrapped callable's result on success; on a real failure OR a `KeyboardInterrupt` (Ctrl+C is the most likely real-world interruption), prints the exact `argo resume <run_id>` command before re-raising; a clean `typer.Exit` passes through silently (no false-alarm resume hint on ordinary CLI control flow) |
+| `test_audit_retry.py` | **audit-focus retry**: a focus whose *session* never started (backend blip, `exit_1`, zero tokens, no partial artifact) is retried once and can then succeed, restoring full coverage; a focus that produced a malformed answer is a RESULT and is never retried (re-rolling it would select on the output); the retry is bounded to one pass and a still-failing focus leaves the run honestly short rather than looping |
+| `test_max_focuses.py` | **`--max-focuses`**: the cap keeps the first N planned focuses in slug order (decided before any focus runs, so it cannot depend on what a focus found), is a no-op above the planned count, names every skipped focus in the log, reaches `PipelineConfig` through `_build_config`, and rejects a cap below 1 (a cap of 0 would audit nothing and still exit 0) |
 | `test_neutral_retry.py` | **neutral-register moderation-flag recovery**: `AgentRunner.run()` retries once, same backend, with a caller-supplied `neutral_prompt` on a `moderation_flagged` failure (short delay, distinct from `FallbackRunner`'s 90s same-provider cooldown); no retry when `neutral_prompt` is omitted (byte-identical to pre-feature behavior); no retry for any other failure kind; bounded to exactly one retry even if the neutral variant also flags |
 
 ## The two zero-cost modes

@@ -47,6 +47,7 @@ def _build_config(
     scenario: str,
     timeout: Optional[int] = None,
     max_turns: Optional[int] = None,
+    max_focuses: Optional[int] = None,
     session_budget: Optional[float] = None,
     codex_model: Optional[str] = None,
     codex_oss: bool = False,
@@ -87,6 +88,10 @@ def _build_config(
             gemini_stage_models={k: gemini_model for k in cfg.gemini_stage_models})
     if timeout is not None:
         cfg = cfg.with_overrides(session_timeout_s=timeout)
+    if max_focuses is not None:
+        if max_focuses < 1:
+            raise typer.BadParameter("--max-focuses must be >= 1")
+        cfg = cfg.with_overrides(max_focuses=max_focuses)
     if calibration:
         cfg = cfg.calibrated()            # audit -> Opus (or Gemini Pro, if runner == "gemini")
     if audit_model:
@@ -169,6 +174,12 @@ AuditModelOpt = typer.Option(None, "--audit-model", help="override the Stage-3 a
 CalibrationOpt = typer.Option(False, "--calibration", help="run audit on Opus (all-Opus)")
 BudgetOpt = typer.Option(None, "--budget", help="HARD per-run USD ceiling; aborts further sessions")
 ParallelOpt = typer.Option(3, "--parallel", help="max concurrent audit/validate sessions")
+MaxFocusesOpt = typer.Option(
+    None, "--max-focuses",
+    help="cap the audit fan-out to the first N of the focus areas recon planned (ordered by slug, "
+         "so the choice is content-blind); the skipped focuses are logged, never dropped silently. "
+         "Use it to hold the audited surface constant across targets when finding counts have to be "
+         "comparable between them. --smoke pins it to 1 regardless.")
 RunsDirOpt = typer.Option(Path("runs"), "--runs-dir", help="root dir for run artifacts")
 AttributionOpt = typer.Option(True, "--attribution/--no-attribution",
     help="append a 'Produced by Argo' provenance footer to REPORT.md / drafts / fix report "
@@ -352,8 +363,10 @@ def recon(run: str = RunIdArg, runner: str = RunnerOpt,
 def run_audit(run: str = RunIdArg, runner: str = RunnerOpt,
               audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
               budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
-              runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
-    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+              runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+              max_focuses: Optional[int] = MaxFocusesOpt):
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
+                        max_focuses=max_focuses)
     ctx = build_context(cfg, run)
     findings = do_audit(ctx)
     _emit({"run_id": run, "findings": [str(p) for p in findings]})
@@ -748,6 +761,7 @@ def estimate(
     parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
     timeout: Optional[int] = TimeoutOpt, max_turns: Optional[int] = MaxTurnsOpt,
     session_budget: Optional[float] = SessionBudgetOpt,
+    max_focuses: Optional[int] = MaxFocusesOpt,
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
@@ -762,6 +776,7 @@ def estimate(
     """Run ingest+recon only, classify the target, and print a pre-audit cost estimate."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
                         timeout=timeout, max_turns=max_turns, session_budget=session_budget,
+                        max_focuses=max_focuses,
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
@@ -891,6 +906,7 @@ def pipeline(
     parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
     timeout: Optional[int] = TimeoutOpt, max_turns: Optional[int] = MaxTurnsOpt,
     session_budget: Optional[float] = SessionBudgetOpt,
+    max_focuses: Optional[int] = MaxFocusesOpt,
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
@@ -906,6 +922,7 @@ def pipeline(
     """Run stages 1-5 and STOP at human-review drafts. Never submits."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
                         timeout=timeout, max_turns=max_turns, session_budget=session_budget,
+                        max_focuses=max_focuses,
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,

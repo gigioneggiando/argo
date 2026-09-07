@@ -46,13 +46,24 @@ _VALID_VERDICTS = {"corroborated", "design_accepted", "fixed_upstream", "unknown
 #: all (a pure tooling gap — e.g. a session-limit 429, every backend exhausted). Both paths above set
 #: one of these exact rationale prefixes for the infra-failure case; this lets the run() summary below
 #: report the split explicitly instead of collapsing them into one opaque "unknown" count.
+#: Rationales written when a corroboration verdict does not exist because something broke, as
+#: opposed to a genuine "we looked and could not tell". Constants, referenced at every write site
+#: below and by the detector, so the two cannot drift apart — the same drift in validate.py made a
+#: whole class of degraded run report `survivors_not_actually_validated: 0`.
+_R_SESSION_FAILED_FMT = "corroboration {pass_name} session failed: "
+_R_NO_VERDICT_FILE = "corroboration session produced no verdict file"
+_R_NOT_JSON = "corroboration verdict was not valid JSON"
+_R_ROW_SCHEMA = "corroboration row failed schema validation"
+_R_NO_VERDICT_IN_BATCH = "no verdict returned for this finding in the batch"
+
 _INFRA_FAILURE_RATIONALE_PREFIXES = (
     "corroboration session failed:",
-    "corroboration docs session failed:",
-    "corroboration osint session failed:",
-    "corroboration session produced no verdict file",
-    "corroboration verdict was not valid JSON",
-    "no verdict returned for this finding in the batch",
+    _R_SESSION_FAILED_FMT.format(pass_name="docs"),
+    _R_SESSION_FAILED_FMT.format(pass_name="osint"),
+    _R_NO_VERDICT_FILE,
+    _R_NOT_JSON,
+    _R_ROW_SCHEMA,
+    _R_NO_VERDICT_IN_BATCH,
 )
 
 
@@ -236,7 +247,7 @@ def _coerce_corroboration(row: dict) -> Corroboration:
     try:
         return Corroboration.model_validate(row)
     except Exception:  # noqa: BLE001 — a malformed row must never crash a best-effort stage
-        return Corroboration(verdict="unknown", rationale="corroboration row failed schema validation")
+        return Corroboration(verdict="unknown", rationale=_R_ROW_SCHEMA)
 
 
 def _run_batch_pass(ctx: RunContext, scope, batch: list[Finding], *, online: bool) -> dict[str, Corroboration]:
@@ -257,7 +268,8 @@ def _run_batch_pass(ctx: RunContext, scope, batch: list[Finding], *, online: boo
         files = collect_output_files(result, "corroborations*.json")
     except RunnerError as exc:
         return {fid: Corroboration(verdict="unknown",
-                                   rationale=f"corroboration {pass_name} session failed: {exc}") for fid in ids}
+                                   rationale=_R_SESSION_FAILED_FMT.format(pass_name=pass_name)
+                                   + str(exc)) for fid in ids}
     out: dict[str, Corroboration] = {}
     for fp in files:
         try:
@@ -271,7 +283,7 @@ def _run_batch_pass(ctx: RunContext, scope, batch: list[Finding], *, online: boo
                 out[fid] = _coerce_corroboration(row)
     for fid in ids:
         out.setdefault(fid, Corroboration(verdict="unknown",
-                                          rationale="no verdict returned for this finding in the batch"))
+                                          rationale=_R_NO_VERDICT_IN_BATCH))
     return out
 
 
@@ -293,14 +305,14 @@ def _run_one_pass(ctx: RunContext, scope, finding: Finding, *, online: bool) -> 
         files = collect_output_files(result, "corroboration_*.json")
     except RunnerError as exc:
         return Corroboration(verdict="unknown",
-                             rationale=f"corroboration {pass_name} session failed: {exc}")
+                             rationale=_R_SESSION_FAILED_FMT.format(pass_name=pass_name) + str(exc))
     if not files:
         return Corroboration(verdict="unknown",
-                             rationale="corroboration session produced no verdict file")
+                             rationale=_R_NO_VERDICT_FILE)
     try:
         data = json.loads(files[0].read_text(encoding="utf-8-sig"))
     except ValueError:
-        return Corroboration(verdict="unknown", rationale="corroboration verdict was not valid JSON")
+        return Corroboration(verdict="unknown", rationale=_R_NOT_JSON)
     if data.get("verdict") not in _VALID_VERDICTS:
         data["verdict"] = "unknown"
     data.pop("finding_id", None)            # not part of the Corroboration model

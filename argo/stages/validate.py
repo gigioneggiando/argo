@@ -26,14 +26,32 @@ _KEEP_VERDICTS = {"confirmed", "needs_runtime_verification"}
 
 #: A survivor kept as "needs_runtime_verification" can mean the model made a genuine judgment call
 #: (a real, useful signal) or that it was never actually adversarially examined — a session/backend
-#: failure, a missing verdict, or the per-run budget being reached. These exact rationale prefixes
-#: mark the latter, letting the final summary report the split instead of one opaque survivor count.
+#: failure, a missing verdict, the per-run budget being reached, or a schema-repaired finding kept
+#: without validation. `survivors_not_actually_validated` reports the split so a degraded run cannot
+#: look clean.
+#:
+#: These rationales are CONSTANTS used at every write site below, and the detector matches against
+#: the same constants. That is not tidiness: the previous version listed the strings by hand and one
+#: of them read "validation session failed:" with a COLON while the stage writes "validation session
+#: failed; see the local LLM log..." with a SEMICOLON. A whole class of degraded run therefore
+#: reported `survivors_not_actually_validated: 0` while its own log said a validation batch had
+#: failed and three findings had been flagged for human review. One character, and the statistic that
+#: exists to catch a skipped gate reported that nothing was skipped.
+_R_SESSION_FAILED = "validation session failed; see the local LLM log for diagnostics"
+_R_NO_VERDICT_FILE = "validation session produced no verdict file"
+_R_NO_VERDICT_IN_BATCH = "no verdict returned for this finding in the batch"
+_R_BUDGET_REACHED = "not adversarially validated: per-run budget reached"
+_R_UNRECOGNIZED_VERDICT = "unrecognized verdict "        # prefix; the value is appended
+_R_SCHEMA_REPAIRED = ("schema-repaired audit finding (fields were backfilled); kept for human "
+                      "review rather than adversarially validated against placeholder content")
+
 _INFRA_UNVALIDATED_RATIONALE_PREFIXES = (
-    "validation session failed:",
-    "validation session produced no verdict file",
-    "no verdict returned for this finding in the batch",
-    "not adversarially validated: per-run budget reached",
-    "unrecognized verdict ",
+    _R_SESSION_FAILED,
+    _R_NO_VERDICT_FILE,
+    _R_NO_VERDICT_IN_BATCH,
+    _R_BUDGET_REACHED,
+    _R_UNRECOGNIZED_VERDICT,
+    _R_SCHEMA_REPAIRED,
 )
 
 
@@ -420,17 +438,17 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         # candidate. Keep it, flagged for human runtime review.
         _log(f"{finding.id}: validation session failed ({exc}); flagging for human review")
         return Validation(verdict="needs_runtime_verification",
-                          rationale="validation session failed; see the local LLM log for diagnostics")
+                          rationale=_R_SESSION_FAILED)
     files = collect_output_files(result, "verdict_*.json")
     if not files:
         # No verdict produced: do not auto-confirm. Flag for human runtime review.
         return Validation(verdict="needs_runtime_verification",
-                          rationale="validation session produced no verdict file")
+                          rationale=_R_NO_VERDICT_FILE)
     data = json.loads(files[0].read_text(encoding="utf-8-sig"))
     if data.get("verdict") not in {"confirmed", "refuted", "needs_runtime_verification",
                                    "out_of_scope"}:
         return Validation(verdict="needs_runtime_verification",
-                          rationale=f"unrecognized verdict {data.get('verdict')!r}")
+                          rationale=f"{_R_UNRECOGNIZED_VERDICT}{data.get('verdict')!r}")
     return Validation.model_validate(data)
 
 
@@ -494,7 +512,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
              f"flagging {len(ids)} finding(s) for human review")
         return {fid: Validation(
             verdict="needs_runtime_verification",
-            rationale="validation session failed; see the local LLM log for diagnostics",
+            rationale=_R_SESSION_FAILED,
         ) for fid in ids}
     out: dict[str, Validation] = {}
     for fp in collect_output_files(result, "verdicts*.json"):
@@ -509,7 +527,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
                 continue
             if row.get("verdict") not in _VALID_VERDICTS:
                 out[fid] = Validation(verdict="needs_runtime_verification",
-                                      rationale=f"unrecognized verdict {row.get('verdict')!r}")
+                                      rationale=f"{_R_UNRECOGNIZED_VERDICT}{row.get('verdict')!r}")
                 continue
             try:
                 out[fid] = Validation.model_validate(row)
@@ -518,7 +536,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
                                       rationale="verdict row failed schema validation")
     for fid in ids:  # any finding the model omitted: keep for a human, never auto-drop
         out.setdefault(fid, Validation(verdict="needs_runtime_verification",
-                                       rationale="no verdict returned for this finding in the batch"))
+                                       rationale=_R_NO_VERDICT_IN_BATCH))
     return out
 
 
@@ -560,8 +578,7 @@ def run(ctx: RunContext) -> Path:
             # refute it for thin evidence. Keep it for a human (never auto-drop salvaged coverage).
             f.validation = Validation(
                 verdict="needs_runtime_verification",
-                rationale="schema-repaired audit finding (fields were backfilled); kept for human "
-                          "review rather than adversarially validated against placeholder content")
+                rationale=_R_SCHEMA_REPAIRED)
             survivors.append(f)
             _log(f"{f.id}: kept unvalidated (schema-repaired finding, flagged for human review)")
         else:
@@ -578,7 +595,7 @@ def run(ctx: RunContext) -> Path:
             for skipped in to_validate[len(launch):]:
                 skipped.validation = Validation(
                     verdict="needs_runtime_verification",
-                    rationale="not adversarially validated: per-run budget reached")
+                    rationale=_R_BUDGET_REACHED)
                 survivors.append(skipped)  # keep, flagged for human review (never auto-drop)
             _log(f"budget reached; {len(to_validate) - len(launch)} finding(s) left unvalidated ({exc})")
             break

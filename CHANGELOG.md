@@ -10,6 +10,20 @@ particular while the version stays `0.y.z`.
 ## [Unreleased]
 
 ### Fixed
+- **`survivors_not_actually_validated` reported 0 for runs whose validation sessions had failed.**
+  The detector matched a hand-written list of rationale prefixes, one of which read
+  `"validation session failed:"` with a colon while the stage writes
+  `"validation session failed; see the local LLM log for diagnostics"` with a semicolon. Every run
+  that lost a validation batch to a session or backend failure therefore reported that nothing had
+  been skipped, while its own log said findings had been flagged for human review — the statistic
+  that exists to catch a degraded gate was the one hiding it. The rationales are now module
+  constants referenced at both the write sites and the detector, so they cannot drift apart again.
+  Same treatment applied to `corroborate.py`, where `"corroboration row failed schema validation"`
+  was never in the list at all. Two further survivors now counted honestly: a schema-repaired
+  finding kept without adversarial validation (the stage already logged it as "kept unvalidated"),
+  and a corroboration row that failed schema validation. The existing tests could not have caught
+  this — they listed the same strings by hand, so test and code shared one belief; they now iterate
+  the modules' own constants and assert the exact sentence each stage writes.
 - **Audit: a focus whose session never started is now retried once instead of abandoned.**
   Both backends can fail inside the same minute (a transient limit, `exit_1` with zero
   tokens and no partial artifact) and the stage used to drop that focus permanently — a run

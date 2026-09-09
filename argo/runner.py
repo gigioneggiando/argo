@@ -760,6 +760,26 @@ class CodexRunner(AgentRunner):
                 retryable=True, failure_kind=kind)
         stdout = _redact_secrets(proc.stdout, self.config.codex_api_key)
         stderr = _redact_secrets(proc.stderr, self.config.codex_api_key)
+        # A non-zero exit that completed ZERO real work (no input AND no output tokens) is an
+        # immediate abort -- a content-moderation flag, credits exhaustion, or a startup failure --
+        # that emitted a stray message (so the empty-output path above did not catch it) but ran no
+        # billable turn. The old code returned it as an `is_error` result: that stranded the stage
+        # with no verdict AND, because FallbackRunner only advances on a RAISED retryable error and
+        # never on a returned is_error result, denied the fallback chain the retry it exists for.
+        # This is exactly what codex's moderation flag does on corroborate's security-topic osint
+        # searches (30/30 such sessions: exit 1, 0 tokens) -- so Argo never fell over to Claude and
+        # every security-heavy target failed its corroborate gate. Raise it as retryable instead;
+        # a session that did real work (tokens > 0) still returns for partial salvage as before.
+        if proc.returncode != 0:
+            in_tok, out_tok = _scan_codex_tokens(proc.stdout or "")
+            if in_tok == 0 and out_tok == 0:
+                kind = _classify_failure_text(f"{text}\n{stderr}") or "unknown_retryable"
+                raise RunnerError(
+                    f"codex exited {proc.returncode} with no completed turn (0 tokens; likely a "
+                    f"moderation flag, credits exhaustion, or startup abort) "
+                    f"(stage={stage}, run_id={run_id}, label={label}).\nstderr tail:\n"
+                    f"{stderr[-1500:]}",
+                    retryable=True, failure_kind=kind)
         return {"_backend": "codex", "returncode": proc.returncode, "text": text,
                 "stdout": stdout, "stderr": stderr[-2000:]}
 

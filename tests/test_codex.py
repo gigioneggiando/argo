@@ -175,6 +175,41 @@ def test_invoke_no_output_credits_exhausted_is_classified_and_retryable(tmp_path
     r.ledger.close()
 
 
+def test_invoke_nonzero_exit_with_output_but_zero_tokens_is_retryable(tmp_path, monkeypatch):
+    """The corroborate-on-security-target abort shape (Study C, semaphoreui/semaphore, 2026-09-08).
+
+    codex exits non-zero having emitted SOME text (so the "no output at all" path above does not
+    fire) but ran no billable turn -- 0 input AND 0 output tokens. Every one of 30 such corroborate
+    sessions had exit 1 / 0 tokens. The old code returned this as an ``is_error`` result, which
+    FallbackRunner never sees (it advances only on a RAISED retryable error), so Argo never fell
+    over to Claude and every security-heavy target failed its corroborate gate. It must raise a
+    retryable error instead. A run that did real work (tokens > 0) must still return for salvage.
+    """
+    r = _runner(tmp_path)
+    # non-empty stdout, but no token markers -> _scan_codex_tokens returns (0, 0)
+    proc = _FakeProc(stdout="I can't help with that request.\n", stderr="", returncode=1)
+    monkeypatch.setattr(r, "_exec", lambda *a, **k: proc)
+    with pytest.raises(RunnerError) as exc_info:
+        _invoke(r, tmp_path)
+    assert exc_info.value.retryable is True
+    assert exc_info.value.failure_kind in ("moderation_flagged", "unknown_retryable")
+    r.ledger.close()
+
+
+def test_invoke_nonzero_exit_with_real_tokens_still_returns_for_salvage(tmp_path, monkeypatch):
+    """The guard must be narrow: a non-zero exit that DID real work (tokens > 0) still returns an
+    is_error result so the stage can glob its scratch dir for partial findings -- unchanged."""
+    r = _runner(tmp_path)
+    proc = _FakeProc(stdout='{"input_tokens": 1200, "output_tokens": 340}\npartial work\n',
+                     stderr="", returncode=1)
+    monkeypatch.setattr(r, "_exec", lambda *a, **k: proc)
+    raw = _invoke(r, tmp_path)                       # must NOT raise
+    assert raw["returncode"] == 1
+    res = r.parse_envelope(raw, model="m", prompt_sha256="s", work_dir=tmp_path)
+    assert res.is_error is True
+    r.ledger.close()
+
+
 def test_invoke_no_output_unrecognized_text_is_still_retryable_with_unknown_kind(tmp_path, monkeypatch):
     """An unrecognized "no output" failure still defaults to retryable -- matching the existing,
     already-established philosophy for hint-less Codex failures (see _NO_HINT_RETRY_COOLDOWN's own

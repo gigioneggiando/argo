@@ -10,6 +10,17 @@ particular while the version stays `0.y.z`.
 ## [Unreleased]
 
 ### Fixed
+- **A codex session that aborted with no completed turn was not retryable, so the fallback chain
+  never engaged on it.** When `codex exec` exits non-zero having run zero billable turns (0 input
+  AND 0 output tokens) but emits a stray message — the exact shape of a content-moderation flag on
+  security-topic searches, of credits exhaustion, and of some startup aborts — `CodexRunner`
+  returned it as a salvageable `is_error` result. `FallbackRunner` advances only on a *raised*
+  retryable error, never on a returned `is_error` result, so it never fell over to the next
+  backend. Observed in Study C on a security-heavy target: 30/30 corroborate sessions aborted this
+  way (exit 1, 0 tokens) and the corroborate gate failed with no Claude fallback ever attempted.
+  Now such a zero-work non-zero exit raises a retryable `RunnerError` (classified from the message,
+  defaulting to `unknown_retryable`) so a configured fallback backend is tried; a non-zero exit
+  that did real work (tokens > 0) still returns for partial-findings salvage, unchanged.
 - **`survivors_not_actually_validated` reported 0 for runs whose validation sessions had failed.**
   The detector matched a hand-written list of rationale prefixes, one of which read
   `"validation session failed:"` with a colon while the stage writes

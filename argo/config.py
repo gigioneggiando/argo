@@ -294,6 +294,12 @@ class PipelineConfig:
     # silently deleted). Best-effort: a failure never fails the run. Uses the same scope forbidden-
     # live-hosts rail as research (repo host + docs are public OSINT; live in-scope hosts are not).
     corroborate_enabled: bool = True
+    # Audit-only pipeline: when False, run_pipeline stops after audit/sca (no validate, corroborate,
+    # verify, report). Lets a caller run the audit on one model/backend and then drive the gate
+    # stages separately on a different one -- e.g. Study C's split instrument (audit gpt-5.6, validate
+    # gpt-5.5, corroborate Claude), which the codex "one model per run" rule cannot express in a
+    # single pipeline invocation. Default True: the full pipeline is unchanged.
+    gates_enabled: bool = True
     # Explicit finding-id scope for this invocation. None preserves the normal behavior of
     # corroborating every survivor; when set, every other finding and its existing verdict are left
     # completely untouched.

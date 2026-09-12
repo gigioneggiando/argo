@@ -151,6 +151,10 @@ def pipeline_stages(ctx: RunContext, *, dry_run: bool = False,
         stages.append("sca")
     if ctx.config.second_opinion_passes > 0:
         stages.append("second_opinion")
+    if not ctx.config.gates_enabled:
+        # Audit-only: stop after audit/sca (+ second_opinion). The gate stages are driven
+        # separately by the caller (see PipelineConfig.gates_enabled).
+        return stages
     stages.append("validate")
     if ctx.config.corroborate_enabled:
         stages.append("corroborate")

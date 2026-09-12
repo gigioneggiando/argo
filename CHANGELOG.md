@@ -9,6 +9,16 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+- **Per-stage model control for the gate stages, and an audit-only pipeline.** `argo validate` and
+  `argo corroborate` now take `--codex-model`, so the gates can run on a different codex model than
+  the audit (they previously only had `--audit-model`, which is a no-op for codex — the codex runner
+  uses one model per invocation). `argo pipeline` gains `--gates/--no-gates`: `--no-gates` stops the
+  run after audit/sca, leaving the gate stages to be driven separately. Together these let a caller
+  split the instrument across models — e.g. audit on `gpt-5.6`, validate on `gpt-5.5` (low
+  moderation, so it stays on codex instead of falling to Claude), corroborate on Claude — which the
+  codex one-model-per-run rule cannot express in a single `pipeline` command.
+
 ### Fixed
 - **A codex session that aborted with no completed turn was not retryable, so the fallback chain
   never engaged on it.** When `codex exec` exits non-zero having run zero billable turns (0 input

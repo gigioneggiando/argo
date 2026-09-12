@@ -473,8 +473,10 @@ def second_opinion_cmd(run: str = RunIdArg,
 def validate(run: str = RunIdArg, runner: str = RunnerOpt,
              audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
              budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
-             runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
-    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+             runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+             codex_model: Optional[str] = CodexModelOpt):
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
+                        codex_model=codex_model)
     ctx = build_context(cfg, run)
     path = do_validate(ctx)
     _emit({"run_id": run, "validated_findings": str(path)})
@@ -491,13 +493,15 @@ def corroborate(run: str = RunIdArg,
                          "and its existing corroboration are left completely untouched"),
                 runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
                 calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
-                parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+                parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+                codex_model: Optional[str] = CodexModelOpt):
     """Cross-check each surviving finding against the project's docs + the repo's VCS history
     (commits/releases/advisories) over public web OSINT, to confirm or discard it (downgrade
     by-design, move already-fixed to an appendix). Networked, best-effort. Rewrites
     validated_findings.json in place."""
     only_ids = frozenset(s.strip() for s in only.split(",") if s.strip()) if only else None
-    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
+                        codex_model=codex_model
                         ).with_overrides(doc_links=list(docs_url or []), corroborate_only=only_ids)
     ctx = build_context(cfg, run)
     path = do_corroborate(ctx)
@@ -918,6 +922,11 @@ def pipeline(
     codex_api_key: Optional[str] = CodexApiKeyOpt,
     codex_api_keys: Optional[str] = CodexApiKeysOpt,
     attribution: bool = AttributionOpt,
+    gates: bool = typer.Option(
+        True, "--gates/--no-gates",
+        help="run the gate stages (validate, corroborate, verify, report) after audit/sca. "
+             "--no-gates stops after the audit (audit-only), to drive the gates separately on a "
+             "different model/backend (e.g. audit on codex gpt-5.6, validate on gpt-5.5)."),
 ):
     """Run stages 1-5 and STOP at human-review drafts. Never submits."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
@@ -933,6 +942,7 @@ def pipeline(
     cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
+                             gates_enabled=gates,
                              verify_enabled=verify, verify_max_findings=verify_max_findings,
                              asan_poc_enabled=asan_poc, asan_poc_max_findings=asan_poc_max_findings,
                              asan_poc_image=asan_poc_image,

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 12 projects, 47 PRs + 6 published advisories, 43 already resolved, 2 CVEs assigned.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 13 projects, 47 PRs + 7 published advisories, 44 already resolved, 2 CVEs assigned.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%23C1732E' stroke-width='8'/><circle cx='50' cy='50' r='13' fill='%23C1732E'/></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -392,9 +392,9 @@
       </div>
 
       <div class="stats" id="stats">
-        <div class="stat"><div class="num accent">12</div><div class="lab">Projects</div></div>
+        <div class="stat"><div class="num accent">13</div><div class="lab">Projects</div></div>
         <div class="stat"><div class="num">47</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num">43</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num">44</div><div class="lab">Already resolved</div></div>
         <div class="stat"><div class="num">5</div><div class="lab">Languages (of many)</div></div>
         <div class="stat"><div class="num accent">2</div><div class="lab">CVEs assigned</div></div>
       </div>
@@ -464,6 +464,27 @@
         <span class="main">
           <span class="ttl">Unhandled panics in internal worker goroutines could terminate the server (fixed in v0.39.7 / v0.22.48, reporter credited)</span>
           <span class="tags"><span class="sev high">High<span class="score">8.7</span></span><span class="tag">worker-goroutine panic (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a></ul>
+      </section>
+<section class="case" data-stars="20107">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/bluenviron/mediamtx" target="_blank" rel="noopener">MediaMTX</a><span class="chip-lang">Go</span></div>
+            <div class="blurb">Zero-dependency real-time media server &amp; proxy (RTSP, RTMP, HLS, WebRTC, SRT, MoQ).</div>
+          </div>
+          <div class="case-tally"><span class="tally good">1&nbsp;advisory</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row advisory" href="https://github.com/bluenviron/mediamtx/security/advisories/GHSA-j55q-3r8w-j2r5" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Pre-auth whole-process crash (DoS): unbounded memory allocation from MoQ varint length fields — the SUBSCRIBE/PUBLISH namespace count and subgroup properties length each drive an unchecked make(), reachable before authentication on the default MoQ listener (fixed in v1.19.3, reporter credited)</span>
+          <span class="tags"><span class="sev high">High</span><span class="tag">MoQ varint unbounded alloc (pre-auth DoS)</span></span>
         </span>
         <span class="rowend">
           <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>

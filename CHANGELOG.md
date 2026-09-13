@@ -20,6 +20,15 @@ particular while the version stays `0.y.z`.
   codex one-model-per-run rule cannot express in a single `pipeline` command.
 
 ### Fixed
+- **Ingest did not materialize git submodules**, so a target whose implementation lives in a
+  submodule was cloned with an empty submodule directory and the audit had no code to analyze —
+  it correctly reported a source-integrity blocker and produced zero findings, indistinguishable at
+  a glance from a clean target. Observed on `astral-sh/ty`, which vendors the `ruff` type-checker as
+  a submodule: `repo/ruff/` was empty, all three audit focuses were SKIPPED ("no schema-conformant
+  findings"), and the run failed with "no valid findings files were produced". `acquire_repo` now
+  runs `git submodule update --init --recursive` after checkout — a FULL (non-shallow) fetch, since
+  a pinned gitlink SHA is usually not a branch tip a shallow fetch can reach — a no-op when the repo
+  declares no `.gitmodules`, and non-fatal (logged) on failure so the audit still reports the blocker.
 - **A codex session that aborted with no completed turn was not retryable, so the fallback chain
   never engaged on it.** When `codex exec` exits non-zero having run zero billable turns (0 input
   AND 0 output tokens) but emits a stray message — the exact shape of a content-moderation flag on

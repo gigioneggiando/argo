@@ -227,7 +227,31 @@ def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = 
                             "core.hooksPath=/dev/null", "-C", str(dest), "checkout", "--quiet",
                             commit],
                            check=True, capture_output=True, text=True)
+    _init_submodules(dest)
     _make_readonly(dest)
+
+
+def _init_submodules(dest: Path) -> None:
+    """Materialize git submodules at the gitlinks recorded in the checked-out commit.
+
+    Some targets keep their actual implementation in a submodule (e.g. astral-sh/ty vendors the ruff
+    type-checker) — without this the submodule directory is an empty gitlink and the audit has nothing
+    to analyze and correctly reports a source-integrity blocker. No-op when the repo declares no
+    submodules. A FULL (non-shallow) fetch is used deliberately: a shallow --depth 1 cannot retrieve
+    an arbitrary pinned gitlink SHA that is not a branch tip. A failure is logged, not fatal.
+    """
+    if not (dest / ".gitmodules").is_file():
+        return
+    hooks = "core.hooksPath=NUL" if os.name == "nt" else "core.hooksPath=/dev/null"
+    r = subprocess.run(
+        ["git", "-c", hooks, "-c", "protocol.ext.allow=never", "-C", str(dest),
+         "submodule", "update", "--init", "--recursive"],
+        capture_output=True, text=True)
+    if r.returncode == 0:
+        _log("submodules initialized (--init --recursive)")
+    else:
+        _log(f"WARNING: submodule init failed (rc={r.returncode}); submodule-backed code may be "
+             f"absent: {(r.stderr or r.stdout or '')[-300:]}")
 
 
 def _clone_at_commit(url: str, dest: Path, commit: str) -> None:

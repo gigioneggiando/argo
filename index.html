@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 14 projects, 47 PRs + 9 published advisories, 46 already resolved, 2 CVEs assigned.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 14 projects, 47 PRs + 10 published advisories, 47 already resolved, 2 CVEs assigned.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%23C1732E' stroke-width='8'/><circle cx='50' cy='50' r='13' fill='%23C1732E'/></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -394,7 +394,7 @@
       <div class="stats" id="stats">
         <div class="stat"><div class="num accent">14</div><div class="lab">Projects</div></div>
         <div class="stat"><div class="num">47</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num">46</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num">47</div><div class="lab">Already resolved</div></div>
         <div class="stat"><div class="num">5</div><div class="lab">Languages (of many)</div></div>
         <div class="stat"><div class="num accent">2</div><div class="lab">CVEs assigned</div></div>
       </div>
@@ -477,7 +477,7 @@
             <div class="name"><a href="https://github.com/navidrome/navidrome" target="_blank" rel="noopener">Navidrome</a><span class="chip-lang">Go</span></div>
             <div class="blurb">Self-hosted music streaming server, Subsonic-API compatible.</div>
           </div>
-          <div class="case-tally"><span class="tally good">2&nbsp;advisories</span></div>
+          <div class="case-tally"><span class="tally good">3&nbsp;advisories</span></div>
         </div>
         <ul class="rows">
       <a class="row advisory" href="https://github.com/navidrome/navidrome/security/advisories/GHSA-82gh-4ggp-gfg5" data-sev="High" target="_blank" rel="noopener">
@@ -496,6 +496,17 @@
         <span class="main">
           <span class="ttl">SQL injection via the artist role parameter, interpolated into a raw SQL ORDER BY when sorting by song/album count or size (fixed in v0.64.0, reporter credited)</span>
           <span class="tags"><span class="sev high">High</span><span class="tag">SQL injection</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row advisory" href="https://github.com/navidrome/navidrome/security/advisories/GHSA-pr2j-mfc8-qjcc" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Plugin HTTP/WebSocket SSRF guard bypassable via DNS names resolving to private/loopback addresses (fixed in v0.64.0, co-credited)</span>
+          <span class="tags"><span class="sev medium">Medium</span><span class="tag">SSRF</span></span>
         </span>
         <span class="rowend">
           <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>

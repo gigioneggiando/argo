@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 15 projects, 51 PRs + 10 published advisories, 51 already resolved, 2 CVEs assigned.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 15 projects, 53 PRs + 10 published advisories, 53 already resolved, 2 CVEs assigned.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%23C1732E' stroke-width='8'/><circle cx='50' cy='50' r='13' fill='%23C1732E'/></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -393,8 +393,8 @@
 
       <div class="stats" id="stats">
         <div class="stat"><div class="num accent">15</div><div class="lab">Projects</div></div>
-        <div class="stat"><div class="num">51</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num">51</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num">53</div><div class="lab">Public PRs</div></div>
+        <div class="stat"><div class="num">53</div><div class="lab">Already resolved</div></div>
         <div class="stat"><div class="num">5</div><div class="lab">Languages (of many)</div></div>
         <div class="stat"><div class="num accent">2</div><div class="lab">CVEs assigned</div></div>
       </div>
@@ -456,14 +456,25 @@
             <div class="name"><a href="https://github.com/open62541/open62541" target="_blank" rel="noopener">open62541</a><span class="chip-lang">C</span></div>
             <div class="blurb">Open-source C implementation of the OPC UA industrial communication stack.</div>
           </div>
-          <div class="case-tally"><span class="tally good">4&nbsp;merged</span></div>
+          <div class="case-tally"><span class="tally good">6&nbsp;merged</span></div>
         </div>
         <ul class="rows">
       <a class="row merged" href="https://github.com/open62541/open62541/pull/8440" data-sev="High" target="_blank" rel="noopener">
         <span class="ref">PR #8440</span>
         <span class="main">
-          <span class="ttl">Out-of-bounds read/write and silent truncation in the PKCS#11 TPM AES-CTR PubSub en/decrypt — a block-aligned size stored in an 8-bit CK_BYTE wraps past 255</span>
-          <span class="tags"><span class="sev muted">High</span><span class="tag">OOB read/write</span></span>
+          <span class="ttl">Out-of-bounds read/write and silent truncation in the PKCS#11 TPM AES-CTR PubSub en/decrypt — a block-aligned size stored in an 8-bit CK_BYTE wraps past 255 (fix into 1.3–1.4)</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">OOB read/write</span><span class="tag">1.3–1.4</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/open62541/open62541/pull/8441" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #8441</span>
+        <span class="main">
+          <span class="ttl">Same PKCS#11 TPM AES-CTR out-of-bounds read/write and truncation fix, forward-ported to the 1.5 branch</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">OOB read/write</span><span class="tag">1.5</span></span>
         </span>
         <span class="rowend">
           <span class="status merged"><span class="dot"></span>Merged</span>
@@ -495,8 +506,19 @@
       <a class="row merged" href="https://github.com/open62541/open62541/pull/8447" data-sev="Medium" target="_blank" rel="noopener">
         <span class="ref">PR #8447</span>
         <span class="main">
-          <span class="ttl">Malicious OpenSecureChannel responses leaked decoded client-side heap on the nonce-reuse/error path — now freed</span>
-          <span class="tags"><span class="sev muted">Medium</span><span class="tag">memory leak</span></span>
+          <span class="ttl">Malicious OpenSecureChannel responses leaked decoded client-side heap on the nonce-reuse/error path — now freed (fix into 1.3)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">memory leak</span><span class="tag">1.3</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <span class="go" aria-hidden="true">→</span>
+        </span>
+      </a>
+      <a class="row merged" href="https://github.com/open62541/open62541/pull/8448" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #8448</span>
+        <span class="main">
+          <span class="ttl">Same OpenSecureChannel decoded-heap leak fix, forward-ported to the 1.4 branch</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">memory leak</span><span class="tag">1.4</span></span>
         </span>
         <span class="rowend">
           <span class="status merged"><span class="dot"></span>Merged</span>

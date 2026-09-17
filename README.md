@@ -12,7 +12,7 @@
 
 Not a benchmark score — pull requests, published advisories, and real CVEs, on real open-source projects.
 
-**15** projects audited and disclosed · **53** public PRs · **53** already resolved · **93% real-world accuracy**\*
+**15** projects audited and disclosed · **53** public PRs · **53** already resolved · **2** CVEs assigned · **93% real-world accuracy**\*
 
 | Project | Stars | Severity | Result |
 |---|---:|---|---|

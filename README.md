@@ -6,7 +6,7 @@
 
 > *Argus Panoptes, the all-seeing watchman — a hundred eyes on your code.*
 
-🌐 **Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) · 📖 [Wiki](https://github.com/gigioneggiando/argo/wiki) · 💬 [Discussions](https://github.com/gigioneggiando/argo/discussions) · 📋 [Changelog](CHANGELOG.md)
+🌐 **Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) · 📖 [Wiki](https://github.com/gigioneggiando/argo/wiki) · 💬 [Discussions](https://github.com/gigioneggiando/argo/discussions) · 📋 [Changelog](CHANGELOG.md) · 📈 [Stats](https://repositorystats.com/gigioneggiando/argo)
 
 ## Real, disclosed, independently verified
 

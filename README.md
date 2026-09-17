@@ -10,15 +10,16 @@
 
 ## Real, disclosed, independently verified
 
-Not a benchmark score — pull requests, published advisories, and a CVE, on real open-source projects.
+Not a benchmark score — pull requests, published advisories, and real CVEs, on real open-source projects.
 
-**11** projects audited and disclosed · **42** public PRs · **38** already resolved · **93% real-world accuracy**\*
+**15** projects audited and disclosed · **53** public PRs · **53** already resolved · **2** CVEs assigned · **93% real-world accuracy**\*
 
 | Project | Stars | Severity | Result |
 |---|---:|---|---|
 | [ds4](https://github.com/antirez/ds4) — antirez, Redis's original author | 21k★ | Critical | [Pre-auth double-free, fixed](https://github.com/antirez/ds4/commits?author=gigioneggiando) |
-| [moquette](https://github.com/moquette-io/moquette) | 2.4k★ | Critical | Authz bypass, [advisory published](https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq) |
+| [moquette](https://github.com/moquette-io/moquette) | 2.4k★ | Critical (9.6) | Cross-tenant authz bypass, [advisory published](https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq) — [CVE-2026-85724](https://nvd.nist.gov/vuln/detail/CVE-2026-85724), CVSS 9.6 |
 | [PocketBase](https://github.com/pocketbase/pocketbase) | 61k★ | High (8.7) | [Advisory published](https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx), reporter credited |
+| [mediamtx](https://github.com/bluenviron/mediamtx) | 20k★ | High | MoQ varint DoS pair, [advisory published](https://github.com/bluenviron/mediamtx/security/advisories/GHSA-j55q-3r8w-j2r5) (credited), fixed in v1.19.3 |
 | [LiveKit](https://github.com/livekit/livekit) | 20k★ | Critical + High | 13 of 24 findings fixed, credited on their [Security Hall of Fame](https://livekit.com/security/hall-of-fame) |
 | [coturn](https://github.com/coturn/coturn) | 14k★ | Medium | Real CVE assigned: [CVE-2026-73213](https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99) |
 

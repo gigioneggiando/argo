@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 import argo.orchestrator as orch
+import argo.runner as runner
 from argo.orchestrator import PipelineCancelled, _run_stage_sequence
 from argo.progress import ProgressReporter
 from argo.runner import RunnerCancelled, RunnerError
@@ -22,6 +23,20 @@ def _never_sleep(monkeypatch):
     def _boom(_s):
         raise AssertionError("should not have auto-retried (and therefore not slept)")
     monkeypatch.setattr(orch.time, "sleep", _boom)
+
+
+def _freeze_now(monkeypatch, instant):
+    """Pin the wall clock that BOTH the orchestrator's retry-wait math (orch.datetime.now) and
+    runner.parse_retry_after (runner.datetime.now) read, so a time-of-day reset hint resolves to a
+    fixed, deterministic distance from "now" instead of one that drifts with when the test happens
+    to run. Both must share one clock: parse_retry_after computes the target and the orchestrator
+    computes now-until-target -- if only one is frozen the difference is nonsense."""
+    class _Frozen(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz) if tz is not None else instant
+    monkeypatch.setattr(orch, "datetime", _Frozen)
+    monkeypatch.setattr(runner, "datetime", _Frozen)
 
 
 def _ctx(tmp_path, run_id="R1"):
@@ -129,6 +144,13 @@ def test_persisted_retry_after_is_an_absolute_timestamp_not_a_raw_hint(tmp_path,
     unambiguous), and persist THAT -- re-parsing an ISO timestamp is never ambiguous. The raw hint
     is kept separately, display-only, in retry_after_hint."""
     _never_sleep(monkeypatch)
+    # Pin "now" so the time-of-day hint below resolves to a fixed distance out on every run. Without
+    # this the test is time-of-day flaky: parse_retry_after reads the wall clock, so in the ~10 min
+    # BEFORE 1:50pm Kyiv the hint is only minutes away, the orchestrator auto-retries within its
+    # 10-min cap, and _never_sleep trips (CI caught exactly this). 12:00 UTC == 15:00 Kyiv is safely
+    # AFTER 13:50, so the hint rolls to tomorrow -> ~23h out -> past the cap -> the give-up path this
+    # test means to exercise, deterministically.
+    _freeze_now(monkeypatch, datetime(2026, 8, 18, 12, 0, tzinfo=timezone.utc))
     hint = "1:50pm (Europe/Kyiv)"
 
     def hits_session_limit():

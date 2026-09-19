@@ -1,4 +1,4 @@
-# 👁️ Argo — LLM-native static vulnerability detection
+# Argo — LLM-native static vulnerability detection
 
 [![Tests](https://github.com/gigioneggiando/argo/actions/workflows/tests.yml/badge.svg)](https://github.com/gigioneggiando/argo/actions/workflows/tests.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -6,7 +6,7 @@
 
 > *Argus Panoptes, the all-seeing watchman — a hundred eyes on your code.*
 
-🌐 **Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) · 📖 [Wiki](https://github.com/gigioneggiando/argo/wiki) · 💬 [Discussions](https://github.com/gigioneggiando/argo/discussions) · 📋 [Changelog](CHANGELOG.md)
+**Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) · [Wiki](https://github.com/gigioneggiando/argo/wiki) · [Discussions](https://github.com/gigioneggiando/argo/discussions) · [Changelog](CHANGELOG.md)
 
 ## Real, disclosed, independently verified
 
@@ -44,30 +44,30 @@ logic/authorization bugs that fixed patterns miss — at the cost of being *prob
 exhaustive (see [design-decisions](docs/design-decisions.md)). It is **static by design** — it never
 executes the target (a hard guardrail), so it is *not* a DAST, fuzzer, or symbolic executor.
 **Bug-bounty triage is one specialized mode**, not the whole tool — see
-[Two modes](#-two-modes-general-audit-and-bug-bounty).
+[Two modes](#two-modes-general-audit-and-bug-bounty).
 
-- 🩹 **Finds it, then proves it** — opt-in remediation proposes a patch per finding and **verifies it
+- **Finds it, then proves it** — opt-in remediation proposes a patch per finding and **verifies it
   compiles** on an isolated copy; opt-in runtime/live verification and ASan PoC generation back a
   finding with a real, reproducible crash trace or HTTP proof, not just a claim.
-- 🛡️ **Built not to lie to you** — a second model tries to *refute* every finding, it's cross-checked
+- **Built not to lie to you** — a second model tries to *refute* every finding, it's cross-checked
   against the project's own docs and commit history, and one independent session re-derives each
   survivor from source before anything reaches you. Uncertain stays flagged, never silently dropped.
-- 🧭 **Reads for intent, not just syntax** — recon extracts the security invariants the code is
+- **Reads for intent, not just syntax** — recon extracts the security invariants the code is
   *supposed* to hold before the audit starts, turning the hunt into closed-ended verification
   instead of pattern-guessing that mistakes business logic for a bug.
-- 🔎 **Threat-informed** — opt-out web OSINT (CVEs, advisories, history) feeds every audit.
-- 🔌 **Multi-backend, including fully free** — Claude Code, Codex, Gemini, or a **local open-source
+- **Threat-informed** — opt-out web OSINT (CVEs, advisories, history) feeds every audit.
+- **Multi-backend, including fully free** — Claude Code, Codex, Gemini, or a **local open-source
   model** (Qwen, DeepSeek via Ollama/LM Studio) — same pipeline, your choice of cost.
-- 💬 **Interrogation chat** — ask *"why didn't you find X?"* and get a real re-validation, not a
+- **Interrogation chat** — ask *"why didn't you find X?"* and get a real re-validation, not a
   chatty answer ([worked example](docs/chat-example.md)).
-- 🚫 **Detection-only, read-only, never live by default** — guardrails enforced in code, not just
+- **Detection-only, read-only, never live by default** — guardrails enforced in code, not just
   prompts.
 
 ![End-to-end pipeline flow](docs/diagrams/pipeline_flow.svg)
 
 ---
 
-## 🕵️ It works like an expert reviewer, not a linter
+## It works like an expert reviewer, not a linter
 
 This is easy to oversell, so here's the honest version: Argo isn't a claim that expert judgment is
 unnecessary — every practice below is borrowed from how a careful human security researcher
@@ -89,7 +89,7 @@ open-source code, not a curated demo: **[live findings](https://gigioneggiando.g
 
 ---
 
-## 🪪 Two modes: general audit and bug bounty
+## Two modes: general audit and bug bounty
 
 Argo runs in two modes over the **same** multi-stage engine:
 
@@ -107,7 +107,7 @@ program-specific scaffolding on top.
 
 ---
 
-## 🔒 Principles and limits (read this first)
+## Principles and limits (read this first)
 
 Argo is for **authorized** security review — your own code, bug-bounty programs with safe harbor,
 CTFs, or research. Three constraints are enforced in the orchestrator, not left to the prompts:
@@ -128,7 +128,7 @@ paraphrases them — see [guardrails](docs/guardrails.md)).
 
 ---
 
-## 🗂️ Project layout
+## Project layout
 
 ```
 argo/
@@ -145,10 +145,10 @@ runs/<RUN_ID>/         # scope.json, repo/, repo_profile.json, prompts/, finding
 
 ---
 
-## 📥 Inputs: how to set up a program (bug-bounty mode)
+## Inputs: how to set up a program (bug-bounty mode)
 
 > For a **general code audit** you need none of this — just `argo pipeline --repo ./your-code`
-> (see [Two modes](#-two-modes-general-audit-and-bug-bounty)). The inputs below apply to **bug-bounty
+> (see [Two modes](#two-modes-general-audit-and-bug-bounty)). The inputs below apply to **bug-bounty
 > mode**, where a program brief defines the scope and rules.
 
 Per program, three separate things land in three different places.
@@ -193,14 +193,14 @@ every field: [docs/architecture.md](docs/architecture.md).
 
 ---
 
-## ⚡ Usage
+## Usage
 
 ```
 argo pipeline --brief ... --links ... --repo ...               # 1-5, stops before submission
 argo pipeline --brief ... --repo ... --verify                  # + deep-verify before reporting
 argo pipeline --brief ... --repo ... --verify --asan-poc        # + real ASan crash traces for C/C++ survivors
 argo pipeline --brief ... --repo ... --second-opinion 1         # + one independent blind re-audit merged in
-argo pipeline --repo ./my-code                                 # 🔐 local/personal review — NO brief, NO URL
+argo pipeline --repo ./my-code                                 # local/personal review — NO brief, NO URL
 ```
 
 **Auditing your own / private local code?** Omit `--brief` and point `--repo` at a **local folder**
@@ -226,7 +226,7 @@ Every command, every flag, with more examples: **[docs/cli-reference.md](docs/cl
 
 ---
 
-## 🖥️ Web UI
+## Web UI
 
 A no-build web interface (paste the program, point at the repo, watch the argo run live, read the
 results, then chat with the analysis) ships in `webapp/` and is served by the API:
@@ -240,7 +240,7 @@ panel. See [docs/ui.md](docs/ui.md) and [docs/api.md](docs/api.md).
 
 ---
 
-## 🔬 The pipeline, stage by stage
+## The pipeline, stage by stage
 
 Each stage reads the previous one's output and writes its own — full detail, data flow, and the
 `AgentRunner` abstraction in **[docs/architecture.md](docs/architecture.md)**.
@@ -262,7 +262,7 @@ Each stage reads the previous one's output and writes its own — full detail, d
 
 ---
 
-## 🔌 Backends & model strategy
+## Backends & model strategy
 
 Same pipeline, swappable engine — pick what you have: `--runner headless` (Claude Code) ·
 `--runner codex` (Codex CLI → OpenAI, or `--codex-oss --codex-local-provider ollama|lmstudio` for
@@ -274,7 +274,7 @@ and the cross-model study: **[docs/backends.md](docs/backends.md)**.
 
 ---
 
-## 💡 Operational tips
+## Operational tips
 
 - **A run that stops (crash, Ctrl+C, a rate limit) is not lost.** Every stage writes its output
   atomically, so `argo resume RUN_ID` continues from the first unfinished stage. Details:
@@ -291,7 +291,7 @@ Development setup, the mock-runner-first testing approach, and what the suite co
 
 ---
 
-## 📚 Further documentation
+## Further documentation
 
 This README is the conceptual overview. Deeper, implementation-level docs live in [`docs/`](docs/):
 
@@ -308,13 +308,13 @@ This README is the conceptual overview. Deeper, implementation-level docs live i
 | [docs/runtime-verification-study.md](docs/runtime-verification-study.md) | The **opt-in, sandboxed runtime verification** design: the loopback-only sealed-container safety model, the propose→validate→execute→interpret flow, and the R1–R4 plan |
 | [docs/api.md](docs/api.md) | The HTTP API (`server/`) — backend for the web UI: endpoints, run lifecycle, live status/SSE, artifact whitelist |
 | [docs/ui.md](docs/ui.md) | The web UI (`webapp/`) — `python -m argo.cli serve`, the no-build stack, the views |
-| [docs/chat-example.md](docs/chat-example.md) | 💬 The interrogation chat — a real worked transcript (grounded explanation, false-positive self-correction, honest false negatives) |
+| [docs/chat-example.md](docs/chat-example.md) | The interrogation chat — a real worked transcript (grounded explanation, false-positive self-correction, honest false negatives) |
 | [docs/roadmap.md](docs/roadmap.md) | Planned UI + advanced features: per-feature analysis, phased build order, todo list |
 | [docs/configuration.md](docs/configuration.md) | `PipelineConfig` reference, per-stage models, budgets/caps |
 | [docs/testing.md](docs/testing.md) | How to run the suite, what it covers, mock vs. headless |
 | [docs/releasing.md](docs/releasing.md) | The versioning convention and how a release is cut |
 
-## 📄 License
+## License
 
 Apache License 2.0 — see [LICENSE](LICENSE). Argo is **detection-only** and intended for
 **authorized** security testing (bug-bounty programs with safe harbor, your own code, CTFs, or

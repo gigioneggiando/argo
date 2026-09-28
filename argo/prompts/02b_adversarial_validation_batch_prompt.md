@@ -20,8 +20,10 @@ SCOPE (for confirming each finding is in-scope):
 ```
 
 CANDIDATE FINDINGS (a JSON array; each item has `finding_id`, the verbatim `finding`, its attached
-`code_excerpts`, and the recon `ground_truth` for its focus — authoritative, established by the audit
-stage; use it so you do NOT re-derive and wrongly refute a real bug):
+`code_excerpts`, bounded parse-only `static_context`, and the recon `ground_truth` for its focus —
+authoritative, established by the audit stage; use it so you do NOT re-derive and wrongly refute a real bug).
+The `static_context` is syntactic evidence only: possible callers are name-matched and it does not prove
+runtime reachability, control flow, data flow, exploitability, or vulnerability:
 ```json
 {{FINDINGS_BATCH}}
 ```

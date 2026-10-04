@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Real vulnerabilities found by Argo, an LLM-native security auditor, disclosed as public pull requests and security advisories to open-source projects.">
 <meta property="og:title" content="Argo · Real-world findings">
-<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 20 projects, 64 PRs + 14 published advisories, 68 already resolved, 5 CVEs assigned.">
+<meta property="og:description" content="Real vulnerabilities found by Argo, disclosed as public pull requests and security advisories. 21 projects, 64 PRs + 17 published advisories, 71 already resolved, 5 CVEs assigned.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='38' fill='none' stroke='%23C1732E' stroke-width='8'/><circle cx='50' cy='50' r='13' fill='%23C1732E'/></svg>">
 <script>try{var t=localStorage.getItem('argo-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -392,9 +392,9 @@
       </div>
 
       <div class="stats" id="stats">
-        <div class="stat"><div class="num accent">20</div><div class="lab">Projects</div></div>
+        <div class="stat"><div class="num accent">21</div><div class="lab">Projects</div></div>
         <div class="stat"><div class="num">64</div><div class="lab">Public PRs</div></div>
-        <div class="stat"><div class="num">68</div><div class="lab">Already resolved</div></div>
+        <div class="stat"><div class="num">71</div><div class="lab">Already resolved</div></div>
         <div class="stat"><div class="num">6</div><div class="lab">Languages (of many)</div></div>
         <div class="stat"><div class="num accent">5</div><div class="lab">CVEs assigned</div></div>
       </div>
@@ -583,6 +583,49 @@
         <span class="main">
           <span class="ttl">OAuth-mode downstream connections, tool/MCP servers and terminals received the user’s browser cookie jar (session JWT) — fixed in v0.11.4</span>
           <span class="tags"><span class="sev medium">Medium</span><span class="tag">session token disclosure</span><span class="tag">CWE-200</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+          <span class="go" aria-hidden="true">&#8594;</span>
+        </span>
+      </a></ul>
+      </section>
+<section class="case" data-stars="68479">
+        <div class="case-head">
+          <div class="case-title">
+            <div class="name"><a href="https://github.com/dani-garcia/vaultwarden" target="_blank" rel="noopener">Vaultwarden</a><span class="chip-lang">Rust</span></div>
+            <div class="blurb">Self-hosted, Bitwarden-compatible password manager server.</div>
+          </div>
+          <div class="case-tally"><span class="tally good">3&nbsp;advisories</span></div>
+        </div>
+        <ul class="rows">
+      <a class="row advisory" href="https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-xwf8-pjh7-h589" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Cross-organization group assignment could grant full access to another organization&rsquo;s ciphers &mdash; fixed in 1.37.0</span>
+          <span class="tags"><span class="sev medium">Medium<span class="score">5.9</span></span><span class="tag">incorrect authorization</span><span class="tag">CWE-863</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+          <span class="go" aria-hidden="true">&#8594;</span>
+        </span>
+      </a>
+      <a class="row advisory" href="https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-f3qw-qg77-hmm4" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Read-only collection members could inject ciphers through organization import &mdash; fixed in 1.37.0</span>
+          <span class="tags"><span class="sev medium">Medium<span class="score">4.3</span></span><span class="tag">permission bypass</span><span class="tag">CWE-863</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+          <span class="go" aria-hidden="true">&#8594;</span>
+        </span>
+      </a>
+      <a class="row advisory" href="https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-hw4g-2v3f-74x5" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Second-stage favicon IP literals bypassed the icon endpoint&rsquo;s SSRF filter &mdash; fixed in 1.37.0</span>
+          <span class="tags"><span class="sev medium">Medium<span class="score">5.8</span></span><span class="tag">SSRF</span><span class="tag">CWE-918</span></span>
         </span>
         <span class="rowend">
           <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>

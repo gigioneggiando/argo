@@ -9,6 +9,29 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-05
+
+### Added
+
+- **Deterministic evidence contract before reporting.** Findings now carry an additive exact claim,
+  attacker start, preconditions, capabilities, proof obligations, remaining uncertainty, and typed
+  evidence records. The new pipeline stage runs immediately before report generation, makes no model
+  call or probe, and keeps native artifacts intact.
+- **Proof-aware reports and drafts.** REPORT.md identifies the technical proof level, open
+  obligations, and evidence-consistency warnings. Contradictory technical evidence, stale
+  claim/revision snapshots, or unresolved consistency errors stay reviewable but suppress
+  submission/PR drafts rather than silently deleting a finding.
+- **Separate external disposition.** Current-run maintainer acceptance/rejection is recorded
+  separately from technical proof; private feedback prose is not copied into run artifacts.
+
+### Changed
+
+- Runtime/live evidence only promotes technical proof when it has both an explicit interpretation
+  and a decisive captured observation. A fallback based only on a probe matching an expected result
+  cannot promote proof, and normalized evidence does not copy raw response bodies.
+- Resuming a completed run created before the evidence stage now regenerates its report and drafts
+  instead of leaving the old report stale.
+
 ### Fixed
 - **`survivors_not_actually_validated` reported 0 for runs whose validation sessions had failed.**
   The detector matched a hand-written list of rationale prefixes, one of which read

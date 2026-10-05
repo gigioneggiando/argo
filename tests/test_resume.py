@@ -67,6 +67,36 @@ def test_resume_from_failed_validate_skips_done_stages_and_uses_persisted_config
     assert "corroborate" not in states
 
 
+def test_resume_legacy_completed_run_adds_evidence_and_regenerates_report(env, monkeypatch):
+    """A pre-F1 status has report=done but no evidence stage; resume must not leave it stale."""
+    ctx = env(corroborate_enabled=False, sca_enabled=False)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+
+    status_path = ctx.run_dir / "status.json"
+    status = json.loads(status_path.read_text(encoding="utf-8"))
+    status["stages"] = [s for s in status["stages"] if s["name"] != "evidence"]
+    status_path.write_text(json.dumps(status), encoding="utf-8")
+    (ctx.run_dir / "REPORT.md").write_text("STALE PRE-F1 REPORT", encoding="utf-8")
+
+    for name in ("do_ingest", "do_research", "do_recon", "do_audit", "do_sca",
+                 "do_second_opinion", "do_validate", "do_corroborate", "do_verify",
+                 "do_asan_poc", "do_freshness_check", "do_runtime", "do_live"):
+        monkeypatch.setattr(
+            orchestrator, name,
+            lambda *_a, _name=name, **_k: pytest.fail(f"{_name} should not be re-run"))
+
+    resumed = build_context(ctx.config, ctx.run_id, now=FIXED_NOW)
+    summary = resume_pipeline(resumed)
+    assert summary["resumed_from"] == "evidence"
+    assert "STALE PRE-F1 REPORT" not in (ctx.run_dir / "REPORT.md").read_text(encoding="utf-8")
+    doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8"))
+    assert doc["evidence_contract"] == {"version": 1, "normalized": True}
+    states = {s["name"]: s["state"] for s in
+              json.loads(status_path.read_text(encoding="utf-8"))["stages"]}
+    assert states["evidence"] == states["report"] == "done"
+    resumed.ledger.close()
+
+
 def test_resume_cli_missing_config_fails_clear(tmp_path):
     run_id = "OLD-RUN"
     run_dir = tmp_path / "runs" / run_id

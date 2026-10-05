@@ -15,6 +15,7 @@ from pathlib import Path
 from ..branding import attribution_footer
 from ..context import RunContext
 from ..ranking import confidence_rank, severity_rank
+from . import evidence
 
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Informational"]
 
@@ -41,6 +42,21 @@ def _verify_verdict(f: dict) -> str:
     return (f.get("verification") or {}).get("verdict", "")
 
 
+def _proof_level(f: dict) -> str:
+    return f.get("proof_level") or "hypothesis"
+
+
+def _open_obligations(f: dict) -> list[dict]:
+    return [o for o in (f.get("proof_obligations") or [])
+            if o.get("status") in {"open", "contradicted"}]
+
+
+def _proof_refuted(f: dict) -> bool:
+    return (f.get("claim_status") in {"refuted", "conflicted"}
+            or f.get("external_status") == "rejected"
+            or any(i.get("severity") == "error" for i in f.get("consistency_issues", [])))
+
+
 def _repo_residual_unknowns(ctx: RunContext) -> list[str]:
     if not ctx.repo_profile_path.exists():
         return []
@@ -55,6 +71,7 @@ def _repo_residual_unknowns(ctx: RunContext) -> list[str]:
 
 
 def run(ctx: RunContext) -> Path:
+    evidence.run(ctx)
     scope = ctx.load_scope()
     doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
     survivors: list[dict] = doc.get("findings", [])
@@ -99,7 +116,8 @@ def run(ctx: RunContext) -> Path:
     wanted_ids: set[str] = set()
     for f in survivors:
         # Don't draft a submission for something corroboration found to be vendor-documented by design.
-        if _verdict(f) == "confirmed" and _corr_verdict(f) != "design_accepted":
+        if (_verdict(f) == "confirmed" and _corr_verdict(f) != "design_accepted"
+                and not _proof_refuted(f)):
             draft = _render_draft(ctx, scope, f)
             (ctx.drafts_dir / f"{f.get('id', 'finding')}.md").write_text(draft + sig, encoding="utf-8")
             n_drafts += 1
@@ -168,14 +186,19 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
     merged_findings = merged_findings or []
     freshness_rows = _freshness_rows(survivors)
     counts = _counts_by_severity(survivors)
-    confirmed = [f for f in survivors if _verdict(f) == "confirmed"]
+    confirmed = [f for f in survivors if _verdict(f) == "confirmed" and not _proof_refuted(f)]
     nrv = [f for f in survivors if _verdict(f) == "needs_runtime_verification"]
     L: list[str] = []
 
     L.append(f"# Security Audit Report - {scope.program_name}")
     L.append("")
-    L.append("> **Automated source-static audit - human-review bundle.** "
-             "No live host was contacted, scanned, or exercised by any stage. "
+    live_ran = (any(_validation_field(f, "live") for f in survivors)
+                or (ctx.run_dir / "live_results.json").is_file()
+                or (ctx.run_dir / "live_audit_log.jsonl").is_file())
+    live_note = ("Opt-in live evidence is identified per finding and came from the bounded, "
+                 "scope-locked executor. " if live_ran else
+                 "No live host was contacted, scanned, or exercised by this pipeline run. ")
+    L.append("> **Automated security audit - human-review bundle.** " + live_note +
              "Nothing here has been submitted; submission is a manual human action.")
     L.append("")
 
@@ -186,7 +209,7 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
     L.append(f"- Platform: {scope.platform}")
     L.append(f"- Target type: {scope.target_type}")
     L.append(f"- Generated at: {ctx.timestamp()}")
-    L.append(f"- Models: " + ", ".join(f"{k}={v}" for k, v in sorted(scope_models(ctx).items())))
+    L.append("- Models: " + ", ".join(f"{k}={v}" for k, v in sorted(scope_models(ctx).items())))
     L.append(f"- LLM cost: ${total_cost:.4f} over {n_calls} call(s)")
     L.append("")
 
@@ -198,9 +221,17 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
     L.append(f"- Dropped in validation/scope filtering: **{len(dropped)}**")
     sev_line = ", ".join(f"{s}: {counts[s]}" for s in SEVERITY_ORDER if counts[s])
     L.append(f"- Surviving by severity: {sev_line or 'none'}")
+    proof_counts = {level: sum(1 for f in survivors if _proof_level(f) == level)
+                    for level in dict.fromkeys(_proof_level(f) for f in survivors)}
+    if proof_counts:
+        L.append("- Proof levels: " + ", ".join(
+            f"{level}: {count}" for level, count in proof_counts.items()))
+    open_count = sum(len(_open_obligations(f)) for f in survivors)
+    if open_count:
+        L.append(f"- Open proof obligations: **{open_count}**")
     if any(_validation_field(f, "runtime") for f in survivors):
-        rt_conf = sum(1 for f in survivors
-                      if (_validation_field(f, "runtime") or {}).get("verdict") == "runtime_confirmed")
+        rt_conf = sum(1 for f in survivors if any(e.get("source") == "runtime"
+                      and e.get("polarity") == "supports" for e in f.get("evidence", [])))
         L.append(f"- Runtime-verified (sandboxed HTTP probes): **{rt_conf}** confirmed")
     if any(f.get("verification") for f in survivors) or split_originals or merged_findings:
         n_reconfirmed = sum(1 for f in survivors if _verify_verdict(f) == "reconfirmed")
@@ -326,7 +357,9 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
 
     L.append("---")
     L.append("")
-    L.append("**Guardrails:** repo mounted read-only | no live interaction performed | "
+    live_guardrail = ("live interaction scope-locked + audit-logged" if live_ran
+                      else "no live interaction performed")
+    L.append(f"**Guardrails:** repo mounted read-only | {live_guardrail} | "
              "no patching | no auto-submission. Submission drafts in `submission_drafts/` are "
              "marked DRAFT and require manual human review before any submission.")
     L.append("")
@@ -337,6 +370,14 @@ def _finding_section(f: dict) -> list[str]:
     L = [f"### {f.get('id')} - {f.get('title')}", ""]
     L.append(f"- Severity: **{_eff_sev(f)}** (audit: {f.get('severity')}) | "
              f"Confidence: **{_eff_conf(f)}** | Verdict: **{_verdict(f)}**")
+    sources = list(dict.fromkeys(
+        e.get("source") for e in (f.get("evidence") or []) if e.get("polarity") == "supports"))
+    source_note = f" ({', '.join(sources)})" if sources else ""
+    L.append(f"- Proof level: **{_proof_level(f)}**{source_note}")
+    if f.get("claim_status", "active") != "active":
+        L.append(f"- Claim status: **{f['claim_status']}**")
+    if f.get("external_status", "unknown") != "unknown":
+        L.append(f"- External disposition: **{f['external_status']}**")
     L.append(f"- CWE: {f.get('cwe')}" + (f" | OWASP: {f.get('owasp')}" if f.get('owasp') else ""))
     L.append(f"- Affected: {', '.join('`' + a + '`' for a in f.get('affected', []))}")
     grounding = f.get("grounding") or {}
@@ -346,6 +387,18 @@ def _finding_section(f: dict) -> list[str]:
     passes = f.get("corroborating_passes") or []
     if len(passes) > 1:
         L.append(f"- **Independently confirmed by {len(passes)} blind audit passes**: {', '.join(passes)}")
+    issues = f.get("consistency_issues") or []
+    for issue in issues:
+        L.append(f"- **Evidence consistency {issue.get('severity', 'warning')}:** "
+                 f"{issue.get('message', issue.get('code', 'review required'))}")
+    obligations = _open_obligations(f)
+    if obligations:
+        L.append("- **Open proof obligations:**")
+        for obligation in obligations[:4]:
+            suffix = f" Reason: {obligation.get('reason')}" if obligation.get("reason") else ""
+            L.append(f"  - {obligation.get('description')}{suffix}")
+        if len(obligations) > 4:
+            L.append(f"  - … plus {len(obligations) - 4} more in `validated_findings.json`")
     L.append("")
     L.append(f"**Vulnerable flow.** {f.get('vulnerable_flow', '')}")
     L.append("")
@@ -364,7 +417,7 @@ def _finding_section(f: dict) -> list[str]:
         booted = "sandbox booted" if rt.get("booted") else "sandbox did NOT boot"
         line = f"**Runtime verification.** `{rt.get('verdict', 'runtime_inconclusive')}` ({booted})."
         if rt.get("evidence"):
-            line += f" Evidence: {rt.get('evidence')}"
+            line += f" Interpretation: {evidence.redact_text(rt.get('evidence'))}"
         L.append(line)
         L.append("")
     corr = f.get("corroboration") or {}
@@ -419,9 +472,13 @@ def _render_draft(ctx, scope, f: dict) -> str:
     L.append("")
     L.append(f"- **Severity:** {_eff_sev(f)} (audit assessment: {f.get('severity')})")
     L.append(f"- **Confidence:** {_eff_conf(f)} | **Verdict:** {_verdict(f)}")
+    L.append(f"- **Proof level:** {_proof_level(f)}")
     L.append(f"- **Weakness:** {f.get('cwe')}"
              + (f" | {f.get('owasp')}" if f.get('owasp') else ""))
     L.append(f"- **Affected:** {', '.join('`' + a + '`' for a in f.get('affected', []))}")
+    obligations = _open_obligations(f)
+    if obligations:
+        L.append(f"- **Open proof obligations:** {len(obligations)} (resolve before submission)")
     L.append("")
     L.append("### Summary")
     L.append(f.get("why_vulnerable", ""))
@@ -438,16 +495,25 @@ def _render_draft(ctx, scope, f: dict) -> str:
         L.append(sdf)
         L.append("")
     rt = _validation_field(f, "runtime")
-    if rt and rt.get("verdict") == "runtime_confirmed":
+    if rt and any(e.get("source") == "runtime" and e.get("polarity") == "supports"
+                  for e in f.get("evidence", [])):
         L.append("### Runtime verification (sandboxed local instance)")
         L.append(f"Confirmed at runtime via HTTP probe against a sealed local instance. "
-                 f"{rt.get('evidence', '')}")
+                 f"{evidence.redact_text(rt.get('evidence', ''))}")
         L.append("")
     verf = f.get("verification") or {}
     if verf.get("verdict") == "corrected" and verf.get("corrections"):
         L.append("### Correction (deep-verify)")
         L.append("An independent re-derivation from source confirmed the mechanism but corrected "
                  f"the following detail: {verf['corrections']}")
+        L.append("")
+    if obligations:
+        L.append("### Unresolved proof obligations")
+        for obligation in obligations[:6]:
+            suffix = f" Reason: {obligation.get('reason')}" if obligation.get("reason") else ""
+            L.append(f"- {obligation.get('description')}{suffix}")
+        if len(obligations) > 6:
+            L.append(f"- … plus {len(obligations) - 6} more in `validated_findings.json`")
         L.append("")
     L.append("### Suggested remediation")
     L.append(f.get("recommended_fix", ""))
@@ -457,7 +523,10 @@ def _render_draft(ctx, scope, f: dict) -> str:
         L.append(f.get("live_verification_plan"))
         L.append("")
     L.append("---")
-    L.append("**DRAFT - verify before submitting. No live testing was performed by the pipeline.**")
+    live_ran = bool(_validation_field(f, "live"))
+    L.append("**DRAFT - verify before submitting. " +
+             ("Any live evidence above came from the authorized scope-locked executor.**"
+              if live_ran else "No live testing was performed by the pipeline.**"))
     L.append("")
     return "\n".join(L)
 
@@ -477,6 +546,7 @@ def _fix_verify_entry(ctx: RunContext, finding_id: str) -> dict | None:
 
 
 def render_pr_draft(ctx: RunContext, finding_id: str, test_command: str | None = None) -> str:
+    evidence.run(ctx)
     scope = ctx.load_scope()
     doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
     finding = next((f for f in doc.get("findings", []) if f.get("id") == finding_id), None)
@@ -486,6 +556,8 @@ def render_pr_draft(ctx: RunContext, finding_id: str, test_command: str | None =
         raise ValueError(f"finding {finding_id!r} is not confirmed; PR drafts are for confirmed findings")
     if _corr_verdict(finding) == "design_accepted":
         raise ValueError(f"finding {finding_id!r} is documented as an accepted design risk")
+    if _proof_refuted(finding):
+        raise ValueError(f"finding {finding_id!r} has unresolved evidence consistency issues")
 
     affected = finding.get("affected") or []
     affected_text = ", ".join(f"`{item}`" for item in affected) or "_Add affected files._"

@@ -11,10 +11,10 @@ Semgrep — but where those match **hand-written rules/queries against a code gr
 surfaces logic/authorization bugs that fixed patterns miss, but it is **probabilistic** (recall and
 precision vary by model and run) rather than deterministic and exhaustive. It is therefore a
 **complement** to rule-based SAST, not a drop-in replacement — and a different tool from **dynamic**
-analyzers: Argo **never executes the target** (§3), so it is not a DAST, fuzzer, or symbolic
-executor (e.g. Mythril for EVM). It can review Solidity or any language *as source*, but it does not
-do symbolic execution. Dynamic confirmation is a deliberately-deferred, opt-in, sandboxed future mode
-(roadmap Phase 9), kept separate so the default tool stays static-only and safe to point at any repo.
+analyzers: Argo is **source-static by default**, so it is not a fuzzer or symbolic executor (e.g.
+Mythril for EVM). It can review Solidity or any language *as source*, but it does not do symbolic
+execution. Shipped opt-in confirmation is deliberately separate: ASan/runtime execute an isolated,
+egress-blocked copy, while live verification additionally requires authorization and scope locks.
 
 **Bug bounty is one mode, not the identity.** The same engine runs as a general code auditor
 (point it at a folder, no brief) or as bug-bounty triage (a program brief adds scope/RoE parsing,
@@ -52,9 +52,10 @@ Why we did *not* add it:
    We have no evidence yet that it misses flows a graph would catch — adding a graph now is
    speculative complexity.
 3. **Guardrail tension (the decisive one for CPG).** Build-based tools (Joern and most CPG builders)
-   must **compile the target**, i.e. execute its build scripts. That directly violates Argo's core
-   invariant — *no code execution, repository mounted read-only, source-static only*. Honoring it
-   would require sandboxing an arbitrary build, a real cost and attack surface for an uncertain gain.
+   must **compile the target**, i.e. execute its build scripts on every analysis. That violates the
+   default detection path's source-static/read-only invariant. Argo's narrow opt-in runtime/ASan
+   exception has a specific proof purpose and an egress-blocked sandbox; paying that attack surface
+   universally for speculative graph metadata is not justified.
 4. **Complexity & maintenance.** A useful static-analysis layer is **per-language** (grammars,
    queries, build adapters). That is a large, ongoing surface that changes Argo's character from
    "prompt-orchestration glue" to "static-analysis framework".
@@ -89,13 +90,20 @@ respects "no code execution"). Build-based CPG/Joern would come only after that,
 **data-flow validation aid** (confirm/refute a finding's source→sink path), never as raw context,
 and only inside a sandbox. The trigger is **measured evidence, not intuition.**
 
-## 3. Detection-only, read-only, never live (recap)
+## 3. Detection-only by default; isolated runtime and gated live exceptions
 
-The pipeline stops at DRAFT bundles — there is no submission code path. The repo is mounted
-read-only to every session; mutation tools are always disallowed; the program's live hosts are never
-contacted. The one bounded network exception is the opt-out `research` stage (public OSINT only,
-never the live in-scope hosts). All of this is **enforced in code**, not just prompted — see
-[guardrails.md](guardrails.md) (§2a for the research carve-out).
+The pipeline stops at DRAFT bundles — there is no submission code path. The source repo is mounted
+read-only to every model session and mutation tools are disallowed. Default analysis does not contact
+the program's hosts. Optional runtime/ASan work runs only against an isolated copy in an egress-
+blocked container; optional live verification is a separate command with authorization, in-scope,
+rate/write, redirect, and audit-log gates. All boundaries are **enforced in code**, not just prompted
+— see [guardrails.md](guardrails.md).
+
+The F1 evidence gate records these different observations without pretending they are equivalent.
+Severity, confidence, technical proof level, claim status, and external maintainer status remain
+independent. Source proof can suffice when runtime is infeasible; technical contradictions are
+retained visibly, while current-run external feedback never masquerades as source/runtime proof.
+The gate is report-time normalization only and adds no model call, execution, request, or probe.
 
 ## 4. Opt-in remediation, kept off the detection path
 
@@ -121,9 +129,9 @@ Detection and remediation are deliberately decoupled so the audit's read-only gu
 - **Non-determinism & cost.** LLM runs vary; we pin prompt-asset sha256 + the analyzed commit per
   run, log every call's cost, and report cost-per-accepted-finding. Reproducibility is "same inputs,
   same config, comparable (not identical) output" — a known property of LLM pipelines.
-- **No dynamic confirmation.** Source-static by design: a finding's runtime exploitability is a
-  *plan a human runs*, not something the tool verifies. `needs_runtime_verification` is a first-class
-  verdict precisely so this gap is explicit in the data, not hidden.
+- **Dynamic confirmation is selective.** Most findings remain source-static; ASan/runtime/live are
+  opt-in and not feasible for every target. `needs_runtime_verification`, F1 proof obligations, and
+  `proof_level` expose the gap without making runtime a universal reporting gate.
 - **Scope honesty.** A code-side scope filter drops out-of-scope findings independently of the LLM
   verdict; conservative ingest defaults (automation/prohibited-techniques) bias toward staying inside
   the authorized envelope.

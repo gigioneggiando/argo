@@ -336,8 +336,9 @@ and audit-logged, and the default tool remains 100% offline against the program'
   baseline request per probe, gated like any request, so the interpret stage judges the *difference* —
   the biggest false-positive cut for access-control findings). Config: `live_max_retries`,
   `live_max_redirects`, `live_user_agent`. Tests in `tests/test_live.py`.
-- [ ] _Later:_ surface live verdicts in `REPORT.md` (as Phase-9 R4 did for runtime), and an authenticated
-  live session (cookie/login step) reusing the runtime probe's auth-step shape.
+- [x] Live verdicts now surface through F1's proof level/evidence source/obligation rendering in
+      `REPORT.md` and drafts (2026-10-04). _Later:_ an authenticated live session (cookie/login step)
+      reusing the runtime probe's auth-step shape.
 
 ## Deferred-feature backlog — feasibility & implementation plan (code-audited 2026-06-18)
 
@@ -723,7 +724,7 @@ Build order: **F1 evidence contract → F2 target memory → F3 attack paths →
 F5 can ship independently after F1. Do not claim value from any item until the evaluation below
 shows an improvement at a fixed model, commit, prompt version, and token budget.
 
-### F1 — Unified claim/evidence contract — priority **P0** · effort **M** · precision value **High**
+### F1 — Unified claim/evidence contract — IN REVIEW (first complete slice, 2026-10-05) · priority **P0**
 
 **Current gap.** `Finding`, `validation`, `verification`, ASan, runtime, live, corroboration, and
 maintainer feedback all express different kinds of evidence, but no authoritative object links an
@@ -734,8 +735,9 @@ the same thing as empirical proof.
 **Proposed:**
 - Extend the finding contract with `claim`, `attacker_start`, `preconditions`,
   `capabilities_gained`, `proof_obligations`, `evidence[]`, `remaining_uncertainty`, and an
-  orthogonal `proof_level`: `hypothesis` → `source_supported` → `independently_rederived` →
-  `runtime_observed` → `end_to_end_proven` → `maintainer_confirmed` (plus `refuted`).
+  orthogonal technical `proof_level` (`hypothesis`, `source_supported`,
+  `independently_rederived`, `runtime_observed`, with `end_to_end_proven` reserved),
+  plus separate `claim_status` and `external_status`.
 - Normalize existing validate/deep-verify/ASan/runtime/live/corroborate outputs into that evidence
   ledger instead of replacing their richer native artifacts.
 - Add a deterministic claim-consistency gate before report: every material impact must have a
@@ -748,6 +750,23 @@ the same thing as empirical proof.
 
 **Non-goals:** another generic LLM validation pass, forcing all findings through runtime, or
 collapsing severity/confidence/proof into one misleading score.
+
+**Implemented slice (pending review).** `models.py` and the additive findings schema carry the
+claim, attacker start, preconditions, capabilities, typed obligations/evidence, uncertainty,
+consistency issues, technical proof level, claim status, and external disposition. The
+deterministic/idempotent `stages/evidence.py` gate runs immediately before report and summarizes
+native validation, corroboration, deep verify, ASan, runtime, live, and current-run ledger feedback
+without replacing their richer artifacts. A runtime/live result needs an explicit interpreter
+assessment and a decisive captured observation; expectation matching and raw HTTP bodies never
+promote proof. Maintainer feedback remains an external disposition, never technical evidence.
+Claim/revision/artifact snapshots flag stale normalization. Conflicts remain reviewable but block
+drafts; legacy findings are upgraded additively, and resuming from evidence reruns the gate and
+report.
+
+**Deliberately deferred:** richer domain-specific obligation types (beyond the typed generic
+contract), automatic correction of the prose claim after deep-verify `corrected`, and F3's
+cross-finding capability-edge proof. Those require measured examples and must not be guessed by this
+deterministic slice.
 
 **Acceptance signal:** fewer post-report factual/severity corrections and fewer runtime-refuted
 "confirmed" findings, without reducing recall on the labeled corpora.
@@ -840,6 +859,23 @@ without provenance, or building broad enterprise connectors before measured dema
 **Acceptance signal:** fewer by-design/threat-model rejections from maintainers, with each avoided
 error attributable to a question or context fact rather than to extra unguided model calls.
 
+### F6 — Public Argo research/editorial site — OWNER INTENT · priority **P2** · effort **M**
+
+Build an original Argo-designed editorial presence for public technical research, comparable in
+purpose (not design or copied content) to `causalsecurity.com/research`. Reuse the existing GitHub
+Pages public-findings deployment and advisory index where sensible rather than creating a second
+disconnected publication surface. Articles should have stable slugs, author/date/updated metadata,
+descriptions, categories/tags, canonical/OpenGraph/structured-data SEO, RSS/Atom, and explicit links
+to public advisories/CVEs/fixes and reproducible public artifacts.
+
+The publication boundary is non-negotiable: content must be generated only from an explicit public
+allow-list after advisory publication/embargo release. Private Fleece records, draft GHSA material,
+vendor correspondence, unredacted run artifacts, credentials, private target/source data, and
+unpublished evidence must live outside the Pages build inputs and must never be inferred as public
+from a filename or repository presence. Add a deterministic pre-deploy embargo/private-data check,
+fail the build closed on uncertain visibility, and keep editorial approval/manual publish as the
+final gate. No external wiki update is part of F1; wiki work happens only after the feature PR merges.
+
 ### Evaluation and safety gates for F1–F5
 
 - Replay a fixed set of accepted, rejected, runtime-refuted, by-design, and chained historical
@@ -849,9 +885,9 @@ error attributable to a question or context fact rather than to extra unguided m
   cost/time per accepted finding, and root-cause compression (`paths removed per fix`).
 - Preserve the existing defaults: source-first, no auto-submission, no autonomous production write,
   and no live interaction without the existing explicit authorization gates.
-- Before implementation, align stale documentation that still describes runtime/live as future or
-  says the target is never executed; shipped sandboxed runtime and tightly gated live modes must be
-  described consistently before a new proof taxonomy depends on them.
+- F1 implementation aligned stale documentation that described runtime/live as future or said the
+  target was never executed; docs now distinguish the source-static default, isolated runtime/ASan,
+  and tightly gated live modes before relying on the proof taxonomy.
 
 ## Cross-cutting / decisions to make before Phase 0
 

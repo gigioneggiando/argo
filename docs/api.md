@@ -49,6 +49,10 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 Whitelisted artifact names: `scope`, `repo_profile`, `research_brief`, `threat_intel`,
 `synthesis_notes`, `validated_findings`, `report`, `meta`, `status`, `brief`, `fixes_report`.
 
+The status timeline includes the deterministic `evidence` stage immediately before `report`.
+Its canonical ledger is additive inside `validated_findings`; no separate public/private artifact is
+created, and private triager comments are never copied into the run directory.
+
 `POST /runs` accepts `"research": true|false` (default **true**) — the Stage-0 web-OSINT step that
 runs before recon (one of two networked stages, with corroborate; never the live in-scope hosts; see
 [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)). When on,

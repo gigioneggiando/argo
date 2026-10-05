@@ -345,11 +345,14 @@ def _attach_to_findings(ctx: RunContext, results: dict, verdicts: dict) -> None:
         v = verdicts.get(finding.get("id"))
         if v:
             verdict, evidence = v.get("live_verdict", "live_inconclusive"), v.get("evidence")
+            verdict_source = "model_interpretation"
         else:
             any_met = any(r.get("expect_met") for r in ev.get("requests", []))
             verdict, evidence = ("live_confirmed" if any_met else "live_inconclusive"), None
+            verdict_source = "expectation_fallback"
         finding.setdefault("validation", {})["live"] = {
-            "verdict": verdict, "evidence": evidence, "probes": ev.get("requests", [])}
+            "verdict": verdict, "verdict_source": verdict_source,
+            "evidence": evidence, "probes": ev.get("requests", [])}
     atomic_write_json(vf, doc)
 
 

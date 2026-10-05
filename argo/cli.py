@@ -24,9 +24,9 @@ from typing import Optional
 
 import typer
 
-from .config import OPUS, PipelineConfig, load_pipeline_config
+from .config import PipelineConfig, load_pipeline_config
 from .estimate import estimate_cost, format_estimate
-from .orchestrator import (build_context, do_asan_poc, do_audit, do_corroborate,
+from .orchestrator import (build_context, do_asan_poc, do_audit, do_corroborate, do_evidence,
                            do_freshness_check, do_ingest, do_live, do_recon, do_report, do_runtime,
                            do_sca, do_second_opinion, do_validate, do_verify, new_run_id,
                            resume_pipeline, run_pipeline)
@@ -409,6 +409,10 @@ def runtime(run: str = RunIdArg,
         runtime_mount_source=mount_source)
     ctx = build_context(cfg, run)
     path = do_runtime(ctx)
+    if path:
+        do_evidence(ctx)
+        if (ctx.run_dir / "REPORT.md").is_file():
+            do_report(ctx)
     _emit({"run_id": run, "runtime_results": str(path) if path else None})
 
 
@@ -444,6 +448,10 @@ def live(run: str = RunIdArg,
         live_max_requests=max_requests, live_min_request_interval_s=rate)
     ctx = build_context(cfg, run)
     path = do_live(ctx)
+    if path:
+        do_evidence(ctx)
+        if (ctx.run_dir / "REPORT.md").is_file():
+            do_report(ctx)
     _emit({"run_id": run, "live_results": str(path) if path else None})
 
 

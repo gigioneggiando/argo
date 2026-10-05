@@ -52,6 +52,8 @@ either direction.
 4. **Sink reality** — is the sink actually dangerous in this context, or is the danger assumed?
 5. **Auth/authz** — is the missing check truly absent, or enforced elsewhere (filter/policy/middleware)? Re-derive the *enforced* access.
 6. **Preconditions & severity honesty** — list every precondition; downgrade severity if they are unrealistic or already privileged.
+7. **Claim contract** — check `claim`, `attacker_start`, `preconditions`,
+   `capabilities_gained`, and every `proof_obligation`; do not assign chain-derived impact to one component.
 
 ## OUTPUT (required — a single file `verdicts.json`)
 

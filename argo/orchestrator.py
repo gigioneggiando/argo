@@ -17,8 +17,8 @@ from .estimate import estimate_cost, format_estimate
 from .ledger import Ledger
 from .progress import ProgressReporter, read_status
 from .runner import RunnerCancelled, _is_retryable, build_runner, parse_retry_after
-from .stages import (asan_poc, audit, corroborate, deep_verify, freshness, ingest, live, recon,
-                     report, research, runtime, sca, second_opinion, validate)
+from .stages import (asan_poc, audit, corroborate, deep_verify, evidence, freshness, ingest, live,
+                     recon, report, research, runtime, sca, second_opinion, validate)
 
 
 class PipelineCancelled(RuntimeError):
@@ -135,6 +135,10 @@ def do_live(ctx: RunContext):
     return live.run(ctx)
 
 
+def do_evidence(ctx: RunContext):
+    return evidence.run(ctx)
+
+
 def do_report(ctx: RunContext):
     return report.run(ctx)
 
@@ -162,6 +166,7 @@ def pipeline_stages(ctx: RunContext, *, dry_run: bool = False,
         stages.append("freshness_check")
     if ctx.config.runtime_enabled:
         stages.append("runtime")
+    stages.append("evidence")
     stages.append("report")
     return stages
 
@@ -191,6 +196,7 @@ def _stage_functions(
         "freshness_check": lambda: do_freshness_check(ctx),
         "runtime": lambda: do_runtime(ctx),
         "live": lambda: do_live(ctx),
+        "evidence": lambda: do_evidence(ctx),
         "report": lambda: do_report(ctx),
     }
     if not resume:
@@ -380,6 +386,11 @@ def resume_pipeline(ctx: RunContext, from_stage: str | None = None,
             "argo resume. Re-run argo pipeline/ingest with the original inputs.")
 
     done = {s for s, state in state_by_stage.items() if state == "done"}
+    # Backward-compatible resume: a completed pre-F1 run has report=done but no evidence stage.
+    # When evidence is therefore the first unfinished stage, the old report must be regenerated;
+    # otherwise resume would normalize the JSON and leave REPORT.md/drafts stale.
+    if stages.index(start) <= stages.index("evidence"):
+        done.difference_update({"evidence", "report"})
     own = reporter is None
     reporter = reporter or ProgressReporter(ctx, stages, initial_status=status)
     if own:

@@ -36,6 +36,10 @@ hallucination.
   no model in the loop.
 - **Dedup is a pure key.** Cross-run/among-focus dedup uses a deterministic `dedup_key`
   (file + line + CWE), not a model similarity call.
+- **Target memory is revision-bound and private.** The optional local memory store holds concise
+  summaries plus artifact pointers, never source. Only facts observed at the exact pinned commit
+  are available to recon, where they are labelled hypotheses to re-check; an unknown or changed
+  revision marks them stale rather than carrying trust forward.
 - **Proof normalization is deterministic and idempotent.** The pre-report F1 evidence gate summarizes
   existing validation, corroboration, deep-verify, ASan, runtime, live, and current-run external
   feedback into typed `evidence[]`. It derives technical `proof_level`, `claim_status`, and separate

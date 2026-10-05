@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from .context import RunContext
 
-ALL_STAGES = ("ingest", "recon", "audit", "validate", "evidence", "report")
+ALL_STAGES = ("ingest", "target_memory", "recon", "audit", "validate", "evidence", "report")
 
 
 def _now() -> str:
@@ -172,6 +172,7 @@ class ProgressReporter:
             if (rd / "submission_drafts").exists() else []
         return {
             "scope": (rd / "scope.json").exists(),
+            "target_memory": (rd / "target_memory.json").exists(),
             "repo_profile": (rd / "repo_profile.json").exists(),
             "synthesis_notes": (rd / "synthesis_notes.md").exists(),
             "prompts": len(prompts),

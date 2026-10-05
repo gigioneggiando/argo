@@ -93,6 +93,7 @@ def test_resume_legacy_completed_run_adds_evidence_and_regenerates_report(env, m
     assert doc["evidence_contract"] == {"version": 1, "normalized": True}
     states = {s["name"]: s["state"] for s in
               json.loads(status_path.read_text(encoding="utf-8"))["stages"]}
+    assert states["target_memory"] == "done"  # pre-F2 artifact is never inferred retroactively
     assert states["evidence"] == states["report"] == "done"
     resumed.ledger.close()
 

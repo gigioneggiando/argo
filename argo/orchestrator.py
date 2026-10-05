@@ -18,7 +18,7 @@ from .ledger import Ledger
 from .progress import ProgressReporter, read_status
 from .runner import RunnerCancelled, _is_retryable, build_runner, parse_retry_after
 from .stages import (asan_poc, audit, corroborate, deep_verify, evidence, freshness, ingest, live,
-                     recon, report, research, runtime, sca, second_opinion, validate)
+                     recon, report, research, runtime, sca, second_opinion, target_memory, validate)
 
 
 class PipelineCancelled(RuntimeError):
@@ -91,6 +91,10 @@ def do_research(ctx: RunContext):
     return research.run(ctx)
 
 
+def do_target_memory(ctx: RunContext):
+    return target_memory.run(ctx)
+
+
 def do_recon(ctx: RunContext):
     return recon.run(ctx)
 
@@ -147,7 +151,10 @@ def pipeline_stages(ctx: RunContext, *, dry_run: bool = False,
                     research_enabled: bool | None = None) -> list[str]:
     """Compute the effective stage sequence from the run config."""
     research_on = ctx.config.research_enabled if research_enabled is None else research_enabled
-    stages = ["ingest"] + (["research"] if research_on else []) + ["recon"]
+    stages = ["ingest"]
+    if ctx.config.target_memory_enabled:
+        stages.append("target_memory")
+    stages += (["research"] if research_on else []) + ["recon"]
     if dry_run:
         return stages
     stages += ["audit"]
@@ -184,6 +191,7 @@ def _stage_functions(
     resume: bool = False,
 ) -> list[tuple[str, object]]:
     funcs = {
+        "target_memory": lambda: do_target_memory(ctx),
         "research": lambda: do_research(ctx),
         "recon": lambda: do_recon(ctx),
         "audit": lambda: do_audit(ctx),
@@ -372,6 +380,14 @@ def resume_pipeline(ctx: RunContext, from_stage: str | None = None,
         for st in (status.get("stages") or [])
         if isinstance(st, dict)
     }
+    # Pre-F2 runs have already completed recon without a target-memory snapshot.  Do not make a
+    # resume appear to replay an old stage, nor infer facts retrospectively from its artifacts.
+    if "target_memory" not in state_by_stage and state_by_stage.get("recon") == "done":
+        state_by_stage["target_memory"] = "done"
+        status = dict(status)
+        status["stages"] = [*(status.get("stages") or []), {
+            "name": "target_memory", "state": "done", "legacy": True,
+        }]
     if from_stage is not None:
         if from_stage not in stages:
             raise ValueError(f"stage {from_stage!r} is not in this run's configured stage sequence")

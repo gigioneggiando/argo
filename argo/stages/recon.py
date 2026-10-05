@@ -40,6 +40,7 @@ from ..checklists import (
     ensure_coverage_checklist_present,
 )
 from ..runner import RunnerError
+from . import target_memory
 
 
 def _is_audit_prompt(name: str) -> bool:
@@ -93,6 +94,19 @@ def run(ctx: RunContext) -> list[Path]:
         rendered += ("\n\n---\n\n## EXTERNAL THREAT INTELLIGENCE (Stage-0 web research — additive)\n\n"
                      + brief + "\n\nUse this to PRIORITIZE the audit; it is not exhaustive — still "
                      "classify and discover on your own.\n")
+
+    # Prior facts are explicitly revision-bound and still only hypotheses.  This can focus a repeat
+    # audit without inheriting a prior conclusion as evidence or suppressing new findings.
+    if ctx.target_memory_path.exists():
+        try:
+            snapshot = json.loads(ctx.target_memory_path.read_text(encoding="utf-8-sig"))
+            from ..target_memory import MemoryFact, prompt_context
+            facts = [MemoryFact.model_validate(item) for item in snapshot.get("seed_facts") or []]
+            prior = prompt_context(facts)
+            if prior:
+                rendered += "\n\n---\n\n" + prior + "\n"
+        except (OSError, ValueError):
+            pass
 
     # Guardrail: prohibited techniques must be present in the prompt we send (they live inside
     # SCOPE_JSON). Fail the run otherwise.
@@ -223,6 +237,8 @@ def run(ctx: RunContext) -> list[Path]:
               file=sys.stderr)
 
     _capture_archetype(ctx)
+    if ctx.config.target_memory_enabled:
+        target_memory.capture_recon(ctx)
     return sorted(prompt_paths)
 
 

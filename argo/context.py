@@ -127,6 +127,18 @@ class RunContext:
         return self.run_dir / "threat_intel.json"
 
     @property
+    def target_memory_path(self) -> Path:
+        """Per-run, reviewable snapshot of the private persistent target-memory seed."""
+        return self.run_dir / "target_memory.json"
+
+    @property
+    def target_memory_dir(self) -> Path:
+        configured = self.config.target_memory_dir
+        if configured is not None:
+            return Path(configured)
+        return Path(self.config.runs_dir).resolve().parent / ".argo-target-memory"
+
+    @property
     def drafts_dir(self) -> Path:
         return self.run_dir / "submission_drafts"
 

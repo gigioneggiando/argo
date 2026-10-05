@@ -409,6 +409,10 @@ class PipelineConfig:
     runs_dir: Path = Path("runs")
     prompts_dir: Path = Path(__file__).resolve().parent / "prompts"
     ledger_path: Path = Path(__file__).resolve().parent / "ledger.sqlite"
+    # Private target knowledge persists beside the run root by default.  It is never a public
+    # artifact and is revision-bound before it may seed a later run.
+    target_memory_enabled: bool = True
+    target_memory_dir: Path | None = None
 
     # Mock runner fixtures (only used when runner == "mock").
     fixtures_dir: Path = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
@@ -495,7 +499,7 @@ class PipelineConfig:
         )
 
 
-_PATH_FIELDS = {"runs_dir", "prompts_dir", "ledger_path", "fixtures_dir"}
+_PATH_FIELDS = {"runs_dir", "prompts_dir", "ledger_path", "target_memory_dir", "fixtures_dir"}
 
 # Fields holding real secret material (as opposed to claude_config_dir/codex_home, which are just
 # directory paths -- the credential lives on disk outside Argo's state, not in the field value

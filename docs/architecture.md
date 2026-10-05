@@ -27,6 +27,7 @@ argo/
   chat.py           Phase-3 interactive analyst over a completed run (read-only repo; test-gen;
                     B1: re-validates a user-proposed candidate finding via validate._validate_one)
   knowledge.py      Phase-4 vuln-class index loader (data/vuln_index.yaml) injected into recon
+  target_memory.py  private, revision-bound summaries from prior runs; stale facts never seed a run
   checklists.py     Phase-4 mandatory coverage checklist injected into every audit prompt (memory-
                     safety / resource-exhaustion / crypto lenses, gated on repo signals) + P1 rule
   census.py         Phase-4 cross-file variant-census worksheet: pre-scan defect families (free/copy/
@@ -41,7 +42,7 @@ argo/
   refusal_probe.py  cross-backend refusal-rate probe: how often each backend's own safety
                     classifier false-positives on a legitimate, authorized audit prompt
   stages/
-    ingest.py  research.py  recon.py  audit.py  sca.py  second_opinion.py  validate.py
+    ingest.py  target_memory.py  research.py  recon.py  audit.py  sca.py  second_opinion.py  validate.py
     corroborate.py  deep_verify.py  runtime.py  live.py  evidence.py  report.py
   verify.py         Phase-6 isolated-copy build/compile check (reused by the runtime sandbox)
   prompts/          the assets, version-pinned (sha256 recorded per run)
@@ -62,6 +63,7 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | Stage | Entry point | Reads | Writes |
 |---|---|---|---|
 | 1 Ingest | `stages/ingest.run` | brief (or **none** → local review), repo (folder or URL), optional `--links` / `--accepted-risks` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`. No brief ⇒ a source-only scope is **synthesized** from the folder (zero-token, no LLM call). |
+| MEMORY | `stages/target_memory.run` | `meta.json` (canonical target + pinned commit), local private store | `target_memory.json`: a reviewable snapshot of only **same-commit** private fact summaries. No source is copied; changed or unknown revisions make prior facts stale. After recon, deterministic structured facts are captured for a future same-revision run. |
 | 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
@@ -76,7 +78,7 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | EVIDENCE | `stages/evidence.run` | `validated_findings.json` + feedback recorded for this run | `validated_findings.json` rewritten with the additive F1 contract (`claim`, attacker start, preconditions, capabilities, obligations, normalized evidence, uncertainty, consistency issues, technical proof level, claim status, external status). Deterministic/idempotent and report-time only: no new AI call, execution, request, or probe; findings are retained and private feedback text is never copied |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
-`pipeline` runs 1→5 (SCA between audit and validate, corroborate after validate — both on by
+`pipeline` runs 1→MEMORY→5 (SCA between audit and validate, corroborate after validate — both on by
 default; second-opinion between SCA and validate, verify after corroborate, asan_poc after verify
 (C/C++ memory-safety survivors only) and optional sandboxed runtime — all off by default; then the
 deterministic evidence gate immediately before report; or 1→2 with `--dry-run`). An explicitly

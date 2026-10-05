@@ -87,6 +87,11 @@ argo quality  [--program P] [--runs-dir DIR]
   pushed anywhere) **or** a git URL (cloned `--depth 1`).
 - `--commit` — pin `--repo` at a **specific git revision** (reproducible / known-CVE checkout): a URL
   is fetched at that SHA, a local git path is checked out at it. Omit for the default head.
+- `--incremental-base` — opt into a PR/incremental review against this Git commit/ref. Argo records
+  changed files, candidate symbols declared there, stale private target facts, and a bounded textual
+  neighbourhood, then
+  performs recon/audit with the complete repository still mounted. It never treats an unchanged
+  line or file as safe by omission.
 - `--links` — a curated reference-links file, one `http(s)` URL per line (`#` comments and blank
   lines ignored). **Additive** to links the model extracts from the brief; the `--repo` URL is
   never allowed into `reference_links`. See `--links` semantics in

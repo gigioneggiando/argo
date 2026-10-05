@@ -190,7 +190,8 @@ def _merge_reference_links(
     return merged, stats
 
 
-def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = None) -> None:
+def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = None,
+                 incremental_base: str | None = None) -> None:
     """Clone (URL) or copy (local path) the target source into ``dest`` and mark it read-only.
 
     ``commit`` pins the analyzed source to a specific revision (reproducible benchmark corpora / a
@@ -204,14 +205,28 @@ def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = 
     if dest.exists():
         raise FileExistsError(f"repo dir already exists: {dest}")
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if incremental_base and (incremental_base.startswith("-") or "\x00" in incremental_base):
+        raise ValueError("unsafe incremental base ref")
     if is_url:
         _validate_git_source(source)
         if commit:
             _clone_at_commit(source, dest, commit)
+            if incremental_base:
+                # The pinned checkout starts shallow; ancestry/diff review needs the connecting
+                # history. This is an explicit incremental-mode cost, never a silent weak diff.
+                shallow = subprocess.run(
+                    ["git", "-C", str(dest), "rev-parse", "--is-shallow-repository"],
+                    check=True, capture_output=True, text=True,
+                ).stdout.strip().lower() == "true"
+                if shallow:
+                    subprocess.run(
+                        ["git", "-c", "protocol.ext.allow=never", "-C", str(dest), "fetch",
+                         "--unshallow", "origin"], check=True, capture_output=True, text=True,
+                    )
         else:
+            depth = [] if incremental_base else ["--depth", "1"]
             subprocess.run(
-                ["git", "-c", "protocol.ext.allow=never", "clone", "--depth", "1", "--",
-                 source, str(dest)],
+                ["git", "-c", "protocol.ext.allow=never", "clone", *depth, "--", source, str(dest)],
                 check=True, capture_output=True, text=True,
             )
     else:
@@ -384,7 +399,10 @@ def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: boo
 
     # --- acquire repo read-only ------------------------------------------------------
     repo_source = repo
-    acquire_repo(repo, ctx.repo_dir, is_url=is_url, commit=commit)
+    acquire_kwargs = {"is_url": is_url, "commit": commit}
+    if ctx.config.incremental_base:
+        acquire_kwargs["incremental_base"] = ctx.config.incremental_base
+    acquire_repo(repo, ctx.repo_dir, **acquire_kwargs)
     commit_sha, commit_date = repo_commit(ctx.repo_dir)   # pin the analyzed source (reproducibility)
 
     # --- meta.json (reproducibility + cost control) ----------------------------------

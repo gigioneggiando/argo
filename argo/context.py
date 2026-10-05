@@ -144,6 +144,11 @@ class RunContext:
         return self.run_dir / "attack_paths.json"
 
     @property
+    def incremental_review_path(self) -> Path:
+        """F4's deterministic diff/invalidation plan; no source contents are copied here."""
+        return self.run_dir / "incremental_review.json"
+
+    @property
     def drafts_dir(self) -> Path:
         return self.run_dir / "submission_drafts"
 

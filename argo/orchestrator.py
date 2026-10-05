@@ -17,8 +17,9 @@ from .estimate import estimate_cost, format_estimate
 from .ledger import Ledger
 from .progress import ProgressReporter, read_status
 from .runner import RunnerCancelled, _is_retryable, build_runner, parse_retry_after
-from .stages import (asan_poc, audit, compose, corroborate, deep_verify, evidence, freshness, ingest,
-                     live, recon, report, research, runtime, sca, second_opinion, target_memory, validate)
+from .stages import (asan_poc, audit, compose, corroborate, deep_verify, evidence, freshness, incremental,
+                     ingest, live, recon, report, research, runtime, sca, second_opinion, target_memory,
+                     validate)
 
 
 class PipelineCancelled(RuntimeError):
@@ -95,6 +96,10 @@ def do_target_memory(ctx: RunContext):
     return target_memory.run(ctx)
 
 
+def do_incremental_review(ctx: RunContext):
+    return incremental.run(ctx)
+
+
 def do_recon(ctx: RunContext):
     return recon.run(ctx)
 
@@ -158,6 +163,8 @@ def pipeline_stages(ctx: RunContext, *, dry_run: bool = False,
     stages = ["ingest"]
     if ctx.config.target_memory_enabled:
         stages.append("target_memory")
+    if ctx.config.incremental_base:
+        stages.append("incremental_review")
     stages += (["research"] if research_on else []) + ["recon"]
     if dry_run:
         return stages
@@ -198,6 +205,7 @@ def _stage_functions(
 ) -> list[tuple[str, object]]:
     funcs = {
         "target_memory": lambda: do_target_memory(ctx),
+        "incremental_review": lambda: do_incremental_review(ctx),
         "research": lambda: do_research(ctx),
         "recon": lambda: do_recon(ctx),
         "audit": lambda: do_audit(ctx),

@@ -40,7 +40,7 @@ from ..checklists import (
     ensure_coverage_checklist_present,
 )
 from ..runner import RunnerError
-from . import target_memory
+from . import incremental, target_memory
 
 
 def _is_audit_prompt(name: str) -> bool:
@@ -107,6 +107,11 @@ def run(ctx: RunContext) -> list[Path]:
                 rendered += "\n\n---\n\n" + prior + "\n"
         except (OSError, ValueError):
             pass
+
+    if ctx.incremental_review_path.exists():
+        plan = incremental.prompt_context(ctx)
+        if plan:
+            rendered += "\n\n---\n\n" + plan + "\n"
 
     # Guardrail: prohibited techniques must be present in the prompt we send (they live inside
     # SCOPE_JSON). Fail the run otherwise.

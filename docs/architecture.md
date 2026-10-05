@@ -42,7 +42,8 @@ argo/
   refusal_probe.py  cross-backend refusal-rate probe: how often each backend's own safety
                     classifier false-positives on a legitimate, authorized audit prompt
   stages/
-    ingest.py  target_memory.py  research.py  recon.py  audit.py  sca.py  second_opinion.py  validate.py
+    ingest.py  target_memory.py  incremental.py  research.py  recon.py  audit.py  sca.py
+    second_opinion.py  validate.py
     corroborate.py  deep_verify.py  runtime.py  live.py  evidence.py  compose.py  report.py
   verify.py         Phase-6 isolated-copy build/compile check (reused by the runtime sandbox)
   prompts/          the assets, version-pinned (sha256 recorded per run)
@@ -64,6 +65,7 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 |---|---|---|---|
 | 1 Ingest | `stages/ingest.run` | brief (or **none** → local review), repo (folder or URL), optional `--links` / `--accepted-risks` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`. No brief ⇒ a source-only scope is **synthesized** from the folder (zero-token, no LLM call). |
 | MEMORY | `stages/target_memory.run` | `meta.json` (canonical target + pinned commit), local private store | `target_memory.json`: a reviewable snapshot of only **same-commit** private fact summaries. No source is copied; changed or unknown revisions make prior facts stale. After recon, deterministic structured facts are captured for a future same-revision run. |
+| INCREMENTAL | `stages/incremental.run` | acquired Git repo, opt-in base ref, private target memory | `incremental_review.json`: base/head diff, bounded textual symbol neighbourhood, and explicit retained-same-revision / invalidated / stale prior facts. It prioritizes recon with full-repository access; unchanged code is never considered safe. |
 | 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
@@ -128,6 +130,17 @@ punctuation/case-normalized match between one finding's declared capability and 
 precondition. The artifact captures supporting evidence identifiers and has an input fingerprint;
 `report` drops it when the normalized findings have changed. It never alters individual findings,
 proof levels, severity, drafts, or external reporting decisions.
+
+### Context-preserving incremental review (F4)
+
+`--incremental-base <Git ref>` enables a deterministic stage after ingest/target-memory and before
+recon. It resolves the base and acquired `HEAD`, requires the base to be an ancestor, records the
+file-status diff, candidate symbols declared in changed files, a capped exact-symbol textual
+neighbourhood, and marks prior private target facts as retained only at the exact acquired revision,
+directly invalidated when their concise summary names a changed path, or otherwise stale/unproven.
+The plan is injected into recon as a prioritization aid, while the complete repository remains
+mounted read-only. It is deliberately not a diff-only audit: no unchanged line, fact, caller, or
+boundary is declared safe merely because it did not appear in the diff.
 
 Deep-verify can split a previously corroborated finding into more precise children. When that
 happens it prints the new IDs; run `argo corroborate --run <run_id> --only <id,id>` to corroborate

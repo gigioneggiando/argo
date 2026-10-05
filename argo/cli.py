@@ -861,6 +861,9 @@ def pipeline(
     commit: Optional[str] = typer.Option(
         None, "--commit", help="pin --repo at this git revision (reproducible / known-CVE checkout); "
         "for a URL it is fetched, for a local path the copy is checked out at it"),
+    incremental_base: Optional[str] = typer.Option(
+        None, "--incremental-base", help="OPT-IN PR/incremental review base Git commit/ref. "
+        "The diff is used only to prioritize a full-context audit; it never marks unchanged code safe."),
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="run ingest+recon only, then STOP before any audit"),
     yes: bool = typer.Option(False, "--yes",
@@ -971,6 +974,7 @@ def pipeline(
                              freshness_lookback_days=freshness_lookback_days,
                              second_opinion_passes=second_opinion,
                              second_opinion_backend=second_opinion_backend,
+                             incremental_base=incremental_base,
                              attribution=attribution)
     if critic_passes is not None:
         cfg = cfg.with_overrides(audit_critic_passes=critic_passes)

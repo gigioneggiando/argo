@@ -421,6 +421,11 @@ class PipelineConfig:
     target_memory_enabled: bool = True
     target_memory_dir: Path | None = None
 
+    # F4 incremental/PR review: a Git base ref turns its diff into a deterministic invalidation and
+    # full-context review plan. Off by default; unchanged code is never considered safe by omission.
+    incremental_base: str | None = None
+    incremental_max_related_files: int = 50
+
     # Mock runner fixtures (only used when runner == "mock").
     fixtures_dir: Path = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
     fixtures_scenario: str = "happy"

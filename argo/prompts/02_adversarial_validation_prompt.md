@@ -62,6 +62,9 @@ conclude otherwise. You do not extend trust to the author's reasoning; you re-de
    declared one.
 6. **Preconditions & severity honesty.** List every precondition the exploit requires. If they
    are unrealistic or already privileged, downgrade severity accordingly.
+7. **Claim contract.** Check `claim`, `attacker_start`, `preconditions`, and
+   `capabilities_gained` independently. Do not treat a capability from a possible multi-step chain
+   as proven by this finding. Name each unresolved `proof_obligation` in `unmet_preconditions`.
 
 ## VERDICT (required output, JSON)
 

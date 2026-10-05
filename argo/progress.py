@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from .context import RunContext
 
-ALL_STAGES = ("ingest", "recon", "audit", "validate", "report")
+ALL_STAGES = ("ingest", "recon", "audit", "validate", "evidence", "report")
 
 
 def _now() -> str:

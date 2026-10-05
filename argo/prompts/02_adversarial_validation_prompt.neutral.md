@@ -64,6 +64,9 @@ reasoning on trust — the goal is an accurate verdict, not a favorable one in e
    declared one.
 6. **Preconditions & severity honesty.** List every precondition the scenario requires. If they
    are unrealistic or already privileged, downgrade severity accordingly.
+7. **Claim contract.** Check `claim`, `attacker_start`, `preconditions`, and
+   `capabilities_gained` independently. Do not treat a capability from a possible multi-step chain
+   as proven by this finding. Name each unresolved `proof_obligation` in `unmet_preconditions`.
 
 ## VERDICT (required output, JSON)
 

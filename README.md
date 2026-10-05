@@ -41,8 +41,10 @@ instead of a paid backend.
 **Where it sits.** Argo is an **LLM-native SAST** — a complement and alternative to rule-based
 static analyzers (CodeQL, Semgrep): nothing to write (no queries, no rule packs), and it catches
 logic/authorization bugs that fixed patterns miss — at the cost of being *probabilistic* rather than
-exhaustive (see [design-decisions](docs/design-decisions.md)). It is **static by design** — it never
-executes the target (a hard guardrail), so it is *not* a DAST, fuzzer, or symbolic executor.
+exhaustive (see [design-decisions](docs/design-decisions.md)). It is **source-static by default**;
+optional ASan/runtime verification executes only an isolated, egress-blocked copy, and optional
+live verification is separately authorization-gated and scope-locked. It is not a fuzzer or
+symbolic executor.
 **Bug-bounty triage is one specialized mode**, not the whole tool — see
 [Two modes](#two-modes-general-audit-and-bug-bounty).
 
@@ -135,7 +137,7 @@ argo/
   cli.py
   models.py            # pydantic models for scope + findings
   runner.py            # AgentRunner interface (Claude headless · Codex · Gemini · mock)
-  stages/{ingest,research,recon,audit,sca,second_opinion,validate,corroborate,deep_verify,asan_poc,runtime,live,report}.py
+  stages/{ingest,research,recon,audit,sca,second_opinion,validate,corroborate,deep_verify,asan_poc,runtime,live,evidence,report}.py
   research.py·fixes.py·verify.py·benchmark.py·chat.py·costs.py·archetype.py
   prompts/             # the assets, version-controlled in git
   ledger.py            # SQLite findings + cost ledger
@@ -258,6 +260,7 @@ Each stage reads the previous one's output and writes its own — full detail, d
 | Verify *(opt-in, deep)* | One full independent session per survivor re-derives it from source and reasons across the whole set — split / merge / correct. |
 | ASan PoC *(opt-in, C/C++)* | Model writes a harness; a **fixed, non-model** step compiles and runs it under AddressSanitizer in an isolated container — a real sanitizer crash trace, not a judgment call. |
 | Runtime *(opt-in, sandboxed)* | Builds the target into an egress-blocked container and confirms findings with a real HTTP PoC — never the program's live hosts. |
+| Evidence gate | Deterministically summarizes existing static/deep/ASan/runtime/live/corroboration evidence immediately before reporting. It adds no model call or probe; open obligations and contradictions stay visible, and blocking errors suppress drafts without deleting findings. |
 | 5 Report | `REPORT.md`, sorted by verified severity, plus one DRAFT submission per confirmed finding. |
 
 ---

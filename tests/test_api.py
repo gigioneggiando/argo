@@ -7,7 +7,6 @@ dry-run, the artifact whitelist, and 404s.
 import json
 import time
 
-import pytest
 from fastapi.testclient import TestClient
 
 from argo.config import PipelineConfig
@@ -53,7 +52,8 @@ def _wait(client, run_id, timeout=15.0):
 
 
 def test_upload_zip_then_run(tmp_path):
-    import io, zipfile
+    import io
+    import zipfile
     app, client = _client(tmp_path)
     try:
         buf = io.BytesIO()
@@ -81,8 +81,9 @@ def test_full_pipeline_via_api(tmp_path):
         run_id = _start(client)
         st = _wait(client, run_id)
         assert st["state"] == "completed"
-        # research (default on) + ingest + recon + audit + validate + corroborate + report
-        assert [s["state"] for s in st["stages"]] == ["done"] * 7
+        # research (default on) + ingest + recon + audit + validate + corroborate
+        # + evidence + report
+        assert [s["state"] for s in st["stages"]] == ["done"] * 8
         assert "research" in [s["name"] for s in st["stages"]]
         assert st["artifacts"]["report"] is True
         assert st["artifacts"]["validated_findings"] is True

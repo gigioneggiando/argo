@@ -193,12 +193,19 @@ def _split_child(parent: Finding, idx: int, raw: dict) -> Finding:
     child.pop("validation", None)
     child.pop("corroboration", None)
     child.pop("verification", None)
+    # F1 records belong to the parent's exact claim. A split child has a new claim and must have
+    # its contract rebuilt from its own fields rather than inherit stale evidence/obligations.
+    for key in ("claim", "attacker_start", "preconditions", "capabilities_gained",
+                "proof_obligations", "evidence", "evidence_basis", "remaining_uncertainty", "proof_level",
+                "claim_status", "external_status", "consistency_issues"):
+        child.pop(key, None)
     child.pop("grounding", None)
     f = Finding.model_validate(child)
     file, line = split_ref(f.affected[0]) if f.affected else ("", "")
     f.dedup_key = dedup_key(file, line, f.cwe)
     f.validation = parent.validation
     f.corroboration = parent.corroboration
+    f.evidence_requires_review = True
     f.verification = Verification(
         verdict="reconfirmed",
         rationale=f"split out of {parent.id} at deep-verify; independently re-derived as its own bug",

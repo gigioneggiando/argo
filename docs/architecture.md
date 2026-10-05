@@ -1,6 +1,7 @@
 # Architecture
 
-The pipeline is **orchestration-only glue** around five reusable prompt assets. The security
+The pipeline is **orchestration-first glue** around versioned prompt assets plus deterministic
+normalization/guardrail stages. The security
 logic lives in the prompts (`argo/prompts/`); this code ingests a program, sequences the
 stages, and produces a reviewable report. It never writes audit logic itself.
 
@@ -41,7 +42,7 @@ argo/
                     classifier false-positives on a legitimate, authorized audit prompt
   stages/
     ingest.py  research.py  recon.py  audit.py  sca.py  second_opinion.py  validate.py
-    corroborate.py  deep_verify.py  runtime.py  report.py
+    corroborate.py  deep_verify.py  runtime.py  live.py  evidence.py  report.py
   verify.py         Phase-6 isolated-copy build/compile check (reused by the runtime sandbox)
   prompts/          the assets, version-pinned (sha256 recorded per run)
 
@@ -71,12 +72,47 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | VERIFY | `stages/deep_verify.run` | `validated_findings.json`, full `repo/` (no excerpt budget) | `validated_findings.json` rewritten with a per-finding `verification` block, plus `split_originals`/`merged_findings` appendices — **opt-in**, offline, one full session per finding (never batched). Independently RE-DERIVES each surviving finding from the actual source and reasons ACROSS the whole survivor set, catching what validate/corroborate's per-finding isolation cannot: a finding that is actually several distinct bugs (`split`), two findings sharing one root cause (`merged`), or a real finding with a wrong factual detail (`corrected`). Best-effort; never touches a live host |
 | ASAN_POC | `stages/asan_poc.run` | `validated_findings.json`, `repo/` (C/C++ memory-safety survivors only) | `validated_findings.json` rewritten with a per-finding `validation.asan_poc` block (`confirmed`/`not_reproduced`/`crashed_no_sanitizer_output`/`not_attempted`) + `runs/<id>/asan_poc/<finding_id>/{harness.c, NOTES.md, outcome.json}` — **opt-in**, sandboxed, C/C++ only. An offline LLM writes a minimal single-translation-unit harness (`#include`s the real vulnerable source directly); a FIXED, non-model step then compiles it with `clang -fsanitize=address,undefined` and runs it in an egress-blocked container. Best-effort per finding; a clean/failed attempt never refutes the finding. No-op unless enabled + Docker |
 | RUNTIME | `stages/runtime.run` | `validated_findings.json`, `repo/` (+ optional hand-written `runtime_probe_plan.json`) | `runtime_results.json` + per-finding `runtime` verdict — **opt-in**, sandboxed. **R2:** an LLM proposes the probe plan (gated by the loopback/anti-DoS validators) and interprets the observations into confirmed/refuted/inconclusive. No-op unless enabled + Docker + recipe |
+| LIVE | `stages/live.run` | `validated_findings.json`, authorized scope (+ optional `live_probe_plan.json`) | `live_results.json`, `live_audit_log.jsonl`, and per-finding `validation.live` evidence — opt-in stage/command; scope-locked, capped, audit-logged, read-only unless a second write opt-in is supplied |
+| EVIDENCE | `stages/evidence.run` | `validated_findings.json` + feedback recorded for this run | `validated_findings.json` rewritten with the additive F1 contract (`claim`, attacker start, preconditions, capabilities, obligations, normalized evidence, uncertainty, consistency issues, technical proof level, claim status, external status). Deterministic/idempotent and report-time only: no new AI call, execution, request, or probe; findings are retained and private feedback text is never copied |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
 `pipeline` runs 1→5 (SCA between audit and validate, corroborate after validate — both on by
 default; second-opinion between SCA and validate, verify after corroborate, asan_poc after verify
-(C/C++ memory-safety survivors only) — all three opt-in, off by default; or 1→2 with `--dry-run`)
+(C/C++ memory-safety survivors only) and optional sandboxed runtime — all off by default; then the
+deterministic evidence gate immediately before report; or 1→2 with `--dry-run`). An explicitly
+authorized `argo live` invocation is separate; a later report pass can summarize its existing result.
 and **stops before any submission**.
+
+### Unified claim/evidence contract (F1)
+
+Every active finding keeps several orthogonal judgments. `severity` describes consequence;
+`confidence` describes the reviewer/model's belief; `proof_level` records the strongest technical
+evidence (`hypothesis`, `source_supported`, `independently_rederived`, `runtime_observed`, or the
+reserved `end_to_end_proven`); `claim_status` is `active`, `refuted`, or `conflicted`; and
+`external_status` is `unknown`, `accepted`, or `rejected`. External status comes only from feedback
+recorded for the current run. A matching dedup key from an older run is not blanket proof that the
+current claim was accepted or rejected.
+
+Native validation/corroboration/verification/ASan/runtime/live blocks remain intact. `evidence[]`
+contains bounded summaries linked back to those artifacts, while authored obligations remain open
+unless an explicit derived record satisfies them. Static support requires a non-empty surviving
+source flow and no ungrounded or schema-repaired flag. Independent re-derivation requires the deep
+verification transcript. A `corrected` result remains a manual claim-reconciliation error rather
+than silently proving the original prose. Existing runtime/live results are summarized only when a
+decisive captured observation exists: expectation matching alone never promotes proof, raw response
+bodies are not copied, and an HTTP control does not automatically imply `end_to_end_proven`.
+
+The gate is intentionally retain-but-block. Contradictory technical evidence changes
+`claim_status` to `refuted` or `conflicted`; consistency errors keep the finding in the review bundle
+but block submission and PR drafts. External acceptance/rejection stays separate from that technical
+state. A source-supported finding may still be reportable when runtime is infeasible. Reserved
+`argo:` records are rebuilt on rerun, and a claim/commit/native-evidence snapshot detects later stale
+normalization. Legacy fields remain valid and are upgraded additively.
+
+This first branch implementation has explicit limits: it cannot authenticate provenance the first
+time it normalizes legacy evidence; generic redaction cannot guarantee removal of every arbitrary
+secret; and no fixed-budget evaluation yet shows that the contract improves report accuracy. F1 is
+therefore implemented on the feature branch pending review, not yet a shipped efficacy claim.
 
 Deep-verify can split a previously corroborated finding into more precise children. When that
 happens it prints the new IDs; run `argo corroborate --run <run_id> --only <id,id>` to corroborate

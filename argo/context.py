@@ -27,7 +27,7 @@ def atomic_write_json(path: Path, data: Any, *, indent: int = 2) -> None:
     (Ctrl+C, OOM, process kill) can never leave a truncated/corrupt file behind for the NEXT stage
     — or a resumed run — to choke on. This matters most for files re-read and rewritten by several
     stages in turn (``validated_findings.json`` is read/rewritten by validate, corroborate,
-    deep_verify, freshness, runtime, and live) — a torn write there breaks every stage after it,
+    deep_verify, freshness, runtime, live, and evidence) — a torn write there breaks every stage after it,
     turning an otherwise-recoverable crash into one ``argo resume`` cannot recover from.
 
     Retries briefly on Windows ``PermissionError`` (a concurrent reader can transiently hold the

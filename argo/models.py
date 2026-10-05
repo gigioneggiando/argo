@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 TargetType = Literal["source_only", "source_and_live"]
 Severity = Literal["Critical", "High", "Medium", "Low", "Informational"]
@@ -32,6 +32,18 @@ CorroborationVerdict = Literal["corroborated", "design_accepted", "fixed_upstrea
 # both wrong; ``inconclusive`` = could not be independently re-derived (session/backend failure, budget,
 # or genuine ambiguity even after a real attempt — never a silent drop).
 VerificationVerdict = Literal["reconfirmed", "corrected", "split", "merged", "refuted", "inconclusive"]
+ProofLevel = Literal[
+    "hypothesis", "source_supported", "independently_rederived", "runtime_observed",
+    "end_to_end_proven",
+]
+ClaimStatus = Literal["active", "refuted", "conflicted"]
+ExternalStatus = Literal["unknown", "accepted", "rejected"]
+EvidenceSource = Literal[
+    "audit", "validation", "corroboration", "deep_verify", "asan", "runtime", "live",
+    "maintainer",
+]
+EvidencePolarity = Literal["supports", "contradicts", "inconclusive"]
+ObligationStatus = Literal["open", "satisfied", "contradicted", "not_applicable"]
 
 
 # --------------------------------------------------------------------------- scope
@@ -171,6 +183,44 @@ class Grounding(BaseModel):
     composite_reason: Optional[str] = None
 
 
+class EvidenceRecord(BaseModel):
+    """One normalized proof signal, retaining a pointer to its richer native artifact."""
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    source: EvidenceSource
+    kind: str
+    polarity: EvidencePolarity
+    summary: str
+    artifact: Optional[str] = None
+    decisive_observation: Optional[str] = None
+    negative_control: Optional[str] = None
+    claim_fingerprint: Optional[str] = None
+    source_revision: Optional[str] = None
+    obligations_satisfied: list[str] = Field(default_factory=list)
+
+
+class ProofObligation(BaseModel):
+    """A concrete condition that must hold for the finding's claim or impact to be proven."""
+
+    model_config = ConfigDict(extra="allow")
+    id: str
+    description: str
+    status: ObligationStatus = "open"
+    evidence_ids: list[str] = Field(default_factory=list)
+    reason: Optional[str] = None
+
+
+class ConsistencyIssue(BaseModel):
+    """Deterministic conflict or missing-proof warning. Findings are flagged, never deleted."""
+
+    model_config = ConfigDict(extra="allow")
+    code: str
+    severity: Literal["warning", "error"] = "warning"
+    message: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
 class Finding(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -186,6 +236,20 @@ class Finding(BaseModel):
     exploit_scenario: str
     impact: str
     recommended_fix: str
+    # F1 unified claim/evidence contract. All fields are additive so legacy findings remain valid;
+    # stages.evidence fills deterministic legacy fallbacks immediately before reporting.
+    claim: Optional[str] = None
+    attacker_start: Optional[str] = None
+    preconditions: list[str] = Field(default_factory=list)
+    capabilities_gained: list[str] = Field(default_factory=list)
+    proof_obligations: list[ProofObligation] = Field(default_factory=list)
+    evidence: list[EvidenceRecord] = Field(default_factory=list)
+    evidence_basis: dict = Field(default_factory=dict)
+    remaining_uncertainty: list[str] = Field(default_factory=list)
+    proof_level: Optional[ProofLevel] = None
+    claim_status: ClaimStatus = "active"
+    external_status: ExternalStatus = "unknown"
+    consistency_issues: list[ConsistencyIssue] = Field(default_factory=list)
     action_plan: Optional[str] = None
     missing_tests: Optional[str] = None
     variants: Optional[str] = None
@@ -209,6 +273,29 @@ class Finding(BaseModel):
     # surfaced in the report; deliberately NOT fed into validate/corroborate/verify's own prompts so
     # their judgment stays independent of how many passes agree.
     corroborating_passes: list[str] = Field(default_factory=list)
+
+    @field_validator("preconditions", "capabilities_gained", "remaining_uncertainty", mode="before")
+    @classmethod
+    def _coerce_string_lists(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
+
+    @field_validator("proof_obligations", mode="before")
+    @classmethod
+    def _coerce_obligations(cls, value):
+        """Accept the concise string form emitted by older/newly-updated audit prompts."""
+        if value is None:
+            return []
+        out = []
+        for idx, item in enumerate(value if isinstance(value, list) else [value], 1):
+            if isinstance(item, str):
+                out.append({"id": f"audit:{idx}", "description": item, "status": "open"})
+            else:
+                out.append(item)
+        return out
 
 
 class FindingsFile(BaseModel):

@@ -43,7 +43,7 @@ argo/
                     classifier false-positives on a legitimate, authorized audit prompt
   stages/
     ingest.py  target_memory.py  research.py  recon.py  audit.py  sca.py  second_opinion.py  validate.py
-    corroborate.py  deep_verify.py  runtime.py  live.py  evidence.py  report.py
+    corroborate.py  deep_verify.py  runtime.py  live.py  evidence.py  compose.py  report.py
   verify.py         Phase-6 isolated-copy build/compile check (reused by the runtime sandbox)
   prompts/          the assets, version-pinned (sha256 recorded per run)
 
@@ -76,12 +76,14 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | RUNTIME | `stages/runtime.run` | `validated_findings.json`, `repo/` (+ optional hand-written `runtime_probe_plan.json`) | `runtime_results.json` + per-finding `runtime` verdict — **opt-in**, sandboxed. **R2:** an LLM proposes the probe plan (gated by the loopback/anti-DoS validators) and interprets the observations into confirmed/refuted/inconclusive. No-op unless enabled + Docker + recipe |
 | LIVE | `stages/live.run` | `validated_findings.json`, authorized scope (+ optional `live_probe_plan.json`) | `live_results.json`, `live_audit_log.jsonl`, and per-finding `validation.live` evidence — opt-in stage/command; scope-locked, capped, audit-logged, read-only unless a second write opt-in is supplied |
 | EVIDENCE | `stages/evidence.run` | `validated_findings.json` + feedback recorded for this run | `validated_findings.json` rewritten with the additive F1 contract (`claim`, attacker start, preconditions, capabilities, obligations, normalized evidence, uncertainty, consistency issues, technical proof level, claim status, external status). Deterministic/idempotent and report-time only: no new AI call, execution, request, or probe; findings are retained and private feedback text is never copied |
+| COMPOSE | `stages/compose.run` | normalized `validated_findings.json` | **opt-in**, deterministic `attack_paths.json`. An edge requires the same declared attacker start, principal, tenant, deployment and configuration context plus an exact normalized capability→precondition match. It cannot change a finding, severity, proof level or submission decision; a stale artifact is omitted from the report. |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
 `pipeline` runs 1→MEMORY→5 (SCA between audit and validate, corroborate after validate — both on by
 default; second-opinion between SCA and validate, verify after corroborate, asan_poc after verify
 (C/C++ memory-safety survivors only) and optional sandboxed runtime — all off by default; then the
-deterministic evidence gate immediately before report; or 1→2 with `--dry-run`). An explicitly
+deterministic evidence gate immediately before report; optional exact-context composition follows
+that gate; or 1→2 with `--dry-run`). An explicitly
 authorized `argo live` invocation is separate; a later report pass can summarize its existing result.
 and **stops before any submission**.
 
@@ -115,6 +117,17 @@ This first branch implementation has explicit limits: it cannot authenticate pro
 time it normalizes legacy evidence; generic redaction cannot guarantee removal of every arbitrary
 secret; and no fixed-budget evaluation yet shows that the contract improves report accuracy. F1 is
 therefore implemented on the feature branch pending review, not yet a shipped efficacy claim.
+
+### Evidence-gated attack-path composition (F3)
+
+F3 is intentionally a deterministic review layer, not an LLM asked to narrate a scarier chain.
+Audit findings may carry optional `attack_context` values for principal, tenant scope, deployment
+scope, and configuration scope. `compose` fails closed unless both findings provide non-`unknown`,
+identical values for all four dimensions and the same attacker start. It then accepts only an exact,
+punctuation/case-normalized match between one finding's declared capability and another's declared
+precondition. The artifact captures supporting evidence identifiers and has an input fingerprint;
+`report` drops it when the normalized findings have changed. It never alters individual findings,
+proof levels, severity, drafts, or external reporting decisions.
 
 Deep-verify can split a previously corroborated finding into more precise children. When that
 happens it prints the new IDs; run `argo corroborate --run <run_id> --only <id,id>` to corroborate

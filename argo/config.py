@@ -401,6 +401,13 @@ class PipelineConfig:
     # runtime-confirmed (the probe runner keeps a per-finding cookie jar across the auth + probes).
     runtime_credentials: dict = field(default_factory=dict)   # e.g. {"username":..., "password":...}
 
+    # Evidence-gated attack-path composition.  Opt-in: free-text model output is only composed when
+    # two findings make the same normalized capability/precondition and attacker-start declaration.
+    # It writes a review artifact; it never changes a finding's severity, proof or submit status.
+    attack_path_enabled: bool = False
+    attack_path_max_hops: int = 3
+    attack_path_max_paths: int = 20
+
     # Validation excerpt sizing.
     excerpt_context_lines: int = 40     # +/- lines of source around each cited file:line
     excerpt_max_bytes: int = 60_000     # hard cap on total excerpt bytes per finding

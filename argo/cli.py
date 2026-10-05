@@ -26,7 +26,7 @@ import typer
 
 from .config import PipelineConfig, load_pipeline_config
 from .estimate import estimate_cost, format_estimate
-from .orchestrator import (build_context, do_asan_poc, do_audit, do_corroborate, do_evidence,
+from .orchestrator import (build_context, do_asan_poc, do_audit, do_compose, do_corroborate, do_evidence,
                            do_freshness_check, do_ingest, do_live, do_recon, do_report, do_runtime,
                            do_sca, do_second_opinion, do_validate, do_verify, new_run_id,
                            resume_pipeline, run_pipeline)
@@ -606,6 +606,29 @@ def report(run: str = RunIdArg, runner: str = RunnerOpt,
     ctx = build_context(cfg, run)
     path = do_report(ctx)
     _emit({"run_id": run, "report": str(path), "drafts_dir": str(ctx.drafts_dir)})
+
+
+@app.command(name="compose")
+def compose_cmd(run: str = RunIdArg, runner: str = RunnerOpt,
+                audit_model: Optional[str] = AuditModelOpt, calibration: bool = CalibrationOpt,
+                budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
+                runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+                max_hops: int = typer.Option(3, "--max-hops", min=1, max=4,
+                    help="maximum exact-context links per review path"),
+                max_paths: int = typer.Option(20, "--max-paths", min=1, max=100,
+                    help="cap emitted review paths")):
+    """OPT-IN deterministic path composition. Only exact declared capability/precondition and
+    identity/tenant/deployment/configuration matches are linked; the result never changes a
+    finding's severity, proof level or submission status."""
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario
+                        ).with_overrides(attack_path_enabled=True,
+                                         attack_path_max_hops=max_hops,
+                                         attack_path_max_paths=max_paths)
+    ctx = build_context(cfg, run)
+    path = do_compose(ctx)
+    if (ctx.run_dir / "REPORT.md").is_file():
+        do_report(ctx)
+    _emit({"run_id": run, "attack_paths": str(path)})
 
 
 @app.command(name="pr-draft")

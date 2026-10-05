@@ -15,7 +15,7 @@ from pathlib import Path
 from ..branding import attribution_footer
 from ..context import RunContext
 from ..ranking import confidence_rank, severity_rank
-from . import evidence
+from . import compose, evidence
 
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Informational"]
 
@@ -70,6 +70,19 @@ def _repo_residual_unknowns(ctx: RunContext) -> list[str]:
     return []
 
 
+def _attack_paths(ctx: RunContext, findings: list[dict]) -> list[dict] | None:
+    """Load composition only when it still describes this exact normalized findings set."""
+    try:
+        doc = json.loads(ctx.attack_paths_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    if (doc.get("status") != "evidence_gated"
+            or doc.get("input_fingerprint") != compose.input_fingerprint(findings)):
+        return None
+    paths = doc.get("paths")
+    return paths if isinstance(paths, list) else None
+
+
 def run(ctx: RunContext) -> Path:
     evidence.run(ctx)
     scope = ctx.load_scope()
@@ -83,6 +96,7 @@ def run(ctx: RunContext) -> Path:
         survivors,
         key=lambda f: (-severity_rank(_eff_sev(f)), -confidence_rank(_eff_conf(f)), f.get("id", "")),
     )
+    attack_paths = _attack_paths(ctx, survivors)
 
     total_cost = ctx.ledger.run_cost(ctx.run_id)
     n_calls = ctx.ledger.run_call_count(ctx.run_id)
@@ -105,7 +119,7 @@ def run(ctx: RunContext) -> Path:
 
     report_md = _render_report(ctx, scope, survivors, dropped, resubmissions,
                                total_cost, n_calls, fixed_upstream,
-                               split_originals, merged_findings)
+                               split_originals, merged_findings, attack_paths)
     sig = attribution_footer(ctx.run_id) if ctx.config.attribution else ""   # Argo provenance (default on)
     report_path = ctx.run_dir / "REPORT.md"
     report_path.write_text(report_md + sig, encoding="utf-8")
@@ -180,10 +194,12 @@ def _freshness_rows(findings: list[dict]) -> list[dict]:
 
 
 def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_calls,
-                   fixed_upstream=None, split_originals=None, merged_findings=None) -> str:
+                   fixed_upstream=None, split_originals=None, merged_findings=None,
+                   attack_paths=None) -> str:
     fixed_upstream = fixed_upstream or []
     split_originals = split_originals or []
     merged_findings = merged_findings or []
+    attack_paths = attack_paths or []
     freshness_rows = _freshness_rows(survivors)
     counts = _counts_by_severity(survivors)
     confirmed = [f for f in survivors if _verdict(f) == "confirmed" and not _proof_refuted(f)]
@@ -256,6 +272,19 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
     else:
         L.append("_No confirmed findings to prioritize._")
     L.append("")
+
+    if attack_paths:
+        L.append("## Evidence-gated attack paths (review required)")
+        L.append("")
+        L.append("These are deterministic links between findings whose declared capability, "
+                 "precondition, attacker start, identity, tenant, deployment and configuration "
+                 "all match exactly. They do **not** change severity, prove end-to-end "
+                 "exploitability, or create a submission on their own.")
+        for path in attack_paths:
+            ids = " → ".join(f"`{item}`" for item in path.get("finding_ids") or [])
+            L.append(f"- {ids}: {path.get('impact') or 'impact not recorded'} "
+                     f"({path.get('proof_level') or 'proof level unknown'}; review required)")
+        L.append("")
 
     # Findings, sorted
     L.append("## Findings (sorted by validated severity, then confidence)")

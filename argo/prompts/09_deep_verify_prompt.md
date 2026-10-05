@@ -93,7 +93,8 @@ against what was claimed.** Where they diverge, the source wins.
    exploitable mechanism and still contain a wrong detail (wrong offset, wrong function name, an
    off-by-one in the stated trigger, or a reachability/"this reliably crashes" claim undercut by step
    2 above) — that is `corrected`, not `refuted` and not `reconfirmed` as-is.
-   Explicitly verify the F1 contract fields: the exact `claim`, the stated `attacker_start`, every
+   Explicitly verify the F1 contract fields: the exact `claim`, the stated `attacker_start`, optional
+   `attack_context`, every
    `precondition`, each `capabilities_gained` item, and each `proof_obligation`. A capability that
    only follows from combining another finding is not proven by this component alone.
 4. **Cross-finding clustering.** Compare against every finding in OTHER SURVIVING FINDINGS above:

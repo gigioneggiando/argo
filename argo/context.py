@@ -139,6 +139,11 @@ class RunContext:
         return Path(self.config.runs_dir).resolve().parent / ".argo-target-memory"
 
     @property
+    def attack_paths_path(self) -> Path:
+        """Deterministic, opt-in composition artifact; findings themselves remain unchanged."""
+        return self.run_dir / "attack_paths.json"
+
+    @property
     def drafts_dir(self) -> Path:
         return self.run_dir / "submission_drafts"
 

@@ -17,8 +17,8 @@ from .estimate import estimate_cost, format_estimate
 from .ledger import Ledger
 from .progress import ProgressReporter, read_status
 from .runner import RunnerCancelled, _is_retryable, build_runner, parse_retry_after
-from .stages import (asan_poc, audit, corroborate, deep_verify, evidence, freshness, ingest, live,
-                     recon, report, research, runtime, sca, second_opinion, target_memory, validate)
+from .stages import (asan_poc, audit, compose, corroborate, deep_verify, evidence, freshness, ingest,
+                     live, recon, report, research, runtime, sca, second_opinion, target_memory, validate)
 
 
 class PipelineCancelled(RuntimeError):
@@ -143,6 +143,10 @@ def do_evidence(ctx: RunContext):
     return evidence.run(ctx)
 
 
+def do_compose(ctx: RunContext):
+    return compose.run(ctx)
+
+
 def do_report(ctx: RunContext):
     return report.run(ctx)
 
@@ -174,6 +178,8 @@ def pipeline_stages(ctx: RunContext, *, dry_run: bool = False,
     if ctx.config.runtime_enabled:
         stages.append("runtime")
     stages.append("evidence")
+    if ctx.config.attack_path_enabled:
+        stages.append("compose")
     stages.append("report")
     return stages
 
@@ -205,6 +211,7 @@ def _stage_functions(
         "runtime": lambda: do_runtime(ctx),
         "live": lambda: do_live(ctx),
         "evidence": lambda: do_evidence(ctx),
+        "compose": lambda: do_compose(ctx),
         "report": lambda: do_report(ctx),
     }
     if not resume:

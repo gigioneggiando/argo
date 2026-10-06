@@ -66,6 +66,46 @@ def test_analyze_location_supported_languages(
     assert any(expected_call in call.name for call in ctx.calls)
 
 
+@pytest.mark.parametrize(
+    ("name", "source", "line", "symbol"),
+    [
+        (
+            "definition.py",
+            "class Example:\n    def handle(self):\n        return 1\n",
+            2,
+            "handle",
+        ),
+        (
+            "definition.js",
+            "class Example {\n  handle() {\n    return 1;\n  }\n}\n",
+            2,
+            "handle",
+        ),
+        (
+            "definition.ts",
+            "class Example {\n  handle(input: string) {\n    return input;\n  }\n}\n",
+            2,
+            "handle",
+        ),
+        (
+            "definition.cs",
+            "class Example {\n  void Handle() {\n    return;\n  }\n}\n",
+            2,
+            "Handle",
+        ),
+    ],
+)
+def test_analyze_location_finds_symbol_on_definition_line(
+    tmp_path, name, source, line, symbol
+):
+    (tmp_path / name).write_text(source, encoding="utf-8")
+
+    ctx = analyze_location(tmp_path, f"{name}:{line}")
+
+    assert ctx.symbol is not None
+    assert ctx.symbol.name == symbol
+
+
 def test_local_def_use_and_possible_incoming_are_syntactic(tmp_path):
     (tmp_path / "target.py").write_text(
         "def normalize(v):\n    return v\n\n"

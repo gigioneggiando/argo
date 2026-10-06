@@ -202,11 +202,18 @@ def _symbol_from_node(node: Any, source: bytes, file: str) -> StaticSymbol:
     )
 
 
-def _enclosing_symbol_node(root: Any, language: str, line: int) -> Any | None:
+def _enclosing_symbol_node(
+    root: Any, language: str, line: int, source: bytes
+) -> Any | None:
     """Find the innermost containing symbol without walking the whole AST."""
     if line < 1:
         return None
-    node = root.descendant_for_point_range((line - 1, 0), (line - 1, 0))
+    lines = source.splitlines()
+    if line > len(lines):
+        return None
+    line_bytes = lines[line - 1]
+    column = len(line_bytes) - len(line_bytes.lstrip())
+    node = root.descendant_for_point_range((line - 1, column), (line - 1, column))
     while node is not None:
         if node.type in _FUNCTION_TYPES[language] and _contains_line(node, line):
             return node
@@ -476,7 +483,7 @@ def analyze_location(repo_dir: Path, ref: str, *, max_incoming: int = 8) -> Stat
         return ctx
 
     rel = path.relative_to(root).as_posix()
-    symbol_node = _enclosing_symbol_node(tree_root, language, line)
+    symbol_node = _enclosing_symbol_node(tree_root, language, line, source)
     if symbol_node is None:
         ctx.notes.append("no enclosing function/method found for cited line")
         return ctx

@@ -109,6 +109,7 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `target_memory_enabled` | `True` | load/capture private, revision-bound target memory around recon; disabling it keeps fully stateless runs |
 | `target_memory_dir` | sibling `.argo-target-memory/` beside `runs_dir` | optional private local store location; source is never copied and stale facts are never seeded into a changed revision |
 | `incremental_base` / `incremental_max_related_files` | `None` / `50` | opt-in Git base for a full-context incremental review and cap for its deterministic textual neighbourhood; no unchanged-code safety claim is made |
+| `review_questions_enabled` / `review_questions_max` | `False` / `20` | opt-in deterministic private architecture clarification queue after evidence; questions never pause an unattended run |
 | `attack_path_enabled` | `False` | opt in to deterministic, exact-context attack-path composition after the evidence gate; never changes findings or severity |
 | `attack_path_max_hops` / `attack_path_max_paths` | `3` / `20` | hard bounds for the review-only `attack_paths.json` artifact |
 | `prompts_dir` | `argo/prompts` | the version-pinned assets |

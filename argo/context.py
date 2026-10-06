@@ -149,6 +149,16 @@ class RunContext:
         return self.run_dir / "incremental_review.json"
 
     @property
+    def context_pack_path(self) -> Path:
+        """Validated private context-pack snapshot; never rendered into public artifacts."""
+        return self.run_dir / "context_pack.json"
+
+    @property
+    def review_questions_path(self) -> Path:
+        """Non-blocking architecture/business-context clarification queue."""
+        return self.run_dir / "review_questions.json"
+
+    @property
     def drafts_dir(self) -> Path:
         return self.run_dir / "submission_drafts"
 

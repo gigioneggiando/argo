@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from ..config import ARTIFACT_TOOLS, write_pipeline_config
+from ..context_pack import load as load_context_pack
 from ..context import RunContext, atomic_write_json, collect_output_files
 from ..models import AssetVersion, RunMeta, Scope
 from ..rendering import sha256_text, with_artifact_contract
@@ -319,10 +320,17 @@ def _asset_versions(assets_dir: Path) -> list[AssetVersion]:
 
 def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: bool | None = None,
         links_path: Path | None = None, accepted_risks_path: Path | None = None,
-        commit: str | None = None) -> Scope:
+        context_pack_path: Path | None = None, commit: str | None = None) -> Scope:
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
     write_pipeline_config(ctx.run_dir / "config.json", ctx.config)
     is_url = _is_url(repo) if repo_is_url is None else repo_is_url
+
+    # Validate private architecture context before spending a model call. Store only the bounded,
+    # normalized JSON -- never the caller's path or referenced document contents.
+    if context_pack_path is not None:
+        pack = load_context_pack(Path(context_pack_path))
+        atomic_write_json(ctx.context_pack_path, pack.model_dump(mode="json", exclude_none=True))
+        _log("--context-pack: validated private architecture context")
 
     if brief_path is None:
         # --- Local / personal review (no bug-bounty brief): synthesize the scope, zero tokens ---

@@ -18,8 +18,8 @@ from .ledger import Ledger
 from .progress import ProgressReporter, read_status
 from .runner import RunnerCancelled, _is_retryable, build_runner, parse_retry_after
 from .stages import (asan_poc, audit, compose, corroborate, deep_verify, evidence, freshness, incremental,
-                     ingest, live, recon, report, research, runtime, sca, second_opinion, target_memory,
-                     validate)
+                     ingest, live, recon, report, research, review_questions, runtime, sca,
+                     second_opinion, target_memory, validate)
 
 
 class PipelineCancelled(RuntimeError):
@@ -82,10 +82,10 @@ def build_context(config: PipelineConfig, run_id: str, *, now: str | None = None
 # --- individual stages (thin wrappers so the CLI and tests share one entry point) ----
 def do_ingest(ctx: RunContext, brief: Path | None, repo: str, repo_is_url: bool | None = None,
               links_path: Path | None = None, accepted_risks_path: Path | None = None,
-              commit: str | None = None):
+              context_pack_path: Path | None = None, commit: str | None = None):
     return ingest.run(ctx, brief_path=brief, repo=repo, repo_is_url=repo_is_url,
                       links_path=links_path, accepted_risks_path=accepted_risks_path,
-                      commit=commit)
+                      context_pack_path=context_pack_path, commit=commit)
 
 
 def do_research(ctx: RunContext):
@@ -152,6 +152,10 @@ def do_compose(ctx: RunContext):
     return compose.run(ctx)
 
 
+def do_review_questions(ctx: RunContext):
+    return review_questions.run(ctx)
+
+
 def do_report(ctx: RunContext):
     return report.run(ctx)
 
@@ -185,6 +189,8 @@ def pipeline_stages(ctx: RunContext, *, dry_run: bool = False,
     if ctx.config.runtime_enabled:
         stages.append("runtime")
     stages.append("evidence")
+    if ctx.config.review_questions_enabled:
+        stages.append("review_questions")
     if ctx.config.attack_path_enabled:
         stages.append("compose")
     stages.append("report")
@@ -200,6 +206,7 @@ def _stage_functions(
     repo_is_url: bool | None = None,
     links_path: Path | None = None,
     accepted_risks_path: Path | None = None,
+    context_pack_path: Path | None = None,
     commit: str | None = None,
     resume: bool = False,
 ) -> list[tuple[str, object]]:
@@ -219,6 +226,7 @@ def _stage_functions(
         "runtime": lambda: do_runtime(ctx),
         "live": lambda: do_live(ctx),
         "evidence": lambda: do_evidence(ctx),
+        "review_questions": lambda: do_review_questions(ctx),
         "compose": lambda: do_compose(ctx),
         "report": lambda: do_report(ctx),
     }
@@ -227,7 +235,8 @@ def _stage_functions(
             raise ValueError("repo is required for ingest")
         funcs["ingest"] = lambda: do_ingest(
             ctx, brief, repo, repo_is_url=repo_is_url, links_path=links_path,
-            accepted_risks_path=accepted_risks_path, commit=commit)
+            accepted_risks_path=accepted_risks_path, context_pack_path=context_pack_path,
+            commit=commit)
     return [(name, funcs[name]) for name in stages if name in funcs]
 
 
@@ -311,6 +320,7 @@ def _completed_summary(ctx: RunContext) -> dict:
 def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: bool = False,
                  research_enabled: bool | None = None, repo_is_url: bool | None = None,
                  links_path: Path | None = None, accepted_risks_path: Path | None = None,
+                 context_pack_path: Path | None = None,
                  reporter: ProgressReporter | None = None,
                  cancel_event=None, commit: str | None = None,
                  estimate_before_audit: bool = False,
@@ -327,7 +337,8 @@ def run_pipeline(ctx: RunContext, brief: Path | None, repo: str, *, dry_run: boo
 
     stage_fns = _stage_functions(
         ctx, stages, brief=brief, repo=repo, repo_is_url=repo_is_url,
-        links_path=links_path, accepted_risks_path=accepted_risks_path, commit=commit)
+        links_path=links_path, accepted_risks_path=accepted_risks_path,
+        context_pack_path=context_pack_path, commit=commit)
     results: dict[str, object] = {}
     estimate: dict | None = None
     if estimate_before_audit and not dry_run and "audit" in stages:
@@ -420,8 +431,9 @@ def resume_pipeline(ctx: RunContext, from_stage: str | None = None,
     # Backward-compatible resume: a completed pre-F1 run has report=done but no evidence stage.
     # When evidence is therefore the first unfinished stage, the old report must be regenerated;
     # otherwise resume would normalize the JSON and leave REPORT.md/drafts stale.
-    if stages.index(start) <= stages.index("evidence"):
-        done.difference_update({"evidence", "report"})
+    review_boundary = "review_questions" if "review_questions" in stages else "evidence"
+    if stages.index(start) <= stages.index(review_boundary):
+        done.difference_update({"evidence", "review_questions", "report"})
     own = reporter is None
     reporter = reporter or ProgressReporter(ctx, stages, initial_status=status)
     if own:

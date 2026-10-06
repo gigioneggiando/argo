@@ -27,9 +27,9 @@ import typer
 from .config import PipelineConfig, load_pipeline_config
 from .estimate import estimate_cost, format_estimate
 from .orchestrator import (build_context, do_asan_poc, do_audit, do_compose, do_corroborate, do_evidence,
-                           do_freshness_check, do_ingest, do_live, do_recon, do_report, do_runtime,
-                           do_sca, do_second_opinion, do_validate, do_verify, new_run_id,
-                           resume_pipeline, run_pipeline)
+                           do_freshness_check, do_ingest, do_live, do_recon, do_report,
+                           do_review_questions, do_runtime, do_sca, do_second_opinion, do_validate,
+                           do_verify, new_run_id, resume_pipeline, run_pipeline)
 from .progress import read_status
 from .runner import parse_retry_after
 
@@ -208,6 +208,10 @@ AcceptedRisksOpt = typer.Option(
     help="file describing intended / accepted-by-design behaviors (the vendor's threat model / "
          "known-limitations). Injected into audit + validate + corroborate so those behaviors are "
          "not reported as vulnerabilities. Additive; never inferred from the brief.")
+ContextPackOpt = typer.Option(
+    None, "--context-pack", exists=True,
+    help="private connector-neutral JSON context pack (architecture notes, roles, services, "
+         "business invariants, IAM/IaC facts). Strictly validated, never copied into reports.")
 
 
 def _emit(obj: dict) -> None:
@@ -335,6 +339,7 @@ def ingest(
         help="curated reference links file (one http(s) URL per line; '#' comments ok). "
              "Additive to extracted links; the --repo code is NOT a reference link."),
     accepted_risks: Optional[Path] = AcceptedRisksOpt,
+    context_pack: Optional[Path] = ContextPackOpt,
     run: Optional[str] = typer.Option(None, "--run", help="run id (generated if omitted)"),
     runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
     calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
@@ -342,7 +347,8 @@ def ingest(
 ):
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
     ctx = build_context(cfg, run or new_run_id())
-    scope = do_ingest(ctx, brief, repo, links_path=links, accepted_risks_path=accepted_risks)
+    scope = do_ingest(ctx, brief, repo, links_path=links, accepted_risks_path=accepted_risks,
+                      context_pack_path=context_pack)
     _emit({"run_id": ctx.run_id, "scope": str(ctx.scope_path),
            "program": scope.program_name, "target_type": scope.target_type})
 
@@ -631,6 +637,41 @@ def compose_cmd(run: str = RunIdArg, runner: str = RunnerOpt,
     _emit({"run_id": run, "attack_paths": str(path)})
 
 
+@app.command(name="questions")
+def questions_cmd(run: str = RunIdArg, runs_dir: Path = RunsDirOpt):
+    """Rebuild the private, non-blocking architecture clarification queue for an existing run."""
+    cfg = _resume_config(run, runs_dir).with_overrides(review_questions_enabled=True)
+    ctx = build_context(cfg, run)
+    path = do_review_questions(ctx)
+    if (ctx.run_dir / "REPORT.md").is_file():
+        do_report(ctx)
+    _emit({"run_id": run, "review_questions": str(path)})
+
+
+@app.command(name="answer-question")
+def answer_question_cmd(
+    run: str = RunIdArg,
+    question: str = typer.Option(..., "--question", help="review question id (rq:... )"),
+    answer: str = typer.Option(..., "--answer", help="concise architecture/business answer"),
+    provenance: str = typer.Option(
+        ..., "--provenance", help="where the answer came from (owner, document, ticket, etc.)"),
+    runs_dir: Path = RunsDirOpt,
+):
+    """Record a provenance-bearing answer and block stale drafts until validation is rerun."""
+    from .stages import review_questions as review_questions_stage
+
+    cfg = _resume_config(run, runs_dir)
+    ctx = build_context(cfg, run)
+    try:
+        path = review_questions_stage.answer(ctx, question, answer, provenance)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if (ctx.run_dir / "REPORT.md").is_file():
+        do_report(ctx)
+    _emit({"run_id": run, "review_questions": str(path),
+           "next_action": "re-run validation with the recorded context before using affected drafts"})
+
+
 @app.command(name="pr-draft")
 def pr_draft(run: str = RunIdArg,
              finding: str = typer.Option(..., "--finding", help="confirmed finding id to draft for"),
@@ -778,6 +819,7 @@ def estimate(
         365, "--freshness-lookback-days",
         help="(--freshness-check) days of branch history to inspect"),
     accepted_risks: Optional[Path] = AcceptedRisksOpt,
+    context_pack: Optional[Path] = ContextPackOpt,
     critic_passes: Optional[int] = typer.Option(
         None, "--critic-passes",
         help="completeness-critic re-passes per audit focus"),
@@ -834,7 +876,7 @@ def estimate(
     try:
         summary = run_pipeline(ctx, brief, repo, dry_run=True, research_enabled=research,
                                links_path=links, accepted_risks_path=accepted_risks,
-                               commit=commit)
+                               context_pack_path=context_pack, commit=commit)
         arch = _archetype_for_run(ctx.run_dir)
         est = estimate_cost(ctx.ledger, Path(cfg.runs_dir), arch, cfg, run_id=ctx.run_id)
         typer.echo(format_estimate(est))
@@ -925,6 +967,10 @@ def pipeline(
         365, "--freshness-lookback-days",
         help="(--freshness-check) days of branch history to inspect"),
     accepted_risks: Optional[Path] = AcceptedRisksOpt,
+    context_pack: Optional[Path] = ContextPackOpt,
+    review_questions: bool = typer.Option(
+        False, "--questions/--no-questions",
+        help="emit a non-blocking private queue for unresolved architecture/business context"),
     critic_passes: Optional[int] = typer.Option(
         None, "--critic-passes",
         help="completeness-critic re-passes per audit focus (depth lever; default 1, 0 disables)"),
@@ -975,6 +1021,7 @@ def pipeline(
                              second_opinion_passes=second_opinion,
                              second_opinion_backend=second_opinion_backend,
                              incremental_base=incremental_base,
+                             review_questions_enabled=review_questions,
                              attribution=attribution)
     if critic_passes is not None:
         cfg = cfg.with_overrides(audit_critic_passes=critic_passes)
@@ -1013,6 +1060,7 @@ def pipeline(
     summary = _run_with_resume_hint(lambda: run_pipeline(
         ctx, brief, repo, dry_run=dry_run, research_enabled=research,
         links_path=links, accepted_risks_path=accepted_risks, commit=commit,
+        context_pack_path=context_pack,
         estimate_before_audit=not dry_run, estimate_output=_print_estimate,
         estimate_confirm=_confirm_estimate), ctx)
     summary["smoke"] = smoke

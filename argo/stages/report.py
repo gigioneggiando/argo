@@ -54,6 +54,7 @@ def _open_obligations(f: dict) -> list[dict]:
 def _proof_refuted(f: dict) -> bool:
     return (f.get("claim_status") in {"refuted", "conflicted"}
             or f.get("external_status") == "rejected"
+            or bool((f.get("validation") or {}).get("context_revalidation_required"))
             or any(i.get("severity") == "error" for i in f.get("consistency_issues", [])))
 
 
@@ -83,6 +84,22 @@ def _attack_paths(ctx: RunContext, findings: list[dict]) -> list[dict] | None:
     return paths if isinstance(paths, list) else None
 
 
+def _review_questions(ctx: RunContext) -> list[dict]:
+    """Load only a queue generated from the current finding inputs."""
+    from .review_questions import input_fingerprint
+
+    try:
+        doc = json.loads(ctx.review_questions_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return []
+    residual = _repo_residual_unknowns(ctx)
+    current = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
+    findings = [f for f in current.get("findings") or [] if isinstance(f, dict)]
+    if doc.get("input_fingerprint") != input_fingerprint(findings, residual):
+        return []
+    return [q for q in doc.get("questions") or [] if isinstance(q, dict)]
+
+
 def run(ctx: RunContext) -> Path:
     evidence.run(ctx)
     scope = ctx.load_scope()
@@ -97,6 +114,7 @@ def run(ctx: RunContext) -> Path:
         key=lambda f: (-severity_rank(_eff_sev(f)), -confidence_rank(_eff_conf(f)), f.get("id", "")),
     )
     attack_paths = _attack_paths(ctx, survivors)
+    review_questions = _review_questions(ctx)
 
     total_cost = ctx.ledger.run_cost(ctx.run_id)
     n_calls = ctx.ledger.run_call_count(ctx.run_id)
@@ -119,7 +137,7 @@ def run(ctx: RunContext) -> Path:
 
     report_md = _render_report(ctx, scope, survivors, dropped, resubmissions,
                                total_cost, n_calls, fixed_upstream,
-                               split_originals, merged_findings, attack_paths)
+                               split_originals, merged_findings, attack_paths, review_questions)
     sig = attribution_footer(ctx.run_id) if ctx.config.attribution else ""   # Argo provenance (default on)
     report_path = ctx.run_dir / "REPORT.md"
     report_path.write_text(report_md + sig, encoding="utf-8")
@@ -195,11 +213,12 @@ def _freshness_rows(findings: list[dict]) -> list[dict]:
 
 def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_calls,
                    fixed_upstream=None, split_originals=None, merged_findings=None,
-                   attack_paths=None) -> str:
+                   attack_paths=None, review_questions=None) -> str:
     fixed_upstream = fixed_upstream or []
     split_originals = split_originals or []
     merged_findings = merged_findings or []
     attack_paths = attack_paths or []
+    review_questions = review_questions or []
     freshness_rows = _freshness_rows(survivors)
     counts = _counts_by_severity(survivors)
     confirmed = [f for f in survivors if _verdict(f) == "confirmed" and not _proof_refuted(f)]
@@ -245,6 +264,13 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
     open_count = sum(len(_open_obligations(f)) for f in survivors)
     if open_count:
         L.append(f"- Open proof obligations: **{open_count}**")
+    unanswered = [q for q in review_questions if q.get("status") == "needs_context"]
+    pending = [q for q in review_questions if q.get("status") == "answered_pending_revalidation"]
+    resolved = [q for q in review_questions if q.get("status") == "resolved"]
+    if unanswered or pending or resolved:
+        L.append(f"- Private context questions: **{len(unanswered)}** unanswered, "
+                 f"**{len(pending)}** answered pending re-validation, "
+                 f"**{len(resolved)}** resolved")
     if any(_validation_field(f, "runtime") for f in survivors):
         rt_conf = sum(1 for f in survivors if any(e.get("source") == "runtime"
                       and e.get("polarity") == "supports" for e in f.get("evidence", [])))
@@ -261,6 +287,19 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
         L.append(f"- **{n_corroborated_by_passes}** finding(s) independently confirmed by "
                 f"{'a blind second-opinion pass' if n_corroborated_by_passes == 1 else 'blind second-opinion passes'}")
     L.append("")
+
+    if review_questions:
+        L.append("## Private context review")
+        L.append("")
+        L.append("The private `review_questions.json` queue contains architecture/business-context "
+                 "questions that source alone could not settle. Its question and answer text is "
+                 "deliberately not copied into this report. Answers are contextual claims, not "
+                 "technical proof; affected findings are excluded from drafts until re-validation.")
+        L.append("")
+        for q in review_questions:
+            ids = ", ".join(f"`{fid}`" for fid in q.get("affected_finding_ids") or []) or "repo context"
+            L.append(f"- `{q.get('id', '?')}` — {q.get('status', 'needs_context')} — {ids}")
+        L.append("")
 
     # Fix-first ordering
     L.append("## Fix first")

@@ -426,6 +426,11 @@ class PipelineConfig:
     incremental_base: str | None = None
     incremental_max_related_files: int = 50
 
+    # F5 architecture clarification queue. This deterministic stage is intentionally cheap and
+    # non-blocking: unanswered questions remain visible while the rest of the pipeline completes.
+    review_questions_enabled: bool = False
+    review_questions_max: int = 20
+
     # Mock runner fixtures (only used when runner == "mock").
     fixtures_dir: Path = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
     fixtures_scenario: str = "happy"

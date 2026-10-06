@@ -21,6 +21,8 @@ Everywhere below, `argo` ≡ `python -m argo.cli`.
 | `run` | 3 | per-focus findings JSON |
 | `sca` | SCA | dependency manifests → known-vuln pins as a `dependencies` focus (opt-out; no-op without manifests) |
 | `second-opinion` | SECOND-OPINION | **opt-in**, offline: run N additional, fully independent blind recon+audit passes over the already-ingested scope/repo (each in its own isolated `run_dir`), merge their findings in. `--passes N`, `--backend` to use a different runner for the extra passes (real cross-engine diversity). Re-run `validate` afterward to reconcile — its existing dedup already collapses cross-pass duplicates and records `corroborating_passes`; see [architecture.md](architecture.md#second-opinion-an-llm-audit-is-one-noisy-sample-not-the-answer) |
+| `questions` | QUESTIONS | rebuild an existing run's private, deterministic architecture/business-context question queue |
+| `answer-question` | QUESTIONS | record one provenance-bearing answer, add it to same-revision target memory/context, and block affected stale drafts pending re-validation |
 | `validate` | 4 | dedup + adversarial validation (downgrade-don't-delete) → `validated_findings.json` |
 | `corroborate` | CORROBORATE | **opt-out**, two-pass: an offline repo-mounted docs/VCS check plus a networked public-OSINT check with no repo mount or source excerpts; merged results downgrade documented-by-design findings and move already-fixed findings to a `fixed_upstream` appendix. Rewrites `validated_findings.json`. `--docs-url` pins docs; `--only ID,ID` re-corroborates only those findings and leaves every other existing verdict untouched; never the live hosts |
 | `verify` | VERIFY | **opt-in**, offline: independently re-derive each surviving finding from the actual source (full repo access, one full session per finding, no batching, no excerpt budget) and reason across the whole survivor set → `corrected`/`split`/`merged`/`reconfirmed`/`refuted`/`inconclusive`. Rewrites `validated_findings.json`. **Resumable by default**: re-running it on the same run skips findings that already have a real verdict and only re-attempts unverified/infra-failure ones — safe to re-invoke after a rate limit or a backend running out of credits without re-spending on what already succeeded. `--only ID,ID` to force specific findings to (re-)verify regardless of their state, leaving everything else untouched; `--max-findings` to cap cost; see [architecture.md](architecture.md#deep-verify-why-a-separate-stage-from-validate) |
@@ -92,6 +94,11 @@ argo quality  [--program P] [--runs-dir DIR]
   neighbourhood, then
   performs recon/audit with the complete repository still mounted. It never treats an unchanged
   line or file as safe by omission.
+- `--context-pack PATH` — validate and use bounded private architecture notes, role/service
+  inventories, business invariants, IAM/IaC facts, and document references. Raw content stays out
+  of reports, drafts, saved audit prompts, public OSINT, and the artifact API.
+- `--questions / --no-questions` — opt into the non-blocking private context-question queue
+  (default off). See [context-pack.md](context-pack.md).
 - `--links` — a curated reference-links file, one `http(s)` URL per line (`#` comments and blank
   lines ignored). **Additive** to links the model extracts from the brief; the `--repo` URL is
   never allowed into `reference_links`. See `--links` semantics in

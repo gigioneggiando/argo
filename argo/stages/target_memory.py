@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from ..context import RunContext, atomic_write_json
-from ..target_memory import TargetMemoryStore, canonical_target, fresh_facts
+from ..target_memory import TargetMemory, TargetMemoryStore, canonical_target, fresh_facts
 
 
 def _meta(ctx: RunContext) -> dict:
@@ -26,7 +26,13 @@ def _identity(ctx: RunContext):
     return canonical_target(str(meta.get("repo_source") or ""), bool(meta.get("repo_is_url"))), meta
 
 
-def _snapshot(ctx: RunContext, memory, *, captured_ids: list[str] | None = None) -> None:
+def _snapshot(
+    ctx: RunContext,
+    memory: TargetMemory,
+    *,
+    captured_ids: list[str] | None = None,
+    note: str = "Private local target memory. Facts are hypotheses to re-check against this run.",
+) -> None:
     facts = fresh_facts(memory)
     payload = {
         "schema_version": 1,
@@ -34,7 +40,7 @@ def _snapshot(ctx: RunContext, memory, *, captured_ids: list[str] | None = None)
         "commit": _meta(ctx).get("repo_commit"),
         "seed_facts": [fact.model_dump(mode="json") for fact in facts],
         "captured_fact_ids": captured_ids or [],
-        "note": "Private local target memory. Facts are hypotheses to re-check against this run.",
+        "note": note,
     }
     atomic_write_json(ctx.target_memory_path, payload)
 
@@ -42,6 +48,11 @@ def _snapshot(ctx: RunContext, memory, *, captured_ids: list[str] | None = None)
 def run(ctx: RunContext) -> Path:
     """Load only same-commit facts before modelled stages begin."""
     identity, meta = _identity(ctx)
+    if ctx.config.runner == "mock":
+        _snapshot(ctx, TargetMemory(target=identity),
+                  note="Mock run: persistent target memory is bypassed; "
+                       "fixtures are not source evidence.")
+        return ctx.target_memory_path
     memory = _store(ctx).load(identity, meta.get("repo_commit"))
     _snapshot(ctx, memory)
     return ctx.target_memory_path
@@ -55,6 +66,8 @@ def _as_strings(value) -> list[str]:
 
 def capture_recon(ctx: RunContext) -> None:
     """Persist concise, structured recon conclusions without copying source text."""
+    if ctx.config.runner == "mock":
+        return
     identity, meta = _identity(ctx)
     entries: list[tuple[str, str, str, list[str]]] = []
     try:

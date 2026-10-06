@@ -6,7 +6,9 @@ import json
 from pathlib import Path
 
 from argo.config import PipelineConfig, load_pipeline_config, write_pipeline_config
+from argo.context import atomic_write_json
 from argo.orchestrator import run_pipeline
+from argo.stages import target_memory
 from argo.target_memory import TargetMemoryStore, canonical_target, fresh_facts, prompt_context
 
 from conftest import BRIEF, REPO
@@ -52,19 +54,37 @@ def test_target_memory_directory_round_trips_through_saved_config(tmp_path):
     assert restored.target_memory_dir == Path("private-memory")
 
 
-def test_pipeline_emits_private_memory_snapshot_and_captures_recon_facts(env, tmp_path):
+def test_mock_pipeline_emits_snapshot_without_persisting_fixture_facts(env, tmp_path):
     ctx = env(target_memory_dir=tmp_path / "private-memory")
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
 
     snapshot = json.loads(ctx.target_memory_path.read_text(encoding="utf-8"))
     assert snapshot["target"]["is_remote"] is False
-    assert snapshot["note"].startswith("Private local target memory")
+    assert snapshot["seed_facts"] == []
+    assert snapshot["captured_fact_ids"] == []
+    assert snapshot["note"].startswith("Mock run")
     status = json.loads((ctx.run_dir / "status.json").read_text(encoding="utf-8"))
     assert status["artifacts"]["target_memory"] is True
 
-    files = list((tmp_path / "private-memory").glob("*.json"))
-    assert len(files) == 1
-    memory = json.loads(files[0].read_text(encoding="utf-8"))
-    assert any(fact["kind"] == "entry_point" for fact in memory["facts"])
-    # The fixture has no Git revision, so conservative invalidation prevents it from becoming seed.
-    assert all(fact["freshness"] == "stale" for fact in memory["facts"])
+    assert list((tmp_path / "private-memory").glob("*.json")) == []
+
+
+def test_mock_memory_bypasses_existing_target_facts(env, tmp_path):
+    memory_dir = tmp_path / "private-memory"
+    ctx = env(target_memory_dir=memory_dir)
+    identity = canonical_target(str(REPO), False)
+    store = TargetMemoryStore(memory_dir)
+    store.upsert(identity, "a" * 40, [
+        ("invariant", "Only owners can read an order.", "recon:ground_truth", ["ground_truth.json"]),
+    ])
+    before = store.path_for(identity).read_bytes()
+    atomic_write_json(ctx.meta_path, {
+        "repo_source": str(REPO), "repo_is_url": False, "repo_commit": "a" * 40,
+    })
+
+    target_memory.run(ctx)
+    target_memory.capture_recon(ctx)
+
+    snapshot = json.loads(ctx.target_memory_path.read_text(encoding="utf-8"))
+    assert snapshot["seed_facts"] == []
+    assert store.path_for(identity).read_bytes() == before

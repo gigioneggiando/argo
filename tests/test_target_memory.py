@@ -41,6 +41,29 @@ def test_changed_or_unknown_commit_stales_facts(tmp_path):
     assert TargetMemoryStore(tmp_path / "memory").load(target, "b" * 40).facts[0].freshness == "stale"
 
 
+def test_seed_limit_does_not_let_one_fact_kind_crowd_out_the_rest(tmp_path):
+    store = TargetMemoryStore(tmp_path / "memory")
+    target = canonical_target("https://github.com/example/widget", True)
+    facts = [
+        (kind, f"{kind} fact {index}", "recon:ground_truth", ["ground_truth.json"])
+        for kind, count in (("baseline", 30), ("false_lead", 10),
+                            ("invariant", 10), ("question", 10))
+        for index in range(count)
+    ]
+    store.upsert(target, "a" * 40, facts)
+
+    selected = fresh_facts(store.load(target, "a" * 40), limit=24)
+
+    assert len(selected) == 24
+    assert [fact.kind for fact in selected].count("false_lead") == 8
+    assert [fact.kind for fact in selected].count("invariant") == 8
+    assert [fact.kind for fact in selected].count("question") == 4
+    assert [fact.kind for fact in selected].count("baseline") == 4
+    assert [fact.id for fact in selected] == [
+        fact.id for fact in fresh_facts(store.load(target, "a" * 40), limit=24)
+    ]
+
+
 def test_target_memory_directory_round_trips_through_saved_config(tmp_path):
     config_path = tmp_path / "config.json"
     write_pipeline_config(
@@ -88,3 +111,34 @@ def test_mock_memory_bypasses_existing_target_facts(env, tmp_path):
     snapshot = json.loads(ctx.target_memory_path.read_text(encoding="utf-8"))
     assert snapshot["seed_facts"] == []
     assert store.path_for(identity).read_bytes() == before
+
+
+def test_recon_capture_preserves_initial_seed_and_records_all_new_ids(env, tmp_path):
+    ctx = env(target_memory_dir=tmp_path / "private-memory")
+    ctx.config = ctx.config.with_overrides(runner="codex")
+    commit = "a" * 40
+    identity = canonical_target("https://github.com/example/widget", True)
+    store = TargetMemoryStore(ctx.target_memory_dir)
+    store.upsert(identity, commit, [
+        ("baseline", "Prior source conclusion.", "recon:ground_truth", ["ground_truth.json"]),
+    ])
+    atomic_write_json(ctx.meta_path, {
+        "repo_source": "https://github.com/example/widget", "repo_is_url": True,
+        "repo_commit": commit,
+    })
+
+    target_memory.run(ctx)
+    initial = json.loads(ctx.target_memory_path.read_text(encoding="utf-8"))
+    assert len(initial["seed_facts"]) == 1
+    assert initial["captured_fact_ids"] == []
+
+    atomic_write_json(ctx.repo_profile_path, {
+        "entry_points": [f"New entry point {index}." for index in range(30)],
+    })
+    target_memory.capture_recon(ctx)
+
+    final = json.loads(ctx.target_memory_path.read_text(encoding="utf-8"))
+    assert final["seed_facts"] == initial["seed_facts"]
+    assert len(final["captured_fact_ids"]) == 30
+    assert len(set(final["captured_fact_ids"])) == 30
+    assert len(store.load(identity, commit).facts) == 31

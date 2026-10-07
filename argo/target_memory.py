@@ -143,7 +143,8 @@ class TargetMemoryStore:
         atomic_write_json(path, memory.model_dump(mode="json"))
 
     def upsert(self, identity: TargetIdentity, commit: str | None,
-               facts: list[tuple[str, str, str, list[str]]]) -> TargetMemory:
+               facts: list[tuple[str, str, str, list[str]]],
+               *, recorded_ids: list[str] | None = None) -> TargetMemory:
         """Persist deterministic summaries from this run and retain a compact audit trail."""
         memory = self.load(identity, commit)
         now = _utcnow()
@@ -156,6 +157,8 @@ class TargetMemoryStore:
             fact_id = "tm:" + hashlib.sha256(
                 json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
             ).hexdigest()[:16]
+            if recorded_ids is not None:
+                recorded_ids.append(fact_id)
             old = by_id.get(fact_id)
             if old is not None:
                 old.observed_commit = commit
@@ -176,9 +179,32 @@ class TargetMemoryStore:
 
 
 def fresh_facts(memory: TargetMemory, *, limit: int = 24) -> list[MemoryFact]:
-    """Return only same-revision facts; order stays deterministic across runs."""
-    return sorted((fact for fact in memory.facts if fact.freshness == "fresh"),
-                  key=lambda fact: (fact.kind, fact.id))[:limit]
+    """Return a bounded, deterministic mix of same-revision fact kinds."""
+    if limit <= 0:
+        return []
+    by_kind: dict[str, list[MemoryFact]] = {}
+    for fact in memory.facts:
+        if fact.freshness == "fresh":
+            by_kind.setdefault(fact.kind, []).append(fact)
+    for facts in by_kind.values():
+        facts.sort(key=lambda fact: fact.id)
+    priority = ("false_lead", "invariant", "trust_boundary", "entry_point",
+                "design_decision", "question", "baseline")
+    kinds = sorted(by_kind, key=lambda kind: (priority.index(kind) if kind in priority else
+                                             len(priority), kind))
+    chosen: list[MemoryFact] = []
+    while len(chosen) < limit:
+        added = False
+        for kind in kinds:
+            # False leads and security invariants are the highest-value repeat-run hints.
+            weight = 2 if kind in {"false_lead", "invariant"} else 1
+            for _ in range(weight):
+                if by_kind[kind] and len(chosen) < limit:
+                    chosen.append(by_kind[kind].pop(0))
+                    added = True
+        if not added:
+            break
+    return chosen
 
 
 def prompt_context(facts: list[MemoryFact], *, limit: int = 9000) -> str:

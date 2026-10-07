@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from ..context import RunContext, atomic_write_json
-from ..target_memory import TargetMemory, TargetMemoryStore, canonical_target, fresh_facts
+from ..target_memory import MemoryFact, TargetMemory, TargetMemoryStore, canonical_target, fresh_facts
 
 
 def _meta(ctx: RunContext) -> dict:
@@ -30,10 +30,11 @@ def _snapshot(
     ctx: RunContext,
     memory: TargetMemory,
     *,
+    seed_facts: list[MemoryFact] | None = None,
     captured_ids: list[str] | None = None,
     note: str = "Private local target memory. Facts are hypotheses to re-check against this run.",
 ) -> None:
-    facts = fresh_facts(memory)
+    facts = fresh_facts(memory) if seed_facts is None else seed_facts
     payload = {
         "schema_version": 1,
         "target": memory.target.model_dump(mode="json"),
@@ -69,6 +70,17 @@ def capture_recon(ctx: RunContext) -> None:
     if ctx.config.runner == "mock":
         return
     identity, meta = _identity(ctx)
+    # Keep the pre-recon seed distinct from facts learned during this run. Recon reads this
+    # snapshot as its prior context, so rewriting it with new facts misstates what was available.
+    seed_facts: list[MemoryFact] = []
+    try:
+        snapshot = json.loads(ctx.target_memory_path.read_text(encoding="utf-8-sig"))
+        if (snapshot.get("target", {}).get("key") == identity.key
+                and snapshot.get("commit") == meta.get("repo_commit")):
+            seed_facts = [MemoryFact.model_validate(item)
+                          for item in snapshot.get("seed_facts") or []]
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass
     entries: list[tuple[str, str, str, list[str]]] = []
     try:
         profile = json.loads(ctx.repo_profile_path.read_text(encoding="utf-8-sig"))
@@ -102,6 +114,8 @@ def capture_recon(ctx: RunContext) -> None:
                     entries.append(("baseline", summary, "recon:ground_truth", ["ground_truth.json"]))
             for item in _as_strings(focus.get("fp_carveouts")):
                 entries.append(("false_lead", item, "recon:ground_truth", ["ground_truth.json"]))
-    memory = _store(ctx).upsert(identity, meta.get("repo_commit"), entries)
-    captured = [fact.id for fact in fresh_facts(memory) if fact.provenance.startswith("recon:")]
-    _snapshot(ctx, memory, captured_ids=captured)
+    captured: list[str] = []
+    memory = _store(ctx).upsert(identity, meta.get("repo_commit"), entries,
+                                recorded_ids=captured)
+    _snapshot(ctx, memory, seed_facts=seed_facts,
+              captured_ids=list(dict.fromkeys(captured)))

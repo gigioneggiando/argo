@@ -65,8 +65,8 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 
 | Stage | Entry point | Reads | Writes |
 |---|---|---|---|
-| 1 Ingest | `stages/ingest.run` | brief (or **none** → local review), repo (folder or URL), optional `--links` / `--accepted-risks` / `--context-pack` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`, and a strictly validated private `context_pack.json` when supplied. No brief ⇒ a source-only scope is **synthesized** from the folder (zero-token, no LLM call). |
-| MEMORY | `stages/target_memory.run` | `meta.json` (canonical target + pinned commit), local private store | `target_memory.json`: a reviewable snapshot of only **same-commit** private fact summaries. No source is copied; changed or unknown revisions make prior facts stale. After recon, deterministic structured facts are captured for a future same-revision run. Mock runs use an empty snapshot and never touch the persistent store. |
+| 1 Ingest | `stages/ingest.run` | brief (or **none** → source-only review), repo (folder or URL), optional `--links` / `--accepted-risks` / `--context-pack` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`, and a strictly validated private `context_pack.json` when supplied. No brief ⇒ a source-only scope is **synthesized** from the supplied repository without assuming ownership (zero-token, no LLM call). |
+| MEMORY | `stages/target_memory.run` | `meta.json` (canonical target + pinned commit), local private store | `target_memory.json`: a reviewable, kind-balanced snapshot of at most 24 **same-commit** private fact summaries. `seed_facts` stays frozen at the pre-recon input; `captured_fact_ids` records what recon learned during this run. No source is copied; changed or unknown revisions make prior facts stale. Mock runs use an empty snapshot and never touch the persistent store. |
 | INCREMENTAL | `stages/incremental.run` | acquired Git repo, opt-in base ref, private target memory | `incremental_review.json`: base/head diff, bounded textual symbol neighbourhood, and explicit retained-same-revision / invalidated / stale prior facts. It prioritizes recon with full-repository access; unchanged code is never considered safe. |
 | 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
@@ -113,8 +113,11 @@ bodies are not copied, and an HTTP control does not automatically imply `end_to_
 
 The gate is intentionally retain-but-block. Contradictory technical evidence changes
 `claim_status` to `refuted` or `conflicted`; consistency errors keep the finding in the review bundle
-but block submission and PR drafts. External acceptance/rejection stays separate from that technical
-state. A source-supported finding may still be reportable when runtime is infeasible. Reserved
+but block submission and PR drafts. In a real run, a `confirmed` validation with only `hypothesis`
+proof remains visible in the report but cannot produce a submission or PR draft. Synthetic mock
+fixtures keep their demonstrative drafts. External acceptance/rejection
+stays separate from that technical state. A source-supported finding may still be reportable when
+runtime is infeasible. Reserved
 `argo:` records are rebuilt on rerun, and a claim/commit/native-evidence snapshot detects later stale
 normalization. Legacy fields remain valid and are upgraded additively.
 

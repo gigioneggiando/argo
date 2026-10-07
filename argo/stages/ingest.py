@@ -291,9 +291,11 @@ def _repo_name(repo: str, is_url: bool) -> str:
 
 
 def _local_scope(repo: str, is_url: bool) -> dict:
-    """Synthesize a minimal **source-only** scope for a local/personal codebase audited WITHOUT a
-    bug-bounty brief. The folder itself is the scope; conservative prohibited-technique defaults
-    apply; no live hosts. Deterministic — the ingest stage spends zero tokens in this mode."""
+    """Synthesize a minimal source-only scope when no program brief was supplied.
+
+    The repository is the scope; its ownership is unknown. No live hosts are in scope.
+    Deterministic: ingest spends zero tokens in this mode.
+    """
     name = _repo_name(repo, is_url)
     return {
         "program_name": name,
@@ -305,8 +307,8 @@ def _local_scope(repo: str, is_url: bool) -> dict:
         "automation_allowed": False,
         "reference_links": [],
         "program_brief_raw": (
-            f"Local source-only security review of '{name}'. The owner's own or private codebase, "
-            "analyzed statically — no live hosts are contacted and nothing is submitted."),
+            f"Source-only security review of '{name}' from the supplied repository. "
+            "Analysis is static; no live hosts are contacted and nothing is submitted."),
     }
 
 

@@ -58,6 +58,15 @@ def _proof_refuted(f: dict) -> bool:
             or any(i.get("severity") == "error" for i in f.get("consistency_issues", [])))
 
 
+def _has_source_proof(ctx: RunContext, f: dict) -> bool:
+    # Synthetic mock fixtures deliberately use citations outside their tiny example tree.
+    if ctx.config.runner == "mock":
+        return True
+    return _proof_level(f) in {
+        "source_supported", "independently_rederived", "runtime_observed", "end_to_end_proven",
+    }
+
+
 def _repo_residual_unknowns(ctx: RunContext) -> list[str]:
     if not ctx.repo_profile_path.exists():
         return []
@@ -149,7 +158,7 @@ def run(ctx: RunContext) -> Path:
     for f in survivors:
         # Don't draft a submission for something corroboration found to be vendor-documented by design.
         if (_verdict(f) == "confirmed" and _corr_verdict(f) != "design_accepted"
-                and not _proof_refuted(f)):
+                and not _proof_refuted(f) and _has_source_proof(ctx, f)):
             draft = _render_draft(ctx, scope, f)
             (ctx.drafts_dir / f"{f.get('id', 'finding')}.md").write_text(draft + sig, encoding="utf-8")
             n_drafts += 1
@@ -626,6 +635,8 @@ def render_pr_draft(ctx: RunContext, finding_id: str, test_command: str | None =
         raise ValueError(f"finding {finding_id!r} is documented as an accepted design risk")
     if _proof_refuted(finding):
         raise ValueError(f"finding {finding_id!r} has unresolved evidence consistency issues")
+    if not _has_source_proof(ctx, finding):
+        raise ValueError(f"finding {finding_id!r} has no source-supported proof")
 
     affected = finding.get("affected") or []
     affected_text = ", ".join(f"`{item}`" for item in affected) or "_Add affected files._"

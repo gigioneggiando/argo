@@ -182,6 +182,22 @@ def test_audit_only_claim_remains_reportable_hypothesis(env):
     )
 
 
+def test_confirmed_hypothesis_stays_in_report_without_a_draft(env):
+    ctx = env()
+    ctx.config = ctx.config.with_overrides(runner="codex")
+    validation = {**_base()["validation"], "surviving_data_flow": ""}
+    _write(ctx, _base(validation=validation))
+    finding = _normalized(ctx)
+    assert finding["validation"]["verdict"] == "confirmed"
+    assert finding["proof_level"] == "hypothesis"
+
+    rendered = report.run(ctx).read_text(encoding="utf-8")
+    assert "F1 - Missing authorization" in rendered
+    assert not (ctx.drafts_dir / "F1.md").exists()
+    with pytest.raises(ValueError, match="no source-supported proof"):
+        report.render_pr_draft(ctx, "F1")
+
+
 def test_maintainer_feedback_is_current_run_disposition_without_copying_private_comment(env):
     ctx = env()
     _write(ctx, _base())

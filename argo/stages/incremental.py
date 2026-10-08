@@ -19,8 +19,16 @@ from ..target_memory import TargetMemoryStore, canonical_target
 
 _SYMBOL = re.compile(r"^\s*(?:async\s+)?(?:def|class|function|func|fn|type|interface)\s+([A-Za-z_$][\w$]*)",
                      re.MULTILINE)
+_C_FUNCTION = re.compile(
+    r"^\s*(?:(?:static|inline|extern|constexpr|virtual)\s+)*"
+    r"(?:[\w:]+(?:\s*<[^;{}()]+>)?(?:\s*[*&]\s*)?\s+)+"
+    r"([A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:const\s*)?\{",
+    re.MULTILINE,
+)
 _TEXT_EXTENSIONS = {".c", ".cc", ".cpp", ".cs", ".go", ".java", ".js", ".jsx", ".mjs",
                     ".php", ".py", ".rb", ".rs", ".scala", ".swift", ".ts", ".tsx"}
+_C_EXTENSIONS = {".c", ".h", ".cc", ".cpp"}
+_C_CONTROL_KEYWORDS = {"if", "for", "while", "switch", "return", "sizeof", "do", "else"}
 
 
 def _meta(ctx: RunContext) -> dict:
@@ -100,6 +108,9 @@ def _changed_symbols(repo: Path, paths: list[str]) -> list[str]:
         except OSError:
             continue
         symbols.update(match.group(1) for match in _SYMBOL.finditer(text))
+        if path.suffix.lower() in _C_EXTENSIONS:
+            symbols.update(match.group(1) for match in _C_FUNCTION.finditer(text)
+                           if match.group(1) not in _C_CONTROL_KEYWORDS)
     return sorted(symbols)[:80]
 
 

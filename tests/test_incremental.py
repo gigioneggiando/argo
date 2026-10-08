@@ -95,3 +95,32 @@ def test_incremental_stage_is_opt_in_and_precedes_recon(env):
     assert pipeline_stages(ctx, research_enabled=False)[:4] == [
         "ingest", "target_memory", "incremental_review", "recon",
     ]
+
+
+def test_incremental_review_extracts_c_function_neighborhood(env, tmp_path):
+    ctx = env(incremental_base="placeholder", target_memory_dir=tmp_path / "memory")
+    repo = ctx.repo_dir
+    repo.mkdir(parents=True)
+    _git(repo, "init", "--quiet")
+    _git(repo, "config", "user.email", "argo-test@example.invalid")
+    _git(repo, "config", "user.name", "Argo test")
+    src = repo / "src"
+    src.mkdir()
+    service = src / "service.c"
+    caller = src / "caller.c"
+    service.write_text("int transfer_packet(int value) { return value; }\n", encoding="utf-8")
+    caller.write_text("int dispatch(void) { return transfer_packet(1); }\n", encoding="utf-8")
+    base = _commit(repo, "base")
+    service.write_text("int transfer_packet(int value) { return value + 1; }\n", encoding="utf-8")
+    head = _commit(repo, "change C function")
+    ctx.config = ctx.config.with_overrides(incremental_base=base)
+    ctx.meta_path.write_text(json.dumps({
+        "repo_source": "https://github.com/example/widget.git", "repo_is_url": True,
+        "repo_commit": head,
+    }), encoding="utf-8")
+
+    review = json.loads(incremental.run(ctx).read_text(encoding="utf-8"))
+
+    assert "transfer_packet" in review["candidate_symbols"]
+    assert "if" not in review["candidate_symbols"]
+    assert {"src/service.c", "src/caller.c"} <= set(review["review_neighborhood"])

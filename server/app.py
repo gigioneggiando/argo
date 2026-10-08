@@ -55,6 +55,8 @@ _SINGLE_ARTIFACTS = {
     "threat_intel": "threat_intel.json",
     "synthesis_notes": "synthesis_notes.md",
     "validated_findings": "validated_findings.json",
+    "incremental_review": "incremental_review.json",
+    "attack_paths": "attack_paths.json",
     "report": "REPORT.md",
     "meta": "meta.json",
     "status": "status.json",

@@ -19,7 +19,8 @@ from ..grounding import build_index, ground_finding
 from ..guardrails import assert_prohibited_present, out_of_scope_match
 from ..models import Finding, Grounding, Validation
 from ..ranking import confidence_rank, dedup_key, severity_rank, split_ref
-from ..rendering import design_context_block, fill_placeholders, render_prompt_pair, with_artifact_contract
+from ..rendering import (context_pack_block, design_context_block, fill_placeholders,
+                         render_prompt_pair, with_artifact_contract)
 from ..runner import RunnerError
 
 _KEEP_VERDICTS = {"confirmed", "needs_runtime_verification"}
@@ -408,6 +409,9 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
                 "If this finding matches an accepted-by-design behavior listed above, return verdict "
                 "`out_of_scope` with a rationale that names the accepted risk (it is intended, not a "
                 "vulnerability).")
+        private_context = context_pack_block(ctx.context_pack_path)
+        if private_context:
+            text += "\n\n" + private_context
         return with_artifact_contract(
             text,
             artifacts=[{
@@ -490,6 +494,9 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
         text = (text.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
                 "If a finding matches an accepted-by-design behavior listed above, return verdict "
                 "`out_of_scope` for it with a rationale that names the accepted risk.")
+        private_context = context_pack_block(ctx.context_pack_path)
+        if private_context:
+            text += "\n\n" + private_context
         return with_artifact_contract(text, artifacts=[{
             "type": "verdicts", "filename": "verdicts.json", "schema": None,
             "desc": "a JSON object {\"verdicts\": [...]} with ONE adversarial verdict per finding_id in the batch",

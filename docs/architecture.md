@@ -27,6 +27,7 @@ argo/
   chat.py           Phase-3 interactive analyst over a completed run (read-only repo; test-gen;
                     B1: re-validates a user-proposed candidate finding via validate._validate_one)
   knowledge.py      Phase-4 vuln-class index loader (data/vuln_index.yaml) injected into recon
+  target_memory.py  private, revision-bound summaries from prior runs; stale facts never seed a run
   checklists.py     Phase-4 mandatory coverage checklist injected into every audit prompt (memory-
                     safety / resource-exhaustion / crypto lenses, gated on repo signals) + P1 rule
   census.py         Phase-4 cross-file variant-census worksheet: pre-scan defect families (free/copy/
@@ -40,9 +41,12 @@ argo/
                     (same-backend) + compare_backends (N-way, cross-backend cost/latency/P/R/F1)
   refusal_probe.py  cross-backend refusal-rate probe: how often each backend's own safety
                     classifier false-positives on a legitimate, authorized audit prompt
+  context_pack.py   strict private architecture/business-context schema + prompt rendering
   stages/
-    ingest.py  research.py  recon.py  audit.py  sca.py  second_opinion.py  validate.py
-    corroborate.py  deep_verify.py  runtime.py  live.py  evidence.py  report.py
+    ingest.py  target_memory.py  incremental.py  research.py  recon.py  audit.py  sca.py
+    second_opinion.py  validate.py
+    corroborate.py  deep_verify.py  runtime.py  live.py  evidence.py  review_questions.py
+    compose.py  report.py
   verify.py         Phase-6 isolated-copy build/compile check (reused by the runtime sandbox)
   prompts/          the assets, version-pinned (sha256 recorded per run)
 
@@ -61,7 +65,9 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 
 | Stage | Entry point | Reads | Writes |
 |---|---|---|---|
-| 1 Ingest | `stages/ingest.run` | brief (or **none** → local review), repo (folder or URL), optional `--links` / `--accepted-risks` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`. No brief ⇒ a source-only scope is **synthesized** from the folder (zero-token, no LLM call). |
+| 1 Ingest | `stages/ingest.run` | brief (or **none** → source-only review), repo (folder or URL), optional `--links` / `--accepted-risks` / `--context-pack` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`, and a strictly validated private `context_pack.json` when supplied. No brief ⇒ a source-only scope is **synthesized** from the supplied repository without assuming ownership (zero-token, no LLM call). |
+| MEMORY | `stages/target_memory.run` | `meta.json` (canonical target + pinned commit), local private store | `target_memory.json`: a reviewable, kind-balanced snapshot of at most 24 **same-commit** private fact summaries. `seed_facts` stays frozen at the pre-recon input; `captured_fact_ids` records what recon learned during this run. No source is copied; changed or unknown revisions make prior facts stale. Mock runs use an empty snapshot and never touch the persistent store. |
+| INCREMENTAL | `stages/incremental.run` | acquired Git repo, opt-in base ref, private target memory | `incremental_review.json`: base/head diff, bounded textual symbol neighbourhood (including C/C++ function definitions), and explicit retained-same-revision / invalidated / stale prior facts. It prioritizes recon with full-repository access; unchanged code is never considered safe. |
 | 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
@@ -74,12 +80,15 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | RUNTIME | `stages/runtime.run` | `validated_findings.json`, `repo/` (+ optional hand-written `runtime_probe_plan.json`) | `runtime_results.json` + per-finding `runtime` verdict — **opt-in**, sandboxed. **R2:** an LLM proposes the probe plan (gated by the loopback/anti-DoS validators) and interprets the observations into confirmed/refuted/inconclusive. No-op unless enabled + Docker + recipe |
 | LIVE | `stages/live.run` | `validated_findings.json`, authorized scope (+ optional `live_probe_plan.json`) | `live_results.json`, `live_audit_log.jsonl`, and per-finding `validation.live` evidence — opt-in stage/command; scope-locked, capped, audit-logged, read-only unless a second write opt-in is supplied |
 | EVIDENCE | `stages/evidence.run` | `validated_findings.json` + feedback recorded for this run | `validated_findings.json` rewritten with the additive F1 contract (`claim`, attacker start, preconditions, capabilities, obligations, normalized evidence, uncertainty, consistency issues, technical proof level, claim status, external status). Deterministic/idempotent and report-time only: no new AI call, execution, request, or probe; findings are retained and private feedback text is never copied |
+| QUESTIONS | `stages/review_questions.run` | normalized findings + recon residual unknowns | **opt-in**, deterministic private `review_questions.json`. Groups only explicit architecture/deployment/policy/role/tenant/business uncertainties; never pauses the run or calls a model. Provenance-bearing answers become claimed context and same-revision target memory, and mark dependent verdicts for re-validation. |
+| COMPOSE | `stages/compose.run` | normalized `validated_findings.json` | **opt-in**, deterministic `attack_paths.json`. An edge requires the same declared attacker start, principal, tenant, deployment and configuration context plus an exact normalized capability→precondition match. It cannot change a finding, severity, proof level or submission decision; a stale artifact is omitted from the report. |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
-`pipeline` runs 1→5 (SCA between audit and validate, corroborate after validate — both on by
+`pipeline` runs 1→MEMORY→5 (SCA between audit and validate, corroborate after validate — both on by
 default; second-opinion between SCA and validate, verify after corroborate, asan_poc after verify
 (C/C++ memory-safety survivors only) and optional sandboxed runtime — all off by default; then the
-deterministic evidence gate immediately before report; or 1→2 with `--dry-run`). An explicitly
+deterministic evidence gate immediately before report; optional exact-context composition follows
+that gate; or 1→2 with `--dry-run`). An explicitly
 authorized `argo live` invocation is separate; a later report pass can summarize its existing result.
 and **stops before any submission**.
 
@@ -104,8 +113,11 @@ bodies are not copied, and an HTTP control does not automatically imply `end_to_
 
 The gate is intentionally retain-but-block. Contradictory technical evidence changes
 `claim_status` to `refuted` or `conflicted`; consistency errors keep the finding in the review bundle
-but block submission and PR drafts. External acceptance/rejection stays separate from that technical
-state. A source-supported finding may still be reportable when runtime is infeasible. Reserved
+but block submission and PR drafts. In a real run, a `confirmed` validation with only `hypothesis`
+proof remains visible in the report but cannot produce a submission or PR draft. Synthetic mock
+fixtures keep their demonstrative drafts. External acceptance/rejection
+stays separate from that technical state. A source-supported finding may still be reportable when
+runtime is infeasible. Reserved
 `argo:` records are rebuilt on rerun, and a claim/commit/native-evidence snapshot detects later stale
 normalization. Legacy fields remain valid and are upgraded additively.
 
@@ -113,6 +125,44 @@ This first branch implementation has explicit limits: it cannot authenticate pro
 time it normalizes legacy evidence; generic redaction cannot guarantee removal of every arbitrary
 secret; and no fixed-budget evaluation yet shows that the contract improves report accuracy. F1 is
 therefore implemented on the feature branch pending review, not yet a shipped efficacy claim.
+
+### Evidence-gated attack-path composition (F3)
+
+F3 is intentionally a deterministic review layer, not an LLM asked to narrate a scarier chain.
+Audit findings may carry optional `attack_context` values for principal, tenant scope, deployment
+scope, and configuration scope. `compose` fails closed unless both findings provide non-`unknown`,
+identical values for all four dimensions and the same attacker start. It then accepts only an exact,
+punctuation/case-normalized match between one finding's declared capability and another's declared
+precondition. The artifact captures supporting evidence identifiers and has an input fingerprint;
+`report` drops it when the normalized findings have changed. It never alters individual findings,
+proof levels, severity, drafts, or external reporting decisions.
+
+### Context-preserving incremental review (F4)
+
+`--incremental-base <Git ref>` enables a deterministic stage after ingest/target-memory and before
+recon. It resolves the base and acquired `HEAD`, requires the base to be an ancestor, records the
+file-status diff, candidate symbols declared in changed files, a capped exact-symbol textual
+neighbourhood, and marks prior private target facts as retained only at the exact acquired revision,
+directly invalidated when their concise summary names a changed path, or otherwise stale/unproven.
+The plan is injected into recon as a prioritization aid, while the complete repository remains
+mounted read-only. It is deliberately not a diff-only audit: no unchanged line, fact, caller, or
+boundary is declared safe merely because it did not appear in the diff.
+
+### Private architecture questions and context pack (F5)
+
+`--context-pack` validates a small JSON inventory before any model call. Every claim carries
+provenance; section/file bounds and credential-pattern rejection keep it from becoming an arbitrary
+document dump. Audit, validation, offline corroboration, and deep verify receive it as
+operator-provided context that must be rechecked, never as source evidence. Raw context is injected
+only in memory and is excluded from saved audit prompts, reports, drafts, online corroboration, and
+the HTTP artifact allowlist.
+
+`--questions` adds a deterministic stage after evidence. It groups architecture-shaped
+uncertainties already emitted by recon/findings and writes a private review queue, while unattended
+runs continue normally. `argo answer-question` requires answer provenance, writes the answer into
+the context pack and exact-revision F2 memory as a `claimed` design decision, and marks every
+affected verdict `context_revalidation_required`. Report generation then removes stale drafts until
+validation is rerun. See [context-pack.md](context-pack.md).
 
 Deep-verify can split a previously corroborated finding into more precise children. When that
 happens it prints the new IDs; run `argo corroborate --run <run_id> --only <id,id>` to corroborate

@@ -21,12 +21,15 @@ Everywhere below, `argo` ≡ `python -m argo.cli`.
 | `run` | 3 | per-focus findings JSON |
 | `sca` | SCA | dependency manifests → known-vuln pins as a `dependencies` focus (opt-out; no-op without manifests) |
 | `second-opinion` | SECOND-OPINION | **opt-in**, offline: run N additional, fully independent blind recon+audit passes over the already-ingested scope/repo (each in its own isolated `run_dir`), merge their findings in. `--passes N`, `--backend` to use a different runner for the extra passes (real cross-engine diversity). Re-run `validate` afterward to reconcile — its existing dedup already collapses cross-pass duplicates and records `corroborating_passes`; see [architecture.md](architecture.md#second-opinion-an-llm-audit-is-one-noisy-sample-not-the-answer) |
+| `questions` | QUESTIONS | rebuild an existing run's private, deterministic architecture/business-context question queue |
+| `answer-question` | QUESTIONS | record one provenance-bearing answer, add it to same-revision target memory/context, and block affected stale drafts pending re-validation |
 | `validate` | 4 | dedup + adversarial validation (downgrade-don't-delete) → `validated_findings.json` |
 | `corroborate` | CORROBORATE | **opt-out**, two-pass: an offline repo-mounted docs/VCS check plus a networked public-OSINT check with no repo mount or source excerpts; merged results downgrade documented-by-design findings and move already-fixed findings to a `fixed_upstream` appendix. Rewrites `validated_findings.json`. `--docs-url` pins docs; `--only ID,ID` re-corroborates only those findings and leaves every other existing verdict untouched; never the live hosts |
 | `verify` | VERIFY | **opt-in**, offline: independently re-derive each surviving finding from the actual source (full repo access, one full session per finding, no batching, no excerpt budget) and reason across the whole survivor set → `corrected`/`split`/`merged`/`reconfirmed`/`refuted`/`inconclusive`. Rewrites `validated_findings.json`. **Resumable by default**: re-running it on the same run skips findings that already have a real verdict and only re-attempts unverified/infra-failure ones — safe to re-invoke after a rate limit or a backend running out of credits without re-spending on what already succeeded. `--only ID,ID` to force specific findings to (re-)verify regardless of their state, leaving everything else untouched; `--max-findings` to cap cost; see [architecture.md](architecture.md#deep-verify-why-a-separate-stage-from-validate) |
 | `asan-poc` | ASAN_POC | **opt-in**, sandboxed, **C/C++ only**: for each already-verified memory-safety survivor, an offline LLM writes a minimal single-file harness that `#include`s the real vulnerable source directly, then a FIXED (non-model) step compiles it with `clang -fsanitize=address,undefined` and runs it in an egress-blocked Docker container → per-finding `confirmed`/`not_reproduced`/`crashed_no_sanitizer_output`/`not_attempted`. Rewrites `validated_findings.json`; harness + notes + full output land in `runs/<id>/asan_poc/<finding_id>/`. `--max-findings` to cap cost. Needs Docker; see [architecture.md](architecture.md#asan-poc-generation-why-v1-is-deliberately-narrow) |
 | `runtime` | RUNTIME | **opt-in** sandboxed runtime verification: build the target in an egress-blocked, loopback-only container and probe ONLY the local instance (never live hosts) → `runtime_results.json`; refreshes F1 evidence and an existing report. See [runtime-verification-study.md](runtime-verification-study.md) |
 | `live` | LIVE | ⚠️ **opt-in, default off, AUTHORIZED USE ONLY.** Bounded **read-only** requests to the program's **in-scope** hosts to confirm findings. Requires `--i-have-authorization`; RoE-gated (automation/safe-harbor/prohibited), in-scope-only (out-of-scope/unknown blocked), capped + audit-logged. Uses a hand-written `runs/<id>/live_probe_plan.json` if present, else (L2) an **offline** LLM generates one from the validated findings (same gates apply) and interprets the results → `live_results.json` + `live_audit_log.jsonl` (+ a `validation.live` block on findings); refreshes F1 evidence and an existing report. See [guardrails §2c](guardrails.md#2c-the-opt-in-live-exception-the-live-stage-in-scope-hosts-only) |
+| `compose` | COMPOSE | **opt-in**, deterministic attack-path review. Writes `attack_paths.json` only for active source-supported findings with an exact declared capability→precondition match and identical non-unknown attacker, principal, tenant, deployment, and configuration context. `--max-hops` / `--max-paths` bound output. It never changes severity, proof or draft/submission state. |
 | `report` | EVIDENCE → 5 | deterministically normalize the F1 claim/evidence contract, then write `REPORT.md` + DRAFT submissions |
 | `pr-draft` | post-report | maintainer-facing GitHub PR body scaffold for one confirmed finding; local artifact only, never submits |
 | `pipeline` | 1–5 | the whole chain; **stops before any submission** |
@@ -86,6 +89,16 @@ argo quality  [--program P] [--runs-dir DIR]
   pushed anywhere) **or** a git URL (cloned `--depth 1`).
 - `--commit` — pin `--repo` at a **specific git revision** (reproducible / known-CVE checkout): a URL
   is fetched at that SHA, a local git path is checked out at it. Omit for the default head.
+- `--incremental-base` — opt into a PR/incremental review against this Git commit/ref. Argo records
+  changed files, candidate symbols declared there, stale private target facts, and a bounded textual
+  neighbourhood, then
+  performs recon/audit with the complete repository still mounted. It never treats an unchanged
+  line or file as safe by omission.
+- `--context-pack PATH` — validate and use bounded private architecture notes, role/service
+  inventories, business invariants, IAM/IaC facts, and document references. Raw content stays out
+  of reports, drafts, saved audit prompts, public OSINT, and the artifact API.
+- `--questions / --no-questions` — opt into the non-blocking private context-question queue
+  (default off). See [context-pack.md](context-pack.md).
 - `--links` — a curated reference-links file, one `http(s)` URL per line (`#` comments and blank
   lines ignored). **Additive** to links the model extracts from the brief; the `--repo` URL is
   never allowed into `reference_links`. See `--links` semantics in

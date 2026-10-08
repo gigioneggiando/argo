@@ -47,11 +47,20 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | GET | `/runs/{id}/patches` | the proposed patches (unified diffs) under `patches/` |
 
 Whitelisted artifact names: `scope`, `repo_profile`, `research_brief`, `threat_intel`,
-`synthesis_notes`, `validated_findings`, `report`, `meta`, `status`, `brief`, `fixes_report`.
+`synthesis_notes`, `validated_findings`, `incremental_review`, `attack_paths`, `report`, `meta`,
+`status`, `brief`, `fixes_report`.
 
 The status timeline includes the deterministic `evidence` stage immediately before `report`.
-Its canonical ledger is additive inside `validated_findings`; no separate public/private artifact is
-created, and private triager comments are never copied into the run directory.
+CLI runs started with `--questions` also include the deterministic `review_questions` stage after
+evidence. The private `context_pack.json` and `review_questions.json` files are deliberately absent
+from the HTTP artifact allowlist; only their presence is visible in status telemetry.
+When opt-in composition is enabled, `compose` follows it and writes `attack_paths`; only exact
+capability/precondition and identity/tenant/deployment/configuration matches qualify, and this
+review artifact cannot change severity or submission state. Its canonical ledger is additive inside
+`validated_findings`; private triager comments are never copied into the run directory.
+
+`incremental_review` appears when a CLI run uses `--incremental-base`. It records a Git diff as an
+invalidation/prioritization plan, not as a claim that unchanged code was reviewed or is safe.
 
 `POST /runs` accepts `"research": true|false` (default **true**) — the Stage-0 web-OSINT step that
 runs before recon (one of two networked stages, with corroborate; never the live in-scope hosts; see

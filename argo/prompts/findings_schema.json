@@ -32,6 +32,18 @@
           "recommended_fix": { "type": "string", "description": "Guidance only; pipeline does not patch." },
           "claim": { "type": "string", "description": "Exact security claim, separate from severity/confidence." },
           "attacker_start": { "type": "string", "description": "Attacker identity, access and control at the start of the path." },
+          "attack_context": {
+            "type": "object",
+            "description": "Optional explicit compatibility dimensions for evidence-gated path composition. Use exact values from source/scope; use 'unknown' rather than guessing. A path is never composed across unknown or mismatched dimensions.",
+            "additionalProperties": false,
+            "required": ["principal", "tenant_scope", "deployment_scope", "configuration_scope"],
+            "properties": {
+              "principal": { "type": "string" },
+              "tenant_scope": { "type": "string" },
+              "deployment_scope": { "type": "string" },
+              "configuration_scope": { "type": "string" }
+            }
+          },
           "preconditions": {
             "type": "array", "items": { "type": "string" },
             "description": "Deployment, configuration, identity and state assumptions required by the claim."

@@ -106,6 +106,12 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `excerpt_max_bytes` | 60000 | hard cap on total excerpt bytes per finding |
 | `attribution` | `--attribution / --no-attribution` | append a "Produced by **Argo**" provenance footer to `REPORT.md` / drafts + an attribution block to `fixes_report.json` (with `Generated-with:` / `Co-authored-by:` trailers for remediation PRs). **Default on** for every user; opt out with `--no-attribution`. Attribution only — never changes any license. See [`argo/branding.py`](../argo/branding.py). |
 | `runs_dir` | `runs` | root dir for run artifacts |
+| `target_memory_enabled` | `True` | load/capture private, revision-bound target memory around recon; disabling it keeps fully stateless runs. Mock runs emit an empty snapshot and never read or write persistent memory, because fixture output does not describe the supplied repository. |
+| `target_memory_dir` | sibling `.argo-target-memory/` beside `runs_dir` | optional private local store location; source is never copied and stale facts are never seeded into a changed revision |
+| `incremental_base` / `incremental_max_related_files` | `None` / `50` | opt-in Git base for a full-context incremental review and cap for its deterministic textual neighbourhood; no unchanged-code safety claim is made |
+| `review_questions_enabled` / `review_questions_max` | `False` / `20` | opt-in deterministic private architecture clarification queue after evidence; questions never pause an unattended run |
+| `attack_path_enabled` | `False` | opt in to deterministic, exact-context attack-path composition after the evidence gate; never changes findings or severity |
+| `attack_path_max_hops` / `attack_path_max_paths` | `3` / `20` | hard bounds for the review-only `attack_paths.json` artifact |
 | `prompts_dir` | `argo/prompts` | the version-pinned assets |
 | `ledger_path` | `argo/ledger.sqlite` | the cost + findings ledger |
 | `fixtures_dir` / `fixtures_scenario` | `tests/fixtures` / `happy` | mock-runner fixtures |

@@ -81,10 +81,11 @@ def test_full_pipeline_via_api(tmp_path):
         run_id = _start(client)
         st = _wait(client, run_id)
         assert st["state"] == "completed"
-        # research (default on) + ingest + recon + audit + validate + corroborate
+        # ingest + revision-bound target memory + research (default on) + recon + audit + validate + corroborate
         # + evidence + report
-        assert [s["state"] for s in st["stages"]] == ["done"] * 8
+        assert [s["state"] for s in st["stages"]] == ["done"] * 9
         assert "research" in [s["name"] for s in st["stages"]]
+        assert "target_memory" in [s["name"] for s in st["stages"]]
         assert st["artifacts"]["report"] is True
         assert st["artifacts"]["validated_findings"] is True
 
@@ -300,7 +301,7 @@ def test_research_toggle_off(tmp_path):
         run_id = _start(client, research=False)
         st = _wait(client, run_id)
         names = [s["name"] for s in st["stages"]]
-        assert "research" not in names and names[:2] == ["ingest", "recon"]
+        assert "research" not in names and names[:3] == ["ingest", "target_memory", "recon"]
     finally:
         app.state.ledger.close()
 

@@ -401,6 +401,13 @@ class PipelineConfig:
     # runtime-confirmed (the probe runner keeps a per-finding cookie jar across the auth + probes).
     runtime_credentials: dict = field(default_factory=dict)   # e.g. {"username":..., "password":...}
 
+    # Evidence-gated attack-path composition.  Opt-in: free-text model output is only composed when
+    # two findings make the same normalized capability/precondition and attacker-start declaration.
+    # It writes a review artifact; it never changes a finding's severity, proof or submit status.
+    attack_path_enabled: bool = False
+    attack_path_max_hops: int = 3
+    attack_path_max_paths: int = 20
+
     # Validation excerpt sizing.
     excerpt_context_lines: int = 40     # +/- lines of source around each cited file:line
     excerpt_max_bytes: int = 60_000     # hard cap on total excerpt bytes per finding
@@ -409,6 +416,20 @@ class PipelineConfig:
     runs_dir: Path = Path("runs")
     prompts_dir: Path = Path(__file__).resolve().parent / "prompts"
     ledger_path: Path = Path(__file__).resolve().parent / "ledger.sqlite"
+    # Private target knowledge persists beside the run root by default.  It is never a public
+    # artifact and is revision-bound before it may seed a later run.
+    target_memory_enabled: bool = True
+    target_memory_dir: Path | None = None
+
+    # F4 incremental/PR review: a Git base ref turns its diff into a deterministic invalidation and
+    # full-context review plan. Off by default; unchanged code is never considered safe by omission.
+    incremental_base: str | None = None
+    incremental_max_related_files: int = 50
+
+    # F5 architecture clarification queue. This deterministic stage is intentionally cheap and
+    # non-blocking: unanswered questions remain visible while the rest of the pipeline completes.
+    review_questions_enabled: bool = False
+    review_questions_max: int = 20
 
     # Mock runner fixtures (only used when runner == "mock").
     fixtures_dir: Path = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
@@ -495,7 +516,7 @@ class PipelineConfig:
         )
 
 
-_PATH_FIELDS = {"runs_dir", "prompts_dir", "ledger_path", "fixtures_dir"}
+_PATH_FIELDS = {"runs_dir", "prompts_dir", "ledger_path", "target_memory_dir", "fixtures_dir"}
 
 # Fields holding real secret material (as opposed to claude_config_dir/codex_home, which are just
 # directory paths -- the credential lives on disk outside Argo's state, not in the field value

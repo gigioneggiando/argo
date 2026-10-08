@@ -127,6 +127,38 @@ class RunContext:
         return self.run_dir / "threat_intel.json"
 
     @property
+    def target_memory_path(self) -> Path:
+        """Per-run, reviewable snapshot of the private persistent target-memory seed."""
+        return self.run_dir / "target_memory.json"
+
+    @property
+    def target_memory_dir(self) -> Path:
+        configured = self.config.target_memory_dir
+        if configured is not None:
+            return Path(configured)
+        return Path(self.config.runs_dir).resolve().parent / ".argo-target-memory"
+
+    @property
+    def attack_paths_path(self) -> Path:
+        """Deterministic, opt-in composition artifact; findings themselves remain unchanged."""
+        return self.run_dir / "attack_paths.json"
+
+    @property
+    def incremental_review_path(self) -> Path:
+        """F4's deterministic diff/invalidation plan; no source contents are copied here."""
+        return self.run_dir / "incremental_review.json"
+
+    @property
+    def context_pack_path(self) -> Path:
+        """Validated private context-pack snapshot; never rendered into public artifacts."""
+        return self.run_dir / "context_pack.json"
+
+    @property
+    def review_questions_path(self) -> Path:
+        """Non-blocking architecture/business-context clarification queue."""
+        return self.run_dir / "review_questions.json"
+
+    @property
     def drafts_dir(self) -> Path:
         return self.run_dir / "submission_drafts"
 

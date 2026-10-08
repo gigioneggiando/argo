@@ -221,6 +221,22 @@ class ConsistencyIssue(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+class AttackContext(BaseModel):
+    """Explicit compatibility dimensions for an optional composed attack path.
+
+    ``unknown`` is allowed so audit output remains honest, but composition refuses any unknown
+    dimension.  These fields intentionally capture deployment/security semantics rather than
+    pretending free-form capability prose can establish tenant or identity compatibility.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    principal: str
+    tenant_scope: str
+    deployment_scope: str
+    configuration_scope: str
+
+
 class Finding(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -240,6 +256,7 @@ class Finding(BaseModel):
     # stages.evidence fills deterministic legacy fallbacks immediately before reporting.
     claim: Optional[str] = None
     attacker_start: Optional[str] = None
+    attack_context: Optional[AttackContext] = None
     preconditions: list[str] = Field(default_factory=list)
     capabilities_gained: list[str] = Field(default_factory=list)
     proof_obligations: list[ProofObligation] = Field(default_factory=list)

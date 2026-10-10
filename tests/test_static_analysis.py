@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -148,6 +149,24 @@ def test_static_context_is_explicitly_non_semantic(tmp_path):
     assert "does NOT prove runtime reachability" in first
     data = json.loads(payload)
     assert data[0]["symbol"]["name"] == "f"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "02_adversarial_validation_prompt.md",
+        "02_adversarial_validation_prompt.neutral.md",
+        "02b_adversarial_validation_batch_prompt.md",
+        "02b_adversarial_validation_batch_prompt.neutral.md",
+    ],
+)
+def test_validation_prompts_do_not_infer_external_preconditions_from_static_context(name):
+    prompt = Path(__file__).resolve().parents[1] / "argo" / "prompts" / name
+    text = " ".join(prompt.read_text(encoding="utf-8").split())
+
+    assert "Static context cannot establish deployment/configuration state" in text
+    assert "Keep these conditions in" in text
+    assert "unmet_preconditions" in text
 
 
 def test_calls_and_serialized_context_are_hard_bounded(tmp_path):

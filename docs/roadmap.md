@@ -166,7 +166,9 @@ Goal: raise recall/quality with cheap, structured context; surface it in the UI.
       symbol, name-matched possible callers, and a small local definition/use slice. It is injected
       only into Stage 4 validation, never recon/audit, so it cannot originate findings or silently
       turn syntax into a vulnerability claim. It never builds or executes the target; prompts label
-      the result as syntactic evidence only. Deep CPG/PDG/CFG remains deferred.
+      the result as syntactic evidence only. It cannot establish deployment/configuration or other
+      operational preconditions; keep those open unless the source or supplied scope proves them.
+      Deep CPG/PDG/CFG remains deferred.
 - [ ] _Measure_ the index's impact with the baseline dry-run diff (see prompt-synthesis.md).
 
 ### Phase 5 — Advanced / experimental (gated by demand + measured ROI)

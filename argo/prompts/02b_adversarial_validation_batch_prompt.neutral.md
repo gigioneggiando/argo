@@ -25,7 +25,10 @@ CANDIDATE FINDINGS (a JSON array; each item has `finding_id`, the verbatim `find
 `code_excerpts`, bounded parse-only `static_context`, and the recon `ground_truth` for its focus —
 authoritative, established by the audit stage; use it so you do NOT re-derive and wrongly refute a real bug).
 The `static_context` is syntactic evidence only: possible callers are name-matched and it does not prove
-runtime reachability, control flow, data flow, exploitability, or vulnerability:
+runtime reachability, control flow, data flow, exploitability, or vulnerability. Static context cannot
+establish deployment/configuration state, attacker capability, log-reader access, timing, or workload
+assumptions. Keep these conditions in each finding's `unmet_preconditions` unless evidence in the source
+or supplied scope establishes them; describe any resulting impact conditionally.
 ```json
 {{FINDINGS_BATCH}}
 ```

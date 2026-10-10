@@ -36,7 +36,9 @@ a bounded, parse-only tree-sitter sidecar as deterministic evidence for an alrea
 The sidecar is intentionally weaker than a semantic call graph: it reports enclosing symbols,
 syntactically present calls, name-matched possible callers, and a local definition/use slice. It
 never builds or executes the target, never originates findings, and prompts explicitly prohibit
-treating it as proof of reachability, data flow, exploitability, or vulnerability.
+treating it as proof of reachability, data flow, exploitability, deployment state, or vulnerability.
+Operational preconditions (configuration, attacker capability, log access, timing, or workload)
+remain unresolved unless the source or supplied scope establishes them.
 
 Why we did *not* add it:
 

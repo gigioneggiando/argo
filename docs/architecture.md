@@ -29,7 +29,8 @@ argo/
   knowledge.py      Phase-4 vuln-class index loader (data/vuln_index.yaml) injected into recon
   static_analysis.py Parse-only validation context (Python/JS/TS/C#): enclosing symbol, calls,
                     name-matched possible callers, and bounded local def-use evidence; never builds
-                    or executes the target and is never used to discover findings
+                    or executes the target and is never used to discover findings; it cannot
+                    establish deployment/configuration preconditions
   target_memory.py  private, revision-bound summaries from prior runs; stale facts never seed a run
   checklists.py     Phase-4 mandatory coverage checklist injected into every audit prompt (memory-
                     safety / resource-exhaustion / crypto lenses, gated on repo signals) + P1 rule

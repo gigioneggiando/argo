@@ -28,12 +28,17 @@ audit logic of its own** — the detection knowledge is in the version-pinned pr
 (`argo/prompts/`, sha256-recorded per run). This keeps the system small, auditable, and lets the
 "intelligence" be improved by editing prompts rather than code.
 
-## 2. The model reads source directly — **no code-property-graph / AST engine** (the key decision)
+## 2. The model discovers findings from source directly; static metadata is validation-only
 
-**Decision: Argo does NOT use tree-sitter AST metadata, a code-property graph (CPG), PDG/CFG, or a
-taint engine such as Joern. Code understanding is done by the LLM reading the source semantically,
-with `Read`/`Grep`/`Glob`.** This was an explicit choice, not an omission, and it is **gated on
-evidence** rather than closed forever.
+**Decision: Argo does not use a code-property graph (CPG), PDG/CFG, or taint engine to discover
+findings. Recon/audit remain LLM-driven over raw source with `Read`/`Grep`/`Glob`. Stage 4 may attach
+a bounded, parse-only tree-sitter sidecar as deterministic evidence for an already-existing finding.**
+The sidecar is intentionally weaker than a semantic call graph: it reports enclosing symbols,
+syntactically present calls, name-matched possible callers, and a local definition/use slice. It
+never builds or executes the target, never originates findings, and prompts explicitly prohibit
+treating it as proof of reachability, data flow, exploitability, deployment state, or vulnerability.
+Operational preconditions (configuration, attacker capability, log access, timing, or workload)
+remain unresolved unless the source or supplied scope establishes them.
 
 Why we did *not* add it:
 
@@ -52,18 +57,24 @@ Why we did *not* add it:
    We have no evidence yet that it misses flows a graph would catch — adding a graph now is
    speculative complexity.
 3. **Guardrail tension (the decisive one for CPG).** Build-based tools (Joern and most CPG builders)
-   must **compile the target**, i.e. execute its build scripts on every analysis. That violates the
-   default detection path's source-static/read-only invariant. Argo's narrow opt-in runtime/ASan
-   exception has a specific proof purpose and an egress-blocked sandbox; paying that attack surface
-   universally for speculative graph metadata is not justified.
-4. **Complexity & maintenance.** A useful static-analysis layer is **per-language** (grammars,
-   queries, build adapters). That is a large, ongoing surface that changes Argo's character from
-   "prompt-orchestration glue" to "static-analysis framework".
+   must **compile the target**, i.e. execute its build scripts. That directly violates Argo's core
+   invariant — *no code execution, repository mounted read-only, source-static only*. Honoring it
+   would require sandboxing an arbitrary build, a real cost and attack surface for an uncertain gain.
+   Argo's narrow opt-in runtime/ASan exception has a specific proof purpose and an egress-blocked
+   sandbox; it does not justify running arbitrary target builds for speculative graph metadata.
+4. **Complexity & maintenance.** Static analysis is per-language. The implemented sidecar keeps
+   that surface deliberately small: parse-only grammars for Python, JavaScript/TypeScript and C#,
+   bounded output, no build adapters, no semantic resolution, and fail-open behavior when parsing is
+   unavailable. Anything deeper still risks changing Argo from prompt-orchestration glue into a
+   static-analysis framework. Deeper per-language analysis and build adapters would add a large,
+   ongoing maintenance surface; keep them deferred unless measured benefits justify the cost.
 5. **Methodological clarity for the study (the decisive one for the paper).** Bolting a graph engine
    on top **confounds the contribution**: a confirmed finding could come from the LLM *or* from the
    graph, and the two can't be separated post-hoc. Keeping the pipeline **LLM-pure isolates the
    variable under study** — "how well does an LLM-driven, source-static pipeline find real bugs?" —
    which is exactly the claim the paper makes. A graph is a *confound* to that claim, not a free win.
+   The parse-only sidecar remains validation-only, so candidate generation is unchanged and its
+   contribution can be measured independently.
 
 What we use **instead** (cheap, safe, additive — no build, no new runtime):
 
@@ -82,13 +93,13 @@ What we use **instead** (cheap, safe, additive — no build, no new runtime):
 - **Adversarial validation** (Stage 4): a second model tries to *refute* each finding's data flow,
   plus a code-side scope filter — the precision mechanism that a taint engine would otherwise serve.
 
-**When we would revisit this.** The benchmark harness (`argo bench`, Phase 7) measures **recall**
-against labeled corpora. If, once enough data is collected, recall losses are **attributable to
-missed inter-procedural / multi-file data flows that a graph would recover**, we add the *parse-only*
-path first — tree-sitter AST + call-graph as a sidecar `metadata.json` fed to recon (no build, so it
-respects "no code execution"). Build-based CPG/Joern would come only after that, and only as a
-**data-flow validation aid** (confirm/refute a finding's source→sink path), never as raw context,
-and only inside a sandbox. The trigger is **measured evidence, not intuition.**
+**What changed, and what is still deferred.** The lightweight parse-only step is now implemented
+narrowly in **validation**, not recon: it enriches already-proposed findings without changing what
+the audit discovers. The next decision is empirical — benchmark whether this raises validation
+precision/recall enough to justify its dependency and per-language surface. Build-based CPG/Joern
+remains deferred and would require measured evidence plus sandboxing because it can require compiling
+the target. Any future use for discovery/recon must be evaluated separately because that would change
+the methodology and reintroduce the confound described above.
 
 ## 3. Detection-only by default; isolated runtime and gated live exceptions
 

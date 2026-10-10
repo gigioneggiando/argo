@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from ..config import ARTIFACT_TOOLS, write_pipeline_config
+from ..context_pack import load as load_context_pack
 from ..context import RunContext, atomic_write_json, collect_output_files
 from ..models import AssetVersion, RunMeta, Scope
 from ..rendering import sha256_text, with_artifact_contract
@@ -190,7 +191,8 @@ def _merge_reference_links(
     return merged, stats
 
 
-def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = None) -> None:
+def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = None,
+                 incremental_base: str | None = None) -> None:
     """Clone (URL) or copy (local path) the target source into ``dest`` and mark it read-only.
 
     ``commit`` pins the analyzed source to a specific revision (reproducible benchmark corpora / a
@@ -204,14 +206,28 @@ def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = 
     if dest.exists():
         raise FileExistsError(f"repo dir already exists: {dest}")
     dest.parent.mkdir(parents=True, exist_ok=True)
+    if incremental_base and (incremental_base.startswith("-") or "\x00" in incremental_base):
+        raise ValueError("unsafe incremental base ref")
     if is_url:
         _validate_git_source(source)
         if commit:
             _clone_at_commit(source, dest, commit)
+            if incremental_base:
+                # The pinned checkout starts shallow; ancestry/diff review needs the connecting
+                # history. This is an explicit incremental-mode cost, never a silent weak diff.
+                shallow = subprocess.run(
+                    ["git", "-C", str(dest), "rev-parse", "--is-shallow-repository"],
+                    check=True, capture_output=True, text=True,
+                ).stdout.strip().lower() == "true"
+                if shallow:
+                    subprocess.run(
+                        ["git", "-c", "protocol.ext.allow=never", "-C", str(dest), "fetch",
+                         "--unshallow", "origin"], check=True, capture_output=True, text=True,
+                    )
         else:
+            depth = [] if incremental_base else ["--depth", "1"]
             subprocess.run(
-                ["git", "-c", "protocol.ext.allow=never", "clone", "--depth", "1", "--",
-                 source, str(dest)],
+                ["git", "-c", "protocol.ext.allow=never", "clone", *depth, "--", source, str(dest)],
                 check=True, capture_output=True, text=True,
             )
     else:
@@ -275,9 +291,11 @@ def _repo_name(repo: str, is_url: bool) -> str:
 
 
 def _local_scope(repo: str, is_url: bool) -> dict:
-    """Synthesize a minimal **source-only** scope for a local/personal codebase audited WITHOUT a
-    bug-bounty brief. The folder itself is the scope; conservative prohibited-technique defaults
-    apply; no live hosts. Deterministic — the ingest stage spends zero tokens in this mode."""
+    """Synthesize a minimal source-only scope when no program brief was supplied.
+
+    The repository is the scope; its ownership is unknown. No live hosts are in scope.
+    Deterministic: ingest spends zero tokens in this mode.
+    """
     name = _repo_name(repo, is_url)
     return {
         "program_name": name,
@@ -289,8 +307,8 @@ def _local_scope(repo: str, is_url: bool) -> dict:
         "automation_allowed": False,
         "reference_links": [],
         "program_brief_raw": (
-            f"Local source-only security review of '{name}'. The owner's own or private codebase, "
-            "analyzed statically — no live hosts are contacted and nothing is submitted."),
+            f"Source-only security review of '{name}' from the supplied repository. "
+            "Analysis is static; no live hosts are contacted and nothing is submitted."),
     }
 
 
@@ -304,10 +322,17 @@ def _asset_versions(assets_dir: Path) -> list[AssetVersion]:
 
 def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: bool | None = None,
         links_path: Path | None = None, accepted_risks_path: Path | None = None,
-        commit: str | None = None) -> Scope:
+        context_pack_path: Path | None = None, commit: str | None = None) -> Scope:
     ctx.run_dir.mkdir(parents=True, exist_ok=True)
     write_pipeline_config(ctx.run_dir / "config.json", ctx.config)
     is_url = _is_url(repo) if repo_is_url is None else repo_is_url
+
+    # Validate private architecture context before spending a model call. Store only the bounded,
+    # normalized JSON -- never the caller's path or referenced document contents.
+    if context_pack_path is not None:
+        pack = load_context_pack(Path(context_pack_path))
+        atomic_write_json(ctx.context_pack_path, pack.model_dump(mode="json", exclude_none=True))
+        _log("--context-pack: validated private architecture context")
 
     if brief_path is None:
         # --- Local / personal review (no bug-bounty brief): synthesize the scope, zero tokens ---
@@ -384,7 +409,10 @@ def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: boo
 
     # --- acquire repo read-only ------------------------------------------------------
     repo_source = repo
-    acquire_repo(repo, ctx.repo_dir, is_url=is_url, commit=commit)
+    acquire_kwargs = {"is_url": is_url, "commit": commit}
+    if ctx.config.incremental_base:
+        acquire_kwargs["incremental_base"] = ctx.config.incremental_base
+    acquire_repo(repo, ctx.repo_dir, **acquire_kwargs)
     commit_sha, commit_date = repo_commit(ctx.repo_dir)   # pin the analyzed source (reproducibility)
 
     # --- meta.json (reproducibility + cost control) ----------------------------------

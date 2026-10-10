@@ -8,7 +8,7 @@ import { donut, barsH, statTile, chartCard, SEV_COLOR, STATE_COLOR } from "./cha
 import { icon } from "./icons.js";
 
 const app = () => document.getElementById("app");
-const STAGES = ["ingest", "recon", "audit", "validate", "report"];
+const STAGES = ["ingest", "recon", "audit", "validate", "evidence", "report"];
 let teardown = null;  // called before leaving a view (e.g. close an SSE stream)
 
 // --------------------------------------------------------------------- router
@@ -380,7 +380,7 @@ const setSeg = (segEl, val) => { const b = segEl.querySelector(`[data-val="${val
 
 // ------------------------------------------------------------------ SETTINGS view
 function settingsView() {
-  const STAGES = ["ingest", "research", "recon", "audit", "validate", "report"];
+  const STAGES = ["ingest", "research", "recon", "audit", "validate", "evidence", "report"];
   const s = { runner: "mock", budget_usd: null, parallel: 3, audit_model: null, calibration: false, models: {} };
 
   const runnerSeg = seg([["mock", "Mock · free"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => s.runner = v, ["headless", "codex", "gemini"]);

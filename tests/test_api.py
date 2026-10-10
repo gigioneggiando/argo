@@ -7,7 +7,6 @@ dry-run, the artifact whitelist, and 404s.
 import json
 import time
 
-import pytest
 from fastapi.testclient import TestClient
 
 from argo.config import PipelineConfig
@@ -53,7 +52,8 @@ def _wait(client, run_id, timeout=15.0):
 
 
 def test_upload_zip_then_run(tmp_path):
-    import io, zipfile
+    import io
+    import zipfile
     app, client = _client(tmp_path)
     try:
         buf = io.BytesIO()
@@ -81,9 +81,11 @@ def test_full_pipeline_via_api(tmp_path):
         run_id = _start(client)
         st = _wait(client, run_id)
         assert st["state"] == "completed"
-        # research (default on) + ingest + recon + audit + validate + corroborate + report
-        assert [s["state"] for s in st["stages"]] == ["done"] * 7
+        # ingest + revision-bound target memory + research (default on) + recon + audit + validate + corroborate
+        # + evidence + report
+        assert [s["state"] for s in st["stages"]] == ["done"] * 9
         assert "research" in [s["name"] for s in st["stages"]]
+        assert "target_memory" in [s["name"] for s in st["stages"]]
         assert st["artifacts"]["report"] is True
         assert st["artifacts"]["validated_findings"] is True
 
@@ -299,7 +301,7 @@ def test_research_toggle_off(tmp_path):
         run_id = _start(client, research=False)
         st = _wait(client, run_id)
         names = [s["name"] for s in st["stages"]]
-        assert "research" not in names and names[:2] == ["ingest", "recon"]
+        assert "research" not in names and names[:3] == ["ingest", "target_memory", "recon"]
     finally:
         app.state.ledger.close()
 

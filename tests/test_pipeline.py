@@ -7,8 +7,7 @@ the structural no-submit guardrail.
 import json
 from pathlib import Path
 
-from argo.orchestrator import (do_audit, do_ingest, do_recon, do_report, do_validate,
-                                   run_pipeline)
+from argo.orchestrator import do_audit, do_ingest, do_recon, run_pipeline
 from argo.schemas import validate_findings
 
 from conftest import BRIEF, REPO
@@ -31,7 +30,11 @@ def test_full_pipeline_happy(env):
     vf = _validated(ctx)
     assert vf["stats"] == {"raw": 6, "after_dedup": 5, "after_semantic_dedup": 5,
                            "grounding_dropped": 0, "after_grounding": 5, "validated": 4,
-                           "survivors": 3, "dropped": 2, "survivors_not_actually_validated": 0}
+                           "survivors": 3, "dropped": 2, "survivors_not_actually_validated": 0,
+                           "proof_levels": {"hypothesis": 3, "source_supported": 0,
+                                            "independently_rederived": 0,
+                                            "runtime_observed": 0, "end_to_end_proven": 0},
+                           "open_proof_obligations": 5, "consistency_issues": 2}
     assert {f["id"] for f in vf["findings"]} == SURVIVORS
     assert {d["id"] for d in vf["dropped"]} == DROPPED
     # drafts: confirmed findings only, each marked DRAFT
@@ -53,7 +56,7 @@ def test_research_stage_on_by_default(env):
     assert "suspected_vuln_classes" in intel
     # the research call is logged as its own stage, before recon
     assert ctx.ledger.run_call_count(ctx.run_id) == 6   # 5 core + 1 research (validate batched to 1)
-    stages = [json.loads(l)["stage"] for l in
+    stages = [json.loads(line)["stage"] for line in
               (ctx.run_dir / "llm_log.jsonl").read_text(encoding="utf-8").strip().splitlines()]
     assert "research" in stages and stages.index("research") < stages.index("recon")
 
@@ -114,7 +117,7 @@ def test_no_research_keeps_run_offline(env):
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
     assert not ctx.research_brief_path.exists()
     assert ctx.ledger.run_call_count(ctx.run_id) == 5   # ingest+recon+audit(2)+validate(1 batch)
-    stages = [json.loads(l)["stage"] for l in
+    stages = [json.loads(line)["stage"] for line in
               (ctx.run_dir / "llm_log.jsonl").read_text(encoding="utf-8").strip().splitlines()]
     assert "research" not in stages
 

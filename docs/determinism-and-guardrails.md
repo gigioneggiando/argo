@@ -36,6 +36,15 @@ hallucination.
   no model in the loop.
 - **Dedup is a pure key.** Cross-run/among-focus dedup uses a deterministic `dedup_key`
   (file + line + CWE), not a model similarity call.
+- **Target memory is revision-bound and private.** The optional local memory store holds concise
+  summaries plus artifact pointers, never source. Only facts observed at the exact pinned commit
+  are available to recon, where they are labelled hypotheses to re-check; an unknown or changed
+  revision marks them stale rather than carrying trust forward.
+- **Proof normalization is deterministic and idempotent.** The pre-report F1 evidence gate summarizes
+  existing validation, corroboration, deep-verify, ASan, runtime, live, and current-run external
+  feedback into typed `evidence[]`. It derives technical `proof_level`, `claim_status`, and separate
+  `external_status`, then rebuilds reserved `argo:` records on rerun. It adds no model call,
+  execution, request, or probe, and never deletes a finding or merges severity/confidence/proof.
 
 ## 2. Verify every model claim against ground truth
 
@@ -50,10 +59,19 @@ Nothing consequential is trusted on the model's say-so; each claim is checked ag
   `node --check`, `go build`, `cargo check`, or your `--build-cmd`/`--docker`) **and introduces no new
   errors** versus a pre-patch baseline — all on an **isolated copy** (`verify.verify_patch`). A model's
   "this is fixed" is worthless until the compiler agrees. `--re-audit` adds a second, unbiased check.
-- **Runtime / live confirmation.** A static hypothesis becomes `confirmed` **only** when an observed
-  runtime signal or in-scope HTTP response agrees with it (opt-in [runtime](runtime-verification-study.md)
-  / live stages). The model interprets, but the **observation is real** — and a differential `control`
-  probe is captured so the interpreter judges the *difference*, cutting false positives.
+- **Runtime / live confirmation.** A claim reaches `runtime_observed` **only** when an existing
+  runtime signal or in-scope HTTP response contains a decisive captured observation (opt-in
+  [runtime](runtime-verification-study.md) / live stages). An interpreter verdict or expectation
+  match alone cannot promote proof. HTTP controls remain evidence and may close an obligation, but
+  never automatically produce the reserved `end_to_end_proven` level.
+- **Claim/evidence consistency.** Every material finding carries an explicit claim, attacker start,
+  preconditions, capabilities gained, proof obligations, remaining uncertainty, and proof level.
+  Authored obligations start open unless explicit derived evidence links to them; the gate does not
+  pretend all preconditions were proved. Source support requires a surviving flow and no
+  ungrounded/schema-repaired flag, and remains potentially reportable when runtime provisioning is
+  unavailable. Technical contradictions set `claim_status` to `refuted` or `conflicted`; errors keep
+  the record but suppress submission and PR drafts until a human resolves them. External acceptance
+  or rejection is recorded separately and only from feedback for the current run.
 - **Adversarial, refute-first validation.** Each finding is re-examined in isolation with a
   refute-first prompt; a user-proposed "why didn't you find X?" candidate is re-validated the same way,
   and is labelled an **interactive probe**, never silently promoted into the findings set.

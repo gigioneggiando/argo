@@ -254,6 +254,21 @@ class Ledger:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def finding_feedback(self, program_name: str, dedup_key: str, *, run_id: str) -> dict | None:
+        """Current-run disposition only; cross-run dedup is not exact claim identity."""
+        if not dedup_key:
+            return None
+        with self._lock:
+            row = self._conn.execute(
+                """SELECT triager_accepted AS accepted, triager_ts AS ts
+                   FROM findings_ledger
+                   WHERE program_name = ? AND dedup_key = ? AND run_id = ?
+                     AND triager_accepted IS NOT NULL
+                   ORDER BY triager_ts DESC, ts DESC LIMIT 1""",
+                (program_name, dedup_key, run_id),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
     # -------------------------------------------------- triager feedback (A2: accept-rate)
     def record_triager_feedback(self, *, program_name: str, dedup_key: str, accepted: bool,
                                 run_id: str | None = None, feedback: str | None = None) -> int:
@@ -290,11 +305,14 @@ class Ledger:
             sev = r["sev"] or "Unknown"
             slot = by_sev.setdefault(sev, [0, 0, 0])   # [accepted, rejected, pending]
             if r["acc"] == 1:
-                accepted += r["n"]; slot[0] += r["n"]
+                accepted += r["n"]
+                slot[0] += r["n"]
             elif r["acc"] == 0:
-                rejected += r["n"]; slot[1] += r["n"]
+                rejected += r["n"]
+                slot[1] += r["n"]
             else:
-                pending += r["n"]; slot[2] += r["n"]
+                pending += r["n"]
+                slot[2] += r["n"]
         judged = accepted + rejected
         return {
             "program_name": program_name,

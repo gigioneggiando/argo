@@ -35,7 +35,8 @@ from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_out
 from ..guardrails import assert_prohibited_present
 from ..models import Finding, Verification
 from ..ranking import dedup_key, split_ref
-from ..rendering import design_context_block, render_prompt_pair, with_artifact_contract
+from ..rendering import (context_pack_block, design_context_block, render_prompt_pair,
+                         with_artifact_contract)
 from ..runner import RunnerError
 from .validate import _build_excerpts
 
@@ -99,6 +100,9 @@ def _build_prompt(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         text = (text.rstrip() + "\n\n" + design_context_block(scope.accepted_risks) + "\n\n"
                 "If this finding matches an accepted-by-design behavior listed above, return verdict "
                 "`refuted` with a rationale that names the accepted risk.")
+        private_context = context_pack_block(ctx.context_pack_path)
+        if private_context:
+            text += "\n\n" + private_context
         return with_artifact_contract(text, artifacts=[{
             "type": "deep_verify_verdict", "filename": f"deep_verify_{finding.id}.json", "schema": None,
             "desc": "the deep-verify verdict for this single finding",
@@ -193,12 +197,19 @@ def _split_child(parent: Finding, idx: int, raw: dict) -> Finding:
     child.pop("validation", None)
     child.pop("corroboration", None)
     child.pop("verification", None)
+    # F1 records belong to the parent's exact claim. A split child has a new claim and must have
+    # its contract rebuilt from its own fields rather than inherit stale evidence/obligations.
+    for key in ("claim", "attacker_start", "preconditions", "capabilities_gained",
+                "proof_obligations", "evidence", "evidence_basis", "remaining_uncertainty", "proof_level",
+                "claim_status", "external_status", "consistency_issues"):
+        child.pop(key, None)
     child.pop("grounding", None)
     f = Finding.model_validate(child)
     file, line = split_ref(f.affected[0]) if f.affected else ("", "")
     f.dedup_key = dedup_key(file, line, f.cwe)
     f.validation = parent.validation
     f.corroboration = parent.corroboration
+    f.evidence_requires_review = True
     f.verification = Verification(
         verdict="reconfirmed",
         rationale=f"split out of {parent.id} at deep-verify; independently re-derived as its own bug",

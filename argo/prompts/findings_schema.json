@@ -30,6 +30,81 @@
           "exploit_scenario": { "type": "string" },
           "impact": { "type": "string" },
           "recommended_fix": { "type": "string", "description": "Guidance only; pipeline does not patch." },
+          "claim": { "type": "string", "description": "Exact security claim, separate from severity/confidence." },
+          "attacker_start": { "type": "string", "description": "Attacker identity, access and control at the start of the path." },
+          "attack_context": {
+            "type": "object",
+            "description": "Optional explicit compatibility dimensions for evidence-gated path composition. Use exact values from source/scope; use 'unknown' rather than guessing. A path is never composed across unknown or mismatched dimensions.",
+            "additionalProperties": false,
+            "required": ["principal", "tenant_scope", "deployment_scope", "configuration_scope"],
+            "properties": {
+              "principal": { "type": "string" },
+              "tenant_scope": { "type": "string" },
+              "deployment_scope": { "type": "string" },
+              "configuration_scope": { "type": "string" }
+            }
+          },
+          "preconditions": {
+            "type": "array", "items": { "type": "string" },
+            "description": "Deployment, configuration, identity and state assumptions required by the claim."
+          },
+          "capabilities_gained": {
+            "type": "array", "items": { "type": "string" },
+            "description": "Concrete attacker capabilities established if the claim holds."
+          },
+          "proof_obligations": {
+            "type": "array",
+            "description": "Conditions still requiring proof. Audit may emit concise strings; the deterministic evidence stage canonicalizes them.",
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object", "required": ["id", "description"],
+                  "properties": {
+                    "id": { "type": "string" }, "description": { "type": "string" },
+                    "status": { "type": "string", "enum": ["open", "satisfied", "contradicted", "not_applicable"] },
+                    "evidence_ids": { "type": "array", "items": { "type": "string" } },
+                    "reason": { "type": ["string", "null"] }
+                  }
+                }
+              ]
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "description": "Canonical normalized proof records; richer native stage artifacts remain in their original fields/files.",
+            "items": {
+              "type": "object", "required": ["id", "source", "kind", "polarity", "summary"],
+              "properties": {
+                "id": { "type": "string" },
+                "source": { "type": "string", "enum": ["audit", "validation", "corroboration", "deep_verify", "asan", "runtime", "live", "maintainer"] },
+                "kind": { "type": "string" },
+                "polarity": { "type": "string", "enum": ["supports", "contradicts", "inconclusive"] },
+                "summary": { "type": "string" }, "artifact": { "type": ["string", "null"] },
+                "decisive_observation": { "type": ["string", "null"] },
+                "negative_control": { "type": ["string", "null"] },
+                "obligations_satisfied": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "remaining_uncertainty": { "type": "array", "items": { "type": "string" } },
+          "proof_level": {
+            "type": "string",
+            "enum": ["hypothesis", "source_supported", "independently_rederived", "runtime_observed", "end_to_end_proven"]
+          },
+          "claim_status": { "type": "string", "enum": ["active", "refuted", "conflicted"] },
+          "external_status": { "type": "string", "enum": ["unknown", "accepted", "rejected"] },
+          "consistency_issues": {
+            "type": "array",
+            "items": {
+              "type": "object", "required": ["code", "severity", "message"],
+              "properties": {
+                "code": { "type": "string" }, "severity": { "type": "string", "enum": ["warning", "error"] },
+                "message": { "type": "string" },
+                "evidence_ids": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
           "threat_model_class": { "type": "string", "description": "OPTIONAL. One of: real_bug (holds regardless of trust model) | broken_mechanism (defeats a security control the project itself ships) | by_design (intended within the stated trust model)." },
           "affected_build_config": { "type": "string", "description": "OPTIONAL. The build/config the finding applies to (e.g. 'default' vs a specific hardening flag). Empty if not config-dependent." },
           "action_plan": { "type": "string" },

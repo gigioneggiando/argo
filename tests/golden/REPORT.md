@@ -1,6 +1,6 @@
 # Security Audit Report - Acme Widgets
 
-> **Automated source-static audit - human-review bundle.** No live host was contacted, scanned, or exercised by any stage. Nothing here has been submitted; submission is a manual human action.
+> **Automated security audit - human-review bundle.** No live host was contacted, scanned, or exercised by this pipeline run. Nothing here has been submitted; submission is a manual human action.
 
 ## Run metadata
 
@@ -16,6 +16,8 @@
 - Surviving findings: **3** (confirmed: 2, needs-runtime-verification: 1)
 - Dropped in validation/scope filtering: **2**
 - Surviving by severity: High: 3
+- Proof levels: hypothesis: 3
+- Open proof obligations: **5**
 
 ## Fix first
 
@@ -27,8 +29,12 @@
 ### FULL-001 - SQL injection in widget search
 
 - Severity: **High** (audit: High) | Confidence: **Confirmed** | Verdict: **confirmed**
+- Proof level: **hypothesis**
 - CWE: CWE-89 | OWASP: A03:2021 Injection
 - Affected: `src/api/search.py:42`
+- **Evidence consistency warning:** Confirmation lacks a current supported source trace.
+- **Open proof obligations:**
+  - Trace the claimed source path. Reason: No current supported source trace.
 
 **Vulnerable flow.** GET /api/search?q -> search() -> string-built SQL -> db.execute
 
@@ -47,8 +53,13 @@
 ### AUTHZ-002 - IDOR: order access without ownership check
 
 - Severity: **High** (audit: High) | Confidence: **High** | Verdict: **confirmed**
+- Proof level: **hypothesis**
 - CWE: CWE-639 | OWASP: A01:2021 Broken Access Control
 - Affected: `src/api/orders.py:120`
+- **Evidence consistency warning:** Confirmation lacks a current supported source trace.
+- **Open proof obligations:**
+  - Trace the claimed source path. Reason: No current supported source trace.
+  - Confirm precondition: caller must be authenticated Reason: An explicit assumption is not evidence that it holds.
 
 **Vulnerable flow.** GET /api/orders/<id> -> get_order() -> repo.find(id) with no owner check
 
@@ -67,8 +78,12 @@
 ### FULL-003 - SSRF via user-controlled outbound fetch
 
 - Severity: **High** (audit: High) | Confidence: **Medium** | Verdict: **needs_runtime_verification**
+- Proof level: **hypothesis**
 - CWE: CWE-918 | OWASP: A10:2021 SSRF
 - Affected: `src/net/fetch.py:4`
+- **Open proof obligations:**
+  - Trace the claimed source path. Reason: No current supported source trace.
+  - Review the recorded runtime behavior and its applicability. Reason: Runtime behavior remains unresolved.
 
 **Vulnerable flow.** user url -> fetch(url) -> http.get(url) with no allow-list visible in source
 

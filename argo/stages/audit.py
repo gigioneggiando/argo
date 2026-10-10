@@ -17,7 +17,7 @@ from pathlib import Path
 from ..config import ARTIFACT_TOOLS
 from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
 from ..guardrails import PromptGuardrailError, assert_prohibited_present
-from ..rendering import neutralize_audit_prompt, with_artifact_contract
+from ..rendering import ensure_context_pack_present, neutralize_audit_prompt, with_artifact_contract
 from ..runner import RunnerError
 from ..schemas import SchemaValidationError, validate_findings
 
@@ -181,6 +181,9 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
     # Guardrail (defense-in-depth): the prompt that actually drives the session must still
     # carry the prohibited techniques, even if it was hand-edited after recon.
     assert_prohibited_present(prompt_text, scope.prohibited_techniques)
+    # Add private architecture context only to the in-memory model prompt. It must not be persisted
+    # into prompts/audit_*.md, which are ordinary review artifacts and may later be shared.
+    prompt_text = ensure_context_pack_present(prompt_text, ctx.context_pack_path)
 
     findings_filename = f"SECURITY_FINDINGS__{slug}.json"
     prompt = with_artifact_contract(
@@ -287,6 +290,7 @@ def _critic_pass(ctx: RunContext, scope, slug: str, prompt_path: Path,
     schema-conformant, deduped findings (empty list if none / on failure)."""
     base = prompt_path.read_text(encoding="utf-8")
     assert_prohibited_present(base, scope.prohibited_techniques)
+    base = ensure_context_pack_present(base, ctx.context_pack_path)
     findings_filename = f"SECURITY_FINDINGS__{slug}.json"
     log_path = ctx.variant_logs_dir / f"{slug}.md"
     variant_log = log_path.read_text(encoding="utf-8") if log_path.exists() else "(none produced)"

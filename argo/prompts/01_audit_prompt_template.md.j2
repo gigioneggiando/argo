@@ -128,6 +128,16 @@ Members to check (one row per member in VARIANT_HUNT_LOG, verdict ðŸŸ¢ safe / ðŸ
 - CWE
 - OWASP category (or closest equivalent)
 - Affected files/classes/functions/components (with line refs)
+- `claim`: one exact, falsifiable sentence stating the security property broken
+- `attacker_start`: the attacker's initial identity/access and controllable input
+- `attack_context` (optional object): exact `principal`, `tenant_scope`, `deployment_scope`, and
+  `configuration_scope` for this individual finding. Use `unknown` rather than guessing. These are
+  only used later for a conservative chain review; unknown/mismatched contexts are never composed.
+- `preconditions`: every required deployment/configuration/state/privilege assumption (JSON array)
+- `capabilities_gained`: concrete capabilities established by this finding alone (JSON array;
+  do not borrow impact from a speculative chain)
+- `proof_obligations`: precise checks still needed to prove a disputed link or precondition (JSON
+  array; empty only when the source proof already settles every material link)
 - Broken security invariant / vulnerable flow
 - Why it is vulnerable
 - Realistic exploit scenario

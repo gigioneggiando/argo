@@ -251,6 +251,24 @@ def ensure_design_context_present(text: str, accepted_risks: str | None = None) 
     return text.rstrip() + "\n\n" + design_context_block(accepted_risks) + "\n"
 
 
+_CONTEXT_PACK_MARKER = "## PRIVATE OPERATOR-PROVIDED CONTEXT PACK"
+
+
+def context_pack_block(path: Path) -> str:
+    """Load and render the run's already-validated private context pack, if present."""
+    from .context_pack import load_run, prompt_context
+
+    return prompt_context(load_run(path))
+
+
+def ensure_context_pack_present(text: str, path: Path) -> str:
+    """Append private context idempotently. It is never added to networked OSINT prompts."""
+    if _CONTEXT_PACK_MARKER in text:
+        return text
+    block = context_pack_block(path)
+    return text.rstrip() + ("\n\n" + block + "\n" if block else "")
+
+
 # ----------------------------------------------------------------- artifact contract
 def with_artifact_contract(
     prompt: str,

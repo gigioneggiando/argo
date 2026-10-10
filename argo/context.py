@@ -27,7 +27,7 @@ def atomic_write_json(path: Path, data: Any, *, indent: int = 2) -> None:
     (Ctrl+C, OOM, process kill) can never leave a truncated/corrupt file behind for the NEXT stage
     — or a resumed run — to choke on. This matters most for files re-read and rewritten by several
     stages in turn (``validated_findings.json`` is read/rewritten by validate, corroborate,
-    deep_verify, freshness, runtime, and live) — a torn write there breaks every stage after it,
+    deep_verify, freshness, runtime, live, and evidence) — a torn write there breaks every stage after it,
     turning an otherwise-recoverable crash into one ``argo resume`` cannot recover from.
 
     Retries briefly on Windows ``PermissionError`` (a concurrent reader can transiently hold the
@@ -125,6 +125,38 @@ class RunContext:
     @property
     def threat_intel_path(self) -> Path:
         return self.run_dir / "threat_intel.json"
+
+    @property
+    def target_memory_path(self) -> Path:
+        """Per-run, reviewable snapshot of the private persistent target-memory seed."""
+        return self.run_dir / "target_memory.json"
+
+    @property
+    def target_memory_dir(self) -> Path:
+        configured = self.config.target_memory_dir
+        if configured is not None:
+            return Path(configured)
+        return Path(self.config.runs_dir).resolve().parent / ".argo-target-memory"
+
+    @property
+    def attack_paths_path(self) -> Path:
+        """Deterministic, opt-in composition artifact; findings themselves remain unchanged."""
+        return self.run_dir / "attack_paths.json"
+
+    @property
+    def incremental_review_path(self) -> Path:
+        """F4's deterministic diff/invalidation plan; no source contents are copied here."""
+        return self.run_dir / "incremental_review.json"
+
+    @property
+    def context_pack_path(self) -> Path:
+        """Validated private context-pack snapshot; never rendered into public artifacts."""
+        return self.run_dir / "context_pack.json"
+
+    @property
+    def review_questions_path(self) -> Path:
+        """Non-blocking architecture/business-context clarification queue."""
+        return self.run_dir / "review_questions.json"
 
     @property
     def drafts_dir(self) -> Path:

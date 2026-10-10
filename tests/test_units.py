@@ -213,6 +213,9 @@ def test_local_scope_synthesis():
     assert s["program_name"] == "secret-proj" and s["target_type"] == "source_only"
     assert s["platform"] == "local" and s["in_scope"][0]["type"] == "source_repo"
     assert len(s["prohibited_techniques"]) >= 3 and s["automation_allowed"] is False
+    remote = _local_scope("https://github.com/org/My-Repo.git", True)
+    assert remote["program_name"] == "My-Repo"
+    assert "owner" not in remote["program_brief_raw"].lower()
 
 
 def test_recon_detect_archetype():

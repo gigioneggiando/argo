@@ -34,7 +34,8 @@ from pathlib import Path
 from ..config import ARTIFACT_TOOLS, RESEARCH_TOOLS
 from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
 from ..models import Corroboration, Finding
-from ..rendering import design_context_block, fill_placeholders, with_artifact_contract
+from ..rendering import (context_pack_block, design_context_block, fill_placeholders,
+                         with_artifact_contract)
 from ..runner import RunnerError
 from .validate import _build_excerpts
 
@@ -168,6 +169,9 @@ def _build_docs_prompt(ctx: RunContext, scope, finding: Finding) -> str:
     })
     if scope.accepted_risks and scope.accepted_risks.strip():
         rendered = rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks)
+    private_context = context_pack_block(ctx.context_pack_path)
+    if private_context:
+        rendered += "\n\n" + private_context
     return with_artifact_contract(rendered, artifacts=[{
         "type": "corroboration", "filename": f"corroboration_{finding.id}.json", "schema": None,
         "desc": "the offline docs/VCS corroboration verdict for this finding",
@@ -213,6 +217,9 @@ def _build_docs_batch_prompt(ctx: RunContext, scope, batch: list[Finding]) -> st
     })
     if scope.accepted_risks and scope.accepted_risks.strip():
         rendered = rendered.rstrip() + "\n\n" + design_context_block(scope.accepted_risks)
+    private_context = context_pack_block(ctx.context_pack_path)
+    if private_context:
+        rendered += "\n\n" + private_context
     return with_artifact_contract(rendered, artifacts=[{
         "type": "corroborations", "filename": "corroborations.json", "schema": None,
         "desc": "one offline docs/VCS verdict per finding_id",

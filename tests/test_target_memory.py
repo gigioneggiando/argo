@@ -1,0 +1,144 @@
+"""Private, revision-bound target memory stays useful without silently trusting old facts."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from argo.config import PipelineConfig, load_pipeline_config, write_pipeline_config
+from argo.context import atomic_write_json
+from argo.orchestrator import run_pipeline
+from argo.stages import target_memory
+from argo.target_memory import TargetMemoryStore, canonical_target, fresh_facts, prompt_context
+
+from conftest import BRIEF, REPO
+
+
+def test_remote_identity_normalizes_https_and_ssh_forms():
+    https = canonical_target("https://GitHub.com/Example/Widget.git", True)
+    ssh = canonical_target("git@github.com:example/widget.git", True)
+
+    assert https == ssh
+    assert https.key == "remote:github.com/example/widget"
+
+
+def test_changed_or_unknown_commit_stales_facts(tmp_path):
+    store = TargetMemoryStore(tmp_path / "memory")
+    target = canonical_target("https://github.com/example/widget", True)
+    store.upsert(target, "a" * 40, [
+        ("invariant", "Only owners can read an order.", "recon:ground_truth", ["ground_truth.json"]),
+    ])
+
+    same = store.load(target, "a" * 40)
+    assert len(fresh_facts(same)) == 1
+    assert "Only owners" in prompt_context(fresh_facts(same))
+
+    changed = store.load(target, "b" * 40)
+    assert not fresh_facts(changed)
+    assert changed.facts[0].freshness == "stale"
+    assert changed.facts[0].invalidated_by == "b" * 40
+    # The stale state is durable; a later run cannot accidentally revive it without re-observing it.
+    assert TargetMemoryStore(tmp_path / "memory").load(target, "b" * 40).facts[0].freshness == "stale"
+
+
+def test_seed_limit_does_not_let_one_fact_kind_crowd_out_the_rest(tmp_path):
+    store = TargetMemoryStore(tmp_path / "memory")
+    target = canonical_target("https://github.com/example/widget", True)
+    facts = [
+        (kind, f"{kind} fact {index}", "recon:ground_truth", ["ground_truth.json"])
+        for kind, count in (("baseline", 30), ("false_lead", 10),
+                            ("invariant", 10), ("question", 10))
+        for index in range(count)
+    ]
+    store.upsert(target, "a" * 40, facts)
+
+    selected = fresh_facts(store.load(target, "a" * 40), limit=24)
+
+    assert len(selected) == 24
+    assert [fact.kind for fact in selected].count("false_lead") == 8
+    assert [fact.kind for fact in selected].count("invariant") == 8
+    assert [fact.kind for fact in selected].count("question") == 4
+    assert [fact.kind for fact in selected].count("baseline") == 4
+    assert [fact.id for fact in selected] == [
+        fact.id for fact in fresh_facts(store.load(target, "a" * 40), limit=24)
+    ]
+
+
+def test_target_memory_directory_round_trips_through_saved_config(tmp_path):
+    config_path = tmp_path / "config.json"
+    write_pipeline_config(
+        config_path,
+        PipelineConfig(target_memory_enabled=False, target_memory_dir=Path("private-memory")),
+    )
+
+    restored = load_pipeline_config(config_path)
+
+    assert restored.target_memory_enabled is False
+    assert restored.target_memory_dir == Path("private-memory")
+
+
+def test_mock_pipeline_emits_snapshot_without_persisting_fixture_facts(env, tmp_path):
+    ctx = env(target_memory_dir=tmp_path / "private-memory")
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+
+    snapshot = json.loads(ctx.target_memory_path.read_text(encoding="utf-8"))
+    assert snapshot["target"]["is_remote"] is False
+    assert snapshot["seed_facts"] == []
+    assert snapshot["captured_fact_ids"] == []
+    assert snapshot["note"].startswith("Mock run")
+    status = json.loads((ctx.run_dir / "status.json").read_text(encoding="utf-8"))
+    assert status["artifacts"]["target_memory"] is True
+
+    assert list((tmp_path / "private-memory").glob("*.json")) == []
+
+
+def test_mock_memory_bypasses_existing_target_facts(env, tmp_path):
+    memory_dir = tmp_path / "private-memory"
+    ctx = env(target_memory_dir=memory_dir)
+    identity = canonical_target(str(REPO), False)
+    store = TargetMemoryStore(memory_dir)
+    store.upsert(identity, "a" * 40, [
+        ("invariant", "Only owners can read an order.", "recon:ground_truth", ["ground_truth.json"]),
+    ])
+    before = store.path_for(identity).read_bytes()
+    atomic_write_json(ctx.meta_path, {
+        "repo_source": str(REPO), "repo_is_url": False, "repo_commit": "a" * 40,
+    })
+
+    target_memory.run(ctx)
+    target_memory.capture_recon(ctx)
+
+    snapshot = json.loads(ctx.target_memory_path.read_text(encoding="utf-8"))
+    assert snapshot["seed_facts"] == []
+    assert store.path_for(identity).read_bytes() == before
+
+
+def test_recon_capture_preserves_initial_seed_and_records_all_new_ids(env, tmp_path):
+    ctx = env(target_memory_dir=tmp_path / "private-memory")
+    ctx.config = ctx.config.with_overrides(runner="codex")
+    commit = "a" * 40
+    identity = canonical_target("https://github.com/example/widget", True)
+    store = TargetMemoryStore(ctx.target_memory_dir)
+    store.upsert(identity, commit, [
+        ("baseline", "Prior source conclusion.", "recon:ground_truth", ["ground_truth.json"]),
+    ])
+    atomic_write_json(ctx.meta_path, {
+        "repo_source": "https://github.com/example/widget", "repo_is_url": True,
+        "repo_commit": commit,
+    })
+
+    target_memory.run(ctx)
+    initial = json.loads(ctx.target_memory_path.read_text(encoding="utf-8"))
+    assert len(initial["seed_facts"]) == 1
+    assert initial["captured_fact_ids"] == []
+
+    atomic_write_json(ctx.repo_profile_path, {
+        "entry_points": [f"New entry point {index}." for index in range(30)],
+    })
+    target_memory.capture_recon(ctx)
+
+    final = json.loads(ctx.target_memory_path.read_text(encoding="utf-8"))
+    assert final["seed_facts"] == initial["seed_facts"]
+    assert len(final["captured_fact_ids"]) == 30
+    assert len(set(final["captured_fact_ids"])) == 30
+    assert len(store.load(identity, commit).facts) == 31

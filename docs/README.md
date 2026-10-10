@@ -11,6 +11,7 @@ see the [top-level README](../README.md).
 | Doc | Audience | What's in it |
 |---|---|---|
 | [architecture.md](architecture.md) | developers | Module map, stage data flow, the `AgentRunner` interface, `RunContext`, the SQLite ledger schema, the dedup algorithm |
+| [context-pack.md](context-pack.md) | operators | Private architecture/business context schema, review-question workflow, provenance and re-validation rules |
 | [prompt-synthesis.md](prompt-synthesis.md) | prompt authors | How Stage 2 generates target-specific audit prompts: the archetype-driven meta-prompt, the specificity self-check, reuse from the legacy generator, and how to change the meta-prompt safely |
 | [cli-reference.md](cli-reference.md) | operators | Every command and every flag, with worked examples |
 | [guardrails.md](guardrails.md) | reviewers / security | The hard guardrails and the exact code location that enforces each (incl. the research-stage OSINT carve-out and the per-backend mapping) |

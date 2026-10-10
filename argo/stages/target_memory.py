@@ -1,0 +1,121 @@
+"""Revision-bound private target-memory stage and deterministic recon fact capture."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from ..context import RunContext, atomic_write_json
+from ..target_memory import MemoryFact, TargetMemory, TargetMemoryStore, canonical_target, fresh_facts
+
+
+def _meta(ctx: RunContext) -> dict:
+    try:
+        raw = json.loads(ctx.meta_path.read_text(encoding="utf-8-sig"))
+        return raw if isinstance(raw, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _store(ctx: RunContext) -> TargetMemoryStore:
+    return TargetMemoryStore(ctx.target_memory_dir)
+
+
+def _identity(ctx: RunContext):
+    meta = _meta(ctx)
+    return canonical_target(str(meta.get("repo_source") or ""), bool(meta.get("repo_is_url"))), meta
+
+
+def _snapshot(
+    ctx: RunContext,
+    memory: TargetMemory,
+    *,
+    seed_facts: list[MemoryFact] | None = None,
+    captured_ids: list[str] | None = None,
+    note: str = "Private local target memory. Facts are hypotheses to re-check against this run.",
+) -> None:
+    facts = fresh_facts(memory) if seed_facts is None else seed_facts
+    payload = {
+        "schema_version": 1,
+        "target": memory.target.model_dump(mode="json"),
+        "commit": _meta(ctx).get("repo_commit"),
+        "seed_facts": [fact.model_dump(mode="json") for fact in facts],
+        "captured_fact_ids": captured_ids or [],
+        "note": note,
+    }
+    atomic_write_json(ctx.target_memory_path, payload)
+
+
+def run(ctx: RunContext) -> Path:
+    """Load only same-commit facts before modelled stages begin."""
+    identity, meta = _identity(ctx)
+    if ctx.config.runner == "mock":
+        _snapshot(ctx, TargetMemory(target=identity),
+                  note="Mock run: persistent target memory is bypassed; "
+                       "fixtures are not source evidence.")
+        return ctx.target_memory_path
+    memory = _store(ctx).load(identity, meta.get("repo_commit"))
+    _snapshot(ctx, memory)
+    return ctx.target_memory_path
+
+
+def _as_strings(value) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    return [item for item in value or [] if isinstance(item, str)]
+
+
+def capture_recon(ctx: RunContext) -> None:
+    """Persist concise, structured recon conclusions without copying source text."""
+    if ctx.config.runner == "mock":
+        return
+    identity, meta = _identity(ctx)
+    # Keep the pre-recon seed distinct from facts learned during this run. Recon reads this
+    # snapshot as its prior context, so rewriting it with new facts misstates what was available.
+    seed_facts: list[MemoryFact] = []
+    try:
+        snapshot = json.loads(ctx.target_memory_path.read_text(encoding="utf-8-sig"))
+        if (snapshot.get("target", {}).get("key") == identity.key
+                and snapshot.get("commit") == meta.get("repo_commit")):
+            seed_facts = [MemoryFact.model_validate(item)
+                          for item in snapshot.get("seed_facts") or []]
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass
+    entries: list[tuple[str, str, str, list[str]]] = []
+    try:
+        profile = json.loads(ctx.repo_profile_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        profile = {}
+    if isinstance(profile, dict):
+        for entry in _as_strings(profile.get("entry_points")):
+            entries.append(("entry_point", entry, "recon:repo_profile", ["repo_profile.json"]))
+        for boundary in _as_strings(profile.get("trust_boundaries")):
+            entries.append(("trust_boundary", boundary, "recon:repo_profile", ["repo_profile.json"]))
+        for unknown in _as_strings(profile.get("residual_unknowns")):
+            entries.append(("question", unknown, "recon:repo_profile", ["repo_profile.json"]))
+    try:
+        ground_truth = json.loads(ctx.ground_truth_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        ground_truth = {}
+    if isinstance(ground_truth, dict):
+        global_data = ground_truth.get("global") if isinstance(ground_truth.get("global"), dict) else {}
+        for item in _as_strings(global_data.get("fp_carveouts")):
+            entries.append(("false_lead", item, "recon:ground_truth", ["ground_truth.json"]))
+        for focus in (ground_truth.get("focuses") or {}).values():
+            if not isinstance(focus, dict):
+                continue
+            for item in focus.get("invariants") or []:
+                if isinstance(item, dict) and isinstance(item.get("expected"), str):
+                    summary = f"{item.get('location', 'unspecified location')}: {item['expected']}"
+                    entries.append(("invariant", summary, "recon:ground_truth", ["ground_truth.json"]))
+            for item in focus.get("baseline_correct") or []:
+                if isinstance(item, dict) and isinstance(item.get("why_correct"), str):
+                    summary = f"{item.get('pattern', 'baseline')}: {item['why_correct']}"
+                    entries.append(("baseline", summary, "recon:ground_truth", ["ground_truth.json"]))
+            for item in _as_strings(focus.get("fp_carveouts")):
+                entries.append(("false_lead", item, "recon:ground_truth", ["ground_truth.json"]))
+    captured: list[str] = []
+    memory = _store(ctx).upsert(identity, meta.get("repo_commit"), entries,
+                                recorded_ids=captured)
+    _snapshot(ctx, memory, seed_facts=seed_facts,
+              captured_ids=list(dict.fromkeys(captured)))

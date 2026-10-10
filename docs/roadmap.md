@@ -337,8 +337,9 @@ and audit-logged, and the default tool remains 100% offline against the program'
   baseline request per probe, gated like any request, so the interpret stage judges the *difference* —
   the biggest false-positive cut for access-control findings). Config: `live_max_retries`,
   `live_max_redirects`, `live_user_agent`. Tests in `tests/test_live.py`.
-- [ ] _Later:_ surface live verdicts in `REPORT.md` (as Phase-9 R4 did for runtime), and an authenticated
-  live session (cookie/login step) reusing the runtime probe's auth-step shape.
+- [x] Live verdicts now surface through F1's proof level/evidence source/obligation rendering in
+      `REPORT.md` and drafts (2026-10-04). _Later:_ an authenticated live session (cookie/login step)
+      reusing the runtime probe's auth-step shape.
 
 ## Deferred-feature backlog — feasibility & implementation plan (code-audited 2026-06-18)
 
@@ -711,6 +712,183 @@ feature exists for. Fixed by persisting the raw `--commit` argument as given (br
 resolution) into `meta.json` as `RunMeta.requested_ref`, and having `freshness.py` prefer it over
 guessing whenever it isn't sha-shaped. Covered by
 `test_audited_branch_uses_requested_ref_on_detached_head` in `tests/test_freshness.py`.
+
+## Next-generation analysis backlog — cumulative reasoning (proposed 2026-10-04)
+
+This block follows a code-level comparison with Causal Security's public description of Cipher.
+The useful lesson is not "add more agents" or copy its enterprise connector surface: Argo already
+has ground-truth recon, adversarial validation, corroboration, deep verify, sandboxed runtime/live
+checks, and fix verification. The remaining high-value gap is to make those artifacts cumulative,
+machine-checkable, and composable across findings and runs.
+
+Build order: **F1 evidence contract → F2 target memory → F3 attack paths → F4 incremental review**.
+F5 can ship independently after F1. Do not claim value from any item until the evaluation below
+shows an improvement at a fixed model, commit, prompt version, and token budget.
+
+### F1 — Unified claim/evidence contract — IN REVIEW (first complete slice, 2026-10-05) · priority **P0**
+
+**Current gap.** `Finding`, `validation`, `verification`, ASan, runtime, live, corroboration, and
+maintainer feedback all express different kinds of evidence, but no authoritative object links an
+exact security claim to its preconditions, proof obligations, supporting/contradicting evidence,
+negative control, remaining uncertainty, and attained proof level. A model confidence label is not
+the same thing as empirical proof.
+
+**Proposed:**
+- Extend the finding contract with `claim`, `attacker_start`, `preconditions`,
+  `capabilities_gained`, `proof_obligations`, `evidence[]`, `remaining_uncertainty`, and an
+  orthogonal technical `proof_level` (`hypothesis`, `source_supported`,
+  `independently_rederived`, `runtime_observed`, with `end_to_end_proven` reserved),
+  plus separate `claim_status` and `external_status`.
+- Normalize existing validate/deep-verify/ASan/runtime/live/corroborate outputs into that evidence
+  ledger instead of replacing their richer native artifacts.
+- Add a deterministic claim-consistency gate before report: every material impact must have a
+  supported path; runtime confirmation must cite the decisive observation (and a differential
+  control where applicable); unresolved preconditions remain visible; chain-derived impact cannot
+  be silently assigned to one component.
+- Render proof level and open obligations in `REPORT.md` and drafts. A deterministic source proof
+  may remain reportable when runtime provisioning is infeasible; runtime is stronger evidence, not
+  a universal requirement.
+
+**Non-goals:** another generic LLM validation pass, forcing all findings through runtime, or
+collapsing severity/confidence/proof into one misleading score.
+
+**Implemented slice (pending review).** `models.py` and the additive findings schema carry the
+claim, attacker start, preconditions, capabilities, typed obligations/evidence, uncertainty,
+consistency issues, technical proof level, claim status, and external disposition. The
+deterministic/idempotent `stages/evidence.py` gate runs immediately before report and summarizes
+native validation, corroboration, deep verify, ASan, runtime, live, and current-run ledger feedback
+without replacing their richer artifacts. A runtime/live result needs an explicit interpreter
+assessment and a decisive captured observation; expectation matching and raw HTTP bodies never
+promote proof. Maintainer feedback remains an external disposition, never technical evidence.
+Claim/revision/artifact snapshots flag stale normalization. Conflicts remain reviewable but block
+drafts; legacy findings are upgraded additively, and resuming from evidence reruns the gate and
+report.
+
+**Deliberately deferred:** richer domain-specific obligation types (beyond the typed generic
+contract), automatic correction of the prose claim after deep-verify `corrected`, and F3's
+cross-finding capability-edge proof. Those require measured examples and must not be guessed by this
+deterministic slice.
+
+**Acceptance signal:** fewer post-report factual/severity corrections and fewer runtime-refuted
+"confirmed" findings, without reducing recall on the labeled corpora.
+
+### F2 — Persistent target memory / security model — priority **P0** · effort **L** · repeat-run value **High**
+
+**Current gap.** The ledger detects a repeated `dedup_key` and imports Fleece accept/reject outcomes
+for quality metrics; `--accepted-risks` can inject design context manually. A new run still
+re-derives most architecture, threat-model, false-lead, and maintainer-intent knowledge from
+scratch, and Fleece feedback does not automatically inform recon/validation.
+
+**Proposed:**
+- Introduce a canonical target identity and a private persistent store for typed entities and
+  relations: components, entry points, identities/roles, data, trust boundaries, invariants,
+  known-correct baselines, accepted design decisions, false leads, findings, variants, fixes, and
+  unresolved questions.
+- Every fact carries provenance, confidence, visibility (`private`/`public`), commit validity,
+  freshness, and explicit invalidation conditions. Changed or unprovable facts become `stale`, not
+  silently trusted.
+- Seed recon/validate/corroborate with only relevant, still-valid facts; write back new facts after
+  a run. Import sanitized vendor outcomes from Fleece while keeping Fleece the source of truth and
+  never publishing private correspondence from the Argo repository.
+- Start with SQLite/JSON and a small query layer. This is a security knowledge model, not a
+  code-property graph; do not introduce Neo4j/Joern or persist source text merely to call it a graph.
+
+**Acceptance signal:** on a second audit of the same target, materially fewer repeated false leads
+and less recon cost, while deliberately changed invariants are invalidated and re-checked rather
+than inherited.
+
+### F3 — Evidence-gated attack-path composition and blast radius — priority **P1** · effort **L** · depth value **High**
+
+**Current gap.** Audit prompts ask agents to correlate realistic exploit chains, and deep verify
+can compare/merge sibling findings, but the schema stores findings individually. There is no typed
+way to prove that the capability gained from finding A satisfies a precondition of finding B, so
+chains are prose that cannot be validated, ranked, or reproduced as a unit.
+
+**Proposed:**
+- Use F1's `attacker_start`, `preconditions`, and `capabilities_gained` to build candidate paths over
+  components, identities, data, and trust boundaries from F2.
+- Add an opt-in `compose` stage after deep verify/runtime and before report. It may emit
+  `attack_paths.json`, but every edge must reference evidence and preserve tenant, identity,
+  deployment, and configuration consistency.
+- Independently verify each proposed edge and the end-to-end path. Missing deployment context or an
+  unproven capability makes the path `inconclusive`, never an automatic severity multiplier.
+- Compute root-cause/blast-radius summaries: which fix collapses which paths, variants, and exposed
+  assets. Rank remediation by paths removed, not merely by the largest isolated CVSS label.
+
+**Non-goals:** adding severities together, hallucinating reachability between repositories, or
+turning several unrelated Medium findings into a Critical narrative.
+
+**Acceptance signal:** recover known multi-step cases as valid paths while rejecting seeded chains
+whose adjacent capabilities or identities do not actually match.
+
+### F4 — Context-preserving incremental / PR review — priority **P1** · effort **L** · operational value **High**
+
+**Dependency:** F2 and preferably F3. A raw diff-only scanner is explicitly not the goal.
+
+**Proposed:**
+- Treat a commit/PR diff as an invalidation trigger over the persistent target model: changed
+  symbols/files, affected invariants, callers/callees, roles, deployment relations, prior findings,
+  and attack paths form the review neighbourhood.
+- Re-evaluate that neighbourhood against the whole-system context, persist the new state, and emit
+  exactly which prior facts were retained, invalidated, or re-proved.
+- Keep scheduled/manual full-scope audits as a recall backstop; incremental mode must never claim
+  that an unchanged file implies an unchanged security property.
+
+**Acceptance signal:** lower cost/latency than a full rerun on representative PRs while still
+catching seeded cross-file and cross-service regressions whose vulnerable line was not directly in
+the diff.
+
+### F5 — Explicit architecture questions + optional context pack — priority **P1** · effort **S–M** · precision value **Med–High**
+
+**Current gap.** `accepted_risks` supplies context before a run, but when intent remains ambiguous
+the pipeline can only infer, refute, or leave a generic runtime unknown. It cannot ask one precise
+question whose answer resolves several findings and becomes durable target knowledge.
+
+**Proposed:**
+- Emit `review_questions.json` entries containing one concise question, the affected findings/facts,
+  why source cannot settle it, and the conservative status used while unanswered (`needs_context`).
+- Allow unattended runs to continue; questions are a review queue, not a mandatory interactive
+  pause. Answers are schema-validated, written into F2 with provenance, and invalidate dependent
+  verdicts for targeted re-validation.
+- Define an optional, connector-neutral `context-pack` for architecture diagrams/notes, role and
+  service inventories, exported IAM/IaC facts, and business invariants. Prefer this bounded import
+  format before building direct AWS/Azure/Jira/Slack connectors.
+
+**Non-goals:** exposing private target context in public artifacts, accepting an answer as truth
+without provenance, or building broad enterprise connectors before measured demand exists.
+
+**Acceptance signal:** fewer by-design/threat-model rejections from maintainers, with each avoided
+error attributable to a question or context fact rather than to extra unguided model calls.
+
+### F6 — Public Argo research/editorial site — OWNER INTENT · priority **P2** · effort **M**
+
+Build an original Argo-designed editorial presence for public technical research, comparable in
+purpose (not design or copied content) to `causalsecurity.com/research`. Reuse the existing GitHub
+Pages public-findings deployment and advisory index where sensible rather than creating a second
+disconnected publication surface. Articles should have stable slugs, author/date/updated metadata,
+descriptions, categories/tags, canonical/OpenGraph/structured-data SEO, RSS/Atom, and explicit links
+to public advisories/CVEs/fixes and reproducible public artifacts.
+
+The publication boundary is non-negotiable: content must be generated only from an explicit public
+allow-list after advisory publication/embargo release. Private Fleece records, draft GHSA material,
+vendor correspondence, unredacted run artifacts, credentials, private target/source data, and
+unpublished evidence must live outside the Pages build inputs and must never be inferred as public
+from a filename or repository presence. Add a deterministic pre-deploy embargo/private-data check,
+fail the build closed on uncertain visibility, and keep editorial approval/manual publish as the
+final gate. No external wiki update is part of F1; wiki work happens only after the feature PR merges.
+
+### Evaluation and safety gates for F1–F5
+
+- Replay a fixed set of accepted, rejected, runtime-refuted, by-design, and chained historical
+  findings with identical commits/models/budgets; compare each feature cumulatively and in ablation.
+- Primary metrics: maintainer-judged precision, benchmark recall, proof-obligation completeness,
+  runtime-refutation rate, severity corrections, repeated-false-lead rate, valid chains recovered,
+  cost/time per accepted finding, and root-cause compression (`paths removed per fix`).
+- Preserve the existing defaults: source-first, no auto-submission, no autonomous production write,
+  and no live interaction without the existing explicit authorization gates.
+- F1 implementation aligned stale documentation that described runtime/live as future or said the
+  target was never executed; docs now distinguish the source-static default, isolated runtime/ASan,
+  and tightly gated live modes before relying on the proof taxonomy.
 
 ## Cross-cutting / decisions to make before Phase 0
 

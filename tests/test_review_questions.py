@@ -60,7 +60,7 @@ def test_pipeline_keeps_context_private_and_emits_non_blocking_questions(env, tm
     run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False, context_pack_path=pack)
 
     assert ctx.context_pack_path.is_file()
-    assert not str(pack.resolve()) in ctx.context_pack_path.read_text(encoding="utf-8")
+    assert str(pack.resolve()) not in ctx.context_pack_path.read_text(encoding="utf-8")
     audit_prompts = "\n".join(p.read_text(encoding="utf-8")
                                for p in ctx.prompts_out_dir.glob("audit_*.md"))
     assert "PRIVATE OPERATOR-PROVIDED CONTEXT PACK" not in audit_prompts

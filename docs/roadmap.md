@@ -727,7 +727,7 @@ Build order: **F1 evidence contract → F2 target memory → F3 attack paths →
 F5 can ship independently after F1. Do not claim value from any item until the evaluation below
 shows an improvement at a fixed model, commit, prompt version, and token budget.
 
-### F1 — Unified claim/evidence contract — IN REVIEW (first complete slice, 2026-10-05) · priority **P0**
+### F1 — Unified claim/evidence contract — IMPLEMENTED ON FEATURE BRANCH (first complete slice, 2026-10-05) · priority **P0**
 
 **Current gap.** `Finding`, `validation`, `verification`, ASan, runtime, live, corroboration, and
 maintainer feedback all express different kinds of evidence, but no authoritative object links an
@@ -754,7 +754,7 @@ the same thing as empirical proof.
 **Non-goals:** another generic LLM validation pass, forcing all findings through runtime, or
 collapsing severity/confidence/proof into one misleading score.
 
-**Implemented slice (pending review).** `models.py` and the additive findings schema carry the
+**Implemented slice (pending PR review).** `models.py` and the additive findings schema carry the
 claim, attacker start, preconditions, capabilities, typed obligations/evidence, uncertainty,
 consistency issues, technical proof level, claim status, and external disposition. The
 deterministic/idempotent `stages/evidence.py` gate runs immediately before report and summarizes
@@ -799,6 +799,13 @@ scratch, and Fleece feedback does not automatically inform recon/validation.
 and less recon cost, while deliberately changed invariants are invalidated and re-checked rather
 than inherited.
 
+**Initial vertical slice (feature branch; pending PR review):** canonical remote/local target identities; an atomic
+private JSON store; exact-commit freshness and fail-closed staleness; a reviewable per-run seed
+snapshot; and deterministic recon capture of entry points, boundaries, questions, invariants,
+baselines, and false-lead carve-outs. Prior facts are recon hints, never evidence. Deliberately
+deferred: Fleece outcome import, cross-stage query/ranking, and seeding validate/corroborate until
+repeat-run measurements justify each extra trust edge.
+
 ### F3 — Evidence-gated attack-path composition and blast radius — priority **P1** · effort **L** · depth value **High**
 
 **Current gap.** Audit prompts ask agents to correlate realistic exploit chains, and deep verify
@@ -823,6 +830,14 @@ turning several unrelated Medium findings into a Critical narrative.
 **Acceptance signal:** recover known multi-step cases as valid paths while rejecting seeded chains
 whose adjacent capabilities or identities do not actually match.
 
+**Initial vertical slice (feature branch; pending PR review):** opt-in deterministic `compose` after F1 evidence;
+it emits a bounded `attack_paths.json` only where active source-supported findings have an exact
+normalized capability→precondition binding and matching non-`unknown` attacker, principal, tenant,
+deployment, and configuration declarations. The artifact is fingerprinted, omitted from a stale
+report, and cannot alter severity, proof, drafts, or submission state. Deferred: independent
+edge re-verification, F2-backed trust/data relations, and remediation/blast-radius ranking pending
+repeatable evaluation cases.
+
 ### F4 — Context-preserving incremental / PR review — priority **P1** · effort **L** · operational value **High**
 
 **Dependency:** F2 and preferably F3. A raw diff-only scanner is explicitly not the goal.
@@ -839,6 +854,15 @@ whose adjacent capabilities or identities do not actually match.
 **Acceptance signal:** lower cost/latency than a full rerun on representative PRs while still
 catching seeded cross-file and cross-service regressions whose vulnerable line was not directly in
 the diff.
+
+**Initial vertical slice (feature branch; pending PR review):** `--incremental-base` adds a deterministic stage
+before recon. It requires a Git base ancestor, records changed files, candidate symbols declared in
+those files, and a bounded textual
+neighbourhood, and classifies prior target-memory facts as retained only at the exact current
+revision, directly invalidated when a changed path is named, or stale/unproven. Recon receives this
+only as a prioritization plan with the whole
+repository still available. Deferred: semantic caller/callee extraction, fact-level re-proof,
+Fleece/attack-path dependency invalidation, and measured latency/recall comparison against full runs.
 
 ### F5 — Explicit architecture questions + optional context pack — priority **P1** · effort **S–M** · precision value **Med–High**
 
@@ -862,6 +886,15 @@ without provenance, or building broad enterprise connectors before measured dema
 **Acceptance signal:** fewer by-design/threat-model rejections from maintainers, with each avoided
 error attributable to a question or context fact rather than to extra unguided model calls.
 
+**Initial vertical slice (feature branch; pending PR review):** strict, size-bounded connector-neutral context
+packs with per-claim provenance and credential-pattern rejection; raw content is injected only into
+offline model calls and excluded from reports, drafts, saved audit prompts, online OSINT, and the
+artifact API. Opt-in deterministic question generation groups only architecture-shaped uncertainty
+already present in recon/findings and never pauses a run. Provenance-bearing answers enter the
+same-revision F2 memory and current private context as `claimed` facts, mark dependent verdicts for
+re-validation, and suppress their stale drafts. Deferred: a genuinely targeted validate-only path
+instead of rerunning validation, UI answer entry, and measured maintainer-rejection reduction.
+
 ### F6 — Public Argo research/editorial site — OWNER INTENT · priority **P2** · effort **M**
 
 Build an original Argo-designed editorial presence for public technical research, comparable in
@@ -879,7 +912,15 @@ from a filename or repository presence. Add a deterministic pre-deploy embargo/p
 fail the build closed on uncertain visibility, and keep editorial approval/manual publish as the
 final gate. No external wiki update is part of F1; wiki work happens only after the feature PR merges.
 
-### Evaluation and safety gates for F1–F5
+### R1 — Awesome AI Hacking Agents feature reconnaissance — OWNER INTENT · priority **P1** · effort **M**
+
+Inspect every repository listed by Awesome AI Hacking Agents and produce a dated comparison matrix
+covering concrete capabilities, evaluation evidence, safety model, maturity, and integration cost.
+Deduplicate forks and marketing-only entries. Translate only demonstrated gaps into Argo proposals,
+each with an acceptance metric and an explanation of why the present pipeline cannot cover it. Do
+not copy agent counts, branding, or enterprise connectors merely because another tool has them.
+
+### Evaluation and safety gates for F1–F6
 
 - Replay a fixed set of accepted, rejected, runtime-refuted, by-design, and chained historical
   findings with identical commits/models/budgets; compare each feature cumulatively and in ablation.

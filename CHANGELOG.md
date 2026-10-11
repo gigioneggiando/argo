@@ -9,6 +9,19 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-08
+
+### Added
+
+- **Revision-bound target memory.** Carry provenance-backed facts between runs while checking
+  their source revision; stale or unsupported context is not treated as current evidence.
+- **Incremental review.** Prioritize changed code and its neighborhood while retaining full-repository
+  coverage; unchanged code is not declared safe merely because it was not changed.
+- **Evidence-gated attack paths.** Compose paths only from exact, supported relationships, without
+  changing finding severity or inventing missing edges.
+- **Private context packs and review questions.** Export bounded context for human/model review and
+  surface provenance-backed questions without blocking the pipeline.
+
 ## [0.8.0] - 2026-10-05
 
 ### Added

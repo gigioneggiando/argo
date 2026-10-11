@@ -22,6 +22,7 @@ from ..ranking import confidence_rank, dedup_key, severity_rank, split_ref
 from ..rendering import (context_pack_block, design_context_block, fill_placeholders,
                          render_prompt_pair, with_artifact_contract)
 from ..runner import RunnerError
+from ..static_analysis import build_static_context
 
 _KEEP_VERDICTS = {"confirmed", "needs_runtime_verification"}
 
@@ -393,6 +394,7 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
     mapping = {
         "FINDING_JSON": json.dumps(finding.model_dump(exclude_none=True), indent=2),
         "CODE_EXCERPTS": excerpts,
+        "STATIC_CONTEXT": build_static_context(ctx.repo_dir, finding.affected),
         "REPO_PATH": str(ctx.repo_dir.resolve()),
         "TARGET_TYPE": scope.target_type,
         "SCOPE_JSON": scope_json_text,
@@ -478,6 +480,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
             "code_excerpts": _grounding_note(f) + _build_excerpts(
                 ctx.repo_dir, f.affected,
                 ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes),
+            "static_context": build_static_context(ctx.repo_dir, f.affected),
             "ground_truth": _format_ground_truth(ground_truth, f.source_focus),
         })
     mapping = {

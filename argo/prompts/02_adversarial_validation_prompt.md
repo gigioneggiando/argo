@@ -19,6 +19,17 @@ RELEVANT SOURCE (the orchestrator attaches the cited files + a few lines of surr
 {{CODE_EXCERPTS}}
 ```
 
+DETERMINISTIC STATIC CONTEXT (parse-only, bounded syntactic evidence):
+```
+{{STATIC_CONTEXT}}
+```
+Treat this as supporting evidence only. It may identify an enclosing symbol, calls present in that
+symbol, possible name-matched callers, and a local definition/use slice. It does **not** prove runtime
+reachability, control flow, data flow, exploitability, or vulnerability. The source remains authoritative.
+Static context cannot establish deployment/configuration state, attacker capability, log-reader access,
+timing, or workload assumptions. Keep these conditions in `unmet_preconditions` unless evidence in
+the source or supplied scope establishes them; describe any resulting impact conditionally.
+
 REPOSITORY ROOT (read-only, for following the data flow yourself): {{REPO_PATH}}
 TARGET TYPE: {{TARGET_TYPE}}   # source_only | source_and_live
 SCOPE (for confirming the finding is in-scope):

@@ -161,11 +161,14 @@ Goal: raise recall/quality with cheap, structured context; surface it in the UI.
       prompts are threat-targeted. The **only** networked stage — bounded to OSINT, no repo, never
       the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)).
       UI toggle + `research` API flag + `research_brief`/`threat_intel` artifacts.
-- [ ] **DECIDED AGAINST (for now)** — light static metadata via **tree-sitter** (parse-only AST /
-      call-graph sidecar). Deliberately not built: unproven ROI on top of a strong LLM + added
-      per-language complexity. See [design-decisions.md](design-decisions.md) §2. **Trigger to
-      revisit:** the benchmark (Phase 7) shows recall loss attributable to missed inter-procedural /
-      multi-file data flow. Parse-only (no build) would be the first step if so.
+- [x] **Validation-only light static metadata** via **tree-sitter** — bounded parse-only
+      context for Python, JavaScript/JSX, TypeScript/TSX, and C#: enclosing symbol, calls in that
+      symbol, name-matched possible callers, and a small local definition/use slice. It is injected
+      only into Stage 4 validation, never recon/audit, so it cannot originate findings or silently
+      turn syntax into a vulnerability claim. It never builds or executes the target; prompts label
+      the result as syntactic evidence only. It cannot establish deployment/configuration or other
+      operational preconditions; keep those open unless the source or supplied scope proves them.
+      Deep CPG/PDG/CFG remains deferred.
 - [ ] _Measure_ the index's impact with the baseline dry-run diff (see prompt-synthesis.md).
 
 ### Phase 5 — Advanced / experimental (gated by demand + measured ROI)

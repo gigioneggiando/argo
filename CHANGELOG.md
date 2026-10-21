@@ -9,6 +9,35 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.10.0] - 2026-10-21
+
+### Added
+
+- **Model catalog and provenance.** Current Codex/Gemini/Claude IDs, lifecycle/pricing metadata,
+  requested-versus-served model IDs, CLI versions, effort, and mismatch state are persisted with
+  each run; exact pins fail closed unless substitution is explicitly enabled.
+- **Per-stage and mixed-provider routing.** `--stage-runner`, `--stage-model`, and Claude-only
+  `--stage-effort` support deterministic user overrides while preserving shared guardrails.
+- **Offline screening/planning.** `argo screen`, `argo plan`, `argo show-routing`, and credential-free
+  `argo profiles` provide explainable fingerprints, objective plans, and pre-run routing review.
+
+- **Benchmark evidence and adaptive routing.** Repeated trials now separate invalid runs, preserve
+  target/model/catalog provenance, and expose cost/latency statistics. Evidence-aware planner hints,
+  budget-bounded opt-in adaptive escalation, and a validated frozen corpus are included.
+
+- **Shared API/UI controls.** The FastAPI service and vanilla SPA expose the same screening, planning,
+  catalog, routing, and profile behavior as the CLI.
+
+- **Recon ablation comparison.** `pipeline --no-vuln-index` isolates the curated index input, while
+  `compare-recon` checks commit/input/backend comparability and emits bounded structural diffs of
+  existing recon artifacts. It is offline and deliberately does not turn proxy counts into a
+  precision or recall claim.
+- **Backend/account attribution.** Each LLM call now records a redaction-safe backend/account
+  label in llm_log.jsonl, making fallback and multi-account behavior auditable without exposing
+  credential paths or API keys.
+
 ## [0.9.0] - 2026-10-08
 
 ### Added

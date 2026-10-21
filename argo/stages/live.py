@@ -257,7 +257,7 @@ def _generate_plan(ctx: RunContext, scope) -> list | None:
         "desc": "the in-scope-only live probe plan (list of {finding_id, requests})"}])
     work = ctx.work_dir("live", "propose")
     try:
-        result = ctx.runner.run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
+        result = ctx.runner_for("live").run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
                                 model=cfg.model_for("live"), stage="live", run_id=ctx.run_id,
                                 repo_dir=ctx.repo_dir, allowed_tools=ARTIFACT_TOOLS, label="live-propose")
         files = collect_output_files(result, "live_probe_plan.json")
@@ -315,7 +315,7 @@ def _interpret(ctx: RunContext, results: dict) -> dict:
         "desc": "per-finding live verdicts"}])
     work = ctx.work_dir("live", "interpret")
     try:
-        result = ctx.runner.run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
+        result = ctx.runner_for("live").run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
                                 model=ctx.config.model_for("live"), stage="live", run_id=ctx.run_id,
                                 repo_dir=None, allowed_tools=ARTIFACT_TOOLS, label="live-interpret")
         files = collect_output_files(result, "live_verdicts.json")

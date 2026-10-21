@@ -97,12 +97,10 @@ def test_model_for_codex(monkeypatch):
     import argo.config as cfgmod
     # explicit model wins
     assert PipelineConfig(runner="codex", codex_model="o3").model_for("audit") == "o3"
-    # else the Codex CLI's configured default is detected and used (logged/costed as the real model)
+    # no override -> deterministic stage defaults, independent of the ambient CLI config
     monkeypatch.setattr(cfgmod, "_codex_default_model", lambda: "gpt-5.5")
-    assert PipelineConfig(runner="codex").model_for("audit") == "gpt-5.5"
-    # else the "codex-default" label
-    monkeypatch.setattr(cfgmod, "_codex_default_model", lambda: None)
-    assert PipelineConfig(runner="codex").model_for("audit") == "codex-default"
+    assert PipelineConfig(runner="codex").model_for("audit") == cfgmod.CODEX_BALANCED
+    assert PipelineConfig(runner="codex").model_for("recon") == cfgmod.CODEX_TOP
 
 
 def test_calibrated_actually_sets_codex_model():

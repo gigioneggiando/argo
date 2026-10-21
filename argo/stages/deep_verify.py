@@ -155,7 +155,7 @@ def _verify_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding,
         work_label = finding.id if attempt == 0 else f"{finding.id}-retry{attempt}"
         prompt, neutral_prompt = _build_prompt(ctx, scope, scope_json_text, finding, siblings)
         try:
-            result = ctx.runner.run(
+            result = ctx.runner_for("verify").run(
                 prompt=prompt,
                 neutral_prompt=neutral_prompt,
                 run_dir=ctx.run_dir,

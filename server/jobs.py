@@ -22,7 +22,8 @@ class JobManager:
         self._jobs: dict[str, dict] = {}
         self._lock = threading.Lock()
 
-    _STAGES = ("ingest", "recon", "audit", "validate", "report")
+    _STAGES = ("ingest", "research", "recon", "audit", "sca", "validate", "corroborate",
+               "verify", "asan_poc", "runtime", "live", "remediate", "chat", "report")
 
     def _config_for(self, req: RunRequest) -> PipelineConfig:
         cfg = self.base.with_overrides(
@@ -35,7 +36,13 @@ class JobManager:
             gemini_api_key=req.config.gemini_api_key,
             claude_api_key=req.config.claude_api_key,
             codex_api_key=req.config.codex_api_key,
+            stage_runners=dict(req.config.stage_runners),
+            allow_model_substitution=req.config.allow_model_substitution,
         )
+        if req.config.profile:
+            from argo.profiles import apply_profile
+            cfg = apply_profile(cfg, req.config.profile)
+            cfg = cfg.with_overrides(stage_runners={**cfg.stage_runners, **req.config.stage_runners})
         if req.config.gemini_model:
             # Flat override across every stage, applied BEFORE calibration/audit_model below so
             # those can still bump individual stages on top -- mirrors the CLI's _build_config.
@@ -48,6 +55,24 @@ class JobManager:
         for stage, model in (req.config.models or {}).items():
             if model and stage in self._STAGES:  # ignore unknown stage keys
                 cfg = cfg.with_stage_model(stage, model)
+        if req.config.stage_effort:
+            effort = dict(cfg.stage_effort)
+            allowed_effort = {"low", "medium", "high", "xhigh", "max"}
+            for stage, value in req.config.stage_effort.items():
+                backend = cfg.stage_runners.get(stage, cfg.runner)
+                if backend != "headless":
+                    raise ValueError(f"stage_effort is currently supported only for headless/Claude: {stage}")
+                if value not in allowed_effort:
+                    raise ValueError(f"invalid stage_effort for {stage}: {value}")
+                effort[stage] = value
+            cfg = cfg.with_overrides(stage_effort=effort)
+        from argo.model_catalog import validate_selection
+        stages = set(cfg.stage_models) | set(cfg.codex_stage_models) | set(cfg.gemini_stage_models) | set(cfg.stage_runners)
+        for stage in stages:
+            backend = cfg.stage_runners.get(stage, cfg.runner)
+            check = validate_selection(cfg.model_for(stage), backend)
+            if check.get("selectable") is False:
+                raise ValueError(f"invalid effective routing for {stage}: {check.get('reason')}")
         return cfg
 
     def start(self, req: RunRequest) -> str:

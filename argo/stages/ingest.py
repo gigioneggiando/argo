@@ -18,6 +18,7 @@ from ..config import ARTIFACT_TOOLS, write_pipeline_config
 from ..context_pack import load as load_context_pack
 from ..context import RunContext, atomic_write_json, collect_output_files
 from ..models import AssetVersion, RunMeta, Scope
+from ..provenance import argo_revision, cli_versions
 from ..rendering import sha256_text, with_artifact_contract
 from ..schemas import validate_scope
 
@@ -357,7 +358,7 @@ def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: boo
                 "desc": "the extracted scope object",
             }],
         )
-        result = ctx.runner.run(
+        result = ctx.runner_for("ingest").run(
             prompt=prompt,
             run_dir=ctx.run_dir,
             work_dir=ctx.work_dir("ingest"),
@@ -428,6 +429,13 @@ def run(ctx: RunContext, *, brief_path: Path | None, repo: str, repo_is_url: boo
         repo_commit_date=commit_date,
         runner=ctx.config.runner,
         stage_models=dict(ctx.config.stage_models),
+        stage_runners=dict(ctx.config.stage_runners),
+        codex_stage_models=dict(ctx.config.codex_stage_models),
+        gemini_stage_models=dict(ctx.config.gemini_stage_models),
+        model_catalog_snapshot=ctx.config.model_catalog_snapshot,
+        cli_versions=cli_versions(),
+        argo_revision=argo_revision(),
+        adaptive_escalation=ctx.config.adaptive_escalation,
         live_forbidden=True,                                   # always
         automation_forbidden=not bool(scope.automation_allowed),
         asset_versions=_asset_versions(ctx.assets_dir),

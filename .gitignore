@@ -1,6 +1,7 @@
 # Run artifacts and local state
 runs/
 .argo-target-memory/
+.argo-screen-cache/
 .pytest_tmp/
 .pytest_tmp*/
 argo/ledger.sqlite

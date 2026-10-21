@@ -67,7 +67,11 @@ equivalent re-validation for the Codex sandbox), and `tests/test_gemini.py`
 `codex exec` with: `-s workspace-write`, `--skip-git-repo-check`, `--ephemeral`, `--json`,
 `-o <last-message file>`, prompt on stdin. Options:
 
-- `--codex-model <id>` (e.g. `gpt-5-codex`) — **omit to use the Codex CLI's own configured model** (recommended: it tracks the current best for your account).
+- `--codex-model <id>` is a compatibility flat override. New runs use the explicit stage map:
+  `gpt-6-astra` for recon/validate/verify, `gpt-6.1-sol` for audit/runtime, and `gpt-6-luna`
+  for ingest/SCA/report. Use repeatable `--stage-model STAGE=ID` to override one stage.
+- `--stage-runner STAGE=backend` deliberately mixes providers while retaining the same guardrails;
+  `argo show-routing` prints the resolved map before spending tokens.
 - `--codex-oss` + `--codex-local-provider <ollama|lmstudio>` — run a **local / open-source** model
   through Codex (`--oss`). With a local provider the cost is ~$0.
 
@@ -92,13 +96,14 @@ well-formedness guardrail), and audit must emit schema-valid findings JSON. A **
 (e.g. `qwen2.5-coder:32b`, `deepseek-v3`/`-r1`) is recommended; very small models (≈7B) may fail the
 strict stages. Which local models clear the bar is exactly what the **benchmark** (`argo bench`)
 measures — that cross-model comparison is a study result, not an assumption. The OpenAI path
-(gpt-5.5) is validated end-to-end; a local-model run depends on your having Ollama/LM Studio up with
+(gpt-6.1-sol/Astra) is validated end-to-end; a local-model run depends on your having Ollama/LM Studio up with
 the model pulled.
 
 **Cost is estimated, not authoritative.** Claude Code returns `total_cost_usd` per call (and Argo
 hands it `--max-budget-usd` for a hard mid-session kill). Codex reports **tokens, not dollars**, so
 Argo *estimates* USD from token usage × a small price table (`config.MODEL_PRICING` /
-`estimate_cost_usd`); unknown and OSS/local models estimate to **$0** (tokens are still logged). The
+`estimate_cost_usd`); unknown and OSS/local models are marked **unknown** rather than falsely treated
+as free (tokens are still logged). The
 consequence: with Codex the hard *mid-session* budget kill is unavailable; the per-run budget abort
 between stages still applies, on the estimated cost. This is a deliberate, documented degradation —
 see [design-decisions.md](design-decisions.md).
@@ -113,7 +118,7 @@ JSON path, avoiding that quirk and any OS argv-length limit on Argo's large audi
 CLI exit 55 ("not running in a trusted directory") — every headless automation hits this, not just
 Argo. Options:
 
-- `--gemini-model <id>` (e.g. `gemini-3.1-pro`) — flat override across **every** stage, applied
+- `--gemini-model <id>` — flat override across **every** stage, applied
   before `--calibration`/`--audit-model` so those can still bump individual stages on top. Omit to
   use the built-in per-stage tiering (below).
 - `--gemini-api-key <key>` — sets `GEMINI_API_KEY` for this run; omit to use the ambient env var or
@@ -156,18 +161,21 @@ above.
 
 ### Model tiering
 
-Gemini is tiered per stage like Claude (not flat like Codex) — `DEFAULT_GEMINI_STAGE_MODELS`
+Gemini is tiered per stage — `DEFAULT_GEMINI_STAGE_MODELS`
 (`argo/config.py`):
 
 | Tier | Model | Stages |
 |---|---|---|
-| Pro | `gemini-3.1-pro` | recon, validate, verify, sca, remediate, asan_poc |
-| Flash | `gemini-3.5-flash` | ingest, audit, report, chat, research, runtime, live, corroborate |
+| Argon | `gemini-4-argon` | validate, verify, remediate, asan_poc |
+| Flash | `gemini-3.8-flash` | recon, audit, runtime, live, corroborate |
+| Flash-Lite | `gemini-3.5-flash-lite` | ingest, report, research, SCA/smoke |
 
 `for_smoke()` uses Flash-Lite (`gemini-3.1-flash-lite`) everywhere except recon (Flash) — the same
-reasoning as Claude's Haiku/Sonnet smoke split. Pricing (`config.MODEL_PRICING`, confirmed
-2026-08-17 from `ai.google.dev/gemini-api/docs/pricing`, USD/1M tokens, ≤200k-token prompts): Pro
-$2.00 in / $12.00 out, Flash $1.50 / $9.00, Flash-Lite $0.25 / $1.50. As of 2026-04-01 Pro has **no
+reasoning as Claude's Haiku/Sonnet smoke split. Pricing is resolved from the date-stamped static
+catalog (`argo/model_catalog.py`): Gemini 4 Argon is currently $2/$10 input/output per 1M tokens
+(promotional through 2026-11-30, then $4/$20), and Gemini 3.8/3.6 Flash is currently $0.75/$3.75
+(promotional through 2026-12-31, then $1.50/$7.50). Unknown/custom IDs remain explicitly
+unpriced. As of 2026-04-01 Pro has **no
 free tier** — only Flash/Flash-Lite retain free-tier access, which is exactly why the smoke config
 avoids Pro entirely.
 
@@ -211,6 +219,14 @@ in the web UI — see `PipelineConfig._SECRET_FIELDS`.
   are set for the same run — resolving to one `CODEX_HOME` value is a real collision, and an
   explicit directory is the stronger signal. `--codex-api-keys key-a,key-b` chains multiple keys
   (each gets its own bootstrapped `CODEX_HOME`; `--codex-accounts` wins if both are set).
+
+### Per-session backend/account attribution
+
+Every invocation is recorded in runs/<id>/llm_log.jsonl with backend and backend_account. The
+account value is a safe label such as codex:codex-b[2] or codex:api-key[1]: this attribution field
+never contains a credential or the full CODEX_HOME path. It makes fallback and rate-limit behavior
+auditable without adding machine usernames or secrets to the per-call log. Existing cost and token
+fields remain unchanged.
 
 ## Verify your backend
 

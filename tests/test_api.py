@@ -176,7 +176,7 @@ def test_recommend_tiers(tmp_path):
         assert quick["config"]["runner"] == "mock"                 # never auto-enables spend
         assert quick["config"]["budget_usd"] < thorough["config"]["budget_usd"]
         assert thorough["config"]["calibration"] is True
-        assert thorough["config"]["models"]["audit"] == "claude-opus-5"
+        assert thorough["config"]["models"]["audit"] == "claude-opus-5-5"
         assert "rationale" in thorough and thorough["rationale"]
     finally:
         app.state.ledger.close()
@@ -316,7 +316,20 @@ def test_models_endpoint(tmp_path):
         assert any("opus" in x["id"] for x in claude["models"])
         codex = next(b for b in m["backends"] if b["id"] == "codex")
         assert "ollama" in codex["oss_providers"]
-        assert any(p["model"] == "gpt-5.5" for p in m["pricing"])   # price table exposed
+        assert any(p["model"] == "gpt-6.1-sol" for p in m["pricing"])   # current catalog exposed
+    finally:
+        app.state.ledger.close()
+
+
+def test_screen_and_plan_endpoints_are_read_only_and_explainable(tmp_path):
+    app, client = _client(tmp_path)
+    try:
+        screened = client.post("/screen", json={"target": str(REPO)}).json()
+        assert screened["schema_version"] == 1 and screened["fingerprint_id"]
+        planned = client.post("/plan", json={"target": str(REPO), "objective": "economy"}).json()
+        assert planned["plan_id"] and planned["objective"] == "economy"
+        assert "reasons" in planned and "stage_models" in planned
+        assert not (REPO / ".argo-screen-cache").exists()
     finally:
         app.state.ledger.close()
 

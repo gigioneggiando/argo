@@ -18,6 +18,12 @@ class RunConfig(BaseModel):
     parallel: int = Field(3, ge=1, le=16, description="max concurrent audit/validate sessions")
     models: dict[str, str] = Field(default_factory=dict,
                                    description="per-stage model overrides {ingest,recon,audit,validate,report}")
+    stage_runners: dict[str, str] = Field(default_factory=dict,
+                                         description="per-stage backend overrides")
+    stage_effort: dict[str, str] = Field(default_factory=dict,
+                                         description="Claude-only per-stage effort settings")
+    profile: Optional[str] = Field(None, description="credential-free routing profile")
+    allow_model_substitution: bool = Field(False, description="allow requested/served model mismatch")
     codex_model: Optional[str] = Field(None, description="(runner=codex) model id; omit for the Codex CLI default")
     codex_oss: bool = Field(False, description="(runner=codex) use the open-source provider")
     codex_local_provider: Optional[str] = Field(None, description="(runner=codex+oss) ollama | lmstudio")
@@ -57,6 +63,17 @@ class Settings(BaseModel):
 class RecommendRequest(BaseModel):
     repo: Optional[str] = None
     target: str = Field("standard", description="quick | standard | thorough")
+
+
+class ScreenRequest(BaseModel):
+    target: str = Field(..., min_length=1, description="local repository directory")
+    rescreen: bool = False
+
+
+class PlanRequest(ScreenRequest):
+    objective: str = "balanced"
+    max_cost: Optional[float] = Field(None, ge=0)
+    max_duration_minutes: Optional[int] = Field(None, ge=1)
 
 
 class ChatMessage(BaseModel):

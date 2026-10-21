@@ -216,8 +216,37 @@ edit is **regression**. Validate every meta-prompt change against a baseline bef
      --brief <program>/brief.md --repo runs/<program>/<id>/repo \
      --links <program>/links.txt --runs-dir _validate --run NEW
    ```
-4. **Diff** the new `repo_profile.json`, `prompts/audit_*.md`, and `synthesis_notes.md` against the
-   baseline. Keep the change only if quality holds or improves; revert otherwise.
+4. Compare the artifacts locally:
+   ```bash
+   argo compare-recon \
+     --baseline runs/<program>/<id> \
+     --candidate _validate/NEW \
+     --max-diff-lines 200
+   ```
+   The command is read-only and makes no model calls. It canonicalizes JSON and run-local paths,
+   reports prompt/CWE/citation counts, and warns if the recorded commit, non-index prompt inputs,
+   or successful backend/model differ. It also emits bounded unified diffs of
+   `repo_profile.json`, `prompts/audit_*.md`, `ground_truth.json`, and `synthesis_notes.md`.
+5. Review the actual content. Keep the change only if quality holds or improves; revert otherwise.
+
+### Controlled vulnerability-index ablation
+
+To test what the curated index contributes, run a matched pair from the same clean, pinned commit
+with the same brief, context, research input, runner/model, budgets, and prompt assets. Change only
+the index switch:
+
+```bash
+argo pipeline --dry-run --run INDEX-ON  --commit <SHA> --repo <REPO> --brief <BRIEF>
+argo pipeline --dry-run --run INDEX-OFF --commit <SHA> --repo <REPO> --brief <BRIEF> --no-vuln-index
+argo compare-recon --baseline runs/INDEX-ON --candidate runs/INDEX-OFF
+```
+
+Each new recon writes `recon_inputs.json`: hashes of the base prompt and private context, the index
+state/hash, and recon settings. The full private input prompt is not persisted there. Because model
+output is nondeterministic, repeat matched pairs and inspect downstream benchmark/maintainer outcomes
+before attributing a benefit to the index. Prompt count, length, CWE coverage, and citation density
+can identify regressions worth reading; none is a precision or recall metric by itself. The compare
+output may include existing private artifact text, so do not publish it blindly.
 
 > Note: two Opus recon runs on the same repo differ (model nondeterminism), so judge by
 > **structural** signals (archetype classified, split fit, file:line citation density, explicit

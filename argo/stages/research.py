@@ -93,7 +93,7 @@ def run(ctx: RunContext) -> Path | None:
     scope = ctx.scope or ctx.load_scope()
     work = ctx.work_dir("research")
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("research").run(
             prompt=_build_prompt(scope),
             run_dir=ctx.run_dir,
             work_dir=work,

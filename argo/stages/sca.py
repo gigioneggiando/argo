@@ -269,7 +269,7 @@ def run(ctx: RunContext) -> Path | None:
     llm_findings: list[dict] = []
     files: list[Path] = []
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("sca").run(
             prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
             model=ctx.config.model_for("sca"), stage="sca", run_id=ctx.run_id,
             repo_dir=ctx.repo_dir, allowed_tools=ARTIFACT_TOOLS, label="sca-dependencies")

@@ -220,7 +220,7 @@ def test_invoke_no_stdout_startup_crash_is_retryable_unknown(tmp_path, monkeypat
 # --------------------------------------------------------------- model tiering (config)
 def test_model_for_gemini_per_stage_tiering():
     cfg = PipelineConfig(runner="gemini")
-    assert cfg.model_for("recon") == GEMINI_PRO
+    assert cfg.model_for("recon") == GEMINI_FLASH
     assert cfg.model_for("audit") == GEMINI_FLASH
     assert cfg.model_for("verify") == GEMINI_PRO
 
@@ -228,19 +228,20 @@ def test_model_for_gemini_per_stage_tiering():
 def test_gemini_model_override_and_calibrated():
     cfg = PipelineConfig(runner="gemini").with_stage_model("audit", GEMINI_PRO)
     assert cfg.model_for("audit") == GEMINI_PRO
-    assert cfg.model_for("recon") == GEMINI_PRO   # untouched stages unaffected
+    assert cfg.model_for("recon") == GEMINI_FLASH   # untouched stages unaffected
     assert cfg.calibrated().model_for("audit") == GEMINI_PRO
 
 
 def test_for_smoke_primes_gemini_stage_models_too():
     cfg = PipelineConfig(runner="gemini").for_smoke()
-    assert cfg.gemini_stage_models["audit"] == GEMINI_FLASH_LITE
+    from argo.config import GEMINI_CHEAP
+    assert cfg.gemini_stage_models["audit"] == GEMINI_CHEAP
     assert cfg.gemini_stage_models["recon"] == GEMINI_FLASH
 
 
 def test_gemini_cost_estimate():
     assert estimate_cost_usd(GEMINI_PRO, 1_000_000, 0) == 2.00
-    assert estimate_cost_usd(GEMINI_FLASH_LITE, 0, 1_000_000) == 1.50
+    assert estimate_cost_usd(GEMINI_FLASH_LITE, 0, 1_000_000) == 2.50
 
 
 # --------------------------------------------------------------- dispatch

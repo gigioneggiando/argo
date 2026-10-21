@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config import PipelineConfig
+from .adaptive import maybe_escalate_after_audit
 from .context import RunContext
 from .estimate import estimate_cost, format_estimate
 from .ledger import Ledger
@@ -253,7 +254,12 @@ def _run_stage_sequence(ctx: RunContext, stage_fns: list[tuple[str, object]],
 
     # Wire cancellation into the runner so a long session is killed on Cancel, not just checked
     # between stages.
-    ctx.runner.cancel_event = cancel_event
+    # Keep the small namespace-based test harnesses and third-party callers compatible with the
+    # pre-routing RunContext shape; real contexts also propagate to lazily-created stage runners.
+    if hasattr(ctx, "set_cancel_event"):
+        ctx.set_cancel_event(cancel_event)
+    else:
+        ctx.runner.cancel_event = cancel_event
 
     def _check_cancel() -> None:
         if cancel_event is not None and cancel_event.is_set():
@@ -304,6 +310,10 @@ def _run_stage_sequence(ctx: RunContext, stage_fns: list[tuple[str, object]],
                 time.sleep(wait_s)
         reporter.finish_stage(name)
         results[name] = result
+        if name == "audit":
+            # Optional, evidence-triggered routing change for the following validation stage.
+            # It is a no-op by default and disabled automatically in benchmark mode.
+            maybe_escalate_after_audit(ctx)
     return results
 
 

@@ -262,7 +262,7 @@ def _run_batch_pass(ctx: RunContext, scope, batch: list[Finding], *, online: boo
     ids = [f.id for f in batch]
     pass_name = "osint" if online else "docs"
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("corroborate").run(
             prompt=(_build_osint_batch_prompt(ctx, scope, batch) if online
                     else _build_docs_batch_prompt(ctx, scope, batch)),
             run_dir=ctx.run_dir,
@@ -297,7 +297,7 @@ def _run_batch_pass(ctx: RunContext, scope, batch: list[Finding], *, online: boo
 def _run_one_pass(ctx: RunContext, scope, finding: Finding, *, online: bool) -> Corroboration:
     pass_name = "osint" if online else "docs"
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("corroborate").run(
             prompt=(_build_osint_prompt(ctx, scope, finding) if online
                     else _build_docs_prompt(ctx, scope, finding)),
             run_dir=ctx.run_dir,

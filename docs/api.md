@@ -39,6 +39,8 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | GET | `/runs/{id}/prompts` · `/findings` · `/drafts` | the multi-file artifacts |
 | GET / PUT | `/settings` | persisted UI defaults (runner, budget, parallelism, per-stage models, …) |
 | POST | `/recommend` | "Let the AI choose": `{repo, target}` → a recommended config + rationale (heuristic, no LLM; runner stays mock) |
+| POST | `/screen` | deterministic, read-only local fingerprint (no execution/network) |
+| POST | `/plan` | fingerprint + objective → explainable plan, routing, cost/time range, and reasons |
 | GET | `/runs/{id}/chat` | chat history for the run |
 | POST | `/runs/{id}/chat` | `{message}` → one chat turn: `{reply, generated, cost_usd, validated_candidate}` (read-only repo; test files go to `generated/`). **B1**: if the analyst proposes a `CANDIDATE_FINDING.json` for a "why didn't you find X?", it is re-validated by the pipeline's adversarial validator and `validated_candidate` carries the verdict (null otherwise). `cost_usd` is the chat turn; the re-validation session is logged to the ledger (in the run total). |
 | GET | `/runs/{id}/generated` | files the chat analyst produced (e.g. test suites) |
@@ -121,7 +123,7 @@ cross-backend comparison (`GET /benchmark/cross`), and refusal rate (`GET /refus
   explicitly sets `"headless"` (Claude Code), `"codex"` (Codex CLI / OpenAI / OSS), or `"gemini"`
   (Gemini CLI). This is the safety default; the UI adds an explicit confirm + cost preview before a
   real run.
-- For `"codex"`: `config.codex_model` (omit to use your Codex CLI default, e.g. `"gpt-5-codex"`), `config.codex_oss` (bool), and
+- For `"codex"`: `config.codex_model` (omit to use your Codex CLI default, e.g. `"gpt-6.1-sol"`), `config.codex_oss` (bool), and
   `config.codex_local_provider` (`"ollama"`/`"lmstudio"`) select the model / open-source provider;
   `config.codex_api_key` supplies an OpenAI API key (Argo bootstraps a dedicated cached `CODEX_HOME`
   for it via `codex login --with-api-key` on first use — a bare env var alone does not authenticate

@@ -6,21 +6,24 @@ builds one from flags; tests and the orchestrator can build one directly. Derive
 
 ## Model assignment
 
-Model IDs:
+Model IDs (catalog snapshot **2026-10-21**, see `argo/model_catalog.py`):
 
 ```python
-OPUS   = "claude-opus-5"
-SONNET = "claude-sonnet-5"
-HAIKU  = "claude-haiku-4-5-20251001"   # cheapest; used by --smoke
+OPUS   = "claude-opus-5-5"
+SONNET = "claude-sonnet-5-5"
+HAIKU  = "claude-haiku-5-5"   # cheapest current model
+FABLE  = "claude-fable-5-1"   # optional security-specialized profile
+MYTHOS = "claude-mythos-5-1"   # trusted-access only; never required
 
 # Gemini, tiered per stage the same way (DEFAULT_GEMINI_STAGE_MODELS):
-GEMINI_PRO        = "gemini-3.1-pro"
-GEMINI_FLASH      = "gemini-3.5-flash"
-GEMINI_FLASH_LITE = "gemini-3.1-flash-lite"   # cheapest; used by the Gemini --smoke run
+GEMINI_ARGON      = "gemini-4-argon"
+GEMINI_FLASH      = "gemini-3.8-flash"
+GEMINI_FLASH_LITE = "gemini-3.5-flash-lite"   # cheap/smoke tier
 
-# Codex, flat (not per-stage) — see the `runner` field below:
-CODEX_TOP   = "gpt-5-codex"   # Codex's own coding-focused top model
-CODEX_CHEAP = "o4-mini"       # a real lighter/cheaper model, mirrors Haiku/Flash-Lite's role
+# Codex, routed per stage (global --codex-model remains a compatibility override):
+CODEX_TOP      = "gpt-6-astra"
+CODEX_BALANCED = "gpt-6.1-sol"
+CODEX_CHEAP    = "gpt-6-luna"
 ```
 
 Per-stage defaults (`DEFAULT_STAGE_MODELS`), each overridable per run:
@@ -42,8 +45,45 @@ cannot recover a bug the audit model never surfaced. So the audit model sets the
 `--calibration` forces audit → Opus (use it for the first few programs and for high-value targets);
 drop to Sonnet for broad low-value sweeps once a target class reliably yields good findings.
 
-`config.for_smoke()` overrides everything to Haiku **except recon → Sonnet** (the recon synthesis
-is guardrail-gated and Haiku is too unreliable at reproducing the template verbatim).
+`config.for_smoke()` uses a cheap map with recon on a balanced tier.  Every run persists the
+catalog snapshot, effective stage maps, CLI versions, and requested/served model IDs.
+
+### Per-stage routing and effort
+
+Use repeatable flags for advanced runs:
+
+```bash
+argo pipeline --repo ./target --stage-runner audit=codex \
+  --stage-model audit=gpt-6.1-sol --stage-runner validate=headless \
+  --stage-effort validate=high
+argo show-routing --runner codex
+```
+
+Precedence is explicit stage override, global backend override, profile, then built-in defaults.
+`--stage-effort` is currently accepted only for the Claude/headless CLI, whose `--effort` values
+are verified locally; Codex/Gemini native effort controls are not guessed. Unknown custom model
+IDs remain selectable but are labeled `custom/unverified` and have unknown pricing.
+
+The static catalog also stores effective-dated promotional prices (for example Gemini's current
+2026 rate and its post-promotion rate). Token-only backends are recorded as
+`estimated_known_price`; an unknown/custom model is `unknown`, never an authoritative `$0` quote.
+Use `argo catalog validate` before a pinned experiment to inspect backend/model compatibility.
+
+Credential-free profiles can be inspected/exported or used directly:
+
+```bash
+argo profiles list
+argo profiles export --name cost-saver --output cost-saver.json
+argo profiles validate --input cost-saver.json
+argo pipeline --repo ./target --profile cost-saver
+```
+
+`--profile` also accepts a JSON profile path. `argo profiles save --name NAME --config
+runs/RUN/config.json` writes only routing/behavior fields; secrets are rejected and never copied.
+
+Adaptive escalation is off by default. `--adaptive-escalation conservative|balanced|aggressive`
+may strengthen the validation stage after a high/critical audit result; every decision is written
+to `adaptive_events.jsonl`, and benchmark mode disables it.
 
 ## Tool allowlists (defense in depth)
 
@@ -94,11 +134,14 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | Field | Default | Meaning |
 |---|---|---|
 | `runner` | `headless` | `headless` (Claude Code) · `codex` (Codex CLI / OpenAI / OSS) · `gemini` (Gemini CLI) · `mock` — see [backends.md](backends.md) |
+| `stage_runners` | `{}` | optional per-stage backend map; lazy runners share the ledger, cancellation signal, and guardrails |
+| `stage_effort` | `{}` | Claude-only native effort map (`low`/`medium`/`high`/`xhigh`/`max`); other providers stay at `provider_default` |
 | `runner_fallbacks` | `--fallback` | ordered fallback backends (e.g. `--fallback codex,gemini`) — when the primary hits a **retryable** failure (session/rate-limit, timeout, or a classified moderation-flag/credits-exhaustion signature), the same call is transparently retried on the next backend (`FallbackRunner`), with a per-run circuit breaker whose cooldown length depends on the failure's classified kind (longer for credits exhaustion, a real delay before retrying the *same* backend provider again after a moderation flag). Each backend selects its own model for the stage. See [architecture.md](architecture.md#the-agentrunner-abstraction) for the full failure-kind/backoff breakdown. |
 | `claude_accounts` / `claude_config_dir` | `--claude-accounts` | **multi-account Claude**: an ordered list of `CLAUDE_CONFIG_DIR` paths, each a separate logged-in account (limits are **per-account**). The headless backend becomes an account-fallback chain — `account A → account B → --fallback`. Set up each once with `CLAUDE_CONFIG_DIR=<dir> claude login`. The runner injects `CLAUDE_CONFIG_DIR` (normalized, `~` expanded) per `claude` invocation. |
 | `codex_accounts` / `codex_home` | `--codex-accounts` | **multi-account Codex**: the same via `CODEX_HOME` (default `~/.codex`). Set up each once with `CODEX_HOME=<dir> codex login`. A `codex` backend (primary or fallback) expands to one runner per account. |
-| `codex_model` / `codex_oss` / `codex_local_provider` | `None` / `False` / `None` | (runner=codex) model id (e.g. `CODEX_TOP`/`CODEX_CHEAP`); open-source provider toggle; `ollama`/`lmstudio`. Codex cost is **token-estimated** (`MODEL_PRICING`), not authoritative |
+| `codex_model` / `codex_stage_models` / `codex_oss` | `None` / built-in map / `False` | Codex global and per-stage model IDs; explicit per-stage wins over global. Cost is token-estimated and records the served model when JSONL exposes it |
 | `gemini_stage_models` | `DEFAULT_GEMINI_STAGE_MODELS` | (runner=gemini) per-stage model dict, tiered like Claude's `stage_models` (`GEMINI_PRO`/`GEMINI_FLASH`/`GEMINI_FLASH_LITE`) — only consulted when `runner == "gemini"` |
+| `allow_model_substitution` | `False` | fail-closed on requested/served mismatch by default; enable only for best-effort runs, never exact benchmarks |
 | `gemini_api_key` / `gemini_accounts` | `--gemini-api-key` / `--gemini-accounts` | (runner=gemini) API key; **multi-account Gemini** via an ordered list of keys (the automation-auth lever is the `GEMINI_API_KEY` env var, so accounts are keys, not config dirs like Claude/Codex) |
 | `claude_api_key` / `claude_api_keys` | `--claude-api-key` / `--claude-api-keys` | (runner=headless) `ANTHROPIC_API_KEY` for this run; a **separate** mechanism from `claude_config_dir`/`claude_accounts` — coexists **additively** (both env vars injected, no collision) since a bare key needs no login step, unlike Codex. Multi-account via an ordered list of keys. |
 | `codex_api_key` / `codex_api_keys` | `--codex-api-key` / `--codex-api-keys` | (runner=codex) OpenAI API key; unlike Claude/Gemini, a bare env var does **not** authenticate `codex exec` — Argo bootstraps (once, cached under `~/.argo/codex_homes/<hash>`) a dedicated logged-in `CODEX_HOME` for it via `codex login --with-api-key` (key piped over stdin, never argv). `codex_home`/`codex_accounts` **win** if both are set for the same backend (avoids ambiguity between two ways of resolving one `CODEX_HOME` value). See [architecture.md](architecture.md#the-agentrunner-abstraction). |
@@ -107,6 +150,7 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `attribution` | `--attribution / --no-attribution` | append a "Produced by **Argo**" provenance footer to `REPORT.md` / drafts + an attribution block to `fixes_report.json` (with `Generated-with:` / `Co-authored-by:` trailers for remediation PRs). **Default on** for every user; opt out with `--no-attribution`. Attribution only — never changes any license. See [`argo/branding.py`](../argo/branding.py). |
 | `runs_dir` | `runs` | root dir for run artifacts |
 | `target_memory_enabled` | `True` | load/capture private, revision-bound target memory around recon; disabling it keeps fully stateless runs. Mock runs emit an empty snapshot and never read or write persistent memory, because fixture output does not describe the supplied repository. |
+| `vuln_index_enabled` | `True` (`--vuln-index / --no-vuln-index`) | include the curated vulnerability-class index in recon. The opt-out exists for controlled ablation and is persisted for resume; it does not disable other recon context. |
 | `target_memory_dir` | sibling `.argo-target-memory/` beside `runs_dir` | optional private local store location; source is never copied and stale facts are never seeded into a changed revision |
 | `incremental_base` / `incremental_max_related_files` | `None` / `50` | opt-in Git base for a full-context incremental review and cap for its deterministic textual neighbourhood; no unchanged-code safety claim is made |
 | `review_questions_enabled` / `review_questions_max` | `False` / `20` | opt-in deterministic private architecture clarification queue after evidence; questions never pause an unattended run |

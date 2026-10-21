@@ -372,6 +372,7 @@ def test_build_runner_multi_account_codex_chain(tmp_path):
         assert isinstance(r, FallbackRunner) and len(r._runners) == 2
         assert all(isinstance(x, CodexRunner) for x in r._runners)
         assert [x.config.codex_home for x in r._runners] == ["/cdx/a", "/cdx/b"]
+        assert [x.account_label for x in r._runners] == ["codex:a[1]", "codex:b[2]"]
     finally:
         ledger.close()
 
@@ -458,6 +459,7 @@ def test_build_runner_multi_account_codex_api_key_chain(tmp_path):
         assert isinstance(r, FallbackRunner) and len(r._runners) == 2
         assert all(isinstance(x, CodexRunner) for x in r._runners)
         assert [x.config.codex_api_key for x in r._runners] == ["sk-oai-a", "sk-oai-b"]
+        assert [x.account_label for x in r._runners] == ["codex:api-key[1]", "codex:api-key[2]"]
         assert all(x.config.codex_home is None for x in r._runners)
     finally:
         ledger.close()

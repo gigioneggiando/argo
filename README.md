@@ -8,27 +8,46 @@
 
 **Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) · [Wiki](https://github.com/gigioneggiando/argo/wiki) · [Discussions](https://github.com/gigioneggiando/argo/discussions) · [Changelog](CHANGELOG.md)
 
+Before a paid audit, use `argo screen ./repo` for a deterministic read-only fingerprint, `argo plan
+./repo --objective balanced` for an explainable cost/time range, and `argo show-routing` to inspect
+the exact per-stage backend/model selection. Advanced runs can mix providers with repeated
+`--stage-runner`/`--stage-model` flags; run provenance records both requested and actually served
+models.
+
 ## Real, disclosed, independently verified
 
 Not a benchmark score — pull requests, published advisories, and real CVEs, on real open-source projects.
 
-**15** projects audited and disclosed · **53** public PRs · **53** already resolved · **3** CVEs assigned · **93% real-world accuracy**\*
+**27** projects audited and disclosed · **61** public PRs · **24** published advisories · **73** already resolved · **7** CVEs assigned · **7** languages represented\*
 
-| Project | Stars | Severity | Result |
+These are the current public totals (snapshot: 21 October 2026). Private reports and findings still in triage are deliberately excluded.
+
+| Project | Stars | Public result |
 |---|---:|---|---|
-| [ds4](https://github.com/antirez/ds4) — antirez, Redis's original author | 21k★ | Critical | [Pre-auth double-free, fixed](https://github.com/antirez/ds4/commits?author=gigioneggiando) |
-| [moquette](https://github.com/moquette-io/moquette) | 2.4k★ | Critical (9.6) | Cross-tenant authz bypass — [advisory + CVE-2026-85724](https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq), CVSS 9.6 |
-| [PocketBase](https://github.com/pocketbase/pocketbase) | 61k★ | High (8.7) | [Advisory + CVE-2026-82410](https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx), reporter credited |
-| [mediamtx](https://github.com/bluenviron/mediamtx) | 20k★ | High | MoQ varint DoS pair, [advisory published](https://github.com/bluenviron/mediamtx/security/advisories/GHSA-j55q-3r8w-j2r5) (credited), fixed in v1.19.3 |
-| [LiveKit](https://github.com/livekit/livekit) | 20k★ | Critical + High | 13 of 24 findings fixed, credited on their [Security Hall of Fame](https://livekit.com/security/hall-of-fame) |
-| [coturn](https://github.com/coturn/coturn) | 14k★ | Medium | Real CVE assigned: [CVE-2026-73213](https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99) |
+| [n8n](https://github.com/n8n-io/n8n) | 208k★ | MCP browser session lifecycle leak fixed in [PR #36850](https://github.com/n8n-io/n8n/pull/36850) |
+| [Open WebUI](https://github.com/open-webui/open-webui) | 156k★ | Two published advisories: [tool-source disclosure](https://github.com/open-webui/open-webui/security/advisories/GHSA-2h26-836q-4jh2) and [OAuth cookie disclosure](https://github.com/open-webui/open-webui/security/advisories/GHSA-gqfh-jxvw-74rp), fixed in v0.11.4 |
+| [vLLM](https://github.com/vllm-project/vllm) | 95k★ | Public security fix proposed in [PR #52542](https://github.com/vllm-project/vllm/pull/52542) (open; not counted as resolved) |
+| [Vaultwarden](https://github.com/dani-garcia/vaultwarden) | 69k★ | Three published advisories, including [cross-organization cipher access](https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-xwf8-pjh7-h589), fixed in v1.37.0 |
+| [Gitea](https://github.com/go-gitea/gitea) | 59k★ | Two published advisories, including [OAuth token-kind confusion](https://github.com/go-gitea/gitea/security/advisories/GHSA-xvfh-qwmh-f92w) and CVE-2026-101023 |
+| [PocketBase](https://github.com/pocketbase/pocketbase) | 62k★ | [Advisory, CVE-2026-82410 and GO-2026-6489](https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx), reporter credited |
+| [SurrealDB](https://github.com/surrealdb/surrealdb) | 33k★ | Two published advisories for [WASI output buffering](https://github.com/surrealdb/surrealdb/security/advisories/GHSA-jj89-wvrw-c4gp) and [non-ASCII header handling](https://github.com/surrealdb/surrealdb/security/advisories/GHSA-84w9-87hm-mxqx) |
+| [authentik](https://github.com/goauthentik/authentik) | 26k★ | Two published advisories and CVEs: [SAML assertion replay](https://github.com/goauthentik/authentik/security/advisories/GHSA-cqj8-fxxf-9pg7) and [credential disclosure](https://github.com/goauthentik/authentik/security/advisories/GHSA-m9h4-7j9c-55x9) |
+| [LiveKit](https://github.com/livekit/livekit) | 22k★ | 14 public fixes across resource-exhaustion, parser and auth-hardening findings, credited on their [Security Hall of Fame](https://livekit.com/security/hall-of-fame) |
+| [FreshRSS](https://github.com/FreshRSS/FreshRSS) | 16k★ | Five merged security fixes and one open public PR, including [CSRF](https://github.com/FreshRSS/FreshRSS/pull/9335), [session fixation](https://github.com/FreshRSS/FreshRSS/pull/9333), and [ZIP-bomb bounds](https://github.com/FreshRSS/FreshRSS/pull/9332) |
+| [PHP-CS-Fixer](https://github.com/PHP-CS-Fixer/PHP-CS-Fixer) | 14k★ | Three merged fixes, including [symlink cache-path protection](https://github.com/PHP-CS-Fixer/PHP-CS-Fixer/pull/9856) |
+| [ProxySQL](https://github.com/sysown/proxysql) | 6.9k★ | Five published, reporter-credited advisories covering MySQL/PostgreSQL parser and allocation bugs ([example](https://github.com/sysown/proxysql/security/advisories/GHSA-r23x-jg5r-jmcc)); fixes pending upstream |
+| [open62541](https://github.com/open62541/open62541) | 3.3k★ | Nine public fixes across 1.3, 1.4 and 1.5, including session-token and parser hardening ([PR #8612](https://github.com/open62541/open62541/pull/8612)) |
+| [ds4](https://github.com/antirez/ds4) | 24k★ | Pre-auth double-free and parser/resource bugs fixed upstream or in the credited community fork ([public fixes](https://github.com/antirez/ds4/commits?author=gigioneggiando)) |
+| [moquette](https://github.com/moquette-io/moquette) | 2.5k★ | Cross-tenant authz bypass ([advisory + CVE-2026-85724](https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq)) plus six merged hardening fixes |
+| [mediamtx](https://github.com/bluenviron/mediamtx) | 20k★ | MoQ parser/resource-exhaustion issue, [advisory published](https://github.com/bluenviron/mediamtx/security/advisories/GHSA-j55q-3r8w-j2r5), fixed in v1.19.3 |
+| [coturn](https://github.com/coturn/coturn) | 14k★ | Two published advisories, including the IPv6 ACL/SSRF issue [CVE-2026-73213](https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99) |
+| [DuckDB](https://github.com/duckdb/duckdb) | 33k★ | Parquet GZIP footer out-of-bounds read [fixed upstream](https://github.com/duckdb/duckdb/issues/24955) in PR #26499 |
 
 **[See every disclosed finding →](https://gigioneggiando.github.io/argo/)**
 
-<sub>\* Measured across the 134 findings that reached an independent maintainer verdict — excludes
-findings still in triage, duplicates of already-known issues, and out-of-scope rejections, since
-none of those reflect whether the underlying security claim was correct. 124 were confirmed
-genuine, 10 were rejected as false positives.</sub>
+<sub>\* The historical validation sample contains 134 findings that reached an independent maintainer verdict:
+124 were confirmed genuine and 10 were rejected as false positives (93%). This is a separate study metric,
+not the count of public rows above.</sub>
 
 ---
 
@@ -222,7 +241,13 @@ Low-cost modes:
 ```
 argo pipeline ... --runner mock   # exercises the whole glue with fixtures, zero tokens
 argo pipeline ... --dry-run       # runs ingest+recon, shows generated prompts, then STOPS
+argo compare-recon --baseline runs/BASE --candidate runs/CAND  # offline bounded recon diff
 ```
+
+For a controlled vuln-index ablation, repeat the same pinned dry run with `--no-vuln-index`, then
+use `compare-recon`. It warns when the commit, non-index prompt inputs, or served backend/model do
+not match. Structural counts are review aids, not precision/recall evidence; see
+[prompt synthesis](docs/prompt-synthesis.md#changing-the-meta-prompt-safely-validation-methodology).
 
 Every command, every flag, with more examples: **[docs/cli-reference.md](docs/cli-reference.md)**.
 
@@ -285,6 +310,9 @@ and the cross-model study: **[docs/backends.md](docs/backends.md)**.
 - Keep prompts under git and record which version each run used: you can A/B test them and see
   which produce accepted findings.
 - The SQLite ledger avoids re-reporting the same bug across runs/programs and tracks your hit rate.
+- Each run's llm_log.jsonl records a redaction-safe backend/account label, so fallback usage and
+  Codex account rate limits can be audited without adding full credential paths or secrets to the
+  per-call log.
 - The most useful metric to watch is the ratio of validation-confirmed findings to triager-accepted
   findings: if they diverge, tune the validation prompt.
 - Always check whether a given program permits automated/AI tooling before running it.

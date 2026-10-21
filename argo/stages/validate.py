@@ -185,7 +185,7 @@ def _semantic_dedup(ctx: RunContext, findings: list[Finding]) -> tuple[list[Find
         "desc": "clusters of finding_ids that describe the same underlying bug",
     }])
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("validate").run(
             prompt=prompt, run_dir=ctx.run_dir,
             work_dir=ctx.work_dir("validate", "semantic-dedup"),
             model=ctx.config.model_for("validate"), stage="validate",
@@ -427,7 +427,7 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
     if neutral_prompt is not None:
         assert_prohibited_present(neutral_prompt, scope.prohibited_techniques)
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("validate").run(
             prompt=prompt,
             neutral_prompt=neutral_prompt,
             run_dir=ctx.run_dir,
@@ -511,7 +511,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
         assert_prohibited_present(neutral_prompt, scope.prohibited_techniques)
     ids = [f.id for f in batch]
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("validate").run(
             prompt=prompt, neutral_prompt=neutral_prompt, run_dir=ctx.run_dir,
             work_dir=ctx.work_dir("validate", "batch-" + ids[0]),   # fresh, isolated context
             model=ctx.config.model_for("validate"), stage="validate",

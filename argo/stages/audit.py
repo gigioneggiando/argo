@@ -208,7 +208,7 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
     work = ctx.work_dir("audit", slug)            # isolated per focus -> no collisions
     partial = False
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("audit").run(
             prompt=prompt,
             neutral_prompt=_neutral_variant(prompt, scope, slug),
             run_dir=ctx.run_dir,
@@ -325,7 +325,7 @@ def _critic_pass(ctx: RunContext, scope, slug: str, prompt_path: Path,
 
     work = ctx.work_dir("audit", f"{slug}__critic")
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("audit").run(
             prompt=prompt, neutral_prompt=_neutral_variant(prompt, scope, f"{slug}-critic"),
             run_dir=ctx.run_dir, work_dir=work,
             model=ctx.config.model_for("audit"), stage="audit", run_id=ctx.run_id,

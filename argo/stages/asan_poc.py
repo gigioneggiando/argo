@@ -126,7 +126,7 @@ def _harness_session(ctx: RunContext, scope, finding: dict) -> Path | None:
     fid = finding.get("id", "?")
     work = ctx.work_dir("asan_poc", fid)
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("asan_poc").run(
             prompt=prompt, neutral_prompt=neutral_prompt, run_dir=ctx.run_dir, work_dir=work,
             model=ctx.config.model_for("asan_poc"), stage="asan_poc", run_id=ctx.run_id,
             repo_dir=ctx.repo_dir, allowed_tools=ARTIFACT_TOOLS, label=fid,

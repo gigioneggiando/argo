@@ -218,7 +218,7 @@ def _reaudit_patched(ctx: RunContext, workspace: Path, finding: dict) -> dict:
     work = ctx.work_dir("reaudit", finding["id"])
     work.mkdir(parents=True, exist_ok=True)
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("remediate").run(
             prompt=_build_reaudit_prompt(files, workspace),
             run_dir=ctx.run_dir,
             work_dir=work,
@@ -279,7 +279,7 @@ def _generate_one(ctx: RunContext, finding: dict) -> str | None:
     work = ctx.work_dir("remediate", finding["id"])
     work.mkdir(parents=True, exist_ok=True)
     try:
-        result = ctx.runner.run(
+        result = ctx.runner_for("remediate").run(
             prompt=_build_prompt(finding, ctx.repo_dir),
             run_dir=ctx.run_dir,
             work_dir=work,

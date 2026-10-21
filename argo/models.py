@@ -351,6 +351,15 @@ class RunMeta(BaseModel):
                                              # checkout ends up on a detached HEAD (pinned commit).
     runner: str
     stage_models: dict[str, str]
+    stage_runners: dict[str, str] = Field(default_factory=dict)
+    codex_stage_models: dict[str, str] = Field(default_factory=dict)
+    gemini_stage_models: dict[str, str] = Field(default_factory=dict)
+    model_catalog_snapshot: dict = Field(default_factory=dict)
+    cli_versions: dict[str, str | None] = Field(default_factory=dict)
+    argo_revision: Optional[str] = None
+    adaptive_escalation: str = "off"
+    target_fingerprint_id: Optional[str] = None
+    plan_id: Optional[str] = None
     # Structural guardrail flags:
     live_forbidden: bool = True       # always true; no stage may touch a live host
     automation_forbidden: bool = False  # true when automation_allowed is false/absent

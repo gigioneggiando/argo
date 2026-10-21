@@ -1,9 +1,36 @@
 # Roadmap — UI & advanced features on top of the pipeline
 
-Status: planning. This document analyzes each requested feature (feasibility / utility / priority
+Status: active. This document analyzes each requested feature (feasibility / utility / priority
 / needed?), proposes a phased build order, and tracks the todo list. The pipeline (CLI + stages +
 `AgentRunner` + ledger) is the engine; everything here sits **on top** of it and must keep its
 guardrails intact (no live host, no patching the target, read-only repo, no auto-submit).
+
+## 2026-10 model-routing/planning tranche
+
+Implemented in the current branch: a versioned provider catalog with lifecycle/pricing metadata;
+requested-versus-served model provenance and fail-closed mismatch handling; Codex per-stage routing;
+modern Gemini defaults; mixed-provider stage runners; Claude-native effort selection; offline
+`screen` fingerprints; explainable `plan` objectives and cost/time ranges; credential-free routing
+profiles; and `show-routing`/CLI documentation. The existing FastAPI + vanilla SPA now consumes
+the shared screen/plan/model-catalog endpoints and exposes the same per-stage controls as the CLI;
+no new frontend framework was introduced. Remaining evidence work is data-dependent: expand the
+frozen benchmark corpus, run repeated cross-provider trials, and only then change provisional
+defaults.
+
+### Remaining follow-ups after the 2026-10 tranche
+
+These are deliberately recorded as follow-ups rather than silently inferred as complete:
+
+- **Corpus expansion:** grow `benchmarks/corpora/` from the current five independently verified cases
+  to the planned 10–20+ positive/negative cases, with exact revisions, reviewed labels, and
+  permission/licensing checks.
+- **Repeated cross-provider matrix:** run the documented N≥3 comparisons (Claude, Codex, Gemini,
+  effort variants and mixed-provider validation) only with approved budget and comparable access.
+- **Measured defaults:** use those results to decide whether built-in profiles should change. Until then
+  profile routing remains marked `provisional` and no quality claim is made from one run.
+- **Optional product backlog:** streaming chat replies (B2), per-run subprocess isolation (C2), and
+  additional CI/Fast profiles remain lower-priority work; they are not prerequisites for the shipped
+  routing/planning tranche.
 
 ## Precision & depth uplift — ✅ DONE (2026-06-19)
 
@@ -169,7 +196,9 @@ Goal: raise recall/quality with cheap, structured context; surface it in the UI.
       the result as syntactic evidence only. It cannot establish deployment/configuration or other
       operational preconditions; keep those open unless the source or supplied scope proves them.
       Deep CPG/PDG/CFG remains deferred.
-- [ ] _Measure_ the index's impact with the baseline dry-run diff (see prompt-synthesis.md).
+- [ ] _Measure_ the index's impact with repeated matched dry-run pairs (see prompt-synthesis.md).
+      The offline comparison engine and `--no-vuln-index` ablation switch are implemented; the
+      actual fixed-commit/model/budget experiment and downstream quality measurement remain pending.
 
 ### Phase 5 — Advanced / experimental (gated by demand + measured ROI)
 - [x] **Multi-backend runners — DONE.** `CodexRunner` (`runner=codex`) runs the Codex CLI for
@@ -398,7 +427,9 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 - **Feasibility: high; the engine seam already exists.** `benchmark.load_suite(suite_dir)` globs every
   `<case>/case.json` + `expected_findings.json`, so the harness already runs an **unlimited** number of
   labeled cases and slices precision/recall/F1 by archetype and CWE (`run_suite`, `_aggregate`,
-  `score_run`). The gap is **labeled data**, not code: only the bundled mock `acme-widgets` case exists.
+  `score_run`). The remaining gap is **labeled data**, not code: the repository currently carries five
+  frozen real cases plus the offline `acme-widgets` mock; reaching the planned 10–20 case tranche still
+  requires additional ground-truth review and licensing/permission checks.
 - **Files:** `benchmarks/<new-case>/` (data — the bulk of the work); `argo/benchmark.py` (small
   additions); `argo/models.py` (none); `benchmarks/README.md` (document the corpus convention).
 - **Implementation:**
@@ -727,7 +758,7 @@ Build order: **F1 evidence contract → F2 target memory → F3 attack paths →
 F5 can ship independently after F1. Do not claim value from any item until the evaluation below
 shows an improvement at a fixed model, commit, prompt version, and token budget.
 
-### F1 — Unified claim/evidence contract — IN REVIEW (first complete slice, 2026-10-05) · priority **P0**
+### F1 — Unified claim/evidence contract — IMPLEMENTED ON FEATURE BRANCH (first complete slice, 2026-10-05) · priority **P0**
 
 **Current gap.** `Finding`, `validation`, `verification`, ASan, runtime, live, corroboration, and
 maintainer feedback all express different kinds of evidence, but no authoritative object links an
@@ -754,7 +785,7 @@ the same thing as empirical proof.
 **Non-goals:** another generic LLM validation pass, forcing all findings through runtime, or
 collapsing severity/confidence/proof into one misleading score.
 
-**Implemented slice (pending review).** `models.py` and the additive findings schema carry the
+**Implemented slice (pending PR review).** `models.py` and the additive findings schema carry the
 claim, attacker start, preconditions, capabilities, typed obligations/evidence, uncertainty,
 consistency issues, technical proof level, claim status, and external disposition. The
 deterministic/idempotent `stages/evidence.py` gate runs immediately before report and summarizes
@@ -799,6 +830,13 @@ scratch, and Fleece feedback does not automatically inform recon/validation.
 and less recon cost, while deliberately changed invariants are invalidated and re-checked rather
 than inherited.
 
+**Initial vertical slice (feature branch; pending PR review):** canonical remote/local target identities; an atomic
+private JSON store; exact-commit freshness and fail-closed staleness; a reviewable per-run seed
+snapshot; and deterministic recon capture of entry points, boundaries, questions, invariants,
+baselines, and false-lead carve-outs. Prior facts are recon hints, never evidence. Deliberately
+deferred: Fleece outcome import, cross-stage query/ranking, and seeding validate/corroborate until
+repeat-run measurements justify each extra trust edge.
+
 ### F3 — Evidence-gated attack-path composition and blast radius — priority **P1** · effort **L** · depth value **High**
 
 **Current gap.** Audit prompts ask agents to correlate realistic exploit chains, and deep verify
@@ -823,6 +861,14 @@ turning several unrelated Medium findings into a Critical narrative.
 **Acceptance signal:** recover known multi-step cases as valid paths while rejecting seeded chains
 whose adjacent capabilities or identities do not actually match.
 
+**Initial vertical slice (feature branch; pending PR review):** opt-in deterministic `compose` after F1 evidence;
+it emits a bounded `attack_paths.json` only where active source-supported findings have an exact
+normalized capability→precondition binding and matching non-`unknown` attacker, principal, tenant,
+deployment, and configuration declarations. The artifact is fingerprinted, omitted from a stale
+report, and cannot alter severity, proof, drafts, or submission state. Deferred: independent
+edge re-verification, F2-backed trust/data relations, and remediation/blast-radius ranking pending
+repeatable evaluation cases.
+
 ### F4 — Context-preserving incremental / PR review — priority **P1** · effort **L** · operational value **High**
 
 **Dependency:** F2 and preferably F3. A raw diff-only scanner is explicitly not the goal.
@@ -839,6 +885,15 @@ whose adjacent capabilities or identities do not actually match.
 **Acceptance signal:** lower cost/latency than a full rerun on representative PRs while still
 catching seeded cross-file and cross-service regressions whose vulnerable line was not directly in
 the diff.
+
+**Initial vertical slice (feature branch; pending PR review):** `--incremental-base` adds a deterministic stage
+before recon. It requires a Git base ancestor, records changed files, candidate symbols declared in
+those files, and a bounded textual
+neighbourhood, and classifies prior target-memory facts as retained only at the exact current
+revision, directly invalidated when a changed path is named, or stale/unproven. Recon receives this
+only as a prioritization plan with the whole
+repository still available. Deferred: semantic caller/callee extraction, fact-level re-proof,
+Fleece/attack-path dependency invalidation, and measured latency/recall comparison against full runs.
 
 ### F5 — Explicit architecture questions + optional context pack — priority **P1** · effort **S–M** · precision value **Med–High**
 
@@ -862,6 +917,15 @@ without provenance, or building broad enterprise connectors before measured dema
 **Acceptance signal:** fewer by-design/threat-model rejections from maintainers, with each avoided
 error attributable to a question or context fact rather than to extra unguided model calls.
 
+**Initial vertical slice (feature branch; pending PR review):** strict, size-bounded connector-neutral context
+packs with per-claim provenance and credential-pattern rejection; raw content is injected only into
+offline model calls and excluded from reports, drafts, saved audit prompts, online OSINT, and the
+artifact API. Opt-in deterministic question generation groups only architecture-shaped uncertainty
+already present in recon/findings and never pauses a run. Provenance-bearing answers enter the
+same-revision F2 memory and current private context as `claimed` facts, mark dependent verdicts for
+re-validation, and suppress their stale drafts. Deferred: a genuinely targeted validate-only path
+instead of rerunning validation, UI answer entry, and measured maintainer-rejection reduction.
+
 ### F6 — Public Argo research/editorial site — OWNER INTENT · priority **P2** · effort **M**
 
 Build an original Argo-designed editorial presence for public technical research, comparable in
@@ -879,7 +943,15 @@ from a filename or repository presence. Add a deterministic pre-deploy embargo/p
 fail the build closed on uncertain visibility, and keep editorial approval/manual publish as the
 final gate. No external wiki update is part of F1; wiki work happens only after the feature PR merges.
 
-### Evaluation and safety gates for F1–F5
+### R1 — Awesome AI Hacking Agents feature reconnaissance — OWNER INTENT · priority **P1** · effort **M**
+
+Inspect every repository listed by Awesome AI Hacking Agents and produce a dated comparison matrix
+covering concrete capabilities, evaluation evidence, safety model, maturity, and integration cost.
+Deduplicate forks and marketing-only entries. Translate only demonstrated gaps into Argo proposals,
+each with an acceptance metric and an explanation of why the present pipeline cannot cover it. Do
+not copy agent counts, branding, or enterprise connectors merely because another tool has them.
+
+### Evaluation and safety gates for F1–F6
 
 - Replay a fixed set of accepted, rejected, runtime-refuted, by-design, and chained historical
   findings with identical commits/models/budgets; compare each feature cumulatively and in ablation.
@@ -892,20 +964,24 @@ final gate. No external wiki update is part of F1; wiki work happens only after 
   target was never executed; docs now distinguish the source-static default, isolated runtime/ASan,
   and tightly gated live modes before relying on the proof taxonomy.
 
-## Cross-cutting / decisions to make before Phase 0
+### Backend/account attribution — ✅ DONE
 
-- **UI stack.** FastAPI backend is the clear choice. Frontend: a lightweight modern SPA
-  (React or Svelte + Vite) for richer live updates, **or** FastAPI + server-rendered + HTMX/Alpine
-  for less JS and faster delivery. Pick based on how custom the UI must feel.
-- **Single-user/local vs shared.** Assume local/personal first (no auth). Add auth only if the UI is
-  ever exposed beyond localhost (it runs an agent over arbitrary repos — never expose it unauthenticated).
-- **Default cost posture for UI runs.** Recommend: first run defaults to mock or a labeled cheap tier;
-  real runs require an explicit budget + confirm. Prevents accidental $34 clicks.
-- **Multi-backend: near-term need or "someday"?** Decides how much to generalize the runner in Phase 0
-  vs. defer to Phase 5.
+Every LLM invocation now records a redaction-safe backend/account label in the run log. Expanded
+account chains include a stable index; directory labels keep only the basename, while API-key
+accounts use a generic marker. This makes fallback and rate-limit behavior auditable without
+adding credentials or full account paths to the per-call log, and without changing prompts,
+findings, or verdicts.
 
-## Suggested first step
+## Historical decisions — resolved
 
-Phase 0 (the API + progress events) on the **mock runner** — it unblocks the whole UI, costs zero
-tokens to build and test, and forces the streaming-progress design early. The UI (Phase 1) then has
-a real backend to talk to from day one.
+- **UI stack:** FastAPI plus the existing vanilla SPA. Screening, planning, model catalog, routing,
+  and profiles use the same core services as the CLI; there is no second planning implementation.
+- **Deployment posture:** local/personal first and unauthenticated. The service must not be exposed
+  beyond localhost without authentication because it orchestrates agents over arbitrary repos.
+- **Cost posture:** mock/zero-token checks remain the default for development; real runs use an explicit
+  budget and confirmation, with planner estimates and per-run/session guards enforcing the boundary.
+- **Multi-backend:** Codex, Gemini, and Claude ship with deterministic per-stage routing and provenance;
+  mixed-provider routing is opt-in and remains subject to the same guardrails.
+
+The next work is evidence collection (corpus expansion and repeated, approved benchmark matrices),
+not another architecture-selection pass.

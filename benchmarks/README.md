@@ -43,8 +43,9 @@ an unmatched reported finding is a **false positive**, an unmatched label a **fa
 argo bench --suite benchmarks --runner mock        # zero-token: scores the fixtures harness
 argo bench --suite benchmarks                       # REAL run — measures model quality (costs $)
 argo bench --suite benchmarks --fixes               # also score Phase-6 patch quality
-argo bench --suite benchmarks --ab-audit-model claude-opus-5   # A/B vs the default audit model
+argo bench --suite benchmarks --ab-audit-model claude-opus-5-5 # A/B vs the default audit model
 argo bench --suite benchmarks --parallel-cases 4    # corpora at scale: run 4 cases concurrently
+argo bench-validate --suite benchmarks/corpora       # metadata/ground-truth validation, zero tokens
 ```
 
 `--parallel-cases N` runs N cases at once (the report stays in case order). It speeds up a large
@@ -75,9 +76,9 @@ argo bench-cross --suite benchmarks/corpora --backends headless,codex,gemini --t
 argo refusal-probe --backends headless,codex,gemini --trials 3 --tier top
 ```
 
-`--tier cheap` (default, both commands) uses each backend's cheapest tier (Haiku / `o4-mini` /
+`--tier cheap` (default, both commands) uses each backend's cheapest current tier (Haiku 5.5 / Luna /
 Flash-Lite) — a full 3-backend sweep costs cents. `--tier top` uses each backend's own top-tier
-model (Opus / `gpt-5-codex` / Gemini Pro) for real, publishable numbers — real, non-trivial spend
+model (Opus 5.5 / Astra / Gemini 4 Argon) for real, publishable numbers — real, non-trivial spend
 across three paid APIs; run the `--tier cheap` sweep first to confirm everything's wired up before
 spending on `--tier top`. Output: `benchmark_crossbackend_report.json` /
 `refusal_probe_report.json` under `<runs_dir>`.

@@ -972,20 +972,16 @@ accounts use a generic marker. This makes fallback and rate-limit behavior audit
 adding credentials or full account paths to the per-call log, and without changing prompts,
 findings, or verdicts.
 
-## Cross-cutting / decisions to make before Phase 0
+## Historical decisions — resolved
 
-- **UI stack.** FastAPI backend is the clear choice. Frontend: a lightweight modern SPA
-  (React or Svelte + Vite) for richer live updates, **or** FastAPI + server-rendered + HTMX/Alpine
-  for less JS and faster delivery. Pick based on how custom the UI must feel.
-- **Single-user/local vs shared.** Assume local/personal first (no auth). Add auth only if the UI is
-  ever exposed beyond localhost (it runs an agent over arbitrary repos — never expose it unauthenticated).
-- **Default cost posture for UI runs.** Recommend: first run defaults to mock or a labeled cheap tier;
-  real runs require an explicit budget + confirm. Prevents accidental $34 clicks.
-- **Multi-backend: near-term need or "someday"?** Decides how much to generalize the runner in Phase 0
-  vs. defer to Phase 5.
+- **UI stack:** FastAPI plus the existing vanilla SPA. Screening, planning, model catalog, routing,
+  and profiles use the same core services as the CLI; there is no second planning implementation.
+- **Deployment posture:** local/personal first and unauthenticated. The service must not be exposed
+  beyond localhost without authentication because it orchestrates agents over arbitrary repos.
+- **Cost posture:** mock/zero-token checks remain the default for development; real runs use an explicit
+  budget and confirmation, with planner estimates and per-run/session guards enforcing the boundary.
+- **Multi-backend:** Codex, Gemini, and Claude ship with deterministic per-stage routing and provenance;
+  mixed-provider routing is opt-in and remains subject to the same guardrails.
 
-## Suggested first step
-
-Phase 0 (the API + progress events) on the **mock runner** — it unblocks the whole UI, costs zero
-tokens to build and test, and forces the streaming-progress design early. The UI (Phase 1) then has
-a real backend to talk to from day one.
+The next work is evidence collection (corpus expansion and repeated, approved benchmark matrices),
+not another architecture-selection pass.

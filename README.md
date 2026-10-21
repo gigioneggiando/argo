@@ -23,7 +23,7 @@ Not a benchmark score — pull requests, published advisories, and real CVEs, on
 These are the current public totals (snapshot: 21 October 2026). Private reports and findings still in triage are deliberately excluded.
 
 | Project | Stars | Public result |
-|---|---:|---|---|
+|---|---:|---|
 | [n8n](https://github.com/n8n-io/n8n) | 208k★ | MCP browser session lifecycle leak fixed in [PR #36850](https://github.com/n8n-io/n8n/pull/36850) |
 | [Open WebUI](https://github.com/open-webui/open-webui) | 156k★ | Two published advisories: [tool-source disclosure](https://github.com/open-webui/open-webui/security/advisories/GHSA-2h26-836q-4jh2) and [OAuth cookie disclosure](https://github.com/open-webui/open-webui/security/advisories/GHSA-gqfh-jxvw-74rp), fixed in v0.11.4 |
 | [vLLM](https://github.com/vllm-project/vllm) | 95k★ | Public security fix proposed in [PR #52542](https://github.com/vllm-project/vllm/pull/52542) (open; not counted as resolved) |

@@ -9,10 +9,7 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-### Fixed
-
-- Normalize Windows-shaped account directories on every host before deriving redaction-safe
-  backend labels, so CI and local logs never leak the configured path.
+_No unreleased changes._
 
 ## [0.10.0] - 2026-10-21
 
@@ -40,6 +37,11 @@ particular while the version stays `0.y.z`.
 - **Backend/account attribution.** Each LLM call now records a redaction-safe backend/account
   label in llm_log.jsonl, making fallback and multi-account behavior auditable without exposing
   credential paths or API keys.
+
+### Fixed
+
+- Normalize Windows-shaped account directories on every host before deriving redaction-safe
+  backend labels, so CI and local logs never leak the configured path.
 
 ## [0.9.0] - 2026-10-08
 

@@ -9,7 +9,10 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- Normalize Windows-shaped account directories on every host before deriving redaction-safe
+  backend labels, so CI and local logs never leak the configured path.
 
 ## [0.10.0] - 2026-10-21
 

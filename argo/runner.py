@@ -106,8 +106,11 @@ def _safe_account_component(value: str | None) -> str:
     """
     if not value:
         return "default"
-    raw = os.path.expanduser(str(value)).rstrip("/\\")
-    leaf = Path(raw).name or Path(raw).parent.name
+    # Normalize both separator styles before taking the leaf.  CI may exercise a Windows-shaped
+    # configured path on Linux (and vice versa), so host-native ``Path.name`` alone can leak the
+    # whole foreign path into the label.
+    raw = os.path.expanduser(str(value)).replace("\\", "/").rstrip("/")
+    leaf = raw.rsplit("/", 1)[-1] if raw else ""
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", leaf).strip(".-")
     return (safe[:64] or "default")
 

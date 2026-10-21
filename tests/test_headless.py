@@ -65,6 +65,19 @@ def _run(cfg, ledger, env, tmp_path, *, stage="audit"):
         model="m", stage=stage, run_id="R")
 
 
+def test_llm_log_records_backend_account_without_full_path_or_secret(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    env = {"is_error": False, "result": "ok", "usage": {"input_tokens": 1, "output_tokens": 1},
+           "total_cost_usd": 0.0, "num_turns": 1, "session_id": "s"}
+    _run(PipelineConfig(runner="codex", codex_home=r"C:\Users\luigi\.codex-b"),
+         ledger, env, tmp_path)
+    record = json.loads((tmp_path / "r" / "llm_log.jsonl").read_text(encoding="utf-8"))
+    assert record["backend"] == "codex"
+    assert record["backend_account"] == "codex:codex-b"
+    assert "Users" not in record["backend_account"]
+    ledger.close()
+
+
 # --------------------------------------------------------------------- caps (Step 3)
 def test_recoverable_is_error_raises_after_logging(tmp_path):
     ledger = Ledger(tmp_path / "l.sqlite")

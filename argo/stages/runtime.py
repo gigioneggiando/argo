@@ -285,7 +285,7 @@ def _generate_plan(ctx: RunContext, scope) -> list | None:
         "desc": "the loopback-only probe plan (list of {finding_id, requests})"}])
     work = ctx.work_dir("runtime", "propose")
     try:
-        result = ctx.runner.run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
+        result = ctx.runner_for("runtime").run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
                                 model=cfg.model_for("runtime"), stage="runtime", run_id=ctx.run_id,
                                 repo_dir=ctx.repo_dir, allowed_tools=ARTIFACT_TOOLS, label="runtime-propose")
         files = collect_output_files(result, "runtime_probe_plan.json")
@@ -329,7 +329,7 @@ def _interpret(ctx: RunContext, results: dict) -> dict:
         "desc": "per-finding runtime verdicts"}])
     work = ctx.work_dir("runtime", "interpret")
     try:
-        result = ctx.runner.run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
+        result = ctx.runner_for("runtime").run(prompt=prompt, run_dir=ctx.run_dir, work_dir=work,
                                 model=ctx.config.model_for("runtime"), stage="runtime", run_id=ctx.run_id,
                                 repo_dir=None, allowed_tools=ARTIFACT_TOOLS, label="runtime-interpret")
         files = collect_output_files(result, "runtime_verdicts.json")

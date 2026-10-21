@@ -9,7 +9,7 @@ import os
 import re
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -18,7 +18,7 @@ from .config import PipelineConfig
 from .ledger import Ledger
 from .models import Scope
 from .rendering import extract_manifest
-from .runner import ClaudeRunner, LLMResult
+from .runner import AgentRunner, ClaudeRunner, LLMResult, build_runner
 from .schemas import validate_scope
 
 
@@ -60,17 +60,56 @@ class BudgetExceeded(RuntimeError):
 class RunContext:
     run_id: str
     config: PipelineConfig
-    runner: ClaudeRunner
+    runner: AgentRunner
     ledger: Ledger
     scope: Optional[Scope] = None
     now: Optional[str] = None  # ISO timestamp; injectable for deterministic report output
+    _runner_cache: dict[str, AgentRunner] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", self.run_id):
             raise ValueError("run_id must be 1-64 filename-safe characters")
         root = Path(self.config.runs_dir).resolve()
-        if not (root / self.run_id).resolve().is_relative_to(root):
+        # The strict filename-safe regex above excludes separators and ``..``.  Avoid resolving
+        # the not-yet-created child concurrently on Windows, where a racing worker can briefly
+        # make ``Path.resolve()`` observe a different parent and reject an otherwise safe ID.
+        if (root / self.run_id).parent != root:
             raise ValueError("run_id must stay within runs_dir")
+
+    def runner_for(self, stage: str) -> AgentRunner:
+        """Return the backend assigned to *stage*, creating mixed-backend runners lazily.
+
+        Lazy construction matters for account fallbacks and for mock/test runs: an unused backend
+        must not consume credentials or start a subprocess.  All runners share this context's
+        ledger and cancellation event, so cost accounting and Ctrl-C semantics remain global.
+        """
+        backend = self.config.stage_runners.get(stage, self.config.runner)
+        if backend == self.config.runner:
+            return self.runner
+        cached = self._runner_cache.get(backend)
+        if cached is None:
+            cached = build_runner(self.config.with_overrides(runner=backend), self.ledger)
+            cached.cancel_event = getattr(self.runner, "cancel_event", None)
+            self._runner_cache[backend] = cached
+        return cached
+
+    def set_cancel_event(self, event) -> None:
+        """Propagate orchestrator cancellation to the primary and any lazily-created runners."""
+        self.runner.cancel_event = event
+        for runner in self._runner_cache.values():
+            runner.cancel_event = event
+
+    def apply_config(self, config: PipelineConfig) -> None:
+        """Replace effective routing during an explicit adaptive decision.
+
+        Runners are normally built once, but adaptive validation may change a stage's backend or
+        model after ingest.  Refresh every already-created runner while preserving its shared
+        ledger, cancellation event, and account label.
+        """
+        self.config = config
+        self.runner.config = config
+        for backend, runner in self._runner_cache.items():
+            runner.config = config.with_overrides(runner=backend)
 
     # ---- paths -------------------------------------------------------------------
     @property

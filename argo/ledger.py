@@ -10,6 +10,7 @@ Two tables:
 from __future__ import annotations
 
 import sqlite3
+import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +28,13 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     cost_usd       REAL NOT NULL DEFAULT 0.0,
     num_turns      INTEGER NOT NULL DEFAULT 0,
     session_id     TEXT,
-    stop_reason    TEXT
+    stop_reason    TEXT,
+    requested_model TEXT,
+    served_model   TEXT,
+    served_models  TEXT,
+    cost_source    TEXT,
+    model_mismatch INTEGER NOT NULL DEFAULT 0,
+    effort         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_llm_calls_run ON llm_calls(run_id);
 
@@ -60,7 +67,9 @@ _MIGRATIONS = {
     # register retry is logged as f"{label}-neutral-retry") -- needed to PAIR a flagged first attempt
     # with its retry outcome when computing refusal_flag_rate vs refusal_recovery_rate.
     "llm_calls": [("duration_ms", "INTEGER NOT NULL DEFAULT 0"), ("failure_kind", "TEXT"),
-                  ("label", "TEXT")],
+                  ("label", "TEXT"), ("requested_model", "TEXT"), ("served_model", "TEXT"),
+                  ("served_models", "TEXT"), ("cost_source", "TEXT"),
+                  ("model_mismatch", "INTEGER NOT NULL DEFAULT 0"), ("effort", "TEXT")],
 }
 
 
@@ -121,15 +130,25 @@ class Ledger:
         duration_ms: int = 0,
         failure_kind: str | None = None,
         label: str | None = None,
+        requested_model: str | None = None,
+        served_model: str | None = None,
+        served_models: tuple[str, ...] | list[str] = (),
+        cost_source: str | None = None,
+        model_mismatch: bool = False,
+        effort: str | None = None,
     ) -> None:
         with self._lock:
             self._conn.execute(
                 """INSERT INTO llm_calls
                    (ts, run_id, stage, model, prompt_sha256, input_tokens, output_tokens,
-                    cost_usd, num_turns, session_id, stop_reason, duration_ms, failure_kind, label)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    cost_usd, num_turns, session_id, stop_reason, duration_ms, failure_kind, label,
+                    requested_model, served_model, served_models, cost_source, model_mismatch, effort)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (_now(), run_id, stage, model, prompt_sha256, input_tokens, output_tokens,
-                 cost_usd, num_turns, session_id, stop_reason, duration_ms, failure_kind, label),
+                 cost_usd, num_turns, session_id, stop_reason, duration_ms, failure_kind, label,
+                 requested_model or model, served_model,
+                 json.dumps(list(served_models), separators=(",", ":")), cost_source,
+                 1 if model_mismatch else 0, effort),
             )
             self._conn.commit()
 
@@ -185,6 +204,16 @@ class Ledger:
                 "WHERE run_id = ? OR run_id LIKE ? ESCAPE '\\' ORDER BY id",
                 (exact, children_pattern),
             ).fetchall()
+        return [dict(r) for r in rows]
+
+    def run_model_mismatches(self, run_id: str) -> list[dict]:
+        """Return provenance mismatches without changing the legacy ``run_calls`` shape."""
+        exact, children_pattern = self._run_id_and_children(run_id)
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT stage, requested_model, served_model, model_mismatch, effort "
+                "FROM llm_calls WHERE (run_id = ? OR run_id LIKE ? ESCAPE '\\') "
+                "AND model_mismatch = 1 ORDER BY id", (exact, children_pattern)).fetchall()
         return [dict(r) for r in rows]
 
     # ------------------------------------------------------------- cost analytics

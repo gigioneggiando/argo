@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "corpus_id": "argo-confirmed-2026",
+  "status": "frozen-partial",
+  "ground_truth_policy": "Only independently verified, pinned commits with maintainer/runtime evidence are added. No synthetic labels are invented to reach a target count.",
+  "cases": [
+    "bonjour-service-takeover",
+    "coturn-ipv6-acl-bypass",
+    "gguf-tools-oob",
+    "jsoup-redirect-header-leak",
+    "libcsp-csp-ps-uaf"
+  ],
+  "coverage": {
+    "languages": ["C", "Java", "JavaScript"],
+    "classes": ["memory-safety", "authorization", "spoofing", "information-disclosure"],
+    "negative_cases": 0
+  },
+  "expansion": {
+    "target_case_count": "10-20",
+    "blocked_on": "additional ground-truth cases with pinned commits and permission/licensing review"
+  }
+}

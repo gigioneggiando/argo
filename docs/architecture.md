@@ -1,5 +1,19 @@
 # Architecture
 
+## Routing, screening, and provenance (current)
+
+`RunContext.runner_for(stage)` lazily selects the configured backend for each stage. The selected
+runner is still constructed by `build_runner`, so the same session policy, guardrails, cancellation
+event, account fallback, ledger, and JSONL audit trail apply to mixed-provider runs. `PipelineConfig`
+resolves the model for that stage from an explicit override, backend-global override, profile, or
+the catalog-backed built-in map. `argo screen` and `argo plan` are separate, deterministic,
+read-only commands; they never execute target code or invoke a model.
+
+Every run stores the catalog snapshot, effective stage maps, Argo revision, and installed CLI
+versions. Every call stores requested and served model IDs, cost source, effort, and mismatch state.
+Exact pins fail closed when a provider auto-routes; `--allow-model-substitution` is an explicit
+best-effort escape and is not valid exact benchmark evidence.
+
 The pipeline is **orchestration-first glue** around versioned prompt assets plus deterministic
 normalization/guardrail stages. The security
 logic lives in the prompts (`argo/prompts/`); this code ingests a program, sequences the
@@ -27,6 +41,7 @@ argo/
   chat.py           Phase-3 interactive analyst over a completed run (read-only repo; test-gen;
                     B1: re-validates a user-proposed candidate finding via validate._validate_one)
   knowledge.py      Phase-4 vuln-class index loader (data/vuln_index.yaml) injected into recon
+  recon_compare.py  offline recon-input fingerprints, comparability checks, and bounded artifact diffs
   static_analysis.py Parse-only validation context (Python/JS/TS/C#): enclosing symbol, calls,
                     name-matched possible callers, and bounded local def-use evidence; never builds
                     or executes the target and is never used to discover findings; it cannot
@@ -73,7 +88,7 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | MEMORY | `stages/target_memory.run` | `meta.json` (canonical target + pinned commit), local private store | `target_memory.json`: a reviewable, kind-balanced snapshot of at most 24 **same-commit** private fact summaries. `seed_facts` stays frozen at the pre-recon input; `captured_fact_ids` records what recon learned during this run. No source is copied; changed or unknown revisions make prior facts stale. Mock runs use an empty snapshot and never touch the persistent store. |
 | INCREMENTAL | `stages/incremental.run` | acquired Git repo, opt-in base ref, private target memory | `incremental_review.json`: base/head diff, bounded textual symbol neighbourhood (including C/C++ function definitions), and explicit retained-same-revision / invalidated / stale prior facts. It prioritizes recon with full-repository access; unchanged code is never considered safe. |
 | 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
-| 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven — see [prompt-synthesis.md](prompt-synthesis.md)) |
+| 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven), plus `recon_inputs.json` containing hashes/settings for later ablation comparability without storing the full private input prompt — see [prompt-synthesis.md](prompt-synthesis.md) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
 | SCA | `stages/sca.run` | `repo/` dependency manifests, `scope.json` | `findings/dependencies.json` — **opt-out** software-composition analysis (known-vuln pinned deps); a no-op if no manifests |
 | SECOND-OPINION | `stages/second_opinion.run` | already-ingested `scope.json` + `repo/` (reused, not re-parsed/re-cloned) | N additional `findings/second-opinion-<N>-*.json`, each from its own fully independent recon+audit pass in an isolated sub-`run_dir` — **opt-in**, offline. Encodes the manual "blind second opinion" methodology (fastjson2, open62541): a fresh recon+audit cycle over the same scope/repo, optionally on a different backend (`second_opinion_backend`), recovers findings the primary pass missed and — via the SAME structural/semantic dedup validate already does — surfaces which findings were independently rediscovered by >1 pass (`Finding.corroborating_passes`) |
@@ -607,6 +622,14 @@ key collapse to one: the keeper is chosen by (highest severity, then highest con
 first seen); the others' `affected` and `variants` are unioned in. Implemented in
 `ranking.py` (`split_ref`, `dedup_key`) and `stages/validate.py` (`_merge`).
 
+## Backend/account attribution
+
+Each child runner stamps the per-run llm_log.jsonl with a redaction-safe backend_account label
+(for example codex:codex-b[2]). Labels use only an account directory basename plus an index, or
+the generic api-key/ambient marker; full paths and credential values never enter these attribution
+fields. This keeps fallback and rate-limit behavior reproducible without exposing machine-specific
+details in the per-call log.
+
 ## SQLite ledger
 
 `argo/ledger.sqlite` (git-ignored), two tables:
@@ -704,3 +727,20 @@ non-adversarial prompt set (`tests/fixtures/refusal_prompts.json`), deliberately
 adversarial testing. Both land under `<runs_dir>/benchmark_crossbackend_report.json` /
 `refusal_probe_report.json`. See [backends.md](backends.md) and
 [../benchmarks/README.md](../benchmarks/README.md#cross-backend-comparison-and-refusal-rate).
+
+## Screening, planning, and adaptive routing
+
+`argo screen` performs deterministic, offline inspection only: it reads file names and bounded
+text, records a content/revision-keyed fingerprint, and never executes target code, package
+managers, tests, or network requests. `argo plan` turns that fingerprint into a versioned plan with
+structured reasons, exact stage routing, broad cost/time ranges, and a reproducible `plan_id`.
+Unknown model prices keep the range unknown rather than pretending the run is free. An optional
+labeled benchmark report contributes evidence only when its valid-trial sample is sufficient;
+unlabeled production findings are never used as precision/recall ground truth.
+
+The existing FastAPI + vanilla SPA calls the same `/screen`, `/plan`, and `/models` endpoints and
+passes the same `PipelineConfig` routing fields as the CLI. `--adaptive-escalation` is off by
+default and disabled in benchmark mode. When enabled, a high/critical audit result can promote
+the next validation stage to a stronger configured model/provider. The decision, old/new routing,
+trigger, and result are appended to `adaptive_events.jsonl`; no stage is silently added, no safety
+rail is bypassed, and no budget is increased.

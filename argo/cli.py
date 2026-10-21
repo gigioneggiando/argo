@@ -62,7 +62,15 @@ def _build_config(
     claude_api_keys: Optional[str] = None,
     codex_api_key: Optional[str] = None,
     codex_api_keys: Optional[str] = None,
+    stage_models: Optional[list[str]] = None,
+    stage_runners: Optional[list[str]] = None,
+    stage_efforts: Optional[list[str]] = None,
+    allow_model_substitution: bool = False,
+    profile: Optional[str] = None,
+    adaptive_escalation: str = "off",
 ) -> PipelineConfig:
+    if adaptive_escalation not in {"off", "conservative", "balanced", "aggressive"}:
+        raise typer.BadParameter("--adaptive-escalation must be off, conservative, balanced, or aggressive")
     cfg = PipelineConfig(
         runner=runner,
         max_parallel_audits=parallel,
@@ -77,7 +85,12 @@ def _build_config(
         gemini_api_key=gemini_api_key,
         claude_api_key=claude_api_key,
         codex_api_key=codex_api_key,
+        allow_model_substitution=allow_model_substitution,
+        adaptive_escalation=adaptive_escalation,
     )
+    if profile:
+        from .profiles import apply_profile
+        cfg = apply_profile(cfg, profile)
     if gemini_model:
         # Flat override across every stage (mirrors --codex-model's convenience) -- fans out into
         # the per-stage dict at config-build time rather than adding a redundant flat config field.
@@ -93,7 +106,7 @@ def _build_config(
             raise typer.BadParameter("--max-focuses must be >= 1")
         cfg = cfg.with_overrides(max_focuses=max_focuses)
     if calibration:
-        cfg = cfg.calibrated()            # audit -> Opus (or Gemini Pro, if runner == "gemini")
+        cfg = cfg.calibrated()            # audit -> the configured high-assurance model
     if audit_model:
         cfg = cfg.with_stage_model("audit", audit_model)
     if fallback:
@@ -114,6 +127,76 @@ def _build_config(
     if codex_api_keys:
         keys = [k.strip() for k in codex_api_keys.split(",") if k.strip()]
         cfg = cfg.with_overrides(codex_api_keys=keys)
+    # Per-stage assignments are applied last so they are explicit user intent and win over the
+    # convenience flat flags/calibration.  A stage may use a different backend, in which case its
+    # model is written to that backend's map rather than silently ignored by model_for().
+    cfg = _apply_stage_assignments(cfg, stage_models, stage_runners, stage_efforts)
+    from .model_catalog import validate_selection
+    stages = set(cfg.stage_models) | set(cfg.codex_stage_models) | set(cfg.gemini_stage_models) | set(cfg.stage_runners)
+    for stage in stages:
+        backend = cfg.stage_runners.get(stage, cfg.runner)
+        check = validate_selection(cfg.model_for(stage), backend)
+        if check.get("selectable") is False:
+            raise typer.BadParameter(f"effective routing {stage}: {check.get('reason', 'invalid model/backend pair')}")
+    return cfg
+
+
+def _parse_assignments(values: Optional[list[str]], option: str) -> dict[str, str]:
+    """Parse repeatable ``stage=value`` CLI options without accepting ambiguous entries."""
+    result: dict[str, str] = {}
+    for raw in values or []:
+        if "=" not in raw:
+            raise typer.BadParameter(f"{option} expects STAGE=VALUE, got {raw!r}")
+        stage, value = (part.strip() for part in raw.split("=", 1))
+        if not stage or not value:
+            raise typer.BadParameter(f"{option} expects non-empty STAGE=VALUE, got {raw!r}")
+        result[stage] = value
+    return result
+
+
+def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[str]],
+                             stage_runners: Optional[list[str]],
+                             stage_efforts: Optional[list[str]] = None) -> PipelineConfig:
+    runner_map = _parse_assignments(stage_runners, "--stage-runner")
+    model_map = _parse_assignments(stage_models, "--stage-model")
+    effort_map = _parse_assignments(stage_efforts, "--stage-effort")
+    valid_backends = {"headless", "codex", "gemini", "mock"}
+    unknown = sorted(set(runner_map.values()) - valid_backends)
+    if unknown:
+        raise typer.BadParameter(f"--stage-runner unknown backend(s): {', '.join(unknown)}")
+    if runner_map:
+        cfg = cfg.with_overrides(stage_runners={**cfg.stage_runners, **runner_map})
+    if model_map:
+        codex = dict(cfg.codex_stage_models)
+        gemini = dict(cfg.gemini_stage_models)
+        claude = dict(cfg.stage_models)
+        for stage, model in model_map.items():
+            backend = runner_map.get(stage, cfg.stage_runners.get(stage, cfg.runner))
+            from .model_catalog import validate_selection
+            check = validate_selection(model, backend)
+            if check.get("selectable") is False:
+                raise typer.BadParameter(
+                    f"--stage-model {stage}={model!r} is incompatible with backend {backend}: "
+                    f"{check.get('reason', 'invalid selection')}")
+            if backend == "codex":
+                codex[stage] = model
+            elif backend == "gemini":
+                gemini[stage] = model
+            else:
+                claude[stage] = model
+        cfg = cfg.with_overrides(codex_stage_models=codex, gemini_stage_models=gemini,
+                                 stage_models=claude)
+    if effort_map:
+        allowed = {"low", "medium", "high", "xhigh", "max"}
+        invalid = sorted(set(effort_map.values()) - allowed)
+        if invalid:
+            raise typer.BadParameter("--stage-effort values must be low, medium, high, xhigh, or max")
+        for stage in effort_map:
+            backend = cfg.stage_runners.get(stage, cfg.runner)
+            if backend != "headless":
+                raise typer.BadParameter(
+                    f"--stage-effort {stage}=... is currently verified only for the Claude/headless backend")
+        cfg = cfg.with_overrides(stage_effort={**cfg.stage_effort, **effort_map})
     return cfg
 
 
@@ -121,7 +204,7 @@ RunnerOpt = typer.Option("headless", "--runner",
                          help="headless (Claude Code CLI) · codex (Codex CLI / OpenAI / OSS) · "
                               "gemini (Gemini CLI) · mock")
 CodexModelOpt = typer.Option(None, "--codex-model",
-                             help="(runner=codex) model id, e.g. gpt-5-codex; omit to use the "
+                             help="(runner=codex) model id, e.g. gpt-6.1-sol; omit to use the "
                                   "Codex CLI's own default")
 CodexOssOpt = typer.Option(False, "--codex-oss", help="(runner=codex) use the open-source provider (--oss)")
 CodexProviderOpt = typer.Option(None, "--codex-local-provider",
@@ -170,6 +253,24 @@ CodexApiKeysOpt = typer.Option(
          "environment variable to keep them out of argv; each gets "
          "its own bootstrapped CODEX_HOME). A SEPARATE mechanism from --codex-accounts -- pick one "
          "per chain; --codex-accounts wins if both are set.")
+StageModelOpt = typer.Option(
+    None, "--stage-model",
+    help="repeatable per-stage model override, e.g. --stage-model audit=gpt-6.1-sol")
+StageRunnerOpt = typer.Option(
+    None, "--stage-runner",
+    help="repeatable per-stage backend override (headless|codex|gemini|mock), e.g. "
+         "--stage-runner audit=codex")
+StageEffortOpt = typer.Option(
+    None, "--stage-effort",
+    help="repeatable Claude-only effort override: stage=low|medium|high|xhigh|max")
+AllowModelSubstitutionOpt = typer.Option(
+    False, "--allow-model-substitution",
+    help="allow provider auto-routing; records requested/served mismatch and is not exact benchmark evidence")
+ProfileOpt = typer.Option(None, "--profile",
+                          help="routing profile: balanced|maximum-quality|cost-saver|diverse-validation|smoke")
+AdaptiveEscalationOpt = typer.Option(
+    "off", "--adaptive-escalation",
+    help="off|conservative|balanced|aggressive; opt-in and persisted in run provenance")
 AuditModelOpt = typer.Option(None, "--audit-model", help="override the Stage-3 audit model")
 CalibrationOpt = typer.Option(False, "--calibration", help="run audit on Opus (all-Opus)")
 BudgetOpt = typer.Option(None, "--budget", help="HARD per-run USD ceiling; aborts further sessions")
@@ -240,6 +341,189 @@ def _run_with_resume_hint(fn, ctx):
         raise
 
 
+@app.command("profiles")
+def profiles_cmd(
+    action: str = typer.Argument("list", help="list|show|export|validate|import|save"),
+    name: Optional[str] = typer.Option(None, "--name", help="profile name"),
+    output: Optional[Path] = typer.Option(None, "--output", help="export destination"),
+    input_path: Optional[Path] = typer.Option(None, "--input", exists=True, file_okay=True,
+                                               dir_okay=False, help="profile JSON for validate/import"),
+    config_path: Optional[Path] = typer.Option(None, "--config", exists=True, file_okay=True,
+                                               dir_okay=False, help="run config.json to save routing fields"),
+):
+    """List, inspect, validate, import, or export credential-free routing profiles."""
+    from .profiles import load_profile, profile_data, profile_names, save_profile
+    action = action.lower()
+    if action == "list":
+        typer.echo("\n".join(profile_names()))
+        return
+    if action == "validate":
+        if not input_path:
+            raise typer.BadParameter("--input is required for validate")
+        _emit(load_profile(input_path))
+        return
+    if action == "import":
+        if not input_path:
+            raise typer.BadParameter("--input is required for import")
+        data = load_profile(input_path)
+        destination = output or Path(f"{name or data.get('name') or 'custom'}.argo-profile.json")
+        destination.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        typer.echo(str(destination))
+        return
+    if action == "save":
+        if not name or not config_path:
+            raise typer.BadParameter("--name and --config are required for save")
+        from .config import load_pipeline_config
+        save_profile(output or Path(f"{name}.argo-profile.json"), load_pipeline_config(config_path), name)
+        typer.echo(str(output or Path(f"{name}.argo-profile.json")))
+        return
+    if not name:
+        raise typer.BadParameter("--name is required for show/export")
+    data = profile_data(name)
+    if action == "show":
+        _emit(data)
+    elif action == "export":
+        destination = output or Path(f"{name}.argo-profile.json")
+        destination.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        typer.echo(str(destination))
+    else:
+        raise typer.BadParameter("action must be list, show, or export")
+
+
+@app.command("catalog")
+def catalog_cmd(
+    action: str = typer.Argument("show", help="show|validate|diff"),
+    provider: Optional[str] = typer.Option(None, "--provider"),
+    against: Optional[Path] = typer.Option(None, "--against", exists=True, file_okay=True,
+                                            dir_okay=False, help="previous catalog snapshot JSON"),
+):
+    """Inspect the pinned model catalog; never refreshes it implicitly or contacts providers."""
+    from .model_catalog import (catalog_by_provider, catalog_diff, catalog_integrity,
+                                catalog_snapshot, selection_status)
+    from .config import DEFAULT_CODEX_STAGE_MODELS, DEFAULT_GEMINI_STAGE_MODELS, DEFAULT_STAGE_MODELS
+    snapshot = catalog_snapshot()
+    if action == "show":
+        if provider:
+            snapshot["models"] = [m.__dict__ for m in catalog_by_provider(provider)]
+        _emit(snapshot)
+    elif action == "validate":
+        defaults = {
+            "headless": DEFAULT_STAGE_MODELS,
+            "codex": DEFAULT_CODEX_STAGE_MODELS,
+            "gemini": DEFAULT_GEMINI_STAGE_MODELS,
+        }
+        _emit({"snapshot_hash": snapshot["snapshot_hash"], "integrity": catalog_integrity(),
+               "defaults": {backend: {k: selection_status(v) for k, v in values.items()}
+                            for backend, values in defaults.items()}})
+    elif action == "diff":
+        if not against:
+            raise typer.BadParameter("--against is required for catalog diff")
+        try:
+            previous = json.loads(against.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError) as exc:
+            raise typer.BadParameter(f"invalid catalog snapshot: {exc}") from exc
+        _emit(catalog_diff(previous, snapshot))
+    else:
+        raise typer.BadParameter("action must be show, validate, or diff")
+@app.command("screen")
+def screen_target(
+    target: Path = typer.Argument(..., exists=True, file_okay=False,
+                                  help="local repository directory; screening never fetches or executes it"),
+    json_output: bool = typer.Option(False, "--json", help="emit the fingerprint as JSON"),
+    rescreen: bool = typer.Option(False, "--rescreen", help="ignore an existing content-keyed cache"),
+    cache_dir: Optional[Path] = typer.Option(None, "--cache-dir", help="external cache directory"),
+):
+    """Create a fast, offline, read-only target fingerprint (no paid model calls)."""
+    from .screening import screen_target as _screen
+    result = _screen(target, cache_dir=cache_dir, rescreen=rescreen)
+    if json_output:
+        _emit(result)
+    else:
+        typer.echo(f"Target: {result['target']}")
+        typer.echo(f"Revision: {result.get('revision') or 'uncommitted/non-git'}")
+        typer.echo(f"Fingerprint: {result['fingerprint_id']}")
+        typer.echo(f"Files: {result['files']} (source {result['source_files']}), approx LOC: {result['approx_loc']}")
+        languages = ", ".join(f"{k}={v}" for k, v in result["languages"].items()) or "none detected"
+        typer.echo("Languages: " + languages)
+        typer.echo("Surfaces: " + ", ".join(result["surfaces"] or ["none detected"]))
+        typer.echo("Verification: " + json.dumps(result["verification"], sort_keys=True))
+
+
+@app.command("plan")
+def plan_target(
+    target: Path = typer.Argument(..., exists=True, file_okay=False,
+                                  help="local repository directory"),
+    objective: str = typer.Option("balanced", "--objective",
+                                  help="fast|economy|balanced|deep|custom"),
+    max_cost: Optional[float] = typer.Option(None, "--max-cost", min=0,
+                                             help="reject plans whose lower-bound estimate exceeds this USD cap"),
+    max_duration: Optional[int] = typer.Option(None, "--max-duration", min=1,
+                                               help="maximum requested duration in minutes"),
+    benchmark_report: Optional[Path] = typer.Option(
+        None, "--benchmark-report", exists=True, file_okay=True, dir_okay=False,
+        help="optional labeled benchmark report used as weak, explainable planner evidence"),
+    output: Optional[Path] = typer.Option(None, "--output", help="write the reviewed plan JSON here"),
+    json_output: bool = typer.Option(False, "--json", help="emit the plan as JSON"),
+    runner: str = RunnerOpt, codex_model: Optional[str] = CodexModelOpt,
+    gemini_model: Optional[str] = GeminiModelOpt,
+):
+    """Screen a local target and produce an explainable execution plan before spending tokens."""
+    from .planner import make_plan
+    from .screening import screen_target as _screen
+    knowledge = None
+    if benchmark_report:
+        from .benchmark_knowledge import aggregate_reports
+        raw = json.loads(benchmark_report.read_text(encoding="utf-8-sig"))
+        # A single report is enough; aggregate_reports deliberately ignores invalid trials.
+        knowledge = aggregate_reports([raw])
+    cfg = _build_config(runner, None, False, max_cost, 3, Path("runs"), "happy",
+                        codex_model=codex_model, gemini_model=gemini_model)
+    fingerprint = _screen(target)
+    result = make_plan(fingerprint, cfg, objective=objective, max_cost=max_cost,
+                       max_duration_minutes=max_duration, benchmark_knowledge=knowledge)
+    plan_path = output or (Path("runs") / "plans" / f"{result['plan_id']}.json")
+    plan_path.parent.mkdir(parents=True, exist_ok=True)
+    plan_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    result["plan_path"] = str(plan_path)
+    if json_output:
+        _emit(result)
+    else:
+        typer.echo(f"Plan {result['plan_id']} ({result['objective']})")
+        typer.echo("Stages: " + ", ".join(result["enabled_stages"]))
+        cost = result["estimated_cost_usd"]
+        if cost["low"] is None:
+            typer.echo("Estimated cost: unknown (catalog price missing for: " +
+                       ", ".join(cost.get("unknown_models", [])) + ")")
+        else:
+            typer.echo(f"Estimated cost: ${cost['low']:.2f}"
+                       f"-${cost['high']:.2f} ({cost['confidence']} confidence)")
+        typer.echo("Reasons: " + ", ".join(r["code"] for r in result["reasons"]) or "Reasons: none")
+
+
+@app.command("show-routing")
+def show_routing(
+    runner: str = RunnerOpt, codex_model: Optional[str] = CodexModelOpt,
+    gemini_model: Optional[str] = GeminiModelOpt,
+    stage_model: Optional[list[str]] = StageModelOpt,
+    stage_runner: Optional[list[str]] = StageRunnerOpt,
+    stage_effort: Optional[list[str]] = StageEffortOpt,
+):
+    """Print effective per-stage backend/model routing without starting a run."""
+    from .model_catalog import get_model_spec
+    cfg = _build_config(runner, None, False, None, 3, Path("runs"), "happy",
+                        codex_model=codex_model, gemini_model=gemini_model,
+                        stage_models=stage_model, stage_runners=stage_runner,
+                        stage_efforts=stage_effort)
+    stages = sorted(set(cfg.stage_models) | set(cfg.gemini_stage_models) |
+                    set(cfg.codex_stage_models) | set(cfg.stage_runners))
+    out = {}
+    for s in stages:
+        model = cfg.model_for(s)
+        spec = get_model_spec(model)
+        out[s] = {"runner": cfg.stage_runners.get(s, cfg.runner), "model": model,
+                  "effort": cfg.stage_effort.get(s, "provider_default"),
+                  "catalog": spec.__dict__ if spec else {"status": "custom/unverified"}}
+    _emit({"runner": cfg.runner, "stages": out})
 def _parse_duration(text: str) -> timedelta:
     raw = text.strip().lower()
     if raw.isdigit():
@@ -908,6 +1192,8 @@ def pipeline(
         "The diff is used only to prioritize a full-context audit; it never marks unchanged code safe."),
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="run ingest+recon only, then STOP before any audit"),
+    vuln_index: bool = typer.Option(True, "--vuln-index/--no-vuln-index",
+                                   help="include the curated vulnerability index in recon; disable for ablation"),
     yes: bool = typer.Option(False, "--yes",
                              help="proceed past the pre-audit cost estimate without prompting"),
     research: bool = typer.Option(
@@ -997,6 +1283,12 @@ def pipeline(
     claude_api_keys: Optional[str] = ClaudeApiKeysOpt,
     codex_api_key: Optional[str] = CodexApiKeyOpt,
     codex_api_keys: Optional[str] = CodexApiKeysOpt,
+    stage_model: Optional[list[str]] = StageModelOpt,
+    stage_runner: Optional[list[str]] = StageRunnerOpt,
+    stage_effort: Optional[list[str]] = StageEffortOpt,
+    allow_model_substitution: bool = AllowModelSubstitutionOpt,
+    profile: Optional[str] = ProfileOpt,
+    adaptive_escalation: str = AdaptiveEscalationOpt,
     attribution: bool = AttributionOpt,
 ):
     """Run stages 1-5 and STOP at human-review drafts. Never submits."""
@@ -1009,8 +1301,13 @@ def pipeline(
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
                         gemini_accounts=gemini_accounts,
                         claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
-                        codex_api_key=codex_api_key, codex_api_keys=codex_api_keys)
-    cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
+                        codex_api_key=codex_api_key, codex_api_keys=codex_api_keys,
+                        stage_models=stage_model, stage_runners=stage_runner,
+                        stage_efforts=stage_effort,
+                        allow_model_substitution=allow_model_substitution,
+                        profile=profile, adaptive_escalation=adaptive_escalation)
+    cfg = cfg.with_overrides(vuln_index_enabled=vuln_index,
+                             sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
                              verify_enabled=verify, verify_max_findings=verify_max_findings,
@@ -1035,6 +1332,10 @@ def pipeline(
         research = False                                   # a cheap smoke stays fully offline
         cfg = cfg.with_overrides(research_enabled=False,
                                  corroborate_enabled=False)  # ...and skips the networked cross-check
+        # for_smoke() intentionally replaces all model maps with cheap defaults; restore explicit
+        # per-stage choices after that safety transformation so a smoke rehearsal tests the same
+        # routing the user requested.
+        cfg = _apply_stage_assignments(cfg, stage_model, stage_runner, stage_effort)
         if brief is None:
             brief = Path("tests/fixtures/brief.txt")       # bundled tiny fixture
         if repo is None:
@@ -1067,6 +1368,21 @@ def pipeline(
     _emit(summary)
 
 
+@app.command("compare-recon")
+def compare_recon_command(
+    baseline: Path = typer.Option(..., "--baseline", exists=True, file_okay=False),
+    candidate: Path = typer.Option(..., "--candidate", exists=True, file_okay=False),
+    max_diff_lines: int = typer.Option(200, "--max-diff-lines", min=0, max=5000),
+):
+    """Compare existing recon artifacts locally; makes no model calls or changes to runs."""
+    from .recon_compare import compare_recon
+    try:
+        result = compare_recon(baseline, candidate, max_diff_lines=max_diff_lines)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    _emit(result)
+
+
 @app.command()
 def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=False,
                                      help="suite dir (each <case>/case.json + expected_findings.json)"),
@@ -1078,6 +1394,8 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
           parallel_cases: int = typer.Option(
               1, "--parallel-cases", min=1, max=16, metavar="N",
               help="run N cases concurrently (corpora at scale; real cost adds up on headless)"),
+          repeats: int = typer.Option(1, "--repeats", min=1, max=20,
+                                      help="repeat every labeled case; invalid model/target trials are reported separately"),
           re_audit: bool = typer.Option(
               False, "--re-audit",
               help="with --fixes: re-audit each patched copy and report the bug-actually-gone rate"),
@@ -1092,7 +1410,19 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
         _emit(ab_compare(cfg, suite, audit_model_b=ab_audit_model, fixes=fixes,
                          parallel_cases=parallel_cases, re_audit=re_audit))
     else:
-        _emit(run_suite(cfg, suite, fixes=fixes, parallel_cases=parallel_cases, re_audit=re_audit))
+        _emit(run_suite(cfg, suite, fixes=fixes, parallel_cases=parallel_cases, re_audit=re_audit,
+                        repeats=repeats))
+
+
+@app.command("bench-validate")
+def bench_validate(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=False,
+                                               help="suite directory to validate without cloning")):
+    """Validate frozen benchmark metadata and ground-truth files without model calls."""
+    from .benchmark import validate_suite
+    result = validate_suite(suite)
+    _emit(result)
+    if not result["valid"]:
+        raise typer.Exit(code=2)
 
 
 @app.command(name="bench-cross")
@@ -1104,13 +1434,15 @@ def bench_cross(
         help="comma-separated backend names to compare, e.g. headless,codex,gemini"),
     tier: str = typer.Option(
         "cheap", "--tier",
-        help="cheap (default) = Haiku / o4-mini / Flash-Lite per backend, keeps a full sweep "
-             "cheap · top = each backend's own top-tier model (Opus / gpt-5-codex / Gemini Pro), "
+        help="cheap (default) = Haiku 5.5 / gpt-6-luna / Flash-Lite per backend, keeps a full sweep "
+             "cheap · top = each backend's own top-tier model (Opus 5.5 / gpt-6-astra / Gemini 4 Argon), "
              "for real paper numbers -- real, non-trivial spend across all configured backends"),
     fixes: bool = typer.Option(False, "--fixes", help="also score Phase-6 patch quality"),
     parallel_cases: int = typer.Option(
         1, "--parallel-cases", min=1, max=16, metavar="N",
         help="run N cases concurrently PER BACKEND (real cost adds up fast on --tier top)"),
+    repeats: int = typer.Option(1, "--repeats", min=1, max=20,
+                                help="repeat every case per backend; mismatched trials are excluded"),
     re_audit: bool = typer.Option(False, "--re-audit",
                                   help="with --fixes: re-audit each patched copy"),
     budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
@@ -1135,7 +1467,7 @@ def bench_cross(
                         claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
                         codex_api_key=codex_api_key, codex_api_keys=codex_api_keys)
     _emit(compare_backends(cfg, suite, backends=names, tier=tier, fixes=fixes,
-                           parallel_cases=parallel_cases, re_audit=re_audit))
+                           parallel_cases=parallel_cases, re_audit=re_audit, repeats=repeats))
 
 
 @app.command(name="refusal-probe")

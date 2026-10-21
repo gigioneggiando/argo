@@ -166,7 +166,7 @@ def ask(ctx: RunContext, message: str) -> dict:
     work.mkdir(parents=True, exist_ok=True)
     before = {p.name for p in work.glob("*") if p.is_file()}
 
-    result = ctx.runner.run(
+    result = ctx.runner_for("chat").run(
         prompt=prompt,
         run_dir=ctx.run_dir,
         work_dir=work,

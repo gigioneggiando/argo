@@ -172,7 +172,7 @@ function renderOverview(runs, statRow, grid) {
 
 // --------------------------------------------------------------- NEW RUN view
 function newRunView() {
-  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "", gemini_model: "", gemini_api_key: "", claude_api_key: "", codex_api_key: "" };
+  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "", gemini_model: "", gemini_api_key: "", claude_api_key: "", codex_api_key: "", profile: "", stage_runners: "", stage_models: "", stage_effort: "" };
 
   let mode = "general";  // "general" = audit any code (no brief) · "bounty" = scoped program
   const briefEl = h("textarea", { placeholder: "Paste the bug-bounty program page: scope, rules, rewards, exclusions, “no DoS”…", oninput: (e) => form.brief = e.target.value });
@@ -221,6 +221,12 @@ function newRunView() {
     if (cx && cx.default) codexModelEl.placeholder = `blank = your Codex default (${cx.default})`;
   }).catch(() => {});
   const parallelEl = h("input", { type: "number", min: "1", max: "16", value: "3", oninput: (e) => form.parallel = +e.target.value || 3 });
+  const profileEl = h("select", { onchange: (e) => form.profile = e.target.value },
+    h("option", { value: "" }, "Built-in defaults"),
+    ...["balanced", "maximum-quality", "cost-saver", "diverse-validation", "smoke"].map((p) => h("option", { value: p }, p)));
+  const stageRunnerEl = h("input", { type: "text", placeholder: "optional: audit=codex,validate=headless", oninput: (e) => form.stage_runners = e.target.value });
+  const stageModelEl = h("input", { type: "text", placeholder: "optional: audit=gpt-6.1-sol", oninput: (e) => form.stage_models = e.target.value });
+  const stageEffortEl = h("input", { type: "text", placeholder: "Claude only: validate=high", oninput: (e) => form.stage_effort = e.target.value });
 
   const adv = h("div", { class: "adv hidden" },
     h("div", { class: "grid-2" },
@@ -234,6 +240,12 @@ function newRunView() {
       field("Calibration", calSeg, "Force audit on Opus while prompts are unproven.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Web research (Stage 0)", researchSeg, "On: a web-OSINT pass (CVEs, advisories, the project's history) feeds recon — the ONLY networked step, never the live in-scope hosts. Off: fully offline.")),
+    h("div", { class: "grid-2", style: { marginTop: "14px" } },
+      field("Routing profile", profileEl, "Credential-free profile; explicit stage overrides below win."),
+      field("Stage backends", stageRunnerEl, "Comma-separated STAGE=BACKEND overrides; same guardrails apply.")),
+    h("div", { class: "grid-2", style: { marginTop: "14px" } },
+      field("Stage models", stageModelEl, "Comma-separated STAGE=MODEL overrides."),
+      field("Stage effort", stageEffortEl, "Claude-only native effort values.")),
     codexRow, codexKeyRow, claudeRow, geminiRow);
   const advToggle = h("div", { class: "adv-toggle" }, h("span", { class: "chev" }, "▸"), "Advanced configuration");
   advToggle.addEventListener("click", () => { advToggle.classList.toggle("open"); adv.classList.toggle("hidden"); });
@@ -282,11 +294,14 @@ function newRunView() {
     const links = mode === "general" ? null : (form.links.trim() || null);
     startBtn.disabled = true; startBtn.lastChild.textContent = "Starting…";
     try {
+      const assignments = (text) => Object.fromEntries((text || "").split(",").map((x) => x.trim()).filter(Boolean).map((x) => x.split("=", 2)).filter((x) => x.length === 2 && x[0] && x[1]));
       const cfg = { runner: form.runner, parallel: form.parallel, calibration: form.calibration,
         budget_usd: form.budget ? Number(form.budget) : null, audit_model: form.audit_model.trim() || null,
         codex_model: form.codex_model || null, codex_oss: form.codex_oss, codex_local_provider: form.codex_local_provider || null,
         gemini_model: form.gemini_model || null, gemini_api_key: form.gemini_api_key || null,
-        claude_api_key: form.claude_api_key || null, codex_api_key: form.codex_api_key || null };
+        claude_api_key: form.claude_api_key || null, codex_api_key: form.codex_api_key || null,
+        profile: form.profile || null, stage_runners: assignments(form.stage_runners),
+        models: assignments(form.stage_models), stage_effort: assignments(form.stage_effort) };
       const res = await api.startRun({ brief, repo: form.repo, links, dry_run: form.dry_run, research: form.research, config: cfg });
       location.hash = `#/run/${encodeURIComponent(res.run_id)}`;
     } catch (e) {
@@ -320,6 +335,25 @@ function newRunView() {
     h("div", { class: "row", style: { marginTop: "8px", alignItems: "center" } }, uploadBtn, uploadStatus, fileEl));
   const repoField = field("Code to audit", repoControl,
     "A local folder path (resolved on the machine running the server) or a git URL (cloned read-only) — or **upload a .zip** of the repo. The repo is mounted read-only and never pushed anywhere — but a cloud backend (Claude / Codex / Gemini) sends the source to that provider's API to analyze it; only a local / OSS model keeps everything on-device. Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
+  const screenSummary = h("div", { class: "banner info hidden", style: { marginTop: "12px" } });
+  const planSummary = h("div", { class: "banner hidden", style: { marginTop: "8px" } });
+  const screenBtn = h("button", { type: "button", class: "btn btn-ghost", onclick: async () => {
+    if (!form.repo.trim()) return toast("Add a local repository before screening", true);
+    screenBtn.disabled = true; screenBtn.textContent = "Screening…";
+    try {
+      const fp = await api.screen({ target: form.repo.trim() });
+      mount(screenSummary, h("strong", {}, "Target profile: "),
+        `${fp.languages && Object.keys(fp.languages).length ? Object.entries(fp.languages).map(([k,v]) => `${k} ${v}`).join(", ") : "no languages detected"} · ${fp.files} files · ${fp.approx_loc} LOC · surfaces: ${Object.keys(fp.surfaces || {}).join(", ") || "none"}`);
+      screenSummary.classList.remove("hidden");
+      const objective = form.budget ? "economy" : "balanced";
+      const plan = await api.plan({ target: form.repo.trim(), objective, max_cost: form.budget ? Number(form.budget) : null });
+      const cost = plan.estimated_cost_usd || {};
+      mount(planSummary, h("strong", {}, `Recommended ${plan.objective} plan: `),
+        `${(plan.enabled_stages || []).join(" → ")} · cost ${cost.low == null ? "unknown" : `$${cost.low.toFixed(2)}–$${cost.high.toFixed(2)}`} · ${plan.reasons.map((r) => r.code).join(", ") || "no special signals"}`);
+      planSummary.classList.remove("hidden");
+    } catch (e) { toast(e.message, true); } finally { screenBtn.disabled = false; screenBtn.textContent = "Screen & plan"; }
+  } }, "Screen & plan");
+  const screenCard = h("div", { class: "row", style: { marginTop: "10px", alignItems: "center" } }, screenBtn, screenSummary);
   function setMode(m) {
     mode = m;
     briefField.classList.toggle("hidden", m === "general");
@@ -342,6 +376,7 @@ function newRunView() {
     recoCard,
     h("div", { class: "card newrun-card" },
       repoField,
+      screenCard, planSummary,
       modeField,
       briefField, linksField,
       advToggle, adv, costBanner,

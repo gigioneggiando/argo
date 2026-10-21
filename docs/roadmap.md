@@ -1,9 +1,36 @@
 # Roadmap — UI & advanced features on top of the pipeline
 
-Status: planning. This document analyzes each requested feature (feasibility / utility / priority
+Status: active. This document analyzes each requested feature (feasibility / utility / priority
 / needed?), proposes a phased build order, and tracks the todo list. The pipeline (CLI + stages +
 `AgentRunner` + ledger) is the engine; everything here sits **on top** of it and must keep its
 guardrails intact (no live host, no patching the target, read-only repo, no auto-submit).
+
+## 2026-10 model-routing/planning tranche
+
+Implemented in the current branch: a versioned provider catalog with lifecycle/pricing metadata;
+requested-versus-served model provenance and fail-closed mismatch handling; Codex per-stage routing;
+modern Gemini defaults; mixed-provider stage runners; Claude-native effort selection; offline
+`screen` fingerprints; explainable `plan` objectives and cost/time ranges; credential-free routing
+profiles; and `show-routing`/CLI documentation. The existing FastAPI + vanilla SPA now consumes
+the shared screen/plan/model-catalog endpoints and exposes the same per-stage controls as the CLI;
+no new frontend framework was introduced. Remaining evidence work is data-dependent: expand the
+frozen benchmark corpus, run repeated cross-provider trials, and only then change provisional
+defaults.
+
+### Remaining follow-ups after the 2026-10 tranche
+
+These are deliberately recorded as follow-ups rather than silently inferred as complete:
+
+- **Corpus expansion:** grow `benchmarks/corpora/` from the current five independently verified cases
+  to the planned 10–20+ positive/negative cases, with exact revisions, reviewed labels, and
+  permission/licensing checks.
+- **Repeated cross-provider matrix:** run the documented N≥3 comparisons (Claude, Codex, Gemini,
+  effort variants and mixed-provider validation) only with approved budget and comparable access.
+- **Measured defaults:** use those results to decide whether built-in profiles should change. Until then
+  profile routing remains marked `provisional` and no quality claim is made from one run.
+- **Optional product backlog:** streaming chat replies (B2), per-run subprocess isolation (C2), and
+  additional CI/Fast profiles remain lower-priority work; they are not prerequisites for the shipped
+  routing/planning tranche.
 
 ## Precision & depth uplift — ✅ DONE (2026-06-19)
 
@@ -169,7 +196,9 @@ Goal: raise recall/quality with cheap, structured context; surface it in the UI.
       the result as syntactic evidence only. It cannot establish deployment/configuration or other
       operational preconditions; keep those open unless the source or supplied scope proves them.
       Deep CPG/PDG/CFG remains deferred.
-- [ ] _Measure_ the index's impact with the baseline dry-run diff (see prompt-synthesis.md).
+- [ ] _Measure_ the index's impact with repeated matched dry-run pairs (see prompt-synthesis.md).
+      The offline comparison engine and `--no-vuln-index` ablation switch are implemented; the
+      actual fixed-commit/model/budget experiment and downstream quality measurement remain pending.
 
 ### Phase 5 — Advanced / experimental (gated by demand + measured ROI)
 - [x] **Multi-backend runners — DONE.** `CodexRunner` (`runner=codex`) runs the Codex CLI for
@@ -398,7 +427,9 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 - **Feasibility: high; the engine seam already exists.** `benchmark.load_suite(suite_dir)` globs every
   `<case>/case.json` + `expected_findings.json`, so the harness already runs an **unlimited** number of
   labeled cases and slices precision/recall/F1 by archetype and CWE (`run_suite`, `_aggregate`,
-  `score_run`). The gap is **labeled data**, not code: only the bundled mock `acme-widgets` case exists.
+  `score_run`). The remaining gap is **labeled data**, not code: the repository currently carries five
+  frozen real cases plus the offline `acme-widgets` mock; reaching the planned 10–20 case tranche still
+  requires additional ground-truth review and licensing/permission checks.
 - **Files:** `benchmarks/<new-case>/` (data — the bulk of the work); `argo/benchmark.py` (small
   additions); `argo/models.py` (none); `benchmarks/README.md` (document the corpus convention).
 - **Implementation:**
@@ -932,6 +963,14 @@ not copy agent counts, branding, or enterprise connectors merely because another
 - F1 implementation aligned stale documentation that described runtime/live as future or said the
   target was never executed; docs now distinguish the source-static default, isolated runtime/ASan,
   and tightly gated live modes before relying on the proof taxonomy.
+
+### Backend/account attribution — ✅ DONE
+
+Every LLM invocation now records a redaction-safe backend/account label in the run log. Expanded
+account chains include a stable index; directory labels keep only the basename, while API-key
+accounts use a generic marker. This makes fallback and rate-limit behavior auditable without
+adding credentials or full account paths to the per-call log, and without changing prompts,
+findings, or verdicts.
 
 ## Cross-cutting / decisions to make before Phase 0
 

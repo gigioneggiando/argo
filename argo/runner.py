@@ -33,7 +33,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .config import ARTIFACT_TOOLS, PipelineConfig, estimate_cost_usd
+from .config import ARTIFACT_TOOLS, PipelineConfig, estimate_cost_usd, model_cost_source
 from .guardrails import GuardrailError, assert_no_network_tools, enforce_session_tools, session_policy
 from .ledger import Ledger
 from .rendering import sha256_text
@@ -54,6 +54,12 @@ class LLMResult:
     is_error: bool = False
     api_error_status: str | None = None
     raw: dict = field(default_factory=dict)
+    # Requested and served are intentionally separate. ``model`` remains the compatibility alias
+    # for requested_model used by older stages and fixtures.
+    requested_model: str | None = None
+    served_model: str | None = None
+    served_models: tuple[str, ...] = ()
+    cost_source: str = "unknown"
 
 
 #: Best-effort classification of WHY a backend call failed, so a caller (FallbackRunner, a future
@@ -90,6 +96,42 @@ def _redact_secrets(text: str | None, *secrets: str | None) -> str:
     return scrubbed
 
 
+def _safe_account_component(value: str | None) -> str:
+    """Return a non-secret, stable account label component.
+
+    Account directories are configuration, not credentials, but logging the full path would still
+    leak usernames and machine layout into run artifacts. Keep only the final directory name and
+    restrict it to a small portable alphabet. API-key-backed accounts are labelled as api-key and
+    never pass the key itself here.
+    """
+    if not value:
+        return "default"
+    raw = os.path.expanduser(str(value)).rstrip("/\\")
+    leaf = Path(raw).name or Path(raw).parent.name
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", leaf).strip(".-")
+    return (safe[:64] or "default")
+
+
+def _derived_account_label(config: PipelineConfig) -> str:
+    """Derive a redaction-safe account label when the builder did not provide an indexed one."""
+    backend = config.runner
+    if backend == "codex":
+        if config.codex_home:
+            return f"codex:{_safe_account_component(config.codex_home)}"
+        if config.codex_api_key:
+            return "codex:api-key"
+        return "codex:ambient"
+    if backend == "headless":
+        if config.claude_config_dir:
+            return f"claude:{_safe_account_component(config.claude_config_dir)}"
+        if config.claude_api_key:
+            return "claude:api-key"
+        return "claude:ambient"
+    if backend == "gemini":
+        return "gemini:api-key" if config.gemini_api_key else "gemini:ambient"
+    return f"{backend}:default"
+
+
 class RunnerCancelled(RuntimeError):
     """The session's process was killed because the run was cancelled mid-stage. Deliberately NOT
     a :class:`RunnerError`, so stage-level ``except RunnerError`` partial-recovery does not swallow
@@ -124,6 +166,7 @@ def parse_result_envelope(raw: dict, *, model: str, prompt_sha256: str,
                 f"claude success envelope missing required field(s) {missing} — CLI output "
                 f"shape drift for this version? present keys: {sorted(raw)}")
     usage = raw.get("usage") or {}
+    served = raw.get("model") or raw.get("model_id")
     return LLMResult(
         text=raw.get("result") or "",
         model=model,
@@ -138,6 +181,10 @@ def parse_result_envelope(raw: dict, *, model: str, prompt_sha256: str,
         is_error=is_error,
         api_error_status=raw.get("api_error_status"),
         raw=raw,
+        requested_model=model,
+        served_model=str(served) if served else None,
+        served_models=(str(served),) if served else (),
+        cost_source="provider_authoritative" if "total_cost_usd" in raw else "unknown",
     )
 
 
@@ -147,9 +194,12 @@ class AgentRunner(ABC):
     Subclasses: :class:`HeadlessClaudeRunner` (Claude Code), :class:`CodexRunner` (Codex CLI /
     OpenAI / OSS), :class:`MockClaudeRunner` (fixtures)."""
 
-    def __init__(self, config: PipelineConfig, ledger: Ledger):
+    def __init__(self, config: PipelineConfig, ledger: Ledger, *, account_label: str | None = None):
         self.config = config
         self.ledger = ledger
+        # Deliberately an opaque, human-readable label (never a credential or full path).
+        # Expanded account chains pass an indexed label; direct construction gets a safe default.
+        self.account_label = account_label or _derived_account_label(config)
         # Set by the orchestrator for the duration of a run; when it fires, an in-flight CLI
         # subprocess is killed (mid-stage cancellation). None => not cancellable (e.g. CLI runs).
         self.cancel_event = None
@@ -315,6 +365,7 @@ class AgentRunner(ABC):
             failure_kind = _classify_failure_text(classify_text)
             if failure_kind is None and result.api_error_status and "429" in str(result.api_error_status):
                 failure_kind = "rate_limited"
+        model_mismatch = bool(result.served_model and result.served_model != model)
 
         # --- cost/latency/refusal logging (ledger + per-run JSONL) — ALWAYS, even on error -----
         self.ledger.log_call(
@@ -331,11 +382,25 @@ class AgentRunner(ABC):
             duration_ms=duration_ms,
             failure_kind=failure_kind,
             label=label,
+            requested_model=result.requested_model or model,
+            served_model=result.served_model,
+            served_models=result.served_models,
+            cost_source=result.cost_source,
+            model_mismatch=model_mismatch,
+            effort=self.config.stage_effort.get(stage, "provider_default"),
         )
         self._append_jsonl(run_dir, {
             "stage": stage,
             "label": label,
+            "backend": self.config.runner,
+            "backend_account": self.account_label,
             "model": model,
+            "requested_model": result.requested_model or model,
+            "served_model": result.served_model,
+            "served_models": list(result.served_models),
+            "cost_source": result.cost_source,
+            "model_mismatch": model_mismatch,
+            "effort": self.config.stage_effort.get(stage, "provider_default"),
             "prompt_sha256": prompt_sha,
             "input_tokens": result.input_tokens,
             "output_tokens": result.output_tokens,
@@ -349,6 +414,13 @@ class AgentRunner(ABC):
             "duration_ms": duration_ms,
             "failure_kind": failure_kind,
         })
+
+        if model_mismatch and not self.config.allow_model_substitution:
+            raise RunnerError(
+                f"requested model {model!r} was served as {result.served_model!r}; "
+                "exact model pins are fail-closed (use --allow-model-substitution only for "
+                "an explicitly best-effort run)",
+                retryable=False, failure_kind="model_mismatch")
 
         # --- surface hard API errors LOUDLY (auth / rate-limit / overloaded) -----------
         # These carry api_error_status and cannot produce usable artifacts -> abort clearly.
@@ -436,7 +508,7 @@ class HeadlessClaudeRunner(AgentRunner):
         return self._resolved_bin
 
     def _build_cmd(self, *, model, repo_dir, allowed, disallowed,
-                   session_budget_usd=None) -> list[str]:
+                   session_budget_usd=None, effort=None) -> list[str]:
         cmd = [
             self._bin(),
             "-p",
@@ -450,6 +522,8 @@ class HeadlessClaudeRunner(AgentRunner):
         # Native mid-session cost kill (v2.1.178 has --max-budget-usd; it has NO --max-turns).
         if session_budget_usd is not None:
             cmd += ["--max-budget-usd", f"{session_budget_usd:.4f}"]
+        if effort:
+            cmd += ["--effort", effort]
         if repo_dir is not None:
             cmd += ["--add-dir", str(Path(repo_dir).resolve())]
         if allowed:
@@ -461,7 +535,8 @@ class HeadlessClaudeRunner(AgentRunner):
     def _invoke(self, *, prompt, work_dir, model, repo_dir, allowed, disallowed, policy=None,
                 stage, run_id, label, session_budget_usd=None, timeout_s=None) -> dict:
         cmd = self._build_cmd(model=model, repo_dir=repo_dir, allowed=allowed,
-                              disallowed=disallowed, session_budget_usd=session_budget_usd)
+                              disallowed=disallowed, session_budget_usd=session_budget_usd,
+                              effort=self.config.stage_effort.get(stage))
         timeout = timeout_s or self.config.session_timeout_s
         # Multi-account: point this invocation at a specific Claude credential store so an
         # account-fallback can switch accounts (limits are per-account). See build_runner.
@@ -535,6 +610,26 @@ def _scan_codex_tokens(stdout_jsonl: str) -> tuple[int, int]:
         if isinstance(ot, int):
             out_tok = max(out_tok, ot)
     return in_tok, out_tok
+
+
+def _scan_codex_models(stdout_jsonl: str) -> tuple[str, ...]:
+    """Extract served model IDs from Codex JSONL without guessing from the command line."""
+    found: list[str] = []
+    for line in (stdout_jsonl or "").splitlines():
+        line = line.strip()
+        if not line or line[0] != "{":
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        candidates = [event.get("model"), event.get("model_id"),
+                      (event.get("response") or {}).get("model")
+                      if isinstance(event.get("response"), dict) else None]
+        for candidate in candidates:
+            if isinstance(candidate, str) and candidate.strip() and candidate not in found:
+                found.append(candidate.strip())
+    return tuple(found)
 
 
 _CODEX_HOME_CACHE_ROOT = Path.home() / ".argo" / "codex_homes"
@@ -767,14 +862,20 @@ class CodexRunner(AgentRunner):
                        work_dir: Path) -> LLMResult:
         rc = int(raw.get("returncode", 0) or 0)
         text = raw.get("text") or ""
-        in_tok, out_tok = _scan_codex_tokens(raw.get("stdout", ""))
+        stdout = raw.get("stdout", "")
+        in_tok, out_tok = _scan_codex_tokens(stdout)
+        served_models = _scan_codex_models(stdout)
+        served = served_models[0] if len(served_models) == 1 else None
+        effective_model = served or model
         return LLMResult(
             text=text, model=model, prompt_sha256=prompt_sha256, work_dir=work_dir,
             input_tokens=in_tok, output_tokens=out_tok,
-            cost_usd=estimate_cost_usd(model, in_tok, out_tok),   # estimated (token-based)
+            cost_usd=estimate_cost_usd(effective_model, in_tok, out_tok),   # estimated (token-based)
             num_turns=0, session_id=None, stop_reason=f"exit_{rc}",
             is_error=(rc != 0),   # non-zero -> recoverable (the stage globs scratch for partials)
-            api_error_status=None, raw=raw,
+            api_error_status=None, raw=raw, requested_model=model,
+            served_model=served, served_models=served_models,
+            cost_source=model_cost_source(effective_model),
         )
 
 
@@ -971,21 +1072,42 @@ class GeminiRunner(AgentRunner):
                 text = f"{_GEMINI_MODERATION_MARKER}: {text}"
 
         in_tok = out_tok = 0
-        for entry in ((raw.get("stats") or {}).get("models") or {}).values():
+        cost = 0.0
+        cost_known = True
+        served_models: list[str] = []
+        for served_name, entry in ((raw.get("stats") or {}).get("models") or {}).items():
+            if isinstance(served_name, str) and served_name not in served_models:
+                served_models.append(served_name)
             tok = (entry or {}).get("tokens") or {}
             # "prompt" (total context, incl. cached) not "input" (cached-excluded) — a deliberate
             # safe-direction overestimate when caching is active, matching the same rounding
             # rationale already documented for MODEL_PRICING's >200k-token Pro tier gap.
-            in_tok += int(tok.get("prompt", tok.get("input", 0)) or 0)
-            out_tok += int(tok.get("candidates", 0) or 0)
+            entry_in = int(tok.get("prompt", tok.get("input", 0)) or 0)
+            entry_out = int(tok.get("candidates", 0) or 0)
+            in_tok += entry_in
+            out_tok += entry_out
+            entry_cost = estimate_cost_usd(served_name, entry_in, entry_out)
+            if model_cost_source(served_name) == "unknown":
+                cost_known = False
+            cost += entry_cost
+
+        served_tuple = tuple(served_models)
+        served = served_tuple[0] if len(served_tuple) == 1 else None
+        # Some CLI versions omit stats.models. In that case the requested ID is the only honest
+        # cost basis, but it remains marked as estimated rather than served-model proof.
+        if not served_tuple:
+            cost = estimate_cost_usd(model, in_tok, out_tok)
+            cost_known = model_cost_source(model) != "unknown"
 
         return LLMResult(
             text=text, model=model, prompt_sha256=prompt_sha256, work_dir=work_dir,
             input_tokens=in_tok, output_tokens=out_tok,
-            cost_usd=estimate_cost_usd(model, in_tok, out_tok),   # estimated (token-based)
+            cost_usd=cost,   # estimated (token-based)
             num_turns=0, session_id=raw.get("session_id"),
             stop_reason=f"exit_{raw.get('_exit_code', 0)}",
             is_error=is_error, api_error_status=None, raw=raw,
+            requested_model=model, served_model=served, served_models=served_tuple,
+            cost_source="estimated_known_price" if cost_known else "unknown",
         )
 
 
@@ -1646,6 +1768,13 @@ def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner
     raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', 'gemini', or 'mock')")
 
 
+def _label_runner(runner: AgentRunner, backend: str, account: str, index: int) -> AgentRunner:
+    """Attach an indexed, non-secret account label to one expanded fallback runner."""
+    component = "api-key" if account == "<api-key>" else _safe_account_component(account)
+    runner.account_label = f"{backend}:{component}[{index + 1}]"
+    return runner
+
+
 def _expand_backend(config: PipelineConfig, ledger: Ledger, name: str) -> list[AgentRunner]:
     """One backend name -> one or more runners. Multi-account backends expand to one runner per
     credential dir (limits are per-account): Claude via CLAUDE_CONFIG_DIR, Codex via CODEX_HOME,
@@ -1655,27 +1784,28 @@ def _expand_backend(config: PipelineConfig, ledger: Ledger, name: str) -> list[A
     backend (avoids a Cartesian-product chain nobody asked for; consistent with the single-value
     codex_home-wins-over-codex_api_key precedence in CodexRunner._codex_home_env_value)."""
     if name == "headless" and config.claude_accounts:
-        return [HeadlessClaudeRunner(config.with_overrides(
-                    runner=name, claude_config_dir=d, claude_api_key=None, claude_api_keys=[]), ledger)
-                for d in config.claude_accounts]
+        return [_label_runner(HeadlessClaudeRunner(config.with_overrides(
+                    runner=name, claude_config_dir=d, claude_api_key=None, claude_api_keys=[]), ledger),
+                    name, d, i) for i, d in enumerate(config.claude_accounts)]
     if name == "headless" and config.claude_api_keys:
-        return [HeadlessClaudeRunner(config.with_overrides(
-                    runner=name, claude_config_dir=None, claude_api_key=k), ledger)
-                for k in config.claude_api_keys]
+        return [_label_runner(HeadlessClaudeRunner(config.with_overrides(
+                    runner=name, claude_config_dir=None, claude_api_key=k), ledger),
+                    name, "<api-key>", i) for i, k in enumerate(config.claude_api_keys)]
     if name == "codex" and config.codex_accounts:
-        return [CodexRunner(config.with_overrides(
-                    runner=name, codex_home=d, codex_api_key=None, codex_api_keys=[]), ledger)
-                for d in config.codex_accounts]
+        return [_label_runner(CodexRunner(config.with_overrides(
+                    runner=name, codex_home=d, codex_api_key=None, codex_api_keys=[]), ledger),
+                    name, d, i) for i, d in enumerate(config.codex_accounts)]
     if name == "codex" and config.codex_home:
         return [CodexRunner(config.with_overrides(
                     runner=name, codex_api_key=None, codex_api_keys=[]), ledger)]
     if name == "codex" and config.codex_api_keys:
-        return [CodexRunner(config.with_overrides(
-                    runner=name, codex_home=None, codex_api_key=k), ledger)
-                for k in config.codex_api_keys]
+        return [_label_runner(CodexRunner(config.with_overrides(
+                    runner=name, codex_home=None, codex_api_key=k), ledger),
+                    name, "<api-key>", i) for i, k in enumerate(config.codex_api_keys)]
     if name == "gemini" and config.gemini_accounts:
-        return [GeminiRunner(config.with_overrides(runner=name, gemini_api_key=k), ledger)
-                for k in config.gemini_accounts]
+        return [_label_runner(GeminiRunner(config.with_overrides(
+                    runner=name, gemini_api_key=k), ledger),
+                    name, "<api-key>", i) for i, k in enumerate(config.gemini_accounts)]
     return [_build_one(config, ledger, name)]
 
 

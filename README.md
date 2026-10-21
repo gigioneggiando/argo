@@ -8,6 +8,12 @@
 
 **Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) · [Wiki](https://github.com/gigioneggiando/argo/wiki) · [Discussions](https://github.com/gigioneggiando/argo/discussions) · [Changelog](CHANGELOG.md)
 
+Before a paid audit, use `argo screen ./repo` for a deterministic read-only fingerprint, `argo plan
+./repo --objective balanced` for an explainable cost/time range, and `argo show-routing` to inspect
+the exact per-stage backend/model selection. Advanced runs can mix providers with repeated
+`--stage-runner`/`--stage-model` flags; run provenance records both requested and actually served
+models.
+
 ## Real, disclosed, independently verified
 
 Not a benchmark score — pull requests, published advisories, and real CVEs, on real open-source projects.
@@ -222,7 +228,13 @@ Low-cost modes:
 ```
 argo pipeline ... --runner mock   # exercises the whole glue with fixtures, zero tokens
 argo pipeline ... --dry-run       # runs ingest+recon, shows generated prompts, then STOPS
+argo compare-recon --baseline runs/BASE --candidate runs/CAND  # offline bounded recon diff
 ```
+
+For a controlled vuln-index ablation, repeat the same pinned dry run with `--no-vuln-index`, then
+use `compare-recon`. It warns when the commit, non-index prompt inputs, or served backend/model do
+not match. Structural counts are review aids, not precision/recall evidence; see
+[prompt synthesis](docs/prompt-synthesis.md#changing-the-meta-prompt-safely-validation-methodology).
 
 Every command, every flag, with more examples: **[docs/cli-reference.md](docs/cli-reference.md)**.
 
@@ -285,6 +297,9 @@ and the cross-model study: **[docs/backends.md](docs/backends.md)**.
 - Keep prompts under git and record which version each run used: you can A/B test them and see
   which produce accepted findings.
 - The SQLite ledger avoids re-reporting the same bug across runs/programs and tracks your hit rate.
+- Each run's llm_log.jsonl records a redaction-safe backend/account label, so fallback usage and
+  Codex account rate limits can be audited without adding full credential paths or secrets to the
+  per-call log.
 - The most useful metric to watch is the ratio of validation-confirmed findings to triager-accepted
   findings: if they diverge, tune the validation prompt.
 - Always check whether a given program permits automated/AI tooling before running it.

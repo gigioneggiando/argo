@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-OPUS = "claude-opus-5"
-SONNET = "claude-sonnet-5"
+OPUS = "claude-opus-5-5"
+SONNET = "claude-sonnet-5-5"
 
 _TIERS = {
     "quick": {
@@ -81,5 +81,7 @@ def recommend(repo: str | None, target: str) -> dict:
         "calibration": tier["calibration"],
         "audit_model": tier["models"].get("audit"),
         "models": dict(tier["models"]),
+        "stage_runners": {},
+        "profile": {"quick": "cost-saver", "standard": "balanced", "thorough": "maximum-quality"}.get(target, "balanced"),
     }
     return {"config": config, "rationale": rationale + note}

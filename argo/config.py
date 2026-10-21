@@ -13,10 +13,14 @@ import json
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
-# --- Model IDs (the most capable current Claude models) -----------------------------
-OPUS = "claude-opus-5"
-SONNET = "claude-sonnet-5"
-HAIKU = "claude-haiku-4-5-20251001"  # cheapest; used for the headless smoke run
+# --- Model IDs (current catalog snapshot; see argo.model_catalog) ------------------
+from .model_catalog import MODEL_CATALOG, catalog_snapshot, get_model_spec, resolve_pricing
+
+OPUS = "claude-opus-5-5"
+SONNET = "claude-sonnet-5-5"
+HAIKU = "claude-haiku-5-5"  # cheapest current model; used for smoke runs
+FABLE = "claude-fable-5-1"
+MYTHOS = "claude-mythos-5-1"
 
 # --- Model IDs (Gemini CLI backend). Pinned concrete ids, never the auto-resolving
 # "pro"/"flash" aliases: an alias breaks MODEL_PRICING's substring match, run-to-run
@@ -24,9 +28,12 @@ HAIKU = "claude-haiku-4-5-20251001"  # cheapest; used for the headless smoke run
 # extra internal "which model should handle this" routing call that a pinned id skips
 # entirely. Re-confirm these strings periodically -- preview ids churn; there is no
 # `--list-models` flag, these were read directly off real `stats.models` keys.
-GEMINI_PRO = "gemini-3.1-pro"
-GEMINI_FLASH = "gemini-3.5-flash"
-GEMINI_FLASH_LITE = "gemini-3.1-flash-lite"  # cheapest; used for the Gemini smoke run
+GEMINI_ARGON = "gemini-4-argon"
+GEMINI_PRO = GEMINI_ARGON  # compatibility name for existing callers
+GEMINI_FLASH = "gemini-3.8-flash"
+GEMINI_MID = "gemini-3.6-flash"
+GEMINI_FLASH_LITE = "gemini-3.5-flash-lite"  # current cheap stable model
+GEMINI_CHEAP = "gemini-3.1-flash-lite"
 
 # --- Model IDs (Codex CLI backend), for the two cases that need a PINNED id rather than
 # "omit codex_model and let the CLI's own configured default apply" (the normal, recommended
@@ -34,8 +41,29 @@ GEMINI_FLASH_LITE = "gemini-3.1-flash-lite"  # cheapest; used for the Gemini smo
 # benchmark's --tier flag (a controlled, reproducible comparison point). Unlike Claude/Gemini,
 # Codex has no per-stage tiering (model_for() uses one flat codex_model for every stage), so
 # these are the only two named tiers needed.
-CODEX_TOP = "gpt-5-codex"      # Codex's own coding-focused top model; priced same as gpt-5/gpt-5.5
-CODEX_CHEAP = "o4-mini"        # a real lighter/cheaper OpenAI model, mirrors Haiku/Flash-Lite's role
+CODEX_TOP = "gpt-6-astra"
+CODEX_BALANCED = "gpt-6.1-sol"
+CODEX_CHEAP = "gpt-6-luna"
+
+# Codex's model selection is stage-aware.  The map is intentionally separate from the user
+# override field so an explicit --codex-model can still flatten every stage, while a per-stage
+# override wins over that global convenience flag.
+DEFAULT_CODEX_STAGE_MODELS: dict[str, str] = {
+    "ingest": CODEX_CHEAP,
+    "recon": CODEX_TOP,
+    "audit": CODEX_BALANCED,
+    "validate": CODEX_TOP,
+    "report": CODEX_CHEAP,
+    "chat": CODEX_BALANCED,
+    "remediate": CODEX_TOP,
+    "research": CODEX_CHEAP,
+    "sca": CODEX_CHEAP,
+    "runtime": CODEX_BALANCED,
+    "live": CODEX_BALANCED,
+    "corroborate": CODEX_BALANCED,
+    "verify": CODEX_TOP,
+    "asan_poc": CODEX_TOP,
+}
 
 #: Default per-stage model assignment.
 #:  * ingest   -> Sonnet (never Haiku: misreading scope/RoE has outsized consequences).
@@ -65,20 +93,20 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
 #: DEFAULT_STAGE_MODELS above (Pro for judgment-heavy/low-volume stages, Flash for high-volume
 #: fan-out) -- Gemini's pro/flash tier genuinely maps onto that split, unlike Codex's flat model.
 DEFAULT_GEMINI_STAGE_MODELS: dict[str, str] = {
-    "ingest": GEMINI_FLASH,
-    "recon": GEMINI_PRO,
+    "ingest": GEMINI_CHEAP,
+    "recon": GEMINI_FLASH,
     "audit": GEMINI_FLASH,
-    "validate": GEMINI_PRO,
-    "report": GEMINI_FLASH,
+    "validate": GEMINI_ARGON,
+    "report": GEMINI_CHEAP,
     "chat": GEMINI_FLASH,
-    "remediate": GEMINI_PRO,
-    "research": GEMINI_FLASH,
-    "sca": GEMINI_PRO,
+    "remediate": GEMINI_ARGON,
+    "research": GEMINI_CHEAP,
+    "sca": GEMINI_FLASH,
     "runtime": GEMINI_FLASH,
     "live": GEMINI_FLASH,
     "corroborate": GEMINI_FLASH,
-    "verify": GEMINI_PRO,
-    "asan_poc": GEMINI_PRO,
+    "verify": GEMINI_ARGON,
+    "asan_poc": GEMINI_ARGON,
 }
 
 #: Default per-stage wall-clock overrides (seconds). Recon now does deep ground-truth extraction
@@ -96,20 +124,16 @@ DEFAULT_STAGE_TIMEOUTS: dict[str, int] = {
 # Claude Code returns an authoritative ``total_cost_usd`` per call. The Codex CLI (OpenAI / OSS)
 # and the Gemini CLI report tokens, not dollars, so for both we ESTIMATE: tokens x this rough price
 # table. Figures are USD per 1M tokens (input, output); used only for the budget guard + cost
-# analytics, never billed. Unknown models (incl. ``--oss`` / local) estimate to $0 — tokens are
-# still logged. Gemini figures confirmed 2026-08-17 from ai.google.dev/gemini-api/docs/pricing
-# (standard tier, <=200k-token prompts; Pro steps up to $4/$18 above 200k -- not modeled here,
-# estimate_cost_usd doesn't take a prompt-size argument, so very large Pro-tier prompts undercount
-# slightly rather than justify a tiered lookup for a rare case).
+# analytics, never billed. Unknown models (incl. ``--oss`` / local) retain a numeric 0.0 for
+# backwards-compatible aggregation but are tagged ``cost_source=unknown``. Current figures and
+# effective-dated promotional windows are maintained in the static model_catalog.py; no pricing is
+# fetched at runtime.
+# Compatibility mapping kept for callers that import MODEL_PRICING.  New code should use
+# resolve_pricing()/get_model_spec(), which match exact IDs and explicit aliases rather than
+# substring order.
 MODEL_PRICING: dict[str, tuple[float, float]] = {
-    "gpt-5.5": (1.25, 10.0), "gpt-5-codex": (1.25, 10.0), "gpt-5": (1.25, 10.0),
-    "gpt-4o": (2.5, 10.0), "gpt-4.1": (2.0, 8.0), "o4-mini": (1.1, 4.4), "o3": (2.0, 8.0),
-    # GPT-5.6 family (confirmed 2026-08-21 from developers.openai.com/api/docs/models): the plain
-    # "gpt-5.6" alias resolves to Sol server-side but is NOT accepted by Codex CLI 0.149.0 when
-    # authenticated via a ChatGPT-plan CODEX_HOME (rejected: "not supported when using Codex with a
-    # ChatGPT account") -- always pass the exact suffixed name (gpt-5.6-sol/-terra/-luna).
-    "gpt-5.6-sol": (5.0, 30.0), "gpt-5.6-terra": (2.5, 15.0), "gpt-5.6-luna": (1.0, 6.0),
-    GEMINI_PRO: (2.00, 12.00), GEMINI_FLASH: (1.50, 9.00), GEMINI_FLASH_LITE: (0.25, 1.50),
+    s.model_id: (s.input_per_million, s.output_per_million)
+    for s in MODEL_CATALOG if s.pricing_known
 }
 
 
@@ -127,16 +151,35 @@ def _codex_default_model() -> str | None:
     return None
 
 
-def estimate_cost_usd(model: str | None, input_tokens: int, output_tokens: int) -> float:
-    """Best-effort USD estimate from token counts (for token-only backends). $0 if the model is
-    unknown or local/OSS — tokens are still recorded."""
-    if not model:
+def estimate_cost_usd(model: str | None, input_tokens: int, output_tokens: int,
+                      *, as_of: str | None = None) -> float:
+    """Best-effort USD estimate from token counts (for token-only backends).
+
+    Unknown/local models return ``0.0`` for backwards-compatible numeric aggregation, but callers
+    must inspect :func:`model_cost_source` (``"unknown"``) and must never present that value as a
+    free or authoritative quote. ``as_of`` selects an effective-dated promotional price when the
+    static catalog contains one.
+    """
+    rates = resolve_pricing(model, as_of=as_of)
+    if rates is None:
         return 0.0
-    m = model.lower()
-    for key, (in_rate, out_rate) in MODEL_PRICING.items():
-        if key in m:
-            return (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000
-    return 0.0
+    in_rate, out_rate = rates
+    return (input_tokens * in_rate + output_tokens * out_rate) / 1_000_000
+
+
+def model_cost_source(model: str | None) -> str:
+    """Return a stable cost provenance label for reports and budget explanations."""
+    if not model:
+        return "unknown"
+    spec = get_model_spec(model)
+    if spec is None:
+        return "unknown"
+    return "estimated_known_price" if spec.pricing_known else "unknown"
+
+
+def catalog_provenance() -> dict:
+    """Return the immutable catalog metadata to store in run/config artifacts."""
+    return catalog_snapshot()
 
 
 # --- Tool allowlists (defense-in-depth; the runner re-enforces these) ----------------
@@ -175,9 +218,22 @@ class PipelineConfig:
     # Gemini backend's own per-stage assignment (Gemini is tiered like Claude, not flat like Codex —
     # see DEFAULT_GEMINI_STAGE_MODELS). Only consulted when runner == "gemini".
     gemini_stage_models: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_GEMINI_STAGE_MODELS))
+    # Explicit Codex per-stage overrides. Empty means use the built-in map unless a global
+    # codex_model override is supplied; keeping overrides separate preserves precedence.
+    codex_stage_models: dict[str, str] = field(default_factory=dict)
+    # Frozen metadata used to interpret requested/served model IDs months later.  The snapshot is
+    # data-only and contains no credentials or prompts.
+    model_catalog_snapshot: dict = field(default_factory=catalog_snapshot)
 
     # Execution.
     runner: str = "headless"            # "headless" (Claude Code) | "codex" (Codex CLI) | "gemini" (Gemini CLI) | "mock"
+    # Optional per-stage backend overrides.  An empty mapping keeps the primary backend for all
+    # stages; entries such as {"audit": "codex", "report": "headless"} are resolved lazily by
+    # RunContext so a mixed run still shares the same ledger, cancellation signal, and artifacts.
+    stage_runners: dict[str, str] = field(default_factory=dict)
+    # Native effort is currently verified only for the Claude CLI. Other providers expose
+    # different controls; Argo records provider_default there rather than inventing a flag.
+    stage_effort: dict[str, str] = field(default_factory=dict)
     # Resilience: ordered fallback backends. When the primary runner hits a retryable limit
     # (session-limit / rate-limit / 429), the same call is transparently retried on the next backend
     # (e.g. ["codex"] => Claude -> Codex). A walled backend is skipped for the rest of the run.
@@ -234,8 +290,8 @@ class PipelineConfig:
     semantic_dedup_enabled: bool = True
     semantic_dedup_min_findings: int = 6
 
-    # Codex backend (runner == "codex"). One model for all stages (Codex isn't tiered per stage
-    # the way Claude is). codex_model=None lets the Codex CLI use its own configured default model.
+    # Codex backend (runner == "codex"). ``codex_model`` remains a flat compatibility override;
+    # the explicit codex_stage_models map is used by new defaults and wins per stage.
     codex_model: str | None = None
     codex_oss: bool = False             # use Codex's open-source provider (--oss)
     codex_local_provider: str | None = None  # "ollama" | "lmstudio" (with --oss)
@@ -243,6 +299,14 @@ class PipelineConfig:
     # per-stage wall-clock overrides; seeded with DEFAULT_STAGE_TIMEOUTS (deep recon + audit).
     stage_timeouts: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_STAGE_TIMEOUTS))
     budget_usd: float | None = None     # HARD per-run USD ceiling; None = unbounded
+    # Exact model pins are fail-closed by default.  Set only for deliberate best-effort runs where
+    # a provider may auto-route a deprecated/floating identifier; provenance still records both IDs.
+    allow_model_substitution: bool = False
+    # Optional evidence-driven escalation. Off by default; benchmark mode keeps it disabled so
+    # repeated trials remain comparable. Escalations are bounded by the existing per-run and
+    # per-session budget guards and are recorded in adaptive_events.jsonl.
+    adaptive_escalation: str = "off"  # off | conservative | balanced | aggressive
+    benchmark_mode: bool = False
 
     # Per-session safety caps (this CLI has NO --max-turns flag in v2.1.178):
     #   * cost is capped mid-session natively via --max-budget-usd (see runner),
@@ -270,6 +334,8 @@ class PipelineConfig:
     # run_pipeline argument; keeping it in the persisted config makes resume reconstruct the original
     # stage set instead of guessing whether the run was started with --research or --no-research.
     research_enabled: bool = True
+    # Ablation switch: omit only the curated vulnerability index from recon.
+    vuln_index_enabled: bool = True
 
     # --- Second opinion (opt-in; runs AFTER audit/[sca], BEFORE validate) --------------------------
     # OFF by default (0 = disabled). N >= 1 runs N ADDITIONAL, fully independent recon+audit passes
@@ -436,12 +502,15 @@ class PipelineConfig:
     fixtures_scenario: str = "happy"
 
     def model_for(self, stage: str) -> str:
-        # Codex uses one model for all stages (the label is for logging/cost; the runner passes the
-        # real id via -m only when codex_model is set, else the Codex CLI's own default is used).
-        if self.runner == "codex":
-            return self.codex_model or _codex_default_model() or "codex-default"
+        backend = self.stage_runners.get(stage, self.runner)
+        if backend == "codex":
+            if stage in self.codex_stage_models:
+                return self.codex_stage_models[stage]
+            if self.codex_model:
+                return self.codex_model
+            return DEFAULT_CODEX_STAGE_MODELS.get(stage, CODEX_BALANCED)
         # Gemini is tiered per stage like Claude, via its own dict (see DEFAULT_GEMINI_STAGE_MODELS).
-        if self.runner == "gemini":
+        if backend == "gemini":
             try:
                 return self.gemini_stage_models[stage]
             except KeyError:  # pragma: no cover - defensive
@@ -459,6 +528,10 @@ class PipelineConfig:
         return replace(self, **kwargs)
 
     def with_stage_model(self, stage: str, model: str) -> "PipelineConfig":
+        if self.runner == "codex":
+            models = dict(self.codex_stage_models)
+            models[stage] = model
+            return replace(self, codex_stage_models=models)
         if self.runner == "gemini":
             models = dict(self.gemini_stage_models)
             models[stage] = model
@@ -478,7 +551,7 @@ class PipelineConfig:
         Codex run. Caught while building the cross-backend benchmark, whose --tier top mode
         depends on calibrated() actually working per backend to be a fair comparison."""
         if self.runner == "gemini":
-            return self.with_stage_model("audit", GEMINI_PRO)
+            return self.with_stage_model("audit", GEMINI_ARGON)
         if self.runner == "codex":
             return self.with_overrides(codex_model=CODEX_TOP)
         return self.with_stage_model("audit", OPUS)
@@ -498,12 +571,15 @@ class PipelineConfig:
         must already have its cheap dict ready."""
         models = {k: HAIKU for k in self.stage_models}
         models["recon"] = SONNET
-        gemini_models = {k: GEMINI_FLASH_LITE for k in self.gemini_stage_models}
+        codex_models = {k: CODEX_CHEAP for k in DEFAULT_CODEX_STAGE_MODELS}
+        codex_models["recon"] = CODEX_BALANCED
+        gemini_models = {k: GEMINI_CHEAP for k in self.gemini_stage_models}
         gemini_models["recon"] = GEMINI_FLASH
         return replace(
             self,
             runner="headless",
             stage_models=models,
+            codex_stage_models=codex_models,
             gemini_stage_models=gemini_models,
             budget_usd=2.0,
             stage_timeouts={},            # smoke stays cheap: no deep recon/audit overrides

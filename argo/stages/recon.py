@@ -85,7 +85,9 @@ def run(ctx: RunContext) -> list[Path]:
 
     # Inject the curated vulnerability-class index as ADDITIONAL reference (archetype-keyed);
     # additive context, the model still classifies and discovers on its own.
-    rendered += "\n\n---\n\n" + format_for_prompt() + "\n"
+    index_block = ("\n\n---\n\n" + format_for_prompt() + "\n"
+                   if ctx.config.vuln_index_enabled else "")
+    rendered += index_block
 
     # Inject the Stage-0 web research brief if present (opt-out --research): known CVEs, security
     # history, where to focus. Additive — the model still classifies + discovers on its own.
@@ -140,12 +142,15 @@ def run(ctx: RunContext) -> list[Path]:
         ],
     )
 
+    # Fingerprint inputs without persisting private prompt/context text.
+    from ..recon_compare import record_inputs
+    record_inputs(ctx, prompt, index_block)
     work = ctx.work_dir("recon")
     files: list[Path] = []
     last_exc: RunnerError | None = None
     for attempt in range(1, _RECON_MAX_ATTEMPTS + 1):
         try:
-            result = ctx.runner.run(
+            result = ctx.runner_for("recon").run(
                 prompt=prompt,
                 run_dir=ctx.run_dir,
                 work_dir=work,

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import re
+import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,6 +105,56 @@ def load_suite(suite_dir) -> list[Case]:
     return cases
 
 
+def validate_suite(suite_dir) -> dict:
+    """Validate corpus metadata without cloning, executing, or spending model tokens.
+
+    A URL-backed case must pin an exact commit.  Local cases are accepted for offline fixtures but
+    are marked ``portable=false`` unless their metadata declares a commit.  The command is useful
+    in CI before adding a case to the frozen Argo corpus.
+    """
+    root = Path(suite_dir)
+    errors: list[str] = []
+    warnings: list[str] = []
+    rows: list[dict] = []
+    for path in sorted(root.glob("*/case.json")):
+        cdir = path.parent
+        try:
+            meta = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError) as exc:
+            errors.append(f"{path}: invalid case.json ({exc})")
+            continue
+        name = str(meta.get("name") or cdir.name)
+        repo = str(meta.get("repo") or "")
+        expected_path = cdir / str(meta.get("expected", "expected_findings.json"))
+        commit = str(meta.get("commit") or "").strip()
+        if not repo:
+            errors.append(f"{name}: missing repo")
+        if not expected_path.exists():
+            errors.append(f"{name}: missing {expected_path.name}")
+        else:
+            try:
+                labels = json.loads(expected_path.read_text(encoding="utf-8-sig"))
+                if not isinstance(labels, list):
+                    errors.append(f"{name}: expected findings must be a list")
+                elif not labels:
+                    warnings.append(f"{name}: empty ground truth (negative-only case?)")
+            except (OSError, ValueError) as exc:
+                errors.append(f"{name}: invalid ground truth ({exc})")
+        is_url = _is_url(repo)
+        if is_url and not re.fullmatch(r"[0-9a-fA-F]{7,64}", commit):
+            errors.append(f"{name}: URL-backed case requires an exact commit SHA")
+        if not is_url and not commit:
+            warnings.append(f"{name}: local case has no commit; not portable outside this workspace")
+        rows.append({"name": name, "repo": repo, "commit": commit or None,
+                     "portable": bool(commit), "archetype": meta.get("archetype"),
+                     "corpus_id": meta.get("corpus_id")})
+    if not rows:
+        errors.append(f"no case.json files found under {root}")
+    return {"suite": str(root), "schema_version": 1, "cases": rows,
+            "case_count": len(rows), "errors": errors, "warnings": warnings,
+            "valid": not errors}
+
+
 def _matches(finding: dict, exp: dict) -> bool:
     want_cwe = {_norm_cwe(exp.get("cwe"))} | {_norm_cwe(a) for a in exp.get("aliases", [])}
     want_cwe.discard("")
@@ -156,28 +207,46 @@ def _prf(tp: int, fp: int, fn: int) -> dict:
 
 
 def _aggregate(case_results: list[dict], suite: str) -> dict:
-    tp = sum(c["tp"] for c in case_results)
-    fp = sum(c["fp"] for c in case_results)
-    fn = sum(c["fn"] for c in case_results)
-    cost_total = sum(c.get("cost_usd", 0.0) for c in case_results)
-    call_counts = [c["latency_ms"]["calls"] for c in case_results if c.get("latency_ms")]
-    latency_total = sum(c["latency_ms"]["total"] for c in case_results if c.get("latency_ms"))
+    valid = [c for c in case_results if c.get("valid_trial", True)]
+    tp = sum(c["tp"] for c in valid)
+    fp = sum(c["fp"] for c in valid)
+    fn = sum(c["fn"] for c in valid)
+    cost_total = sum(c.get("cost_usd", 0.0) for c in valid)
+    call_counts = [c["latency_ms"]["calls"] for c in valid if c.get("latency_ms")]
+    latency_total = sum(c["latency_ms"]["total"] for c in valid if c.get("latency_ms"))
     by_arch: dict[str, list[int]] = {}
     by_cwe: dict[str, list[int]] = {}
-    for c in case_results:
+    for c in valid:
         a = by_arch.setdefault(c.get("archetype") or "unknown", [0, 0, 0])
         a[0] += c["tp"]; a[1] += c["fp"]; a[2] += c["fn"]
         for cwe, counts in (c.get("cwe_breakdown") or {}).items():
             k = by_cwe.setdefault(cwe, [0, 0, 0])
             k[0] += counts[0]; k[1] += counts[1]; k[2] += counts[2]
     total_calls = sum(call_counts)
+    invalid_reasons: dict[str, int] = {}
+    for c in case_results:
+        if c.get("valid_trial", True):
+            continue
+        for reason in c.get("invalid_reasons", []) or ["unknown"]:
+            invalid_reasons[reason] = invalid_reasons.get(reason, 0) + 1
+    costs = [float(c.get("cost_usd", 0.0)) for c in valid]
+    latencies = [float((c.get("latency_ms") or {}).get("total", 0.0)) for c in valid]
+    def _stats(values: list[float]) -> dict:
+        if not values:
+            return {"mean": 0.0, "median": 0.0, "stdev": 0.0}
+        return {"mean": round(statistics.mean(values), 6),
+                "median": round(statistics.median(values), 6),
+                "stdev": round(statistics.stdev(values), 6) if len(values) > 1 else 0.0}
     return {
         "suite": suite,
         "totals": {**_prf(tp, fp, fn), "cases": len(case_results),
+                   "valid_trials": len(valid), "invalid_trials": len(case_results) - len(valid),
                    "cost_usd_total": round(cost_total, 6),
                    "latency_ms_total": latency_total,
                    "latency_ms_mean_per_call": (round(latency_total / total_calls, 1)
                                                 if total_calls else 0.0)},
+        "statistics": {"cost_usd": _stats(costs), "latency_ms_total": _stats(latencies)},
+        "invalid_reasons": invalid_reasons,
         "by_archetype": {k: _prf(*v) for k, v in sorted(by_arch.items())},
         "by_cwe": {k: _prf(*v) for k, v in sorted(by_cwe.items(), key=lambda kv: -sum(kv[1]))},
         "cases": case_results,
@@ -211,12 +280,22 @@ def _run_case(base_config, case: Case, *, fixes: bool, re_audit: bool = False) -
     if case.scenario:
         cfg = cfg.with_overrides(fixtures_scenario=case.scenario)
     ctx = build_context(cfg, new_run_id())
-    run_pipeline(ctx, case.brief, case.repo, commit=case.commit)
-    vf = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
+    try:
+        run_pipeline(ctx, case.brief, case.repo, commit=case.commit)
+        vf = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
+    except Exception as exc:
+        return {"name": case.name, "run_id": ctx.run_id, "archetype": case.archetype,
+                "valid_trial": False, "invalid_reasons": ["pipeline_error"],
+                "error": f"{type(exc).__name__}: {exc}", "tp": 0, "fp": 0, "fn": 0,
+                "precision": 0.0, "recall": 0.0, "f1": 0.0, "matched": [], "missed": [],
+                "spurious": [], "cost_usd": 0.0,
+                "latency_ms": {"total": 0.0, "calls": 0, "mean": 0.0},
+                "provenance": {"target_commit": case.commit, "case": case.name}}
     findings = vf.get("findings", [])
     score = score_run(findings, case.expected)
-    archetype = case.archetype or (json.loads(ctx.meta_path.read_text(encoding="utf-8-sig"))
-                                   .get("archetype") if ctx.meta_path.exists() else None)
+    meta = (json.loads(ctx.meta_path.read_text(encoding="utf-8-sig"))
+            if ctx.meta_path.exists() else {})
+    archetype = case.archetype or meta.get("archetype")
     try:
         cost = ctx.ledger.run_cost(ctx.run_id)
     except Exception:
@@ -230,11 +309,28 @@ def _run_case(base_config, case: Case, *, fixes: bool, re_audit: bool = False) -
     entry = {"name": case.name, "run_id": ctx.run_id, "archetype": archetype,
              "cost_usd": round(cost, 6), "latency_ms": latency_ms,
              "cwe_breakdown": _cwe_breakdown(findings, case.expected, score), **score}
+    mismatches = ctx.ledger.run_model_mismatches(ctx.run_id)
+    audited_commit = str(meta.get("repo_commit") or "")
+    requested_commit = str(case.commit or "")
+    # A case may use a sufficiently long immutable SHA prefix (Git resolves it before ingest).
+    target_pin_ok = (not requested_commit or audited_commit == requested_commit or
+                     audited_commit.startswith(requested_commit))
+    entry["valid_trial"] = not mismatches and target_pin_ok
+    entry["invalid_reasons"] = ((["model_mismatch"] if mismatches else []) +
+                                 ([] if target_pin_ok else ["target_commit_mismatch"]))
+    entry["provenance"] = {
+        "target_commit": meta.get("repo_commit"), "requested_ref": meta.get("requested_ref"),
+        "stage_runners": meta.get("stage_runners", {}), "stage_models": meta.get("stage_models", {}),
+        "codex_stage_models": meta.get("codex_stage_models", {}),
+        "gemini_stage_models": meta.get("gemini_stage_models", {}),
+        "cli_versions": meta.get("cli_versions", {}),
+        "model_catalog_version": (meta.get("model_catalog_snapshot") or {}).get("version"),
+    }
     prov = {k: v for k, v in (("corpus_id", case.corpus_id),
                               ("cve_ids", case.cve_ids or None),
                               ("seeded_from", case.seeded_from)) if v}
     if prov:
-        entry["provenance"] = prov
+        entry["provenance"].update(prov)
     if fixes:
         from .fixes import generate_fixes
         rep = generate_fixes(ctx, verify=True, re_audit=re_audit)
@@ -247,7 +343,7 @@ def _run_case(base_config, case: Case, *, fixes: bool, re_audit: bool = False) -
 
 
 def run_suite(base_config, suite_dir, *, fixes: bool = False, label: str | None = None,
-              parallel_cases: int = 1, re_audit: bool = False) -> dict:
+              parallel_cases: int = 1, re_audit: bool = False, repeats: int = 1) -> dict:
     """Run + score every case in a suite. Returns the aggregated report (also written to
     ``<runs_dir>/benchmark_report.json``).
 
@@ -258,7 +354,15 @@ def run_suite(base_config, suite_dir, *, fixes: bool = False, label: str | None 
     ``re_audit`` (needs ``fixes``) additionally re-audits each patched copy and folds the
     "is the bug actually gone?" rate into ``patch_quality`` (A3).
     """
+    if repeats < 1:
+        raise ValueError("repeats must be >= 1")
     cases = load_suite(suite_dir)
+    if repeats > 1:
+        cases = [Case(name=f"{case.name}#trial-{trial}", brief=case.brief, repo=case.repo,
+                      expected=case.expected, scenario=case.scenario, commit=case.commit,
+                      archetype=case.archetype, corpus_id=case.corpus_id,
+                      cve_ids=case.cve_ids, seeded_from=case.seeded_from)
+                 for trial in range(1, repeats + 1) for case in cases]
     if parallel_cases > 1 and len(cases) > 1:
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=min(parallel_cases, len(cases))) as ex:
@@ -268,6 +372,18 @@ def run_suite(base_config, suite_dir, *, fixes: bool = False, label: str | None 
         case_results = [_run_case(base_config, c, fixes=fixes, re_audit=re_audit) for c in cases]
 
     report = _aggregate(case_results, label or Path(suite_dir).name)
+    report["provenance"] = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "runner": base_config.runner,
+        "stage_runners": dict(base_config.stage_runners),
+        "stage_models": {stage: base_config.model_for(stage)
+                         for stage in sorted(set(base_config.stage_models) |
+                                              set(base_config.codex_stage_models) |
+                                              set(base_config.gemini_stage_models))},
+        "stage_effort": dict(base_config.stage_effort),
+        "catalog_snapshot": base_config.model_catalog_snapshot,
+        "benchmark_mode": True,
+    }
     if fixes:
         patched = sum(c.get("patch", {}).get("patched", 0) for c in case_results)
         verified = sum(c.get("patch", {}).get("verified", 0) for c in case_results)
@@ -328,7 +444,11 @@ def _aggregate_cross_backend(backend_reports: dict[str, dict], *, suite: str, ti
         totals_by_backend[name] = {
             "precision": t["precision"], "recall": t["recall"], "f1": t["f1"],
             "cost_usd_total": t["cost_usd_total"],
+            "valid_trials": t.get("valid_trials", t.get("cases", 0)),
+            "invalid_trials": t.get("invalid_trials", 0),
             "mean_latency_ms": t["latency_ms_mean_per_call"],
+            "statistics": rep.get("statistics", {}),
+            "invalid_reasons": rep.get("invalid_reasons", {}),
         }
     return {
         "suite": suite, "tier": tier,
@@ -339,7 +459,8 @@ def _aggregate_cross_backend(backend_reports: dict[str, dict], *, suite: str, ti
 
 
 def compare_backends(base_config, suite_dir, *, backends: list[str], tier: str = "cheap",
-                     fixes: bool = False, parallel_cases: int = 1, re_audit: bool = False) -> dict:
+                     fixes: bool = False, parallel_cases: int = 1, re_audit: bool = False,
+                     repeats: int = 1) -> dict:
     """Run the SAME suite once per backend (Claude/Codex/Gemini/...), each on a comparable model
     tier, and report an N-way comparison — the cross-backend counterpart to ``ab_compare``'s
     same-backend, two-model A/B (which stays untouched; it answers a different question).
@@ -364,7 +485,7 @@ def compare_backends(base_config, suite_dir, *, backends: list[str], tier: str =
         cfg = base_config.with_overrides(runner=b)
         cfg = cfg.calibrated() if tier == "top" else _cheap_tier(cfg)
         backend_reports[b] = run_suite(cfg, suite_dir, fixes=fixes,
-                                       parallel_cases=parallel_cases, re_audit=re_audit)
+                                       parallel_cases=parallel_cases, re_audit=re_audit, repeats=repeats)
     report = _aggregate_cross_backend(backend_reports, suite=Path(suite_dir).name, tier=tier)
     out = Path(base_config.runs_dir) / "benchmark_crossbackend_report.json"
     out.parent.mkdir(parents=True, exist_ok=True)

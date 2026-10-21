@@ -14,10 +14,15 @@ Everywhere below, `argo` ≡ `python -m argo.cli`.
 
 ## Commands
 
+Before a paid run, `screen` and `plan` provide deterministic, offline target profiling and an
+explainable objective-based plan. `show-routing` and `profiles` expose the same core routing data
+used by the pipeline; they do not start a model session.
+
 | Command | Stage(s) | Purpose |
 |---|---|---|
 | `ingest` | 1 | brief + repo → `scope.json` (+ read-only repo copy) |
 | `recon` | 2 | `scope.json` + repo → `repo_profile.json` + custom prompts |
+| `compare-recon` | — | offline, read-only comparison of two completed recon outputs; checks comparability and emits bounded artifact diffs without making model calls |
 | `run` | 3 | per-focus findings JSON |
 | `sca` | SCA | dependency manifests → known-vuln pins as a `dependencies` focus (opt-out; no-op without manifests) |
 | `second-opinion` | SECOND-OPINION | **opt-in**, offline: run N additional, fully independent blind recon+audit passes over the already-ingested scope/repo (each in its own isolated `run_dir`), merge their findings in. `--passes N`, `--backend` to use a different runner for the extra passes (real cross-engine diversity). Re-run `validate` afterward to reconcile — its existing dedup already collapses cross-pass duplicates and records `corroborating_passes`; see [architecture.md](architecture.md#second-opinion-an-llm-audit-is-one-noisy-sample-not-the-answer) |
@@ -39,6 +44,12 @@ Everywhere below, `argo` ≡ `python -m argo.cli`.
 | `bench-cross` | 7 | run the same suite once **per backend** (Claude/Codex/Gemini) and report cost/latency/precision/recall/F1 side by side — N-way, distinct from `bench --ab-audit-model`'s same-backend 2-way delta |
 | `refusal-probe` | 7 | measure how often each backend's own safety classifier false-positives on a legitimate, authorized audit prompt (`refusal_flag_rate`), and how often a same-backend neutral-register retry recovers it (`refusal_recovery_rate`) |
 | `serve` | — | run the HTTP API + web UI |
+| `screen` | — | read-only local fingerprint; never executes target code or contacts the network |
+| `plan` | — | screen a target and emit a FAST/ECONOMY/BALANCED/DEEP plan with cost/time ranges and reasons |
+| `show-routing` | — | print resolved stage backend/model/effort and catalog metadata |
+| `profiles` | — | list/show/export/validate/import/save credential-free routing profiles |
+| `catalog` | — | show/validate the pinned static model catalog and snapshot hash; never refreshes implicitly |
+| `bench-validate` | — | validate benchmark commits/labels without cloning or model calls |
 
 There is intentionally **no `submit` command** — submission is a manual human action.
 
@@ -47,18 +58,26 @@ There is intentionally **no `submit` command** — submission is a manual human 
 ```bash
 argo ingest   --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--run RUN_ID]
 argo recon    --run RUN_ID
+argo compare-recon --baseline runs/BASE --candidate runs/CAND [--max-diff-lines 200]
 argo run      --run RUN_ID
 argo sca      --run RUN_ID
 argo validate --run RUN_ID
 argo report   --run RUN_ID
 argo pr-draft --run RUN_ID --finding FINDING_ID [--test-command "CMD"]
 argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--commit SHA] [--dry-run] [--smoke]
+argo screen TARGET [--json] [--rescreen]
+argo plan TARGET [--objective fast|economy|balanced|deep|custom] [--max-cost USD] [--max-duration MIN] [--json]
+argo plan TARGET [--benchmark-report runs/benchmark_report.json]
+argo show-routing [--runner headless|codex|gemini|mock] [--stage-runner STAGE=BACKEND] [--stage-model STAGE=MODEL]
+argo profiles list|show|export|validate|import|save [--name NAME] [--input FILE] [--config FILE] [--output FILE]
+argo catalog show|validate|diff [--provider openai|anthropic|gemini] [--against SNAPSHOT.json]
+argo bench-validate --suite DIR
 argo resume   RUN_ID [--wait] [--max-wait 12h]
 argo verify   --run RUN_ID [--only ID,ID] [--max-findings N]
 argo asan-poc --run RUN_ID [--max-findings N] [--asan-poc-image IMAGE]
 argo fix      --run RUN_ID [--no-verify] [--re-audit] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
-argo bench    --suite DIR [--fixes] [--re-audit] [--parallel-cases N] [--ab-audit-model MODEL]
-argo bench-cross    --suite DIR --backends headless,codex,gemini [--tier cheap|top]
+argo bench    --suite DIR [--fixes] [--re-audit] [--parallel-cases N] [--repeats N] [--ab-audit-model MODEL]
+argo bench-cross    --suite DIR --backends headless,codex,gemini [--tier cheap|top] [--repeats N]
 argo refusal-probe  --backends headless,codex,gemini [--trials N] [--tier cheap|top]
 argo feedback [--program P --dedup K --accepted/--rejected [--run R] [--note ...]] | [--import FILE]
 argo quality  [--program P] [--runs-dir DIR]
@@ -105,6 +124,13 @@ argo quality  [--program P] [--runs-dir DIR]
   [the root README](../README.md#inputs-how-to-set-up-a-program).
 - `--run` — reuse an existing run id (generated automatically if omitted).
 
+Advanced pipeline routing flags are repeatable: `--stage-runner STAGE=BACKEND`,
+`--stage-model STAGE=MODEL`, and Claude-only `--stage-effort STAGE=low|medium|high|xhigh|max`.
+An explicit stage choice wins over `--codex-model`/`--gemini-model`, which win over a selected
+profile and then built-in defaults. `--allow-model-substitution` is required for a best-effort run
+when a provider serves an ID different from the requested exact pin; exact benchmark evidence is
+fail-closed on that mismatch.
+
 ## Recovering a stopped run
 
 Most transient backend hiccups (a rate limit, a Codex moderation-flag cooldown, a timeout) never
@@ -146,7 +172,7 @@ executes. The one hard boundary: a run that stopped **before ingest finished** (
 | Flag | Default | Meaning |
 |---|---|---|
 | `--runner {headless\|codex\|gemini\|mock}` | `headless` | `headless` = Claude Code · `codex` = Codex CLI (OpenAI / OSS) · `gemini` = Gemini CLI (Google) · `mock` = zero-token fixtures. See [backends.md](backends.md). |
-| `--codex-model MODEL` | — | (runner=codex) model id (e.g. `gpt-5-codex`); **omit to use the Codex CLI default** (recommended) |
+| `--codex-model MODEL` | — | (runner=codex) model id (e.g. `gpt-6.1-sol`); **omit to use the Codex CLI default** (recommended) |
 | `--codex-oss` | off | (runner=codex) use the open-source provider (`--oss`) |
 | `--codex-local-provider {ollama\|lmstudio}` | — | (runner=codex --codex-oss) which local provider |
 | `--gemini-model MODEL` | — | (runner=gemini) flat model override across every stage (e.g. `gemini-3.1-pro`); applied before `--calibration`/`--audit-model`. Omit to use the built-in per-stage tiering. |
@@ -168,6 +194,7 @@ executes. The one hard boundary: a run that stopped **before ingest finished** (
 | Flag | Meaning |
 |---|---|
 | `--research / --no-research` | Stage-0 **web OSINT/threat-intel** before recon (CVEs, advisories, project security history → injected into recon). **On by default.** One of two networked stages (with corroborate); never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)). `--no-research` → fully offline. |
+| `--vuln-index / --no-vuln-index` | include the curated archetype vulnerability-class index in recon (**on by default**). Disable only for a controlled ablation; the choice is persisted in `config.json` for resume. |
 | `--sca / --no-sca` | software-composition analysis of dependency manifests (known-vuln pins) between audit and validate. **On by default**; emits a `dependencies` focus. No-op when the repo has no manifests. |
 | `--second-opinion N` | run N additional, fully independent blind recon+audit passes over the same scope/repo before validate (each isolated in its own `run_dir`), then merge their findings in. **Off by default (`N=0`)** — encodes the manual blind-second-opinion methodology as a pipeline mode. A failed pass is skipped, never aborts the run. |
 | `--second-opinion-backend BACKEND` | (`--second-opinion`) runner override for the extra passes only, e.g. `headless` when `--runner codex`, for real cross-engine diversity. Omit to reuse the primary's backend. |
@@ -183,6 +210,14 @@ executes. The one hard boundary: a run that stopped **before ingest finished** (
 | `--max-focuses N` | cap the audit fan-out to the first **N** of the focus areas recon planned, in slug order — the choice is fixed before any focus runs, so it can never depend on what a focus found. Skipped focuses are named in the log, never dropped silently. Recon splits a repository into anywhere from 1 to 7 focuses depending on the repository, so a raw finding count is only comparable across targets when this is pinned. Also on `argo run` and `argo estimate`; `--smoke` pins it to 1 regardless. |
 | `--dry-run` | run ingest + recon, then **stop before any audit**. The prompt-quality feedback loop: inspect the generated prompts (incl. the ground-truth sections) before paying to run them. |
 | `--smoke` | de-risked **real** end-to-end check: cheapest models, one audit focus, low budget + short timeout + tight caps. Defaults `--brief`/`--repo` to the bundled fixtures (and forces `--no-research`). See [headless-runner.md](headless-runner.md#the---smoke-run). |
+
+`compare-recon` reads only `repo_profile.json`, `prompts/audit_*.md`, optional recon artifacts,
+`meta.json`, `recon_inputs.json`, and recon rows from `llm_log.jsonl`. It writes nothing and makes no
+model call. `--max-diff-lines` is a global output bound (default 200, maximum 5000). Full artifact
+text can appear in stdout, so keep the output private when the run is private. A comparison warns
+instead of claiming isolation when the recorded commit, base prompt/context/settings, or successful
+backend/model differ. Counts of prompts, citations, characters, and CWE labels are structural
+signals only; they do not establish quality, precision, or recall.
 
 ## `pr-draft` options
 
@@ -234,7 +269,7 @@ measures real quality (and costs money). The bundled `benchmarks/acme-widgets` c
 | Flag | Meaning |
 |---|---|
 | `--backends headless,codex,gemini` | comma-separated backends to compare (any subset/order) |
-| `--tier {cheap\|top}` | `cheap` (default) — each backend's cheapest model (Haiku/`o4-mini`/Flash-Lite), a full sweep costs cents. `top` — each backend's own top-tier model (Opus/`gpt-5-codex`/Gemini Pro), for real publishable numbers — real, non-trivial spend across three paid APIs |
+| `--tier {cheap\|top}` | `cheap` (default) — each backend's cheapest model (Haiku 5.5/`gpt-6-luna`/Flash-Lite), a full sweep costs cents. `top` — each backend's own top-tier model (Opus 5.5/`gpt-6-astra`/Gemini 4 Argon), for real publishable numbers — real, non-trivial spend across three paid APIs |
 | `--trials N` | (`refusal-probe` only, default 1) repeat each prompt N times per backend |
 
 `bench-cross` derives each backend's config from the same base config

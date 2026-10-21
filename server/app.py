@@ -43,8 +43,8 @@ from argo.progress import read_status
 from .jobs import JobManager
 from .recommend import recommend
 from .uploads import UnsafeZip, extract_zip
-from .schemas import (ChatMessage, FixRequest, RecommendRequest, RunCreated, RunRequest,
-                      Settings)
+from .schemas import (ChatMessage, FixRequest, PlanRequest, RecommendRequest, RunCreated,
+                      RunRequest, ScreenRequest, Settings)
 from .settings import SettingsStore
 
 # Single-file artifacts a client may fetch by name (prevents path traversal — name is a key).
@@ -162,30 +162,48 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
             rec["rationale"] += f" (Your real runs so far average ${avg:.2f}.)"
         return rec
 
+    @app.post("/screen")
+    def screen(req: ScreenRequest):
+        from argo.screening import screen_target
+        try:
+            return screen_target(req.target, cache_dir=runs_dir / ".screen-cache", rescreen=req.rescreen)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/plan")
+    def plan(req: PlanRequest):
+        from argo.planner import make_plan
+        from argo.screening import screen_target
+        try:
+            fp = screen_target(req.target, cache_dir=runs_dir / ".screen-cache", rescreen=req.rescreen)
+            return make_plan(fp, cfg, objective=req.objective, max_cost=req.max_cost,
+                             max_duration_minutes=req.max_duration_minutes)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.get("/models")
     def models():
         """Available backends, their selectable models, and the token-cost price table — so the UI
         can offer model pickers and show cost estimates instead of free-text guessing."""
-        from argo.config import (DEFAULT_GEMINI_STAGE_MODELS, DEFAULT_STAGE_MODELS, GEMINI_FLASH,
-                                 GEMINI_FLASH_LITE, GEMINI_PRO, HAIKU, MODEL_PRICING, OPUS, SONNET,
-                                 _codex_default_model)
+        from argo.config import (DEFAULT_CODEX_STAGE_MODELS, DEFAULT_GEMINI_STAGE_MODELS,
+                                 DEFAULT_STAGE_MODELS, MODEL_PRICING)
+        from argo.model_catalog import catalog_by_provider, catalog_snapshot
         return {
             "backends": [
                 {"id": "mock", "label": "Mock (free)", "cost": "free", "models": []},
                 {"id": "headless", "label": "Claude Code", "cost": "authoritative (USD per call)",
-                 "models": [{"id": OPUS, "label": "Opus 4.8"}, {"id": SONNET, "label": "Sonnet 4.6"},
-                            {"id": HAIKU, "label": "Haiku 4.5"}]},
+                 "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("anthropic")]},
                 {"id": "codex", "label": "Codex CLI (OpenAI / open-source)",
-                 "cost": "estimated (token-based)", "default": _codex_default_model(),
+                 "cost": "estimated (token-based)", "default_stage_models": DEFAULT_CODEX_STAGE_MODELS,
                  "oss_providers": ["ollama", "lmstudio"],
-                 "models": [{"id": "gpt-5.5"}, {"id": "gpt-5-codex"}, {"id": "o4-mini"}, {"id": "o3"}]},
+                 "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("openai")]},
                 {"id": "gemini", "label": "Gemini CLI", "cost": "estimated (token-based)",
-                 "models": [{"id": GEMINI_PRO, "label": "Gemini 3.1 Pro"},
-                            {"id": GEMINI_FLASH, "label": "Gemini 3.5 Flash"},
-                            {"id": GEMINI_FLASH_LITE, "label": "Gemini 3.1 Flash-Lite"}]},
+                 "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("gemini")]},
             ],
             "default_stage_models": DEFAULT_STAGE_MODELS,
             "default_gemini_stage_models": DEFAULT_GEMINI_STAGE_MODELS,
+            "default_codex_stage_models": DEFAULT_CODEX_STAGE_MODELS,
+            "catalog": catalog_snapshot(),
             "pricing": [{"model": k, "input_per_mtok": v[0], "output_per_mtok": v[1]}
                         for k, v in sorted(MODEL_PRICING.items())],
         }

@@ -37,9 +37,16 @@ ground-truth data or approved paid runs.
 - The frozen corpus currently contains five independently verified real cases plus the offline mock.
   The plan's 10–20 case expansion remains a data task: new cases need reviewed labels, exact commits,
   and permission/licensing checks. No synthetic labels were invented.
-- No paid cross-provider benchmark matrix was run and no default was retuned from unmeasured data.
-  Built-in profile routing is therefore explicitly provisional until repeated, comparable trials are
-  approved and available.
+- No full paid cross-provider benchmark matrix was run and no default was retuned from unmeasured
+  data. Built-in profile routing is therefore explicitly provisional until repeated, comparable
+  provider trials are approved and available.
+
+## Post-report evidence — 2026-10-22
+
+A Codex-only cheap-tier wave completed after this report: five pinned corpus cases, three trials each,
+15 valid trials, $67.61 total. Aggregate precision was 7.75%, recall 66.67%, and F1 13.89%. This is
+useful regression evidence but not a cross-provider result and does not justify changing defaults;
+see [benchmark-results-2026-10-22.md](benchmark-results-2026-10-22.md).
 
 ## Compatibility and safety
 
@@ -47,5 +54,5 @@ Historical run directories retain their original model/catalog provenance. Unkno
 unknown rather than reported as zero. Screening does not execute target code, network access, or package
 managers by default. Existing read-only, no-auto-submit, live/write authorization gates remain intact.
 
-The worktree is intentionally uncommitted; no external push or paid provider call was performed as part
-of this implementation.
+The benchmark run was paid and remains in the ignored local `runs/` directory; only its compact,
+reviewable summary is tracked. Provider credentials and raw run artifacts are never committed.

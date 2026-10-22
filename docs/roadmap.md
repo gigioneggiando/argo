@@ -32,6 +32,16 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
   additional CI/Fast profiles remain lower-priority work; they are not prerequisites for the shipped
   routing/planning tranche.
 
+### Codex cheap-tier evidence wave — 2026-10-22
+
+Completed a repeated Codex-only matrix over the five pinned corpus cases: three trials per case,
+15/15 valid trials, with a per-run budget of $10. The aggregate was precision 7.75%, recall 66.67%,
+and F1 13.89% at $67.61 total. Results were strong only on the `cli_desktop` slice (100% recall,
+23.68% precision); `library_sdk` and `other` remain weak. This is regression evidence, not a basis
+for changing defaults: Claude/Gemini and mixed-provider validation are still unmeasured, and the
+false-positive rate is too high for a quality claim. See [benchmark-results-2026-10-22.md](benchmark-results-2026-10-22.md)
+for the command, report location, and limitations.
+
 ## Precision & depth uplift — ✅ DONE (2026-06-19)
 
 Triggered by a head-to-head: a 3-prompt, multi-pass manual Claude audit of Umbraco-CMS surfaced
@@ -176,7 +186,7 @@ Implemented in `argo/chat.py` + `server/` (`GET/POST /runs/{id}/chat`, `GET .../
       model-proposed `CANDIDATE_FINDING.json` via `validate._validate_one`; verdict in the UI.
 - [ ] _Later:_ token-streaming replies (backlog **B2**).
 
-### Phase 4 — Context enrichment — ◑ PARTIAL (vuln index done; AST metadata deferred)
+### Phase 4 — Context enrichment — ◑ PARTIAL (vuln index and AST metadata shipped; measurement deferred)
 Goal: raise recall/quality with cheap, structured context; surface it in the UI.
 - [x] Curated archetype→vuln knowledge base (`argo/data/vuln_index.yaml`: 8 archetypes, ~50
       CWE/vuln-class entries). Loader in `argo/knowledge.py`; **injected into recon** as
@@ -758,7 +768,7 @@ Build order: **F1 evidence contract → F2 target memory → F3 attack paths →
 F5 can ship independently after F1. Do not claim value from any item until the evaluation below
 shows an improvement at a fixed model, commit, prompt version, and token budget.
 
-### F1 — Unified claim/evidence contract — IMPLEMENTED ON FEATURE BRANCH (first complete slice, 2026-10-05) · priority **P0**
+### F1 — Unified claim/evidence contract — ✅ IMPLEMENTED AND MERGED (first complete slice, 2026-10-05) · priority **P0**
 
 **Current gap.** `Finding`, `validation`, `verification`, ASan, runtime, live, corroboration, and
 maintainer feedback all express different kinds of evidence, but no authoritative object links an
@@ -785,7 +795,7 @@ the same thing as empirical proof.
 **Non-goals:** another generic LLM validation pass, forcing all findings through runtime, or
 collapsing severity/confidence/proof into one misleading score.
 
-**Implemented slice (pending PR review).** `models.py` and the additive findings schema carry the
+**Implemented slice (merged in the cumulative-reasoning work).** `models.py` and the additive findings schema carry the
 claim, attacker start, preconditions, capabilities, typed obligations/evidence, uncertainty,
 consistency issues, technical proof level, claim status, and external disposition. The
 deterministic/idempotent `stages/evidence.py` gate runs immediately before report and summarizes
@@ -830,7 +840,7 @@ scratch, and Fleece feedback does not automatically inform recon/validation.
 and less recon cost, while deliberately changed invariants are invalidated and re-checked rather
 than inherited.
 
-**Initial vertical slice (feature branch; pending PR review):** canonical remote/local target identities; an atomic
+**Initial vertical slice (merged in PR #46; follow-up trust edges remain deferred):** canonical remote/local target identities; an atomic
 private JSON store; exact-commit freshness and fail-closed staleness; a reviewable per-run seed
 snapshot; and deterministic recon capture of entry points, boundaries, questions, invariants,
 baselines, and false-lead carve-outs. Prior facts are recon hints, never evidence. Deliberately
@@ -861,7 +871,7 @@ turning several unrelated Medium findings into a Critical narrative.
 **Acceptance signal:** recover known multi-step cases as valid paths while rejecting seeded chains
 whose adjacent capabilities or identities do not actually match.
 
-**Initial vertical slice (feature branch; pending PR review):** opt-in deterministic `compose` after F1 evidence;
+**Initial vertical slice (merged in the cumulative-reasoning work; follow-up verification remains deferred):** opt-in deterministic `compose` after F1 evidence;
 it emits a bounded `attack_paths.json` only where active source-supported findings have an exact
 normalized capability→precondition binding and matching non-`unknown` attacker, principal, tenant,
 deployment, and configuration declarations. The artifact is fingerprinted, omitted from a stale
@@ -886,7 +896,7 @@ repeatable evaluation cases.
 catching seeded cross-file and cross-service regressions whose vulnerable line was not directly in
 the diff.
 
-**Initial vertical slice (feature branch; pending PR review):** `--incremental-base` adds a deterministic stage
+**Initial vertical slice (merged in the cumulative-reasoning work; semantic re-proof remains deferred):** `--incremental-base` adds a deterministic stage
 before recon. It requires a Git base ancestor, records changed files, candidate symbols declared in
 those files, and a bounded textual
 neighbourhood, and classifies prior target-memory facts as retained only at the exact current
@@ -917,7 +927,7 @@ without provenance, or building broad enterprise connectors before measured dema
 **Acceptance signal:** fewer by-design/threat-model rejections from maintainers, with each avoided
 error attributable to a question or context fact rather than to extra unguided model calls.
 
-**Initial vertical slice (feature branch; pending PR review):** strict, size-bounded connector-neutral context
+**Initial vertical slice (merged in the cumulative-reasoning work; targeted re-validation/UI remain deferred):** strict, size-bounded connector-neutral context
 packs with per-claim provenance and credential-pattern rejection; raw content is injected only into
 offline model calls and excluded from reports, drafts, saved audit prompts, online OSINT, and the
 artifact API. Opt-in deterministic question generation groups only architecture-shaped uncertainty

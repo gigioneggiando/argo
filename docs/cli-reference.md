@@ -193,7 +193,7 @@ executes. The one hard boundary: a run that stopped **before ingest finished** (
 
 | Flag | Meaning |
 |---|---|
-| `--research / --no-research` | Stage-0 **web OSINT/threat-intel** before recon (CVEs, advisories, project security history → injected into recon). **On by default.** One of two networked stages (with corroborate); never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)). `--no-research` → fully offline. |
+| `--research / --no-research` | Stage-1 **web OSINT/threat-intel** before recon (CVEs, advisories, project security history → injected into recon). **On by default.** One of two networked stages (with corroborate); never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)). `--no-research` → fully offline. |
 | `--vuln-index / --no-vuln-index` | include the curated archetype vulnerability-class index in recon (**on by default**). Disable only for a controlled ablation; the choice is persisted in `config.json` for resume. |
 | `--sca / --no-sca` | software-composition analysis of dependency manifests (known-vuln pins) between audit and validate. **On by default**; emits a `dependencies` focus. No-op when the repo has no manifests. |
 | `--second-opinion N` | run N additional, fully independent blind recon+audit passes over the same scope/repo before validate (each isolated in its own `run_dir`), then merge their findings in. **Off by default (`N=0`)** — encodes the manual blind-second-opinion methodology as a pipeline mode. A failed pass is skipped, never aborts the run. |

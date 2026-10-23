@@ -239,7 +239,7 @@ function newRunView() {
       field("Parallel sessions", parallelEl, "How many audit/validate sessions run at once (default 3). Higher = faster wall-clock but more simultaneous spend and more chance of provider rate-limits; lower = slower but gentler. It changes speed, not what's found."),
       field("Calibration", calSeg, "Force audit on Opus while prompts are unproven.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
-      field("Web research (Stage 0)", researchSeg, "On: a web-OSINT pass (CVEs, advisories, the project's history) feeds recon — the ONLY networked step, never the live in-scope hosts. Off: fully offline.")),
+      field("Web research (Stage 1)", researchSeg, "On: a web-OSINT pass (CVEs, advisories, the project's history) feeds recon — the ONLY networked step, never the live in-scope hosts. Off: fully offline.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Routing profile", profileEl, "Credential-free profile; explicit stage overrides below win."),
       field("Stage backends", stageRunnerEl, "Comma-separated STAGE=BACKEND overrides; same guardrails apply.")),

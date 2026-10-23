@@ -269,15 +269,14 @@ panel. See [docs/ui.md](docs/ui.md) and [docs/api.md](docs/api.md).
 
 ## The pipeline, stage by stage
 
-The table follows execution order. Stage numbers are stable IDs, not a numerical sort:
-**Stage 1 Ingest** creates `scope.json`, which **Stage 0 Research** needs. Stage 0 runs before
-Stage 2 Recon. Full detail, data flow, and the `AgentRunner` abstraction are in
-**[docs/architecture.md](docs/architecture.md)**.
+Pipeline stage numbers follow execution order: **Stage 0 Ingest** creates `scope.json`;
+**Stage 1 Research** consumes it and runs before **Stage 2 Recon**. Full detail, data flow, and
+the `AgentRunner` abstraction are in **[docs/architecture.md](docs/architecture.md)**.
 
 | Stage | What it does |
 |---|---|
-| 1 Ingest | Parses the brief into `scope.json`; clones the repo read-only. |
-| 0 Research *(opt-out)* | Uses the scope from Stage 1 for web OSINT (CVEs, advisories, project history) before recon starts. |
+| 0 Ingest | Parses the brief into `scope.json`; clones the repo read-only. |
+| 1 Research *(opt-out)* | Uses Stage 0 scope for web OSINT (CVEs, advisories, project history) before recon. |
 | 2 Recon + synthesis | Classifies the software, extracts security invariants + baseline-correct references, writes custom audit prompts. |
 | 3 Audit | Per-prompt agent sessions emit findings; a completeness-critic re-pass catches what a first read missed. |
 | SCA *(opt-out)* | Flags dependency-pinned versions with known advisories. |

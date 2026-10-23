@@ -13,7 +13,7 @@ Each blind pass gets its own run_id (``"{primary_run_id}-so{N}"``) and therefore
 ``run_dir`` — it never reads the primary's ``findings/`` and the primary never reads its foci mid-
 flight, so the two audits cannot contaminate each other. What IS deliberately reused (to avoid
 wasted spend and keep the comparison apples-to-apples): the already-parsed ``scope.json``, the
-already-fetched read-only repo copy, and the primary's Stage-0 research brief if research ran. What
+already-fetched read-only repo copy, and the primary's Stage-1 research brief if research ran. What
 is NOT reused: recon's own synthesis (a fresh recon session naturally produces different audit foci
 from sampling variance alone) and the audit itself.
 

@@ -88,7 +88,7 @@ What we use **instead** (cheap, safe, additive — no build, no new runtime):
   session reasons about a bounded surface (a poor-man's "slice").
 - **Vulnerability-class index** (`argo/data/vuln_index.yaml`): archetype → likely CWE classes,
   injected into recon as *additive* reference.
-- **Stage-0 web research** (OSINT threat intel: CVEs, advisories, security history) → injected into
+- **Stage-1 web research** (OSINT threat intel: CVEs, advisories, security history) → injected into
   recon so the audit is threat-targeted.
 - **Adversarial validation** (Stage 4): a second model tries to *refute* each finding's data flow,
   plus a code-side scope filter — the precision mechanism that a taint engine would otherwise serve.

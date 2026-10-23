@@ -1,6 +1,6 @@
 """Argo — CLI (typer). Source-static security audits for bug-bounty programs.
 
-    argo ingest   --brief BRIEF.txt --repo PATH_OR_URL [--links LINKS.txt] -> scope.json  (Stage 1)
+    argo ingest   --brief BRIEF.txt --repo PATH_OR_URL [--links LINKS.txt] -> scope.json  (Stage 0)
     argo recon    --run RUN_ID                            -> repo_profile + prompts (Stage 2)
     argo run      --run RUN_ID                            -> per-focus findings     (Stage 3)
     argo second-opinion --run RUN_ID --passes N            -> extra blind passes merged in (opt-in)
@@ -1071,7 +1071,7 @@ def estimate(
         None, "--commit", help="pin --repo at this git revision before recon"),
     research: bool = typer.Option(
         True, "--research/--no-research",
-        help="run the cheap Stage-0 OSINT step before recon when a brief is provided"),
+        help="run the cheap Stage-1 OSINT step before recon when a brief is provided"),
     sca: bool = typer.Option(True, "--sca/--no-sca",
                              help="include/exclude SCA in the estimated full config"),
     second_opinion: int = typer.Option(
@@ -1198,7 +1198,7 @@ def pipeline(
                              help="proceed past the pre-audit cost estimate without prompting"),
     research: bool = typer.Option(
         True, "--research/--no-research",
-        help="Stage-0 web OSINT/threat-intel before recon (the ONLY networked stage; never the "
+        help="Stage-1 web OSINT/threat-intel before recon (the ONLY networked stage; never the "
              "live in-scope hosts). On by default; --no-research keeps the run fully offline."),
     smoke: bool = typer.Option(
         False, "--smoke",

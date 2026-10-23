@@ -64,7 +64,7 @@ review artifact cannot change severity or submission state. Its canonical ledger
 `incremental_review` appears when a CLI run uses `--incremental-base`. It records a Git diff as an
 invalidation/prioritization plan, not as a claim that unchanged code was reviewed or is safe.
 
-`POST /runs` accepts `"research": true|false` (default **true**) — the Stage-0 web-OSINT step that
+`POST /runs` accepts `"research": true|false` (default **true**) — the Stage-1 web-OSINT step that
 runs before recon (one of two networked stages, with corroborate; never the live in-scope hosts; see
 [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)). When on,
 `research` appears in the run's `stages` timeline and produces the `research_brief` / `threat_intel`

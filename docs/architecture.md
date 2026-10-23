@@ -80,16 +80,15 @@ webapp/             no-build web UI (vanilla ES modules + CSS) — see ui.md
 
 ## Stage data flow
 
-Stage numbers are stable IDs, not a numerical execution sort. **Stage 1 Ingest** runs first
-because it creates `scope.json`; **Stage 0 Research** consumes it and runs before **Stage 2 Recon**.
-Optional layers use named labels.
+Stage numbers follow execution order. **Stage 0 Ingest** creates `scope.json`; **Stage 1 Research**
+consumes it and runs before **Stage 2 Recon**. Optional layers keep their functional names.
 
 | Stage | Entry point | Reads | Writes |
 |---|---|---|---|
-| 1 Ingest | `stages/ingest.run` | brief (or **none** → source-only review), repo (folder or URL), optional `--links` / `--accepted-risks` / `--context-pack` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`, and a strictly validated private `context_pack.json` when supplied. No brief ⇒ a source-only scope is **synthesized** from the supplied repository without assuming ownership (zero-token, no LLM call). |
+| 0 Ingest | `stages/ingest.run` | brief (or **none** → source-only review), repo (folder or URL), optional `--links` / `--accepted-risks` / `--context-pack` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`, and a strictly validated private `context_pack.json` when supplied. No brief ⇒ a source-only scope is **synthesized** from the supplied repository without assuming ownership (zero-token, no LLM call). |
 | MEMORY | `stages/target_memory.run` | `meta.json` (canonical target + pinned commit), local private store | `target_memory.json`: a reviewable, kind-balanced snapshot of at most 24 **same-commit** private fact summaries. `seed_facts` stays frozen at the pre-recon input; `captured_fact_ids` records what recon learned during this run. No source is copied; changed or unknown revisions make prior facts stale. Mock runs use an empty snapshot and never touch the persistent store. |
 | INCREMENTAL | `stages/incremental.run` | acquired Git repo, opt-in base ref, private target memory | `incremental_review.json`: base/head diff, bounded textual symbol neighbourhood (including C/C++ function definitions), and explicit retained-same-revision / invalidated / stale prior facts. It prioritizes recon with full-repository access; unchanged code is never considered safe. |
-| 0 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
+| 1 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven), plus `recon_inputs.json` containing hashes/settings for later ablation comparability without storing the full private input prompt — see [prompt-synthesis.md](prompt-synthesis.md) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
 | SCA | `stages/sca.run` | `repo/` dependency manifests, `scope.json` | `findings/dependencies.json` — **opt-out** software-composition analysis (known-vuln pinned deps); a no-op if no manifests |
@@ -105,7 +104,7 @@ Optional layers use named labels.
 | COMPOSE | `stages/compose.run` | normalized `validated_findings.json` | **opt-in**, deterministic `attack_paths.json`. An edge requires the same declared attacker start, principal, tenant, deployment and configuration context plus an exact normalized capability→precondition match. It cannot change a finding, severity, proof level or submission decision; a stale artifact is omitted from the report. |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
-`pipeline` runs Stage 1 Ingest -> optional MEMORY -> optional INCREMENTAL -> optional Stage 0 Research
+`pipeline` runs Stage 0 Ingest -> optional MEMORY -> optional INCREMENTAL -> optional Stage 1 Research
 -> Stage 2 Recon -> Stage 3 Audit -> SCA / optional second opinion -> Stage 4 Validate
 -> corroborate -> optional verify, ASan PoC, freshness check and runtime -> Evidence gate
 -> optional questions / composition -> Stage 5 Report. Research, SCA and corroborate are enabled

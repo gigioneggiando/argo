@@ -182,7 +182,7 @@ Goal: raise recall/quality with cheap, structured context; surface it in the UI.
       CWE/vuln-class entries). Loader in `argo/knowledge.py`; **injected into recon** as
       additive reference ("apply the relevant classes, do NOT limit yourself to them").
 - [x] UI: a **Vuln index** page (`#/knowledge`) browsing the index by archetype; `GET /knowledge`.
-- [x] **Stage-0 web research / threat intel** (`stages/research.py`, opt-out `--research`, default
+- [x] **Stage-1 web research / threat intel** (`stages/research.py`, opt-out `--research`, default
       on): public web OSINT (CVEs, advisories, the project's security history, the curated links) →
       `research_brief.md` + `threat_intel.json`, **injected into recon** so the generated audit
       prompts are threat-targeted. The **only** networked stage — bounded to OSINT, no repo, never

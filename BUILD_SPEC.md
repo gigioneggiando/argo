@@ -21,7 +21,7 @@ orchestration only — you do not write the audit logic; that lives in the promp
 
 ## CLI
 ```
-audit ingest   --brief BRIEF.txt --repo PATH_OR_URL  -> writes scope.json (Stage 1)
+audit ingest   --brief BRIEF.txt --repo PATH_OR_URL  -> writes scope.json (Stage 0)
 audit recon    --run RUN_ID                            -> repo_profile.json + custom prompts (Stage 2)
 audit run      --run RUN_ID                            -> per-focus findings JSON (Stage 3)
 audit validate --run RUN_ID                            -> validated findings (Stage 4)
@@ -31,7 +31,7 @@ audit pipeline --brief ... --repo ...                  -> runs 1-5, STOPS before
 
 ## Stages
 
-**Stage 1 — Ingest.** Parse the program brief into `scope.json` validated against
+**Stage 0 — Ingest.** Parse the program brief into `scope.json` validated against
 `scope_schema.json`. Use an LLM call for extraction, then validate. If `automation_allowed`
 is false or absent, set a flag that forbids any live interaction for the whole run. Clone/copy
 the repo into the run dir read-only.

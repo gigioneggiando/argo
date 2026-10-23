@@ -80,7 +80,9 @@ webapp/             no-build web UI (vanilla ES modules + CSS) — see ui.md
 
 ## Stage data flow
 
-Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its own.
+Stage numbers are stable IDs, not a numerical execution sort. **Stage 1 Ingest** runs first
+because it creates `scope.json`; **Stage 0 Research** consumes it and runs before **Stage 2 Recon**.
+Optional layers use named labels.
 
 | Stage | Entry point | Reads | Writes |
 |---|---|---|---|
@@ -103,13 +105,12 @@ Each stage reads the previous stage's files from `runs/<RUN_ID>/` and writes its
 | COMPOSE | `stages/compose.run` | normalized `validated_findings.json` | **opt-in**, deterministic `attack_paths.json`. An edge requires the same declared attacker start, principal, tenant, deployment and configuration context plus an exact normalized capability→precondition match. It cannot change a finding, severity, proof level or submission decision; a stale artifact is omitted from the report. |
 | 5 Report | `stages/report.run` | `validated_findings.json` | `REPORT.md`, `submission_drafts/`, ledger rows |
 
-`pipeline` runs 1→MEMORY→5 (SCA between audit and validate, corroborate after validate — both on by
-default; second-opinion between SCA and validate, verify after corroborate, asan_poc after verify
-(C/C++ memory-safety survivors only) and optional sandboxed runtime — all off by default; then the
-deterministic evidence gate immediately before report; optional exact-context composition follows
-that gate; or 1→2 with `--dry-run`). An explicitly
-authorized `argo live` invocation is separate; a later report pass can summarize its existing result.
-and **stops before any submission**.
+`pipeline` runs Stage 1 Ingest -> optional MEMORY -> optional INCREMENTAL -> optional Stage 0 Research
+-> Stage 2 Recon -> Stage 3 Audit -> SCA / optional second opinion -> Stage 4 Validate
+-> corroborate -> optional verify, ASan PoC, freshness check and runtime -> Evidence gate
+-> optional questions / composition -> Stage 5 Report. Research, SCA and corroborate are enabled
+by default; `--dry-run` stops after Stage 2. Live verification is a separate explicitly authorized
+`argo live` command. A pipeline run always stops before submission.
 
 ### Unified claim/evidence contract (F1)
 

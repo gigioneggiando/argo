@@ -108,8 +108,9 @@ class Corroboration(BaseModel):
     doc_url: Optional[str] = None           # the doc page that documents the behavior (design_accepted)
     adjusted_severity: Optional[Severity] = None   # optional downgrade (e.g. design_accepted -> Low)
     # Set only when the deterministic self-consistency check in stages/corroborate.py overrode the
-    # model's own stated verdict, because ``rationale`` described the behavior as vendor-documented/
-    # intended while ``verdict`` said something else (a real LLM self-contradiction, not a code bug —
+    # model's own stated verdict, because ``rationale`` positively described the reported behavior
+    # as vendor-documented/intended without an explicit limiting caveat while ``verdict`` said
+    # something else (a real LLM self-contradiction, not a code-plumbing bug —
     # 2/27 gitea findings did exactly this on 2026-07-22 and nearly shipped as new vulnerabilities
     # until a human caught it by hand). Preserves what the model actually output for transparency;
     # never silently substituted. See ``corroborate._reconcile_verdict_with_rationale``.

@@ -13,7 +13,7 @@ from argo.guardrails import enforce_session_tools, session_policy
 from argo.config import ARTIFACT_TOOLS, RESEARCH_TOOLS
 from argo.models import Corroboration
 from argo.orchestrator import run_pipeline
-from argo.stages.corroborate import _merge_corroborations
+from argo.stages.corroborate import _merge_corroborations, _reconcile_verdict_with_rationale
 
 from conftest import BRIEF, REPO
 
@@ -141,6 +141,20 @@ def test_verdict_not_corrected_for_an_ordinary_corroborated_rationale(env, make_
     assert corr["verdict"] == "corroborated"
     assert corr.get("verdict_overridden_from") is None
     assert vf["stats"]["verdict_self_corrected"] == 0
+
+
+def test_verdict_not_corrected_when_rationale_limits_the_documented_design_claim():
+    """Do not treat a documented component choice as acceptance of a distinct costly behavior."""
+    rationale = (
+        "Sorting evaluators by execution cost is documented as intentional, but rebuilding and "
+        "sorting every growing prefix during flat-selector compilation is not documented as accepted."
+    )
+    corr = Corroboration(verdict="corroborated", rationale=rationale)
+
+    reconciled = _reconcile_verdict_with_rationale(corr)
+
+    assert reconciled.verdict == "corroborated"
+    assert reconciled.verdict_overridden_from is None
 
 
 # --------------------------------------------------------------------------- best effort

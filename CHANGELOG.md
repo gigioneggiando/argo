@@ -9,7 +9,12 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- Keep a corroborated verdict when its rationale explicitly says a documented design choice does
+  not cover the reported behavior.
+- Avoid logging unusable session-reset hints from unrelated Codex diagnostics; retain only parsed
+  hints from classified rate limits.
 
 ## [0.10.0] - 2026-10-21
 

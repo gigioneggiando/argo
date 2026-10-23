@@ -360,14 +360,50 @@ class AgentRunner(ABC):
         # called _classify_failure_text separately with slightly different input text; now
         # persisted regardless of which branch fires, so a refusal rate is queryable after the
         # fact from the ledger/jsonl instead of only visible inside a raised exception's message.)
-        reset_hint = _extract_session_reset_hint(result.text) if result.is_error else None
+        # Some CLIs (notably Codex) may emit structured progress on stdout, no final message,
+        # and put the actual failure only on stderr. Classifying only ``result.text`` misses that
+        # error envelope: retries then look like generic exit_1s, so moderation cooldowns and
+        # neutral-register recovery are skipped. Use the bounded backend result fields for
+        # classification, but do not persist the raw text in the run log.
+        failure_parts = [result.text]
+        if result.api_error_status:
+            failure_parts.append(str(result.api_error_status))
+        if isinstance(result.raw, dict):
+            for key in ("stderr", "stdout", "error", "message", "detail"):
+                value = result.raw.get(key)
+                if isinstance(value, str) and value.strip():
+                    failure_parts.append(value)
+        failure_text = "\n".join(part for part in failure_parts if part)
         failure_kind = None
+        failure_detail = ""
         if result.is_error:
-            classify_text = (f"{result.api_error_status} {result.text}" if result.api_error_status
-                             else result.text)
-            failure_kind = _classify_failure_text(classify_text)
+            failure_kind = _classify_failure_text(failure_text)
             if failure_kind is None and result.api_error_status and "429" in str(result.api_error_status):
                 failure_kind = "rate_limited"
+        # Only trust reset text on a classified rate-limit error, and only retain hints the
+        # fallback scheduler can parse. Arbitrary stderr/JSONL can contain words like "reset" in
+        # source excerpts or stack traces; those must not become cooldown timestamps.
+        reset_hint = None
+        if result.is_error and failure_kind == "rate_limited":
+            reset_hint = _extract_session_reset_hint(failure_text)
+            if reset_hint and parse_retry_after(reset_hint) is None:
+                reset_hint = None
+        if result.is_error:
+            # Preserve a short diagnostic for failed Codex calls so an unattended run can be
+            # debugged after the CLI process exits. CodexRunner has already redacted the configured
+            # API key; repeat that protection here and scrub common bearer/API-key forms before
+            # writing this bounded stderr-only field into the local run log.
+            raw_stderr = result.raw.get("stderr") if isinstance(result.raw, dict) else None
+            if isinstance(raw_stderr, str):
+                failure_detail = _redact_secrets(
+                    raw_stderr, self.config.codex_api_key, self.config.claude_api_key,
+                    self.config.gemini_api_key)
+                failure_detail = re.sub(
+                    r"(?i)(authorization\s*[:=]\s*bearer\s+)\S+",
+                    r"\1<redacted>", failure_detail)
+                failure_detail = re.sub(
+                    r"(?i)\bsk-[A-Za-z0-9_-]{12,}\b", "<redacted>", failure_detail)
+                failure_detail = " ".join(failure_detail.split())[-500:]
         model_mismatch = bool(result.served_model and result.served_model != model)
 
         # --- cost/latency/refusal logging (ledger + per-run JSONL) — ALWAYS, even on error -----
@@ -416,6 +452,7 @@ class AgentRunner(ABC):
             "session_limit_reset_hint": reset_hint,
             "duration_ms": duration_ms,
             "failure_kind": failure_kind,
+            "failure_detail": failure_detail or None,
         })
 
         if model_mismatch and not self.config.allow_model_substitution:
@@ -453,7 +490,7 @@ class AgentRunner(ABC):
             reset_suffix = f", session_limit_reset_hint={reset_hint!r}" if reset_hint else ""
             raise RunnerError(
                 f"recoverable is_error session (stage={stage}, run_id={run_id}, label={label}, "
-                f"stop_reason={result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix})",
+                f"stop_reason={result.stop_reason!r}, detail={failure_detail[:300]!r}{reset_suffix})",
                 retry_after=reset_hint,
                 retryable=True,
                 failure_kind=failure_kind or "unknown_retryable",

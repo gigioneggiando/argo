@@ -58,8 +58,12 @@ MODEL_CATALOG: tuple[ModelSpec, ...] = (
               cli_product="codex", cli_available=True),
     ModelSpec("openai", "gpt-6-luna", 0.1, 0.5, supports_reasoning=True,
               cli_product="codex", cli_available=True),
-    ModelSpec("openai", "gpt-6-sol", 2.0, 10.0, lifecycle="legacy",
-              notes="Compatibility alias; exact benchmarks should use gpt-6.1-sol."),
+    ModelSpec("openai", "gpt-6-sol", 2.0, 10.0, supports_reasoning=True,
+              notes=("Current, exact model ID (not an alias for gpt-6.1-sol). Supports Daybreak Blue; "
+                     "account/project access is still required."),
+              cli_product="codex", cli_available=True,
+              source_url="https://developers.openai.com/api/docs/models/gpt-6-sol",
+              verified_at="2026-10-23", product_surface="api+codex-cli"),
     ModelSpec("openai", "gpt-5.6-cyber", 12.5, 75.0, availability="trusted_access",
               notes="Daybreak Red; authorized security research only.", cli_product="codex",
               cli_available=False, approval_required=True),
@@ -159,7 +163,7 @@ def resolve_pricing(model_id: str | None, *, as_of: str | None = None) -> tuple[
 def catalog_snapshot() -> dict:
     """JSON-safe catalog metadata persisted in run provenance."""
     payload = {
-        "version": "2026-10-21",
+        "version": "2026-10-23",
         "models": [
             {
                 "provider": s.provider,

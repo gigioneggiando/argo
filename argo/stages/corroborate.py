@@ -101,6 +101,18 @@ _DESIGN_ACCEPTED_SIGNALS = (
     "matches the vendor's documented threat model",
 )
 
+# A rationale may mention an intentional *component choice* while explicitly saying the reported
+# behavior itself is not accepted. In that case, the positive phrase is not evidence for changing
+# the structured verdict. Prefer a missed correction over downgrading a potentially real finding.
+_DESIGN_ACCEPTED_QUALIFIERS = (
+    "not documented as accepted",
+    "not documented as intentional",
+    "not documented as intended",
+    "not established as accepted",
+    "does not establish safety",
+    "doesn't establish safety",
+)
+
 
 def _reconcile_verdict_with_rationale(corr: Corroboration) -> Corroboration:
     """If ``rationale`` strongly asserts vendor-confirmed/documented intent while ``verdict`` is
@@ -110,6 +122,8 @@ def _reconcile_verdict_with_rationale(corr: Corroboration) -> Corroboration:
     if corr.verdict == "design_accepted" or corr.verdict == "fixed_upstream" or not corr.rationale:
         return corr
     text = corr.rationale.lower()
+    if any(qualifier in text for qualifier in _DESIGN_ACCEPTED_QUALIFIERS):
+        return corr
     if any(sig in text for sig in _DESIGN_ACCEPTED_SIGNALS):
         return corr.model_copy(update={
             "verdict": "design_accepted",

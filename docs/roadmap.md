@@ -42,6 +42,26 @@ for changing defaults: Claude/Gemini and mixed-provider validation are still unm
 false-positive rate is too high for a quality claim. See [benchmark-results-2026-10-22.md](benchmark-results-2026-10-22.md)
 for the command, report location, and limitations.
 
+### Model-access and provenance follow-up — 2026-10-23
+
+The static catalog now reflects the official availability and pricing of GPT-6 Sol (`gpt-6-sol`)
+and records it as a current exact Codex/API model. A Daybreak Blue-compatible Codex smoke call
+succeeded, but model access is account/project-specific. The subsequent jsoup pipeline trial was
+started with a catalog snapshot from before this correction; keep it exploratory and exclude it
+from model-quality evidence. The failed Astra access attempt is an availability failure, not a
+model-quality result. Neither event changes profile defaults or the frozen paper protocol.
+
+A follow-up on Codex CLI 0.163.0 found that the B profile's persistent `daybreak = true` setting
+causes Astra requests to fail with “Daybreak isn't available for this model”; a minimal read-only
+call succeeds with a per-call `-c daybreak=false` override, under standard safeguards. The Argo
+runner does not currently expose this override. Keep Astra pipeline runs parked until a per-run
+setting is implemented or the Codex CLI supports the desired access mode; do not edit account-wide
+configuration to work around it.
+
+Before a publishable model comparison, extend per-call provenance to capture the effective cyber
+access mode/entitlement as well as requested and served model IDs. Safeguard mode can change refusal
+behavior, so model ID alone is not a sufficient treatment description.
+
 ## Precision & depth uplift — ✅ DONE (2026-06-19)
 
 Triggered by a head-to-head: a 3-prompt, multi-pass manual Claude audit of Umbraco-CMS surfaced

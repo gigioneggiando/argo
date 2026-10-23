@@ -72,6 +72,17 @@ equivalent re-validation for the Codex sandbox), and `tests/test_gemini.py`
   for ingest/SCA/report. Use repeatable `--stage-model STAGE=ID` to override one stage.
 - `--stage-runner STAGE=backend` deliberately mixes providers while retaining the same guardrails;
   `argo show-routing` prints the resolved map before spending tokens.
+- GPT-6 Sol (`gpt-6-sol`) is a distinct, currently available Codex/API model—not an alias for
+  GPT-6.1 Sol. OpenAI documents Daybreak Blue for GPT-6 Sol; availability still depends on the
+  signed-in account and project. Model ID and cyber access mode are separate experimental
+  variables: record both when comparing results. Argo currently records model/account provenance,
+  but does not independently attest the account's Daybreak entitlement or selected CLI mode.
+- Codex CLI 0.163.0 on the tested B profile rejects `gpt-6-astra` while that profile has
+  `daybreak = true`; a one-turn read-only call succeeded with the per-call override
+  `-c daybreak=false`. This confirms Astra model access under standard safeguards, not Daybreak Red
+  access. The Codex CLI runner has no per-run Daybreak override yet; do not change the account-wide
+  setting to make a pipeline run work. OpenAI's [Daybreak guide](https://developers.openai.com/api/docs/guides/daybreak)
+  describes separate Responses API eligibility for Astra, which this CLI check does not establish.
 - `--codex-oss` + `--codex-local-provider <ollama|lmstudio>` — run a **local / open-source** model
   through Codex (`--oss`). With a local provider the cost is ~$0.
 
@@ -227,6 +238,13 @@ account value is a safe label such as codex:codex-b[2] or codex:api-key[1]: this
 never contains a credential or the full CODEX_HOME path. It makes fallback and rate-limit behavior
 auditable without adding machine usernames or secrets to the per-call log. Existing cost and token
 fields remain unchanged.
+
+For failed Codex calls, failure classification also checks the CLI's redacted stderr/stdout when the
+final-message file is empty. The run log stores the normalized failure kind (for example
+`moderation_flagged` or `rate_limited`) plus a 500-character, redacted stderr diagnostic when
+available; this lets the bounded retry policy choose the appropriate recovery and preserves enough
+local context to diagnose otherwise unexplained exits. Reset hints are retained only for recognized
+rate limits and only when they parse as a supported time. Prompts and raw stdout are not copied there.
 
 ## Verify your backend
 

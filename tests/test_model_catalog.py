@@ -5,6 +5,7 @@ from argo.model_catalog import get_model_spec, resolve_pricing, validate_selecti
 
 def test_exact_pricing_does_not_use_substring_order():
     assert resolve_pricing("gpt-6.1-sol") == (2.0, 10.0)
+    assert resolve_pricing("gpt-6-sol") == (2.0, 10.0)
     assert estimate_cost_usd("gpt-6.1-sol", 1_000_000, 0) == 2.0
     assert estimate_cost_usd("gpt-6-astra", 1_000_000, 0) == 10.0
 
@@ -37,4 +38,15 @@ def test_effective_dated_prices_and_backend_preflight():
     assert resolve_pricing("gemini-4-argon", as_of="2027-01-01") == (4.0, 20.0)
     assert validate_selection("claude-opus-5-5", "codex")["selectable"] is False
     assert validate_selection("vendor-new-model", "codex")["status"] == "custom/unverified"
+
+
+def test_gpt_6_sol_is_a_current_exact_codex_model():
+    spec = get_model_spec("gpt-6-sol")
+    assert spec is not None
+    assert spec.lifecycle == "current"
+    assert spec.cli_product == "codex"
+    assert spec.cli_available is True
+    assert spec.source_url.endswith("/gpt-6-sol")
+    assert "Daybreak Blue" in spec.notes
+    assert validate_selection("gpt-6-sol", "codex", exact=True)["selectable"] is True
 

@@ -5,6 +5,7 @@ The Codex backend enforces "no network except research, repo never writable" via
 equivalent of the Claude `--disallowedTools` sandbox test.
 """
 
+import json
 import subprocess
 import threading
 import time
@@ -184,6 +185,104 @@ def test_invoke_no_output_unrecognized_text_is_still_retryable_with_unknown_kind
         _invoke(r, tmp_path)
     assert exc_info.value.retryable is True
     assert exc_info.value.failure_kind == "unknown_retryable"
+    r.ledger.close()
+
+
+def test_error_envelope_classifies_codex_stderr_and_uses_neutral_retry(tmp_path, monkeypatch):
+    """Codex can emit a JSONL event but no final message while the refusal detail is on stderr.
+    Classification must inspect that raw stderr so the existing neutral retry path is used and
+    the refusal kind is persisted, rather than treating it as an unexplained exit_1."""
+    r = _runner(tmp_path)
+    calls = []
+
+    def invoke(**kwargs):
+        calls.append(kwargs["prompt"])
+        if len(calls) == 1:
+            return {
+                "returncode": 1,
+                "text": "",
+                "stdout": '{"type":"thread.started"}\n',
+                "stderr": "ERROR: This content was flagged for possible cybersecurity risk.",
+            }
+        return {"returncode": 0, "text": "done", "stdout": '{"type":"turn.completed"}\n',
+                "stderr": ""}
+
+    monkeypatch.setattr(r, "_invoke", invoke)
+    monkeypatch.setattr(runner_mod.time, "sleep", lambda _seconds: None)
+    result = r.run(prompt="original", neutral_prompt="neutral", run_dir=tmp_path,
+                   work_dir=tmp_path / "work", model="gpt-6-astra", stage="audit", run_id="R",
+                   label="focus")
+
+    assert result.text == "done"
+    assert calls == ["original", "neutral"]
+    records = [json.loads(line)
+               for line in (tmp_path / "llm_log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert records[0]["failure_kind"] == "moderation_flagged"
+    assert "flagged for possible cybersecurity risk" in records[0]["failure_detail"]
+    assert records[1]["failure_kind"] is None
+    assert records[1]["label"] == "focus-neutral-retry"
+    r.ledger.close()
+
+
+def test_codex_failure_detail_redacts_credentials_and_is_bounded(tmp_path, monkeypatch):
+    secret = "sk-test-secret-value-123456"
+    r = _runner(tmp_path, codex_api_key=secret)
+    raw = {
+        "returncode": 1,
+        "text": "",
+        "stdout": '{"type":"thread.started"}\\n',
+        "stderr": f"failed {secret}; Authorization: Bearer oauth-secret-value",
+    }
+    monkeypatch.setattr(r, "_invoke", lambda **_kwargs: raw)
+    with pytest.raises(RunnerError):
+        r.run(prompt="p", run_dir=tmp_path, work_dir=tmp_path / "work", model="gpt-6-astra",
+              stage="audit", run_id="R", label="focus")
+
+    record = json.loads((tmp_path / "llm_log.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert secret not in record["failure_detail"]
+    assert "oauth-secret-value" not in record["failure_detail"]
+    assert len(record["failure_detail"]) <= 500
+    r.ledger.close()
+
+
+def test_error_envelope_classifies_codex_rate_limit_from_stderr(tmp_path, monkeypatch):
+    """A CLI progress event can hide a session-limit message from result.text; classify stderr
+    so the run records the cause and the fallback policy can respect the provider's cooldown."""
+    r = _runner(tmp_path)
+    raw = {
+        "returncode": 1,
+        "text": "",
+        "stdout": '{"type":"thread.started"}\\n',
+        "stderr": "You've hit your session limit; resets 5pm",
+    }
+    monkeypatch.setattr(r, "_invoke", lambda **_kwargs: raw)
+    with pytest.raises(RunnerError) as exc_info:
+        r.run(prompt="p", run_dir=tmp_path, work_dir=tmp_path / "work", model="gpt-6-astra",
+              stage="audit", run_id="R", label="focus")
+
+    assert exc_info.value.failure_kind == "rate_limited"
+    record = json.loads((tmp_path / "llm_log.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert record["failure_kind"] == "rate_limited"
+    assert record["session_limit_reset_hint"] == "5pm"
+    r.ledger.close()
+
+
+def test_unrelated_reset_text_does_not_become_a_session_cooldown(tmp_path, monkeypatch):
+    r = _runner(tmp_path)
+    raw = {
+        "returncode": 1,
+        "text": "",
+        "stdout": '{"type":"thread.started"}\n',
+        "stderr": "ERROR: failed to reset to start of file at line 162",
+    }
+    monkeypatch.setattr(r, "_invoke", lambda **_kwargs: raw)
+    with pytest.raises(RunnerError) as exc_info:
+        r.run(prompt="p", run_dir=tmp_path, work_dir=tmp_path / "work", model="gpt-6-astra",
+              stage="audit", run_id="R", label="focus")
+
+    assert exc_info.value.failure_kind == "unknown_retryable"
+    record = json.loads((tmp_path / "llm_log.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert record["session_limit_reset_hint"] is None
     r.ledger.close()
 
 

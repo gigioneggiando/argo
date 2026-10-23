@@ -1301,7 +1301,7 @@ class MockClaudeRunner(ClaudeRunner):
             [{"type": "probe_plan", "path": out.name, "status": "ok"}]))
 
     def _research(self, work_dir: Path, label) -> dict:
-        """Mock Stage-0 web research: emit a research_brief.md + threat_intel.json (no real web)."""
+        """Mock Stage-1 web research: emit a research_brief.md + threat_intel.json (no real web)."""
         (work_dir / "threat_intel.json").write_text(json.dumps({
             "software": "(mock) target software",
             "stack": ["unknown"],

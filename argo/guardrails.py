@@ -22,7 +22,7 @@ from .config import ALWAYS_DISALLOWED, MUTATION_TOOLS, NETWORK_TOOLS, OSINT_TOOL
 
 #: Stages permitted read-only public web OSINT (search + fetch). They never receive the repo on a
 #: writable basis and must never reach the program's live in-scope hosts (enforced in the prompt +
-#: by scope). ``research`` (Stage-0 threat intel) and ``corroborate`` (post-validation cross-check
+#: by scope). ``research`` (Stage-1 threat intel) and ``corroborate`` (post-validation cross-check
 #: of findings against project docs + the repo's VCS history) are the only two networked stages.
 _OSINT_STAGES = frozenset({"research", "corroborate"})
 

@@ -61,7 +61,7 @@ flash. All colors are CSS custom properties with a `[data-theme="light"]` overri
   *Advanced* panel (runner, budget, audit model, parallel, calibration, dry-run, **web research**).
   The Code-to-audit field also has an **⬆ Upload .zip** button (C3): the zip is safely extracted
   server-side (path-traversal + zip-bomb guarded) and its path fills the field. The
-  **Web research (Stage 0)** toggle (default **On**) runs the opt-out web-OSINT pass before recon
+  **Web research (Stage 1)** toggle (default **On**) runs the opt-out web-OSINT pass before recon
   (one of two networked steps, with corroborate; never the live in-scope hosts); **Off** keeps the run fully offline.
   The **runner** selector offers **Mock** (free) · **Claude** (with an API-key field, shown when
   Claude is picked — blank uses the server's ambient login) · **Codex** (with a Codex model +

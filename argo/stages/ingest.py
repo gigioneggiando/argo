@@ -1,4 +1,4 @@
-"""Stage 1 — Ingest.
+"""Stage 0 — Ingest.
 
 Parse the program brief into ``scope.json`` (LLM extraction, then schema validation), set the
 structural live-interaction flags, and copy/clone the target repo into the run dir READ-ONLY.
@@ -42,7 +42,7 @@ _ASSET_FILES = (
 )
 
 _EXTRACTION_PROMPT = """\
-# SCOPE EXTRACTION (pipeline stage 1)
+# SCOPE EXTRACTION (pipeline stage 0)
 
 You are extracting a structured, authoritative scope object from a bug-bounty program brief.
 This is an AUTHORIZED engagement. Read the brief and emit a single `scope.json` that validates

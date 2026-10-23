@@ -50,7 +50,7 @@ The Codex mapping is re-validated in `tests/test_codex.py`, the Gemini mapping i
 ### 2a. The bounded exception: the OSINT stages `research` + `corroborate`
 
 Exactly **two** stages are allowed any network access, and only the **OSINT subset** — `WebSearch` +
-`WebFetch` (`config.OSINT_TOOLS`, gated by `guardrails._OSINT_STAGES`): Stage 0
+`WebFetch` (`config.OSINT_TOOLS`, gated by `guardrails._OSINT_STAGES`): Stage 1
 (`stages/research.py`, `--research/--no-research`, **on by default**) for *public* threat
 intelligence before the audit, and the post-validation `corroborate` stage
 (`stages/corroborate.py`, `--corroborate/--no-corroborate`, **on by default**) which cross-checks
@@ -211,7 +211,7 @@ target is the in-scope host instead of loopback — so the validators are **inve
 
 ## 5. Validate against the JSON Schemas; log every LLM call
 
-- `schemas.validate_scope()` gates Stage 1; `schemas.validate_findings()` gates Stage 3 (and the
+- `schemas.validate_scope()` gates Stage 0; `schemas.validate_findings()` gates Stage 3 (and the
   per-finding normalization in Stage 4). Draft-07, schemas are authoritative.
 - `ledger.log_call()` runs inside `AgentRunner.run()` for **every** call (prompt sha256, model,
   tokens, `cost_usd`), plus a `runs/<RUN_ID>/llm_log.jsonl` line. Cost logging happens even when

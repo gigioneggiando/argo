@@ -1,4 +1,4 @@
-"""Stage 0 — web research / threat intelligence (opt-out; the ONLY networked stage).
+"""Stage 1 — web research / threat intelligence (opt-out; the ONLY networked stage).
 
 From the program name, brief, and reference links, the model does **public OSINT** (web search +
 fetching public pages: the source repo host, package registries, docs, NVD/CVE/GHSA advisories,

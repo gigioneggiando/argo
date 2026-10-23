@@ -80,7 +80,7 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
     "report": SONNET,  # only used if report LLM-polish is ever enabled; off by default.
     "chat": SONNET,    # interactive post-run analysis (explain / why-not-found / test-gen)
     "remediate": OPUS, # Phase-6 fix generation (proposed patch per confirmed finding)
-    "research": SONNET, # opt-out Stage-0 web OSINT / threat intel (feeds recon)
+    "research": SONNET, # opt-out Stage-1 web OSINT / threat intel (feeds recon)
     "sca": OPUS,        # dependency / software-composition analysis (manifest -> known-vuln deps)
     "runtime": SONNET,  # R2: propose loopback probe plans + interpret results (offline, validated)
     "live": SONNET,     # L2: propose in-scope live probe plans + interpret results (offline, validated)
@@ -330,7 +330,7 @@ class PipelineConfig:
     # advisories. Emits a synthetic `dependencies` focus that joins the normal validate+report flow.
     sca_enabled: bool = True
 
-    # Stage-0 web OSINT / threat intel before recon. Historically this was passed as a separate
+    # Stage-1 web OSINT / threat intel before recon. Historically this was passed as a separate
     # run_pipeline argument; keeping it in the persisted config makes resume reconstruct the original
     # stage set instead of guessing whether the run was started with --research or --no-research.
     research_enabled: bool = True

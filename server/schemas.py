@@ -98,7 +98,7 @@ class RunRequest(BaseModel):
     repo: str = Field(..., min_length=1, description="codebase to analyze: a local folder path or a git URL")
     links: Optional[str] = Field(None, description="curated reference links, one http(s) URL per line")
     dry_run: bool = Field(False, description="ingest + recon only, then stop before any audit")
-    research: bool = Field(True, description="Stage-0 web OSINT before recon (the only networked "
+    research: bool = Field(True, description="Stage-1 web OSINT before recon (the only networked "
                                             "stage; never the live in-scope hosts). Set false to "
                                             "keep the run fully offline.")
     config: RunConfig = Field(default_factory=RunConfig)

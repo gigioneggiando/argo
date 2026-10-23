@@ -26,7 +26,7 @@ from ..guardrails import (
 )
 from ..knowledge import format_for_prompt
 
-_RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-0 brief so it can't dominate the recon prompt
+_RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-1 brief so it can't dominate the recon prompt
 # A transient cutoff of the recon-synthesis session (machine sleep, network blip, model stop_sequence)
 # can write ground_truth.json + repo_profile.json but NOT the per-focus audit_*.md prompts, which aborts
 # the whole run with "no audit prompts". The synthesis is read-only and idempotent, so retry it.
@@ -89,11 +89,11 @@ def run(ctx: RunContext) -> list[Path]:
                    if ctx.config.vuln_index_enabled else "")
     rendered += index_block
 
-    # Inject the Stage-0 web research brief if present (opt-out --research): known CVEs, security
+    # Inject the Stage-1 web research brief if present (opt-out --research): known CVEs, security
     # history, where to focus. Additive — the model still classifies + discovers on its own.
     if ctx.research_brief_path.exists():
         brief = ctx.research_brief_path.read_text(encoding="utf-8")[:_RESEARCH_BRIEF_CAP]
-        rendered += ("\n\n---\n\n## EXTERNAL THREAT INTELLIGENCE (Stage-0 web research — additive)\n\n"
+        rendered += ("\n\n---\n\n## EXTERNAL THREAT INTELLIGENCE (Stage-1 web research — additive)\n\n"
                      + brief + "\n\nUse this to PRIORITIZE the audit; it is not exhaustive — still "
                      "classify and discover on your own.\n")
 

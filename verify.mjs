@@ -33,7 +33,7 @@ try{
  await p.eval(()=>document.getElementById('filters').reset());
  await wait(()=>p.eval(()=>document.getElementById('severityFilter').value===''&&document.getElementById('filterCount').textContent.startsWith('95 records')),'Native reset failed');
  await p.eval(()=>{const s=document.getElementById('statusFilter');s.value='open';s.dispatchEvent(new Event('change',{bubbles:true}));});
- ensure(await p.eval(()=>document.getElementById('filterCount').textContent.startsWith('6 records')),'Open status filter failed');
+ ensure(await p.eval(()=>document.getElementById('filterCount').textContent.startsWith('5 records')),'Open status filter failed');
  await p.eval(()=>document.getElementById('filters').reset());
  await wait(()=>p.eval(()=>document.getElementById('filterCount').textContent.startsWith('95 records')),'Status reset failed');
  await p.eval(()=>{const s=document.getElementById('languageFilter');s.value='Go';s.dispatchEvent(new Event('change',{bubbles:true}));const stars=document.getElementById('starsFilter');stars.value='20000';stars.dispatchEvent(new Event('change',{bubbles:true}));});

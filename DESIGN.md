@@ -1,5 +1,26 @@
 # Argo site revision, 24 October 2026
 
+## Latest details: rounded menus, semantic colour and public stars
+
+The four native filter selects are progressively enhanced into real rounded
+popups, not merely rounded fields around OS-native square menus. Each has a
+labelled combobox trigger, listbox options, selected/active state, arrow/Home/End
+keys, typeahead, Enter/Space selection, Escape, Tab/focus and outside dismissal.
+The hidden native select remains the form value; resets and chart shortcuts keep
+the visible value synchronized. Floating menu shadows belong only to this UI.
+
+Critical/red, High/orange and Medium/Moderate/yellow have the same semantic colour
+in chart bars, labels, dropdown choices and severity badges. Lower/unspecified
+categories stay neutral. This explicit user request takes priority over a generic
+single-hue chart rule. No colour is used as the only severity label.
+
+Every project heading carries a small star glyph and count linked to GitHub's
+stargazers. Optional public metadata refresh is lazy, cached and rate limited;
+see README.md. Unknown or unavailable metadata never becomes an invented zero.
+The context panel at the bottom now fills its box, as Luigi requested, instead
+of using a 90ch inner wrapper inside a wider panel. All 95 finding records remain
+the unchanged public source; pipeline diagrams/wiki still describe the same tool.
+
 ## Current direction: an approachable public findings dashboard
 
 This supersedes the editorial split described in the historical notes below.

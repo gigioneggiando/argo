@@ -7,8 +7,9 @@ const wait=async(test,message)=>{for(let i=0;i<40;i++){try{if(await test())retur
 const source=readFileSync('content/disclosures.html','utf8');
 const migrationBaseline=existsSync('.taste-skill/baseline-dom.json')?JSON.parse(readFileSync('.taste-skill/baseline-dom.json','utf8')):null;
 const b=await Browser.launch();
+const offlinePage=async options=>{const page=await b.newPage(options);await page.send('Network.enable');await page.send('Network.setBlockedURLs',{urls:['https://api.github.com/*']});return page;};
 try{
- const p=await b.newPage({width:390,height:844,mobile:true,reducedMotion:true});
+ const p=await offlinePage({width:390,height:844,mobile:true,reducedMotion:true});
  const parsed=await p.eval(html=>{const doc=new DOMParser().parseFromString(html,'text/html');return {projects:doc.querySelectorAll('.case').length,records:[...doc.querySelectorAll('.row')].map(r=>({url:r.href||r.querySelector('a')?.href,title:r.querySelector('.ttl').textContent.trim(),status:r.querySelector('.status').textContent.trim(),severity:r.dataset.sev||'',urls:[...r.querySelectorAll('a')].map(a=>a.href)}))};},source);
  const baseline=migrationBaseline||parsed;
  const expected=parsed.records.length;
@@ -63,13 +64,13 @@ try{
  ensure(await p.eval(t=>document.documentElement.dataset.theme===t,theme),'Theme did not persist');
  ensure(await p.eval(()=>document.querySelectorAll('#themeToggle svg:not([hidden])').length===1),'Theme icon did not update');
  await p.screenshot({path:'.taste-skill/findings-light-mobile.jpg',quality:85});
- const noJS=await b.newPage({width:390,height:844,mobile:true});
+ const noJS=await offlinePage({width:390,height:844,mobile:true});
  await noJS.send('Emulation.setScriptExecutionDisabled',{value:true});
  await noJS.goto(new URL('findings.html',root).href);
  ensure(await noJS.eval(()=>document.querySelectorAll('.row').length===95&&document.querySelectorAll('.case[open]').length===26&&document.getElementById('filters').hidden),'No-JS archive is incomplete');
  await noJS.goto(new URL('index.html',root).href);
  ensure(await noJS.eval(()=>document.querySelectorAll('.row').length===95&&document.querySelectorAll('.chart-panel').length===3&&[...document.querySelectorAll('.chart-panel')].slice(0,2).every(panel=>[...panel.querySelectorAll('.bar-value')].reduce((n,e)=>n+ +e.textContent,0)===95)),'No-JS home/charts are incomplete');
- const desktop=await b.newPage({width:1440,height:900,reducedMotion:true});
+ const desktop=await offlinePage({width:1440,height:900,reducedMotion:true});
  await desktop.goto(new URL('index.html',root).href);
  ensure(await desktop.eval(()=>document.querySelectorAll('.chart-panel').length===3&&[...document.querySelectorAll('.chart-panel')].every(el=>el.getBoundingClientRect().bottom<innerHeight)&&document.getElementById('searchInput').getBoundingClientRect().bottom<innerHeight),'Charts and search must be visible on the first desktop screen');
  console.log('PASS: all 95 original records and evidence links preserved; home and archive search, zero/reset, filters, chart shortcuts, direct links, chart totals, round sun/moon switch, theme persistence, first-screen visibility, mobile width and no-JS content.');

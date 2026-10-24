@@ -1,5 +1,38 @@
 # Visual and functional review
 
+## Latest detail revision
+
+ROUND 1 — final
+Seen in one second: the same welcoming dashboard, with colour immediately
+distinguishing severity and star metadata next to each repository name.
+Idea (one sentence): browse public evidence with useful repository context.
+Live thing: rounded filter popups, chart shortcuts, optional cached GitHub stars.
+Layout words by section: unchanged dashboard / rounded popup / repository badges /
+full-width context panel.
+Scores: design 7.8 · usability 8.5 · creativity 7.3 · content 8.5 → overall 7.99.
+Self-assessment, not an external rating. No stock imagery or synthetic proof.
+Caps applied: none; app-screen guidance and explicit semantic colour preference.
+Top three fixes (screenshots in details-home and rounded-dropdown-*):
+1. The actual popup is now rounded, rather than relying on native OS appearance.
+2. Severity bars and dropdown options use the same real severity colours as badges.
+3. The final context text fills its container; project headings add a small star
+   badge without changing or concealing public record metadata.
+
+The existing public-record verification passes unchanged. Additional browser
+checks cover dropdown keyboard selection, Escape/focus, outside dismissal, reset,
+chart/control synchronization, distinct colours and context-panel width. Star
+fixtures cover successful refresh, a real zero, cache hits/expiry, two-request
+concurrency, deduplication, 403 pause and offline retry backoff. No fixture data
+is copied into product output. Inspector QA blocks API traffic and shows the
+honest archive snapshot, avoiding repeated calls while scrolling screenshots.
+
+Final QA: Home and Findings both 0 FAIL / 3 existing WARN at 1440/768/390.
+All 18 final sheets in details-home/details-findings were opened, plus open-menu
+desktop/mobile captures. Existing warnings concern deliberate matching chart
+heights, the long complete archive and the approved mobile greeting scale.
+A single real unauthenticated browser fetch to open62541/open62541 returned HTTP
+200 with a valid integer stargazers_count, confirming cross-origin access.
+
 ## Current welcoming dashboard revision, 24 October 2026
 
 ROUND 1

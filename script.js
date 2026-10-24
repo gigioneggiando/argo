@@ -37,6 +37,7 @@
   statuses.filter(s=>counts.status.has(s)).forEach(s=>option(document.getElementById('statusFilter'),s,s==='advisory'?'Published advisory':s[0].toUpperCase()+s.slice(1)));
   [...languages].filter(Boolean).sort().forEach(lang=>option(document.getElementById('languageFilter'),lang,lang));
   for(const severity of counts.severity.keys())if(!['Critical','High','Medium','Low'].includes(severity))option(document.getElementById('severityFilter'),severity,severity);
+  const controls=window.ArgoControls.enhance(form);
   const active=()=>!!(state.sev||state.status||state.lang||state.stars||state.q);
   const visibleCases=()=>cases.filter(sec=>!sec.hidden);
   function apply(){
@@ -56,11 +57,12 @@
     empty.hidden=records!==0;
     toggle.hidden=!projects;
     toggle.textContent=visibleCases().every(sec=>sec.open)?'Collapse all projects':'Expand all projects';
+    controls.sync();
   }
   form.hidden=false;
   toggle.hidden=false;
   form.addEventListener('submit',e=>e.preventDefault());
-  form.addEventListener('change',e=>{const key=e.target.dataset.filter;if(key){state[key]=key==='stars'?+e.target.value:e.target.value;apply();}});
+  form.addEventListener('change',e=>{const key=e.target.dataset.filter;if(key){state[key]=key==='stars'?+e.target.value:e.target.value;apply();if(key==='stars'&&state.stars)starTracker.refreshAll();}});
   let timer;
   search.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>{state.q=search.value.trim().toLowerCase();apply();},120);});
   const reset=()=>{clearTimeout(timer);Object.assign(state,{sev:'',status:'',lang:'',stars:0,q:''});form.reset();apply();};
@@ -70,6 +72,7 @@
   toggle.addEventListener('click',()=>{const visible=visibleCases(),open=!visible.every(sec=>sec.open);visible.forEach(sec=>{sec.open=open;});toggle.textContent=open?'Collapse all projects':'Expand all projects';});
   const openFragment=()=>{const sec=cases.find(sec=>`#${sec.id}`===location.hash);if(sec){if(sec.hidden)reset();sec.open=true;requestAnimationFrame(()=>sec.scrollIntoView({block:'start'}));}};
   window.addEventListener('hashchange',openFragment);
+  const starTracker=window.ArgoStars.connect(cases,()=>{if(state.stars)apply();});
   apply();openFragment();
   document.querySelectorAll('[data-chart-filter]').forEach(button=>{
     button.disabled=false;

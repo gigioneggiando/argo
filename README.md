@@ -1,5 +1,14 @@
 # Argo public site
 
+Projects appear from most to least starred, using the archive snapshot without
+JS and cached/live GitHub counts when available. Equal counts sort by project
+name. Live updates preserve open disclosures, keyboard focus and the reader's
+scroll anchor where the available page height permits it. The ranked chart
+still explicitly compares record counts, a separate metric.
+
+`node verify-sorting.mjs` checks live/cache ordering and reading/focus state with
+controlled metadata, without spending public GitHub API quota.
+
 This is the `gh-pages` worktree of `gigioneggiando/argo`.
 
 - `index.html`: project introduction, totals, visible charts and searchable archive.

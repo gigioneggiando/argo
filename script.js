@@ -40,6 +40,23 @@
   const controls=window.ArgoControls.enhance(form);
   const active=()=>!!(state.sev||state.status||state.lang||state.stars||state.q);
   const visibleCases=()=>cases.filter(sec=>!sec.hidden);
+  function sortProjects(){
+    const container=document.getElementById('cases');
+    const current=[...container.children];
+    const visible=visibleCases();
+    const anchor=visible.find(sec=>{const rect=sec.getBoundingClientRect();return rect.bottom>0&&rect.top<innerHeight;});
+    const anchorTop=anchor?.getBoundingClientRect().top;
+    const reading=window.scrollY>0&&container.getBoundingClientRect().top<innerHeight/2;
+    const focused=container.contains(document.activeElement)?document.activeElement:null;
+    cases.sort((a,b)=>+b.dataset.stars-+a.dataset.stars||a.querySelector('.name a').textContent.trim().localeCompare(b.querySelector('.name a').textContent.trim(),'en'));
+    if(cases.some((sec,i)=>sec!==current[i])){
+      container.append(...cases);
+      focused?.focus({preventScroll:true});
+      if(reading&&anchor)window.scrollBy({top:anchor.getBoundingClientRect().top-anchorTop,behavior:'instant'});
+    }
+  }
+  let sortTimer;
+  const scheduleSort=()=>{clearTimeout(sortTimer);sortTimer=setTimeout(()=>{sortProjects();if(state.stars)apply();},150);};
   function apply(){
     let records=0,projects=0;
     for(const sec of cases){
@@ -53,7 +70,7 @@
       sec.hidden=!matches;
       if(matches){records+=matches;projects++;sec.open=active()||sec===cases[0]||location.hash===`#${sec.id}`;}
     }
-    count.textContent=`${records} ${records===1?'record':'records'} across ${projects} ${projects===1?'project':'projects'}`;
+    count.textContent=`${records} ${records===1?'record':'records'} across ${projects} ${projects===1?'project':'projects'} · Most starred first`;
     empty.hidden=records!==0;
     toggle.hidden=!projects;
     toggle.textContent=visibleCases().every(sec=>sec.open)?'Collapse all projects':'Expand all projects';
@@ -72,8 +89,8 @@
   toggle.addEventListener('click',()=>{const visible=visibleCases(),open=!visible.every(sec=>sec.open);visible.forEach(sec=>{sec.open=open;});toggle.textContent=open?'Collapse all projects':'Expand all projects';});
   const openFragment=()=>{const sec=cases.find(sec=>`#${sec.id}`===location.hash);if(sec){if(sec.hidden)reset();sec.open=true;requestAnimationFrame(()=>sec.scrollIntoView({block:'start'}));}};
   window.addEventListener('hashchange',openFragment);
-  const starTracker=window.ArgoStars.connect(cases,()=>{if(state.stars)apply();});
-  apply();openFragment();
+  const starTracker=window.ArgoStars.connect(cases,scheduleSort);
+  sortProjects();apply();openFragment();
   document.querySelectorAll('[data-chart-filter]').forEach(button=>{
     button.disabled=false;
     button.addEventListener('click',()=>{

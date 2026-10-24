@@ -15,7 +15,7 @@ const projects=cases.map(c=>{
   const body=c.match(/<ul class="rows">([\s\S]*?)<\/ul>/)?.[1];
   if(!name||!href||!body) throw Error('Malformed public project');
   return {name,href,lang,blurb,tally,body,records:extractRecords(body),stars:c.match(/data-stars="(\d+)"/)?.[1]||'0',id:'project-'+text(name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/-$/,'')};
-});
+}).sort((a,b)=>+b.stars-+a.stars||text(a.name).localeCompare(text(b.name),'en'));
 const primaryURL=row=>row.match(/href="([^"]+)"/)?.[1];
 const totals={projects:projects.length,prs:new Set(rows.map(primaryURL).filter(url=>/\/pull\/\d+$/.test(url||''))).size,advisories:rows.filter(r=>/href="[^"]+\/security\/advisories\//.test(r)).length,resolved:rows.filter(r=>/class="row (merged|fixed)"/.test(r)||(/class="row advisory"/.test(r)&&/Advisory[^<]*(fixed|resolved)/i.test(r))).length,cves:new Set([...source.matchAll(/CVE-\d{4}-\d+/g)].map(m=>m[0])).size,records:rows.length};
 const stats=`<dl class="stats" aria-label="Public archive totals" data-ui>${[['projects','Projects'],['prs','Public PRs'],['advisories','Published advisories'],['resolved','Resolved records'],['cves','CVEs listed']].map(([key,label])=>`<div><dt>${label}</dt><dd>${totals[key]}</dd></div>`).join('')}</dl>`;

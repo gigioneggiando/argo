@@ -1,5 +1,20 @@
 # Visual and functional review
 
+## Star ordering update
+
+Final checks pass: static/live/cache order, unchanged 95-record content,
+filters, no-JS, open-state/focus and reading-position preservation. Both Argo
+routes report 0 FAIL / 3 existing WARN at 1440/768/390. All 16 final inspector
+images in star-order-home/star-order-findings were opened. Existing dashboard
+design and semantic colours are retained; no pipeline or diagram change.
+
+The archive is now sorted by stars descending in static HTML and after cache/
+live metadata refresh. Tie counts use the project name. The evidence comparison
+now checks an unchanged multiset of all 95 full records and auxiliary links,
+since project order is an intentional change. Sorting moves existing nodes and
+preserves disclosure state and keyboard focus; a captured scroll anchor keeps
+the current project in view when live metadata changes its rank.
+
 ## Latest detail revision
 
 ROUND 1 — final

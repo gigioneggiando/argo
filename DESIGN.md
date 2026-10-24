@@ -1,5 +1,14 @@
 # Argo site revision, 24 October 2026
 
+## Latest ordering preference
+
+Luigi asked to order the public projects by GitHub stars descending. Generate
+that order from source snapshot counts first, including the no-JS page; apply
+cached counts before initial opening, then batch live metadata reorderings.
+Equal values use project name. Keep the current reading anchor, focused link
+and open disclosures while moving the existing nodes. Do not reinterpret the
+Projects with most records chart as a star chart; its metric is already clear.
+
 ## Latest details: rounded menus, semantic colour and public stars
 
 The four native filter selects are progressively enhanced into real rounded

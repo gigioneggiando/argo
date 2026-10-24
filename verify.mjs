@@ -17,12 +17,10 @@ try{
  await p.goto(new URL('findings.html',root).href);
  const initial=await p.eval(()=>({overflow:document.documentElement.scrollWidth>innerWidth,open:document.querySelectorAll('.case[open]').length,cases:document.querySelectorAll('.case').length,rows:[...document.querySelectorAll('.row')].map(r=>({url:r.href||r.querySelector('a')?.href,title:r.querySelector('.ttl').textContent.trim(),status:r.querySelector('.status').textContent.trim(),severity:r.dataset.sev||'',urls:[...r.querySelectorAll('a')].map(a=>a.href)}))}));
  ensure(!initial.overflow&&initial.open===1&&initial.cases===baseline.projects&&initial.rows.length===expected,'Archive opening state failed');
- for(let i=0;i<expected;i++){
-   const prior=baseline.records[i],now=initial.rows[i];
-   const fixed=url=>url?.includes('/antirez/ds4/pull/?')?'https://github.com/elkaix/ds4/pull/1':url;
-   ensure(now.url===fixed(prior.url)&&now.title===prior.title&&now.status===prior.status&&now.severity===prior.severity,`Changed public record ${i}: ${prior.url}`);
-   ensure(JSON.stringify(now.urls)===JSON.stringify(prior.urls.map(fixed)),`Changed auxiliary evidence links ${i}`);
- }
+ const fixed=url=>url?.includes('/antirez/ds4/pull/?')?'https://github.com/elkaix/ds4/pull/1':url;
+ const canonical=records=>records.map(r=>JSON.stringify([fixed(r.url),r.title,r.status,r.severity,r.urls.map(fixed)])).sort();
+ ensure(JSON.stringify(canonical(initial.rows))===JSON.stringify(canonical(baseline.records)),'Public record content or auxiliary evidence changed during sorting');
+ ensure(await p.eval(()=>{const stars=[...document.querySelectorAll('.case')].map(s=>+s.dataset.stars);return stars.every((n,i)=>!i||stars[i-1]>=n);}), 'Initial archive must be sorted by stars descending');
  await p.eval(()=>{const input=document.getElementById('searchInput');input.value='proxysql';input.dispatchEvent(new Event('input',{bubbles:true}));});
  await wait(()=>p.eval(()=>document.getElementById('filterCount').textContent.startsWith('5 records')),'Search count failed');
  ensure(await p.eval(()=>[...document.querySelectorAll('.case:not([hidden])')].every(s=>s.open&&s.querySelector('.name a').textContent==='ProxySQL')),'Search project expansion failed');
@@ -70,6 +68,7 @@ try{
  ensure(await noJS.eval(()=>document.querySelectorAll('.row').length===95&&document.querySelectorAll('.case[open]').length===26&&document.getElementById('filters').hidden),'No-JS archive is incomplete');
  await noJS.goto(new URL('index.html',root).href);
  ensure(await noJS.eval(()=>document.querySelectorAll('.row').length===95&&document.querySelectorAll('.chart-panel').length===3&&[...document.querySelectorAll('.chart-panel')].slice(0,2).every(panel=>[...panel.querySelectorAll('.bar-value')].reduce((n,e)=>n+ +e.textContent,0)===95)),'No-JS home/charts are incomplete');
+ ensure(await noJS.eval(()=>{const values=[...document.querySelectorAll('.case')].map(s=>+s.dataset.stars);return values.every((n,i)=>!i||values[i-1]>=n);}), 'Static archive is not ordered by stars');
  const desktop=await offlinePage({width:1440,height:900,reducedMotion:true});
  await desktop.goto(new URL('index.html',root).href);
  ensure(await desktop.eval(()=>document.querySelectorAll('.chart-panel').length===3&&[...document.querySelectorAll('.chart-panel')].every(el=>el.getBoundingClientRect().bottom<innerHeight)&&document.getElementById('searchInput').getBoundingClientRect().bottom<innerHeight),'Charts and search must be visible on the first desktop screen');

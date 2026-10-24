@@ -2,9 +2,10 @@
   const themeButton=document.getElementById('themeToggle');
   if(themeButton)themeButton.hidden=false;
   const theme=()=>document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
-  const describeTheme=()=>{const label=`Switch to ${theme()==='dark'?'light':'dark'} theme`;themeButton?.setAttribute('aria-label',label);themeButton?.setAttribute('title',label);};
+  const describeTheme=()=>{const dark=theme()==='dark';const label=`Switch to ${dark?'light':'dark'} theme`;themeButton?.setAttribute('aria-label',label);themeButton?.setAttribute('title',label);themeButton?.setAttribute('aria-pressed',String(dark));if(themeButton){themeButton.querySelector('.theme-sun').toggleAttribute('hidden',!dark);themeButton.querySelector('.theme-moon').toggleAttribute('hidden',dark);}};
   describeTheme();
   themeButton?.addEventListener('click',()=>{const next=theme()==='dark'?'light':'dark';document.documentElement.dataset.theme=next;try{localStorage.setItem('argo-theme',next);}catch{}describeTheme();});
+  matchMedia('(prefers-color-scheme:dark)').addEventListener('change',describeTheme);
   const reduce=matchMedia('(prefers-reduced-motion:reduce)');
   if(!reduce.matches&&'IntersectionObserver' in window){
     const observer=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.remove('waiting');observer.unobserve(entry.target);}}),{threshold:.05});
@@ -12,8 +13,8 @@
     document.documentElement.classList.add('motion-ready');
     reduce.addEventListener('change',()=>{if(reduce.matches)document.querySelectorAll('.waiting').forEach(el=>el.classList.remove('waiting'));});
   }
-  // Old public archive fragments still reach the archive after the split.
-  if(document.body.classList.contains('overview-page')&&['#cases','#filters','#disclosures'].includes(location.hash)){location.replace('findings.html'+(location.hash==='#filters'?'#filters':''));return;}
+  // Former archive fragments remain useful now that the archive is on home too.
+  if(location.hash==='#disclosures')location.hash='#findings';
   const form=document.getElementById('filters');
   if(!form)return;
   const cases=[...document.querySelectorAll('#cases .case')];
@@ -35,6 +36,7 @@
   const option=(parent,value,label)=>{const el=document.createElement('option');el.value=value;el.textContent=label;parent.append(el);};
   statuses.filter(s=>counts.status.has(s)).forEach(s=>option(document.getElementById('statusFilter'),s,s==='advisory'?'Published advisory':s[0].toUpperCase()+s.slice(1)));
   [...languages].filter(Boolean).sort().forEach(lang=>option(document.getElementById('languageFilter'),lang,lang));
+  for(const severity of counts.severity.keys())if(!['Critical','High','Medium','Low'].includes(severity))option(document.getElementById('severityFilter'),severity,severity);
   const active=()=>!!(state.sev||state.status||state.lang||state.stars||state.q);
   const visibleCases=()=>cases.filter(sec=>!sec.hidden);
   function apply(){
@@ -43,7 +45,7 @@
       const projectMatches=(+sec.dataset.stars>=state.stars)&&(!state.lang||sec.dataset.lang===state.lang);
       let matches=0;
       sec._rows.forEach(row=>{
-        const show=projectMatches&&(!state.sev||row.dataset.sev===state.sev)&&(!state.status||row.dataset.status===state.status)&&(!state.q||row._search.includes(state.q));
+        const show=projectMatches&&(!state.sev||(row.dataset.sev||'Unspecified')===state.sev)&&(!state.status||row.dataset.status===state.status)&&(!state.q||row._search.includes(state.q));
         row.closest('li').hidden=!show;
         if(show)matches++;
       });
@@ -69,13 +71,17 @@
   const openFragment=()=>{const sec=cases.find(sec=>`#${sec.id}`===location.hash);if(sec){if(sec.hidden)reset();sec.open=true;requestAnimationFrame(()=>sec.scrollIntoView({block:'start'}));}};
   window.addEventListener('hashchange',openFragment);
   apply();openFragment();
-  const distribution=document.getElementById('distribution');distribution.hidden=false;
-  const strip=document.getElementById('chartsStrip');
-  for(const [key,title] of [['severity','By severity'],['status','By status'],['projects','Projects with most records']]){
-    const panel=document.createElement('section');panel.className='chart-panel';
-    const h=document.createElement('h2');h.textContent=title;panel.append(h);
-    let entries=[...counts[key]].sort((a,b)=>b[1]-a[1]);if(key==='projects')entries=entries.slice(0,6);
-    const max=Math.max(1,...entries.map(([,n])=>n));
-    for(const [label,n]of entries){const row=document.createElement('div');row.className='bar-row';const name=document.createElement('span');name.textContent=label;const track=document.createElement('span');track.className='bar-track';track.setAttribute('aria-hidden','true');const fill=document.createElement('span');fill.className='bar-fill';fill.style.setProperty('--bar',`${n/max*100}%`);track.append(fill);const number=document.createElement('span');number.className='bar-value';number.textContent=String(n);row.append(name,track,number);panel.append(row);}strip.append(panel);
-  }
+  document.querySelectorAll('[data-chart-filter]').forEach(button=>{
+    button.disabled=false;
+    button.addEventListener('click',()=>{
+      reset();
+      const key=button.dataset.chartFilter,value=button.dataset.value;
+      state[key]=key==='q'?value.toLowerCase():value;
+      if(key==='q')search.value=value;
+      else document.getElementById('severityFilter').value=value;
+      apply();
+      document.getElementById('findings').scrollIntoView({block:'start',behavior:reduce.matches?'instant':'smooth'});
+      search.focus({preventScroll:true});
+    });
+  });
 })();

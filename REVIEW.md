@@ -1,5 +1,59 @@
 # Visual and functional review
 
+## Current welcoming dashboard revision, 24 October 2026
+
+ROUND 1
+Seen in one second: a rounded, compact Argo dashboard with actual public results.
+Idea (one sentence): Argo's public disclosure trail becomes an approachable,
+searchable overview rather than an editorial front door.
+Live thing: search and filtering on home; chart labels take visitors into results.
+Layout words by section: intro=compact welcome / totals=rounded figures /
+charts=outcome ring and two bar lists / archive=search and grouped evidence /
+about=readable context and contribution links.
+Scores: design 7.5 · usability 7.8 · creativity 7.1 · content 8.2 → overall 7.58.
+Caps applied: intermediate covered-text failure, overall capped at 6.0.
+Top three problems (most visible first), each with screenshot and fix:
+1. The initial desktop-fold showed both theme glyphs. SVG icons now use real
+   hidden attributes, and browser checks assert exactly one visible sun/moon.
+2. The initial severity chart omitted two uncommon labels. The public source
+   includes Moderate and Info; both now appear as distinct chart/filter values.
+   Build and browser checks require the complete 95-record sum.
+3. The phone inspector measured hidden headings inside the closed About panel
+   under its summary. Context now stays in a normal readable section below the
+   archive; no content is concealed to satisfy the inspector.
+
+ROUND 2 — final
+Seen in one second: introduction, five totals, all three charts and search on
+the first 1440×900 desktop screen. Rounded panels retain Argo's own identity.
+Idea (one sentence): follow the public work from a quick overview to its evidence.
+Live thing: all archive filters, chart shortcuts, disclosures, theme choice.
+Layout words by section: welcome / totals / ring-and-bars / searchable archive /
+context / links back to Luigi.
+Scores: design 7.7 · usability 8.4 · creativity 7.3 · content 8.5 → overall 7.92.
+Self-assessment, not an external rating. App-screen rules apply; a public archive
+has no need for stock pictures or promotional scroll animations.
+Caps applied: none; final inspections report 0 FAIL, 3 WARN on both pages.
+Top three remaining notes, with screenshots and reasons:
+1. desktop-fold: two shorter chart panels retain 50–56px below their content to
+   align the three comparisons; equal panel edges make the overview easier to scan.
+2. mobile-fold: the 30px two-line greeting is deliberately more welcoming than a
+   dense admin title and remains smaller than the former editorial hero.
+3. page sheets: the full 26-project archive continues below the fold. All three
+   requested charts and desktop search appear first; native groups keep the
+   complete evidence available rather than replacing it with sample records.
+
+Final browser verification passes: unchanged 95 titles/statuses/severities and
+all primary/auxiliary evidence links, text search, empty/reset, native reset,
+status/language/star intersections, all-project controls, deep links, full chart
+totals, chart shortcuts, round theme control, icon change, persistence, first-fold
+visibility, mobile width and no-JS charts plus complete records on both pages.
+Opened all 18 final inspector images in welcoming-home-final and
+welcoming-findings-final (desktop/tablet/mobile folds and page sheets).
+No private registry inputs, new security verdicts or upstream-state claims.
+The CLI, pipeline, research diagrams and wiki architecture are unchanged.
+
+## Historical editorial revision
+
 Before: one page combined presentation, always-visible chart/filter chrome and
 the complete archive. Inspector: 6 FAIL / 4 WARN at 1440/768/390; the title took
 3 desktop lines and 4 phone lines, with tiny uppercase labels, a glow and mixed

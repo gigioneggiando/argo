@@ -1,5 +1,34 @@
 # Argo site revision, 24 October 2026
 
+## Current direction: an approachable public findings dashboard
+
+This supersedes the editorial split described in the historical notes below.
+Luigi found that revision cold and too formal. His explicit preferences are
+rounded panels, a distinct project identity, charts visible immediately, and
+search on the entry page. Those preferences take priority over the page skill's
+generic restrictions on repeated cards. Treat this as a real archive dashboard,
+not a marketing page. App direction: true-black-flat, seed 294134855, keeping
+Argo's established neutral dark/light palette, amber data and Fraunces/Inter.
+Rounded 16–20px panels and the existing brand colours follow the user's brief.
+
+The first desktop screen answers: what is Argo, what became public, and where
+can I search? A compact, personal introduction leads into five source-derived
+totals, a thin outcome ring, severity bars, project ranking and the search field.
+Both index.html and findings.html include the complete archive; entering the
+project no longer requires another page before using search. Existing public
+findings URLs still work. Charts show the full archive while filter counts state
+the matching subset. Chart labels filter by severity or project; no invented
+dates, growth figures or vulnerability totals. Moderate and Info are real source
+labels, included separately so every severity adds to 95.
+
+The circular theme button shows a sun or crescent for its next action, updates
+its accessible name and retains the chosen theme. No constant eye movement,
+count-up or row entrances: motion is feedback on controls, with reduced-motion
+support. No new images or pipeline/flow changes; research diagrams and wiki
+architecture remain applicable. The parent site's Projects menu is unchanged.
+
+## Historical editorial revision
+
 The public project keeps its dark/light neutral palette, amber accent and eye
 mark. It shares the personal site's Fraunces/Inter pair, 16px body, 1.65 leading,
 20px mobile gutters, fluid desktop gutters and calm spacing. No stock imagery.

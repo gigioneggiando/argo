@@ -2,7 +2,7 @@
 
 This is the `gh-pages` worktree of `gigioneggiando/argo`.
 
-- `index.html`: project overview.
+- `index.html`: project introduction, totals, visible charts and searchable archive.
 - `findings.html`: static, searchable public archive.
 - `content/disclosures.html`: the authoritative public record source.
 - `build.mjs`: shared shell, counts, project disclosures and page generation.
@@ -17,7 +17,10 @@ advisory must remain outside this site. Preserve distinctions between merged,
 fixed upstream, open, issue and advisory; published can still mean unpatched.
 Private Fleece records are not a build input. No client-side fetch or GitHub
 token is needed. All public records and real totals are present without JS;
-scripts add filters, native disclosure controls, distributions and theme choice.
+scripts add filters, chart-to-filter shortcuts, native disclosure controls and
+theme choice. Charts are static HTML/SVG generated from the public source, not
+hidden behind a disclosure. Severity labels such as Moderate and Info remain
+distinct and are included in chart totals and filters.
 
 The standalone site links Luigi's name to his public GitHub profile. The copy
 under the personal site's `/argo/` uses `../index.html` for that backlink. All

@@ -1,6 +1,1031 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Argo: source-code auditing with language models, human review and public upstream evidence."><meta property="og:title" content="From code to evidence · Argo"><meta property="og:description" content="Argo: source-code auditing with language models, human review and public upstream evidence."><meta property="og:type" content="website"><meta name="theme-color" content="#121419"><title>From code to evidence · Argo</title><link rel="icon" href="assets/eye.svg" type="image/svg+xml"><link rel="preload" href="assets/fonts/fraunces-var.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="style.css"><script>try{const t=localStorage.getItem('argo-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch{}</script><script src="script.js" defer></script></head><body class="overview-page"><a class="skip-link" href="#main">Skip to content</a><header class="site-header"><div class="identity"><a class="parent-link" data-parent-home href="https://github.com/gigioneggiando">Luigi Colluto</a><span class="path-divider" aria-hidden="true">/</span><a class="brand" href="index.html" aria-label="Argo overview"><svg class="eye-mark" viewBox="0 0 100 100" width="22" height="22" aria-hidden="true"><circle cx="50" cy="50" r="37" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="50" cy="50" r="13" fill="currentColor"/></svg><span>Argo</span></a></div><nav aria-label="Project navigation"><a href="index.html" aria-current="page">Overview</a><a href="findings.html">Findings</a><a href="https://github.com/gigioneggiando/argo/wiki" target="_blank" rel="noopener">Wiki</a><a href="https://github.com/gigioneggiando/argo" target="_blank" rel="noopener">GitHub</a></nav><button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch colour theme" title="Switch colour theme" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor"/></svg></button></header><main id="main">
-<section class="hero chapter"><h1 data-enter>From code<br>to evidence.</h1><div class="hero-bottom"><p class="lede" data-enter>Argo coordinates language models to audit source code. Each public finding here links to an upstream pull request or security advisory.</p><div class="hero-actions" data-enter><a class="button" href="findings.html">Explore the findings <span aria-hidden="true">↗</span></a><a href="https://github.com/gigioneggiando/argo" target="_blank" rel="noopener">Read the code</a></div></div><dl class="stats" aria-label="Public archive totals" data-ui><div><dt>Projects</dt><dd>26</dd></div><div><dt>Public PRs</dt><dd>66</dd></div><div><dt>Published advisories</dt><dd>24</dd></div><div><dt>Resolved records</dt><dd>83</dd></div><div><dt>CVEs listed</dt><dd>7</dd></div></dl></section>
-<section class="evidence chapter" aria-labelledby="evidence-title"><div class="section-heading"><h2 id="evidence-title" data-enter>Public, down to the record.</h2><p data-enter>Follow a project into the archive. The pull requests and published advisories are the evidence behind the numbers.</p></div><nav class="project-names" aria-label="Explore public project records"><a href="findings.html#project-open62541" data-enter>open62541</a><a href="findings.html#project-gitea" data-enter>Gitea</a><a href="findings.html#project-mitmproxy" data-enter>mitmproxy</a><a href="findings.html#project-baserow" data-enter>Baserow</a><a href="findings.html#project-open-webui" data-enter>Open WebUI</a><a href="findings.html#project-vaultwarden" data-enter>Vaultwarden</a><a href="findings.html#project-pocketbase" data-enter>PocketBase</a></nav><p class="scope-note" data-enter>Only public records are listed. Private disclosures stay off this site until they are public. Argo has reviewed code in more languages than this archive represents.</p></section>
-<section class="process chapter" aria-labelledby="process-title"><h2 id="process-title" data-enter>A finding is a starting point.</h2><div><p class="statement" data-enter>The useful question is what the evidence supports.</p><p data-enter>Argo brings language models into a structured source-code review. Human review checks the result; the upstream record shows what happened next. A merged fix, an open pull request and an unpatched advisory are different outcomes.</p><p data-enter>These records show practical work, rather than a complete measurement of what the system can find or miss. For the pipeline, tradeoffs and limitations, <a href="https://github.com/gigioneggiando/argo/wiki" target="_blank" rel="noopener">read the documentation</a>.</p><p class="recognition" data-enter>Luigi is credited on <a href="https://livekit.com/security/hall-of-fame" target="_blank" rel="noopener">LiveKit’s Security Hall of Fame</a>. That recognition belongs to a private disclosure; the LiveKit records in this archive link to public fixes. The individual PRs do not name the reporter.</p></div></section>
-<section class="contribute chapter" id="support" aria-labelledby="contribute-title"><h2 id="contribute-title" data-enter>Help question the results.</h2><div><p data-enter>Found a false positive, a missed bug, or a prompt worth improving? Reports and pull requests help make the work better.</p><nav aria-label="Contribute to Argo" data-enter><a href="https://github.com/gigioneggiando/argo/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing guide</a><a href="https://github.com/gigioneggiando/argo/issues" target="_blank" rel="noopener">Open issues</a><a href="https://github.com/gigioneggiando/argo/discussions" target="_blank" rel="noopener">Discussions</a></nav></div></section></main><footer class="site-footer"><div><h2>Keep exploring</h2><nav aria-label="More about Argo"><a href="index.html">Overview</a><a href="findings.html">Public findings</a><a href="https://github.com/gigioneggiando/argo/wiki" target="_blank" rel="noopener">Documentation</a><a data-parent-home href="https://github.com/gigioneggiando">More from Luigi</a></nav></div><p>Produced by Argo. AI-assisted findings, human-reviewed before disclosure. Private reports stay with the affected project's disclosure process.</p></footer></body></html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Argo: source-code auditing with language models, human review and public upstream evidence."><meta property="og:title" content="Bugs found, fixes shared · Argo"><meta property="og:description" content="Argo: source-code auditing with language models, human review and public upstream evidence."><meta property="og:type" content="website"><meta name="theme-color" content="#121419"><title>Bugs found, fixes shared · Argo</title><link rel="icon" href="assets/eye.svg" type="image/svg+xml"><link rel="preload" href="assets/fonts/fraunces-var.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="style.css"><script>try{const t=localStorage.getItem('argo-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t;}catch{}</script><script src="script.js" defer></script></head><body class="overview-page"><a class="skip-link" href="#main">Skip to content</a><header class="site-header"><div class="identity"><a class="parent-link" data-parent-home href="https://github.com/gigioneggiando">Luigi Colluto</a><span class="path-divider" aria-hidden="true">/</span><a class="brand" href="index.html" aria-label="Argo overview"><svg class="eye-mark" viewBox="0 0 100 100" width="22" height="22" aria-hidden="true"><circle cx="50" cy="50" r="37" fill="none" stroke="currentColor" stroke-width="9"/><circle cx="50" cy="50" r="13" fill="currentColor"/></svg><span>Argo</span></a></div><nav aria-label="Project navigation"><a href="index.html" aria-current="page">Overview</a><a href="#findings">Findings</a><a href="https://github.com/gigioneggiando/argo/wiki" target="_blank" rel="noopener">Wiki</a><a href="https://github.com/gigioneggiando/argo" target="_blank" rel="noopener">GitHub</a></nav><button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch colour theme" title="Switch colour theme" hidden><svg class="theme-sun" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><svg class="theme-moon" viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 13.2A9 9 0 0 1 10.8 3.2 9 9 0 1 0 20.8 13.2Z"/></svg></button></header><main id="main"><div class="dashboard"><section class="intro" aria-labelledby="intro-title"><div><h1 id="intro-title">Bugs found, fixes shared.</h1><p>Argo helps me look for security bugs in open-source code. I review the results and report them upstream. Here’s what became public.</p></div><div class="intro-actions"><a class="button" href="#findings">Explore the findings <span aria-hidden="true">↓</span></a><a href="https://github.com/gigioneggiando/argo" target="_blank" rel="noopener">Meet the project on GitHub ↗</a></div></section><dl class="stats" aria-label="Public archive totals"><div><dt>Projects</dt><dd>26</dd></div><div><dt>Public PRs</dt><dd>66</dd></div><div><dt>Published advisories</dt><dd>24</dd></div><div><dt>Resolved records</dt><dd>83</dd></div><div><dt>CVEs listed</dt><dd>7</dd></div></dl><section class="distribution" id="distribution" aria-label="All public records at a glance"><div id="chartsStrip" class="charts-strip"><section class="chart-panel outcome-panel"><h2>Where things stand</h2><div class="outcome-body"><div class="outcome-ring"><svg viewBox="0 0 120 120" role="img" aria-label="Resolved: 83; Open: 6; Unpatched: 5; Other closed: 1"><circle class="ring-resolved" cx="60" cy="60" r="49" fill="none" stroke-width="10" pathLength="100" stroke-dasharray="87.36842105263159 12.63157894736841" stroke-dashoffset="0"/><circle class="ring-open" cx="60" cy="60" r="49" fill="none" stroke-width="10" pathLength="100" stroke-dasharray="6.315789473684211 93.6842105263158" stroke-dashoffset="-87.36842105263159"/><circle class="ring-unpatched" cx="60" cy="60" r="49" fill="none" stroke-width="10" pathLength="100" stroke-dasharray="5.263157894736842 94.73684210526316" stroke-dashoffset="-93.6842105263158"/><circle class="ring-closed" cx="60" cy="60" r="49" fill="none" stroke-width="10" pathLength="100" stroke-dasharray="1.0526315789473684 98.94736842105263" stroke-dashoffset="-98.94736842105263"/></svg><span><strong>95</strong><span>public records</span></span></div><dl class="outcome-legend"><div><dt><span class="legend-dot ring-resolved" aria-hidden="true"></span>Resolved</dt><dd class="bar-value">83</dd></div><div><dt><span class="legend-dot ring-open" aria-hidden="true"></span>Open</dt><dd class="bar-value">6</dd></div><div><dt><span class="legend-dot ring-unpatched" aria-hidden="true"></span>Unpatched</dt><dd class="bar-value">5</dd></div><div><dt><span class="legend-dot ring-closed" aria-hidden="true"></span>Other closed</dt><dd class="bar-value">1</dd></div></dl></div></section><section class="chart-panel"><h2>By severity</h2><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="sev" data-value="Critical" title="Filter by Critical" disabled>Critical</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:11.11111111111111%"></span></span><span class="bar-value">5</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="sev" data-value="High" title="Filter by High" disabled>High</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:66.66666666666666%"></span></span><span class="bar-value">30</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="sev" data-value="Medium" title="Filter by Medium" disabled>Medium</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:100%"></span></span><span class="bar-value">45</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="sev" data-value="Moderate" title="Filter by Moderate" disabled>Moderate</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:2.2222222222222223%"></span></span><span class="bar-value">1</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="sev" data-value="Low" title="Filter by Low" disabled>Low</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:26.666666666666668%"></span></span><span class="bar-value">12</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="sev" data-value="Info" title="Filter by Info" disabled>Info</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:2.2222222222222223%"></span></span><span class="bar-value">1</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="sev" data-value="Unspecified" title="Filter by Unspecified" disabled>Unspecified</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:2.2222222222222223%"></span></span><span class="bar-value">1</span></div></section><section class="chart-panel"><h2>Projects with most records</h2><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="q" data-value="LiveKit" title="Filter by LiveKit" disabled>LiveKit</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:100%"></span></span><span class="bar-value">14</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="q" data-value="ds4" title="Filter by ds4" disabled>ds4</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:78.57142857142857%"></span></span><span class="bar-value">11</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="q" data-value="open62541" title="Filter by open62541" disabled>open62541</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:64.28571428571429%"></span></span><span class="bar-value">9</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="q" data-value="moquette" title="Filter by moquette" disabled>moquette</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:50%"></span></span><span class="bar-value">7</span></div><div class="bar-row"><button type="button" class="chart-label" data-chart-filter="q" data-value="FreshRSS" title="Filter by FreshRSS" disabled>FreshRSS</button><span class="bar-track" aria-hidden="true"><span class="bar-fill" style="--bar:42.857142857142854%"></span></span><span class="bar-value">6</span></div></section></div><p class="chart-caption">Across all 95 public records. Select a severity or project to explore.</p></section><section class="archive" id="findings" aria-labelledby="findings-title"><div class="archive-heading"><h2 id="findings-title">Explore the findings</h2><p>Every record leads to a public pull request or advisory.</p></div><form id="filters" class="filters" role="search" hidden><label class="search-field">Search the archive<input type="search" id="searchInput" placeholder="Project, finding, CVE or keyword" autocomplete="off"></label><div class="filter-selects"><label>Severity<select id="severityFilter" data-filter="sev"><option value="">All severities</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select></label><label>Status<select id="statusFilter" data-filter="status"><option value="">All statuses</option></select></label><label>Language<select id="languageFilter" data-filter="lang"><option value="">All languages</option></select></label><label>Project stars<select id="starsFilter" data-filter="stars"><option value="0">Any</option><option value="1000">1,000+</option><option value="5000">5,000+</option><option value="20000">20,000+</option></select></label><button class="filter-reset" type="reset">Reset</button></div></form><div class="archive-tools"><p id="filterCount" role="status" aria-live="polite">95 records across 26 projects</p><button id="toggleCases" type="button" hidden>Expand all projects</button></div><div id="cases" class="cases"><details class="case" id="project-open62541" data-stars="3228" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/open62541/open62541" target="_blank" rel="noopener">open62541</a><span class="chip-lang">C</span></span><span class="blurb">Open-source C implementation of the OPC UA industrial communication stack.</span></span><span class="case-meta"><span class="tally">9 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/open62541/open62541/pull/8440" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #8440</span>
+        <span class="main">
+          <span class="ttl">Out-of-bounds read/write and silent truncation in the PKCS#11 TPM AES-CTR PubSub en/decrypt — a block-aligned size stored in an 8-bit CK_BYTE wraps past 255 (fix into 1.3–1.4)</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">OOB read/write</span><span class="tag">1.3–1.4</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/open62541/open62541/pull/8441" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #8441</span>
+        <span class="main">
+          <span class="ttl">Same PKCS#11 TPM AES-CTR out-of-bounds read/write and truncation fix, forward-ported to the 1.5 branch</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">OOB read/write</span><span class="tag">1.5</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/open62541/open62541/pull/8442" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #8442</span>
+        <span class="main">
+          <span class="ttl">A malformed async MSG response made the client clear an uninitialized UA_Response on the decode-failure path (uninitialized read)</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">uninitialized read</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/open62541/open62541/pull/8444" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #8444</span>
+        <span class="main">
+          <span class="ttl">HMAC/MAC verification compared tags with a non-constant-time, early-exit memcmp (a remotely observable timing side channel); switched to a length-checked constant-time compare</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">timing side channel</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/open62541/open62541/pull/8447" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #8447</span>
+        <span class="main">
+          <span class="ttl">Malicious OpenSecureChannel responses leaked decoded client-side heap on the nonce-reuse/error path — now freed (fix into 1.3)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">memory leak</span><span class="tag">1.3</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/open62541/open62541/pull/8448" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #8448</span>
+        <span class="main">
+          <span class="ttl">Same OpenSecureChannel decoded-heap leak fix, forward-ported to the 1.4 branch</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">memory leak</span><span class="tag">1.4</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/open62541/open62541/pull/8610" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #8610</span>
+        <span class="main">
+          <span class="ttl">Session authentication tokens now use a cryptographically stronger random source, with additional bounds checks for PubSub field counts and RegisterServer handling</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">session token</span><span class="tag">1.3</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/open62541/open62541/pull/8611" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #8611</span>
+        <span class="main">
+          <span class="ttl">Session authentication tokens now use a cryptographically stronger random source, with session-limit and SKS access hardening</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">session token</span><span class="tag">1.4</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/open62541/open62541/pull/8612" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #8612</span>
+        <span class="main">
+          <span class="ttl">Session authentication tokens now use a cryptographically stronger random source, with session-limit and ECC secret-length hardening</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">session token</span><span class="tag">1.5</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-gitea" data-stars="58342" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/go-gitea/gitea" target="_blank" rel="noopener">Gitea</a><span class="chip-lang">Go</span></span><span class="blurb">Self-hosted Git service with collaboration, package, and CI features.</span></span><span class="case-meta"><span class="tally">2 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/go-gitea/gitea/security/advisories/GHSA-469m-x4mw-38r3" data-sev="Moderate" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">An OAuth access token could be exchanged as a refresh token, extending access beyond its original lifetime (fixed in 28.1.0, reporter credited)</span>
+          <span class="tags"><span class="sev moderate">Moderate</span><span class="tag">CVE-2026-101023</span><span class="tag">OAuth token-kind validation</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/go-gitea/gitea/security/advisories/GHSA-xvfh-qwmh-f92w" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Private-user social graph, key and starred-repository API routes bypassed the visibility check (fixed in 1.27.3, reporter credited)</span>
+          <span class="tags"><span class="sev low">Low</span><span class="tag">CVE-2026-97859</span><span class="tag">missing authorization</span><span class="tag">CWE-862</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-mitmproxy" data-stars="45244" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/mitmproxy/mitmproxy" target="_blank" rel="noopener">mitmproxy</a><span class="chip-lang">Python</span></span><span class="blurb">Interactive TLS-capable HTTP proxy for debugging, testing and security analysis.</span></span><span class="case-meta"><span class="tally">2 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/mitmproxy/mitmproxy/pull/8469" data-sev="Info" target="_blank" rel="noopener">
+        <span class="ref">PR #8469</span>
+        <span class="main">
+          <span class="ttl">Basic-auth parsing rejected valid passwords containing colons; parsing now splits only at the first separator</span>
+          <span class="tags"><span class="sev muted">Info</span><span class="tag">RFC 7617</span><span class="tag">correctness</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/mitmproxy/mitmproxy/pull/8470" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #8470</span>
+        <span class="main">
+          <span class="ttl">Clarify that disabling inbound-header validation affects upstream responses as well as client requests</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">security documentation</span><span class="tag">response validation</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-baserow" data-stars="6082" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/baserow/baserow" target="_blank" rel="noopener">Baserow</a><span class="chip-lang">Python</span></span><span class="blurb">Open-source no-code platform for databases, automations and applications.</span></span><span class="case-meta"><span class="tally">1 record</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/baserow/baserow/pull/5972" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #5972</span>
+        <span class="main">
+          <span class="ttl">Data-sync properties preview now requires workspace permission; PostgreSQL syncs also honour the private-address setting</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">authorization</span><span class="tag">network egress</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-open-webui" data-stars="153353" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/open-webui/open-webui" target="_blank" rel="noopener">Open WebUI</a><span class="chip-lang">Python</span></span><span class="blurb">Self-hosted AI interface for LLMs and tools.</span></span><span class="case-meta"><span class="tally">2 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/open-webui/open-webui/security/advisories/GHSA-2h26-836q-4jh2" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Read-only tool shares exposed Python source through bulk export (fixed in v0.11.4, reporter credited)</span>
+          <span class="tags"><span class="sev medium">Medium<span class="score">6.5</span></span><span class="tag">broken access control</span><span class="tag">CWE-200</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/open-webui/open-webui/security/advisories/GHSA-gqfh-jxvw-74rp" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">OAuth-mode downstream connections, tool/MCP servers and terminals received the user’s browser cookie jar (session JWT) — fixed in v0.11.4</span>
+          <span class="tags"><span class="sev medium">Medium</span><span class="tag">session token disclosure</span><span class="tag">CWE-200</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-vaultwarden" data-stars="68479" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/dani-garcia/vaultwarden" target="_blank" rel="noopener">Vaultwarden</a><span class="chip-lang">Rust</span></span><span class="blurb">Self-hosted, Bitwarden-compatible password manager server.</span></span><span class="case-meta"><span class="tally">3 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-xwf8-pjh7-h589" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Cross-organization group assignment could grant full access to another organization&rsquo;s ciphers &mdash; fixed in 1.37.0</span>
+          <span class="tags"><span class="sev medium">Medium<span class="score">5.9</span></span><span class="tag">incorrect authorization</span><span class="tag">CWE-863</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-f3qw-qg77-hmm4" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Read-only collection members could inject ciphers through organization import &mdash; fixed in 1.37.0</span>
+          <span class="tags"><span class="sev medium">Medium<span class="score">4.3</span></span><span class="tag">permission bypass</span><span class="tag">CWE-863</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-hw4g-2v3f-74x5" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Second-stage favicon IP literals bypassed the icon endpoint&rsquo;s SSRF filter &mdash; fixed in 1.37.0</span>
+          <span class="tags"><span class="sev medium">Medium<span class="score">5.8</span></span><span class="tag">SSRF</span><span class="tag">CWE-918</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-pocketbase" data-stars="60668" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/pocketbase/pocketbase" target="_blank" rel="noopener">PocketBase</a><span class="chip-lang">Go</span></span><span class="blurb">Open-source Go backend: SQLite database, auth and admin dashboard in one file.</span></span><span class="case-meta"><span class="tally">1 record</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Unhandled panics in internal worker goroutines could terminate the server (fixed in v0.39.7 / v0.22.48, reporter credited)</span>
+          <span class="tags"><span class="sev high">High<span class="score">8.7</span></span><span class="tag">worker-goroutine panic (DoS)</span><span class="tag">CVE-2026-82410</span><span class="tag">GO-2026-6489</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-surrealdb" data-stars="33079" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/surrealdb/surrealdb" target="_blank" rel="noopener">SurrealDB</a><span class="chip-lang">Rust</span></span><span class="blurb">Distributed document-graph database for realtime applications.</span></span><span class="case-meta"><span class="tally">2 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/surrealdb/surrealdb/security/advisories/GHSA-jj89-wvrw-c4gp" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Surrealism WASI output buffering bypassed the module memory ceiling, allowing host-memory exhaustion — fixed in 3.3.0</span>
+          <span class="tags"><span class="sev medium">Medium<span class="score">4.9</span></span><span class="tag">resource exhaustion</span><span class="tag">CWE-770</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/surrealdb/surrealdb/security/advisories/GHSA-84w9-87hm-mxqx" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Non-ASCII values in embedded-JavaScript Headers could abort the server — fixed in 3.3.0</span>
+          <span class="tags"><span class="sev medium">Medium<span class="score">6.5</span></span><span class="tag">denial of service</span><span class="tag">CWE-248</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory - fixed</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-navidrome" data-stars="23499" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/navidrome/navidrome" target="_blank" rel="noopener">Navidrome</a><span class="chip-lang">Go</span></span><span class="blurb">Self-hosted music streaming server, Subsonic-API compatible.</span></span><span class="case-meta"><span class="tally">3 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/navidrome/navidrome/security/advisories/GHSA-82gh-4ggp-gfg5" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Share creation trusted a client-supplied userId as the share owner, exposing another user's library content (fixed in v0.64.0, reporter credited)</span>
+          <span class="tags"><span class="sev high">High</span><span class="tag">IDOR / broken access control</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/navidrome/navidrome/security/advisories/GHSA-hm54-32q6-3rcr" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">SQL injection via the artist role parameter, interpolated into a raw SQL ORDER BY when sorting by song/album count or size (fixed in v0.64.0, reporter credited)</span>
+          <span class="tags"><span class="sev high">High</span><span class="tag">SQL injection</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/navidrome/navidrome/security/advisories/GHSA-pr2j-mfc8-qjcc" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Plugin HTTP/WebSocket SSRF guard bypassable via DNS names resolving to private/loopback addresses (fixed in v0.64.0, co-credited)</span>
+          <span class="tags"><span class="sev medium">Medium</span><span class="tag">SSRF</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-mediamtx" data-stars="20107" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/bluenviron/mediamtx" target="_blank" rel="noopener">MediaMTX</a><span class="chip-lang">Go</span></span><span class="blurb">Zero-dependency real-time media server &amp; proxy (RTSP, RTMP, HLS, WebRTC, SRT, MoQ).</span></span><span class="case-meta"><span class="tally">1 record</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/bluenviron/mediamtx/security/advisories/GHSA-j55q-3r8w-j2r5" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Pre-auth whole-process crash (DoS): unbounded memory allocation from MoQ varint length fields — the SUBSCRIBE/PUBLISH namespace count and subgroup properties length each drive an unchecked make(), reachable before authentication on the default MoQ listener (fixed in v1.19.3, reporter credited)</span>
+          <span class="tags"><span class="sev high">High</span><span class="tag">MoQ varint unbounded alloc (pre-auth DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-legba" data-stars="1927" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/evilsocket/legba" target="_blank" rel="noopener">legba</a><span class="chip-lang">Rust</span></span><span class="blurb">A fast, modern credential brute-forcer and password sprayer.</span></span><span class="case-meta"><span class="tally">5 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/evilsocket/legba/pull/98" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #98</span>
+        <span class="main">
+          <span class="ttl">Two remote-triggerable panics (DoS) from untrusted input</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/evilsocket/legba/pull/99" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #99</span>
+        <span class="main">
+          <span class="ttl">Bound two server-controlled allocations (Kerberos, AMQP) + Kerberos read timeout</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">unbounded alloc</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/evilsocket/legba/pull/100" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #100</span>
+        <span class="main">
+          <span class="ttl">Cap the IRC banner read + add a read deadline</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/evilsocket/legba/pull/101" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #101</span>
+        <span class="main">
+          <span class="ttl">Avoid a panic on a multi-byte UTF-8 SMTP reply line</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">panic / DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/evilsocket/legba/pull/102" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #102</span>
+        <span class="main">
+          <span class="ttl">Add read/write timeouts to the RDP connection</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote hang</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-halloy" data-stars="4401" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/squidowl/halloy" target="_blank" rel="noopener">halloy</a><span class="chip-lang">Rust</span></span><span class="blurb">A modern IRC client.</span></span><span class="case-meta"><span class="tally">5 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/squidowl/halloy/pull/2149" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #2149</span>
+        <span class="main">
+          <span class="ttl">Harden against three remote-DoS issues (reported via private advisory)</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS ×3</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/squidowl/halloy/pull/2331" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #2331</span>
+        <span class="main">
+          <span class="ttl">Bound the number of concurrently open IRCv3 batches from a server</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unbounded batches (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/squidowl/halloy/pull/2366" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #2366</span>
+        <span class="main">
+          <span class="ttl">Harden DCC filename sanitization against reserved names and illegal characters (includes #2329)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">DCC filename sanitization</span><span class="tag">CWE-67</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/squidowl/halloy/pull/2330" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #2330</span>
+        <span class="main">
+          <span class="ttl">Guard server-icon decoding against oversized (decompression-bomb) images</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">decompression bomb</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row open" href="https://github.com/squidowl/halloy/pull/2332" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #2332</span>
+        <span class="main">
+          <span class="ttl">Redact credentials from the IRC protocol log</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">credential logging</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-libcsp" data-stars="677" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/libcsp/libcsp" target="_blank" rel="noopener">libcsp</a><span class="chip-lang">C</span></span><span class="blurb">The CubeSat Space Protocol: a small network stack used on spacecraft and embedded systems.</span></span><span class="case-meta"><span class="tally">1 record</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/libcsp/libcsp/pull/992" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #992</span>
+        <span class="main">
+          <span class="ttl">Fix use-after-free in the CSP_PS service handler</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">use-after-free</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-moquette" data-stars="2451" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/moquette-io/moquette" target="_blank" rel="noopener">moquette</a><span class="chip-lang">Java</span></span><span class="blurb">A lightweight MQTT broker.</span></span><span class="case-meta"><span class="tally">7 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq" data-sev="Critical" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Pattern-ACL wildcard injection lets an attacker widen per-tenant %c/%u ACL rules via clientId/username</span>
+          <span class="tags"><span class="sev critical">Critical</span><span class="tag">authz bypass</span><span class="tag">CVE-2026-85724</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/moquette-io/moquette/pull/959" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #959</span>
+        <span class="main">
+          <span class="ttl">Guard the periodic expiration task so one failing entity can't disable all expirations</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">fail-open / DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/moquette-io/moquette/pull/958" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #958</span>
+        <span class="main">
+          <span class="ttl">Reject a malformed $share subscription before parsing it</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/moquette-io/moquette/pull/957" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #957</span>
+        <span class="main">
+          <span class="ttl">Keep the session event loop alive when a command throws</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/moquette-io/moquette/pull/964" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #964</span>
+        <span class="main">
+          <span class="ttl">Namespace the H2 queue metadata map to prevent a client-id collision</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">durable corruption</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/moquette-io/moquette/pull/963" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #963</span>
+        <span class="main">
+          <span class="ttl">Guard pattern ACL substitution against a null username</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">remote DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/moquette-io/moquette/pull/967" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #967</span>
+        <span class="main">
+          <span class="ttl">Fail closed (not open to PermitAll/AcceptAll) when a configured authorizator/authenticator class fails to load</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">fail-open authz</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-ds4" data-stars="21366" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/antirez/ds4" target="_blank" rel="noopener">ds4</a><span class="chip-lang">C</span></span><span class="blurb">A compact C engine for running DeepSeek-class LLMs with an agent / tool loop.</span></span><span class="case-meta"><span class="tally">11 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><div class="row fixed" data-sev="Critical">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/539" target="_blank" rel="noopener">PR #539</a></span>
+        <span class="main">
+          <span class="ttl">Fix pre-auth double-free in the JSON request parser (applied via commit 8e49a5c, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Critical</span><span class="tag">double-free</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Merged upstream</span>
+          <a class="mergelink" href="https://github.com/antirez/ds4/commit/8e49a5cc2" target="_blank" rel="noopener">merged&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><div class="row fixed" data-sev="High">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/542" target="_blank" rel="noopener">PR #542</a></span>
+        <span class="main">
+          <span class="ttl">Bound file-declared length prefixes in the model loader (applied via commit c7689db, co-authored with antirez, alongside #543 and #545)</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">heap overflow</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Merged upstream</span>
+          <a class="mergelink" href="https://github.com/antirez/ds4/commit/c7689dbcf" target="_blank" rel="noopener">merged&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><div class="row fixed" data-sev="Medium">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/543" target="_blank" rel="noopener">PR #543</a></span>
+        <span class="main">
+          <span class="ttl">Cross-check tensor data size against shape in FP8/FP4 dequant (applied via commit c7689db, co-authored with antirez, alongside #542 and #545)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">out-of-bounds read</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Merged upstream</span>
+          <a class="mergelink" href="https://github.com/antirez/ds4/commit/c7689dbcf" target="_blank" rel="noopener">merged&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><div class="row fixed" data-sev="Medium">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/544" target="_blank" rel="noopener">PR #544</a></span>
+        <span class="main">
+          <span class="ttl">Cap file-declared lengths in agent KV-cache reads (applied via commit 0fa15c6, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">memory DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Merged upstream</span>
+          <a class="mergelink" href="https://github.com/antirez/ds4/commit/0fa15c6c6" target="_blank" rel="noopener">merged&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><div class="row fixed" data-sev="Medium">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/545" target="_blank" rel="noopener">PR #545</a></span>
+        <span class="main">
+          <span class="ttl">Bound GGUF metadata / tensor counts by file size before allocating (applied via commit c7689db, co-authored with antirez, alongside #542 and #543)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">resource exhaustion</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Merged upstream</span>
+          <a class="mergelink" href="https://github.com/antirez/ds4/commit/c7689dbcf" target="_blank" rel="noopener">merged&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><div class="row fixed" data-sev="Low">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/546" target="_blank" rel="noopener">PR #546</a></span>
+        <span class="main">
+          <span class="ttl">Reject an oversized snapshot token_count before allocating (applied via commit f02d79c, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">distributed DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Merged upstream</span>
+          <a class="mergelink" href="https://github.com/antirez/ds4/commit/f02d79cb6" target="_blank" rel="noopener">merged&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><div class="row fixed" data-sev="Medium">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/547" target="_blank" rel="noopener">PR #547</a></span>
+        <span class="main">
+          <span class="ttl">Make tool-output validation O(n) instead of O(n²) (pre-auth CPU DoS) (applied via commit a169cff, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">algorithmic DoS</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Merged upstream</span>
+          <a class="mergelink" href="https://github.com/antirez/ds4/commit/a169cffa4" target="_blank" rel="noopener">merged&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><div class="row merged" data-sev="Low">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/548" target="_blank" rel="noopener">PR #548</a></span>
+        <span class="main">
+          <span class="ttl">Bound tokenizer merges count to INT32_MAX like the tokens table (antirez/ds4#548 itself is still open upstream; adopted with authorship preserved into the community fork elkaix/ds4)</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">integer bound</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <a class="mergelink" href="https://github.com/elkaix/ds4/pull/1" target="_blank" rel="noopener">in&nbsp;fork&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><div class="row fixed" data-sev="Low">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/antirez/ds4/pull/541" target="_blank" rel="noopener">PR #541</a></span>
+        <span class="main">
+          <span class="ttl">Handle NaN in json_int() (undefined double→int cast) (applied via commit 8340f35, co-authored with antirez)</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">undefined behavior</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Merged upstream</span>
+          <a class="mergelink" href="https://github.com/antirez/ds4/commit/8340f351a" target="_blank" rel="noopener">merged&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><div class="row merged" data-sev="Low">
+        <span class="ref"><a class="reflink stretch" href="https://github.com/elkaix/ds4/pull/1" target="_blank" rel="noopener">Fork PR #1</a></span>
+        <span class="main">
+          <span class="ttl">Unlink the bash-tool output temp file on job cleanup (antirez/ds4#540 itself is still open upstream; adopted with authorship preserved into the community fork elkaix/ds4)</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">resource cleanup</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+          <a class="mergelink" href="https://github.com/elkaix/ds4/pull/1" target="_blank" rel="noopener">in&nbsp;fork&nbsp;&#8599;</a>
+        </span>
+      </div></li>
+<li><a class="row issue" href="https://github.com/antirez/ds4/issues/549" target="_blank" rel="noopener">
+        <span class="ref">Issue #549</span>
+        <span class="main">
+          <span class="ttl">Follow-up hardening / design items from a security review</span>
+          <span class="tags"><span class="tag">hardening notes</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status issue"><span class="dot"></span>Issue</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-gguf-tools" data-stars="357" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/antirez/gguf-tools" target="_blank" rel="noopener">gguf-tools</a><span class="chip-lang">C</span></span><span class="blurb">A C implementation of the GGUF model-file format used by llama.cpp / ggml.</span></span><span class="case-meta"><span class="tally">3 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row open" href="https://github.com/antirez/gguf-tools/pull/31" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #31</span>
+        <span class="main">
+          <span class="ttl">Fix an out-of-bounds write in the Q4_0/Q4_1 dequantizer's second block loop</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">heap overflow</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open · in review</span>
+
+        </span>
+      </a></li>
+<li><a class="row open" href="https://github.com/antirez/gguf-tools/pull/32" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #32</span>
+        <span class="main">
+          <span class="ttl">Grow the split-mixtral tensor array instead of asserting (heap overflow on crafted models)</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">heap overflow</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open · in review</span>
+
+        </span>
+      </a></li>
+<li><a class="row open" href="https://github.com/antirez/gguf-tools/pull/33" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #33</span>
+        <span class="main">
+          <span class="ttl">Bound tensor data offset/size against the mapping in gguf_get_tensor</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">out-of-bounds read</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open · in review</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-recuperabit" data-stars="624" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/Lazza/RecuperaBit" target="_blank" rel="noopener">RecuperaBit</a><span class="chip-lang">Python</span></span><span class="blurb">Reconstructs and recovers files from damaged NTFS file systems.</span></span><span class="case-meta"><span class="tally">2 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/Lazza/RecuperaBit/pull/143" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #143</span>
+        <span class="main">
+          <span class="ttl">Isolate command dispatch and the deep-parse phase from crashing the whole session</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">crash isolation</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/Lazza/RecuperaBit/pull/144" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #144</span>
+        <span class="main">
+          <span class="ttl">Escape reconstructed names in CSV, body-file and Tikz/LaTeX exports</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">output injection</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-authentik" data-stars="25425" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/goauthentik/authentik" target="_blank" rel="noopener">authentik</a><span class="chip-lang">Python</span></span><span class="blurb">A self-hosted identity provider (SSO) implementing SAML, OAuth2/OIDC, LDAP and SCIM.</span></span><span class="case-meta"><span class="tally">2 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/goauthentik/authentik/security/advisories/GHSA-cqj8-fxxf-9pg7" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">A SAML Source accepted an assertion an IdP had issued for a different service provider, and accepted the same assertion more than once, allowing an authentication bypass (fixed in 2026.2.7 / 2026.5.7 / 2026.8.2, reporter credited)</span>
+          <span class="tags"><span class="sev high">High<span class="score">7.4</span></span><span class="tag">CVE-2026-94612</span><span class="tag">auth bypass</span><span class="tag">SAML assertion confusion / replay</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/goauthentik/authentik/security/advisories/GHSA-m9h4-7j9c-55x9" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">Several credential-bearing configurations returned their stored secrets over the API to anyone holding view permission alone (fixed in 2026.2.7 / 2026.5.7 / 2026.8.2, reporter credited)</span>
+          <span class="tags"><span class="sev high">High<span class="score">8.1</span></span><span class="tag">CVE-2026-94611</span><span class="tag">credential exposure</span><span class="tag">broken access control</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-coturn" data-stars="14294" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/coturn/coturn" target="_blank" rel="noopener">coturn</a><span class="chip-lang">C</span></span><span class="blurb">A widely-deployed TURN and STUN relay server for WebRTC NAT traversal.</span></span><span class="case-meta"><span class="tally">2 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">addr_less_eq() compares IPv6 range endpoints byte-by-byte instead of numerically, letting an authenticated TURN client bypass denied-peer-ip / allowed-peer-ip IPv6 ranges (a TURN-specific SSRF)</span>
+          <span class="tags"><span class="sev medium">Medium</span><span class="tag">ACL bypass / SSRF</span><span class="tag">CVE-2026-73213</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/coturn/coturn/security/advisories/GHSA-67c2-q5xv-f85p" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA</span>
+        <span class="main">
+          <span class="ttl">An authenticated client can grow the shared multiplex-peer demux table without limit in multiplex-peer mode</span>
+          <span class="tags"><span class="sev medium">Medium</span><span class="tag">resource exhaustion</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status advisory"><span class="dot"></span>Advisory · fixed</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-livekit" data-stars="20332" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/livekit/livekit" target="_blank" rel="noopener">LiveKit</a><span class="chip-lang">Go</span></span><span class="blurb">Open-source, self-hostable WebRTC infrastructure (SFU) for real-time audio, video, and data.</span></span><span class="case-meta"><span class="tally">14 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4782" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #4782</span>
+        <span class="main">
+          <span class="ttl">MigrationDataCache buffered an unbounded number and size of reliable data packets during the 2-second migration window; now capped at 4&nbsp;MiB with excess dropped</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unbounded buffering (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4741" data-sev="Critical" target="_blank" rel="noopener">
+        <span class="ref">PR #4741</span>
+        <span class="main">
+          <span class="ttl">Data-track packet header parser allowed hdrSize to exceed buffer length, crashing the whole server process on a single malformed message from any joined participant</span>
+          <span class="tags"><span class="sev muted">Critical</span><span class="tag">OOB slice panic (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4741" data-sev="Critical" target="_blank" rel="noopener">
+        <span class="ref">PR #4741</span>
+        <span class="main">
+          <span class="ttl">Integer wraparound in the same data-track header parser could also cause an out-of-bounds slice read/panic for large extension-size values</span>
+          <span class="tags"><span class="sev muted">Critical</span><span class="tag">integer wraparound</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4739" data-sev="Critical" target="_blank" rel="noopener">
+        <span class="ref">PR #4739</span>
+        <span class="main">
+          <span class="ttl">Unclamped Dependency-Descriptor spatial/temporal IDs could index a fixed array out of bounds and crash the process</span>
+          <span class="tags"><span class="sev muted">Critical</span><span class="tag">array index panic (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4757" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #4757</span>
+        <span class="main">
+          <span class="ttl">Unauthenticated, oversized Twirp request bodies were fully decoded before any bridge-grant check ran</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">pre-auth body decode (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4743" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #4743</span>
+        <span class="main">
+          <span class="ttl">No maximum read-message size was configured on the client-facing signaling WebSocket, allowing unbounded memory growth from a single connection</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unbounded WS message (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4750" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #4750</span>
+        <span class="main">
+          <span class="ttl">Per-participant pendingTracks map grew without bound; a connection could add tracks without publishing them to exhaust server memory</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unbounded map growth (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #4742</span>
+        <span class="main">
+          <span class="ttl">Malformed TURN deny_peer_cidrs entries silently disabled the intended deny rule instead of failing closed</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">TURN config parsing</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4744" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #4744</span>
+        <span class="main">
+          <span class="ttl">A single participant credential could open unlimited TURN relay allocations, exhausting the shared relay-port range for everyone else</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">missing per-user quota (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4758" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #4758</span>
+        <span class="main">
+          <span class="ttl">DownTrack.handleRTCP spawned one goroutine per incoming RTCP NACK packet with no cap, letting a peer exhaust server resources</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">unthrottled goroutine spawn (DoS)</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4756" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">PR #4756</span>
+        <span class="main">
+          <span class="ttl">Authentication failures logged and reflected raw bearer tokens and API-key identifiers back to the caller</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">credential logging</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4749" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">PR #4749</span>
+        <span class="main">
+          <span class="ttl">A partially configured Prometheus Basic Auth (only username or only password set) silently left the metrics endpoint fully unauthenticated</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">auth misconfiguration</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">PR #4742</span>
+        <span class="main">
+          <span class="ttl">Whitespace-only external TURN secret files silently disabled dynamic credential validation</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">TURN config parsing</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li>
+<li><a class="row fixed" href="https://github.com/livekit/livekit/pull/4742" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">PR #4742</span>
+        <span class="main">
+          <span class="ttl">TURN TTL configuration accepted negative values and overflowing duration conversions</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">TURN config parsing</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed independently</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-ntfy" data-stars="33580" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/binwiederhier/ntfy" target="_blank" rel="noopener">ntfy</a><span class="chip-lang">Go</span></span><span class="blurb">Simple HTTP-based pub-sub notification service — send push notifications via a plain PUT/POST, no app-specific setup.</span></span><span class="case-meta"><span class="tally">1 record</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row open" href="https://github.com/binwiederhier/ntfy/pull/1845" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">PR #1845</span>
+        <span class="main">
+          <span class="ttl">ACL and account revocation did not reliably cancel existing live/WebPush subscriptions, letting a revoked user keep receiving private-topic messages</span>
+          <span class="tags"><span class="sev muted">High</span><span class="tag">broken access control</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open · in review</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-freshrss" data-stars="16071" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/FreshRSS/FreshRSS" target="_blank" rel="noopener">FreshRSS</a><span class="chip-lang">PHP</span></span><span class="blurb">Self-hosted RSS / Atom feed aggregator.</span></span><span class="case-meta"><span class="tally">6 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/FreshRSS/FreshRSS/pull/9336" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #9336</span>
+        <span class="main">
+          <span class="ttl">Disabled accounts kept token access (RSS/OPML export, feed refresh) — token validation now requires the account be enabled</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">broken authorization</span><span class="tag">CWE-613</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/FreshRSS/FreshRSS/pull/9335" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #9335</span>
+        <span class="main">
+          <span class="ttl">Privileged self-updater mutations were accepted via GET without CSRF; now require POST + token, and the post-config step is bound to a one-time marker</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">CSRF</span><span class="tag">CWE-352</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged into edge</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/FreshRSS/FreshRSS/pull/9333" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #9333</span>
+        <span class="main">
+          <span class="ttl">Session ID not rotated on remember-me restore, HTTP auth or self-registration auto-login (session fixation)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">session fixation</span><span class="tag">CWE-384</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged into edge</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/FreshRSS/FreshRSS/pull/9334" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">PR #9334</span>
+        <span class="main">
+          <span class="ttl">One-time login challenge nonce stayed reusable and survived logout — now consumed on use (single-use)</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">auth replay</span><span class="tag">CWE-294</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged into edge</span>
+
+        </span>
+      </a></li>
+<li><a class="row open" href="https://github.com/FreshRSS/FreshRSS/pull/9337" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #9337</span>
+        <span class="main">
+          <span class="ttl">Remote responses buffered and decompressed with no byte limit — response body and headers now capped (decompression bomb / memory exhaustion)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">resource exhaustion</span><span class="tag">CWE-400</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status open"><span class="dot"></span>Open</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/FreshRSS/FreshRSS/pull/9332" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #9332</span>
+        <span class="main">
+          <span class="ttl">ZIP import expanded an unlimited number and total size of members — now bounded (decompression bomb)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">zip bomb</span><span class="tag">CWE-409</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged into edge</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-php-cs-fixer" data-stars="13552" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/PHP-CS-Fixer/PHP-CS-Fixer" target="_blank" rel="noopener">PHP-CS-Fixer</a><span class="chip-lang">PHP</span></span><span class="blurb">The PHP Coding Standards Fixer.</span></span><span class="case-meta"><span class="tally">3 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/PHP-CS-Fixer/PHP-CS-Fixer/pull/9852" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #9852</span>
+        <span class="main">
+          <span class="ttl">Cache file and directory were created world-writable regardless of umask — a co-located local user could forge a cache entry to bypass the style gate</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">world-writable</span><span class="tag">CWE-732</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/PHP-CS-Fixer/PHP-CS-Fixer/pull/9856" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">PR #9856</span>
+        <span class="main">
+          <span class="ttl">Refuse a symlinked cache path before it can redirect a cache write outside its intended location</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">symlink path hardening</span><span class="tag">CWE-59</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li>
+<li><a class="row merged" href="https://github.com/PHP-CS-Fixer/PHP-CS-Fixer/pull/9855" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">PR #9855</span>
+        <span class="main">
+          <span class="ttl">Reject wrong-typed cache data so a corrupt cache is rebuilt instead of crashing the process</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">cache validation</span><span class="tag">CWE-20</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-duckdb" data-stars="42158" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/duckdb/duckdb" target="_blank" rel="noopener">DuckDB</a><span class="chip-lang">C++</span></span><span class="blurb">In-process analytical database and SQL engine.</span></span><span class="case-meta"><span class="tally">1 record</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row fixed" href="https://github.com/duckdb/duckdb/issues/24955" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">Issue #24955</span>
+        <span class="main">
+          <span class="ttl">Parquet GZIP decompression read past a member missing its 8-byte footer (issue #24955; fixed in PR #26499)</span>
+          <span class="tags"><span class="sev muted">Medium</span><span class="tag">out-of-bounds read</span><span class="tag">CWE-125</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status fixed"><span class="dot"></span>Fixed upstream</span>
+          <a class="mergelink" href="https://github.com/duckdb/duckdb/pull/26499" target="_blank" rel="noopener">fix&nbsp;PR&nbsp;&#8599;</a>
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-n8n" data-stars="207446" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/n8n-io/n8n" target="_blank" rel="noopener">n8n</a><span class="chip-lang">TypeScript</span></span><span class="blurb">Workflow automation platform with an MCP browser server.</span></span><span class="case-meta"><span class="tally">1 record</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row merged" href="https://github.com/n8n-io/n8n/pull/36850" data-sev="Low" target="_blank" rel="noopener">
+        <span class="ref">PR #36850</span>
+        <span class="main">
+          <span class="ttl">Evict idle MCP browser sessions to prevent retained browser connections</span>
+          <span class="tags"><span class="sev muted">Low</span><span class="tag">session lifecycle</span><span class="tag">CWE-770</span></span>
+        </span>
+        <span class="rowend">
+          <span class="status merged"><span class="dot"></span>Merged</span>
+
+        </span>
+      </a></li></ul></details>
+<details class="case" id="project-proxysql" data-stars="6935" open><summary class="case-head"><span class="case-title"><span class="name"><a href="https://github.com/sysown/proxysql" target="_blank" rel="noopener">ProxySQL</a><span class="chip-lang">C++</span></span><span class="blurb">High-performance proxy for MySQL and PostgreSQL traffic.</span></span><span class="case-meta"><span class="tally">5 records</span><span class="project-toggle" aria-hidden="true"></span></span></summary><ul class="rows"><li><a class="row advisory" href="https://github.com/sysown/proxysql/security/advisories/GHSA-qg2m-q3ch-cg9v" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA-qg2m-q3ch-cg9v</span>
+        <span class="main">
+          <span class="ttl">Truncated compressed MySQL packet tail can abort the process; NDEBUG builds also read out of bounds</span>
+          <span class="tags"><span class="sev moderate">Moderate</span><span class="tag">CWE-125</span><span class="tag">Reporter credited</span></span>
+        </span>
+        <span class="rowend"><span class="status advisory"><span class="dot"></span>Advisory · unpatched</span></span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/sysown/proxysql/security/advisories/GHSA-5cf5-7gfq-rrj6" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA-5cf5-7gfq-rrj6</span>
+        <span class="main">
+          <span class="ttl">Short COM_STMT_EXECUTE packet triggers an out-of-bounds statement-ID read</span>
+          <span class="tags"><span class="sev moderate">Moderate</span><span class="tag">CWE-125</span><span class="tag">Reporter credited</span></span>
+        </span>
+        <span class="rowend"><span class="status advisory"><span class="dot"></span>Advisory · unpatched</span></span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/sysown/proxysql/security/advisories/GHSA-x23w-3v26-vgvj" data-sev="Medium" target="_blank" rel="noopener">
+        <span class="ref">GHSA-x23w-3v26-vgvj</span>
+        <span class="main">
+          <span class="ttl">Unbounded length-encoded integer parsing permits a pre-authentication out-of-bounds read</span>
+          <span class="tags"><span class="sev moderate">Moderate</span><span class="tag">CWE-125</span><span class="tag">Reporter credited</span></span>
+        </span>
+        <span class="rowend"><span class="status advisory"><span class="dot"></span>Advisory · unpatched</span></span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/sysown/proxysql/security/advisories/GHSA-r23x-jg5r-jmcc" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">GHSA-r23x-jg5r-jmcc</span>
+        <span class="main">
+          <span class="ttl">Oversized COM_STMT_EXECUTE bind value causes an out-of-bounds read forwarded to the backend</span>
+          <span class="tags"><span class="sev high">High</span><span class="tag">CWE-125</span><span class="tag">Reporter credited</span></span>
+        </span>
+        <span class="rowend"><span class="status advisory"><span class="dot"></span>Advisory · unpatched</span></span>
+      </a></li>
+<li><a class="row advisory" href="https://github.com/sysown/proxysql/security/advisories/GHSA-33xp-q4g3-r79r" data-sev="High" target="_blank" rel="noopener">
+        <span class="ref">GHSA-33xp-q4g3-r79r</span>
+        <span class="main">
+          <span class="ttl">Unauthenticated PostgreSQL packet length can trigger an unbounded memory allocation</span>
+          <span class="tags"><span class="sev high">High</span><span class="tag">CWE-770</span><span class="tag">Reporter credited</span></span>
+        </span>
+        <span class="rowend"><span class="status advisory"><span class="dot"></span>Advisory · unpatched</span></span>
+      </a></li></ul></details></div><div id="noResults" class="no-results" hidden><h2>No matching findings</h2><p>Try another term or clear the filters.</p><button id="resetFilters" class="button" type="button">Reset filters</button></div><p class="source-note">This is a snapshot of the public archive. Open an upstream link for the latest discussion. Records include fixes, backports and advisories, so they are not a count of distinct vulnerabilities. Published advisories can still be unpatched.</p><noscript><p>All public records are shown under their project headings. Search and filters are available when JavaScript is enabled.</p></noscript></section><section class="about-panel" id="support" aria-labelledby="about-title"><div><h2 id="about-title">A finding is a starting point.</h2><p>Argo coordinates language models in a structured source-code review. Human review checks the result; the upstream record shows what happened next. These records show practical work, rather than a complete measurement of what the system can find or miss.</p><p>Only public findings are listed. Private disclosures stay off this site until they are public. Argo has reviewed code in more languages than this archive represents.</p><p>Luigi is credited on <a href="https://livekit.com/security/hall-of-fame" target="_blank" rel="noopener">LiveKit’s Security Hall of Fame</a>. That recognition belongs to a private disclosure; the LiveKit records here link to public fixes. The individual PRs do not name the reporter.</p><h2>Help make it better.</h2><p>Found a false positive, a missed bug, or a prompt worth improving? Reports and pull requests are welcome.</p><nav aria-label="Contribute to Argo"><a href="https://github.com/gigioneggiando/argo/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing guide</a><a href="https://github.com/gigioneggiando/argo/issues" target="_blank" rel="noopener">Open issues</a><a href="https://github.com/gigioneggiando/argo/discussions" target="_blank" rel="noopener">Discussions</a></nav></div></section></div></main><footer class="site-footer"><div><h2>Keep exploring</h2><nav aria-label="More about Argo"><a href="index.html">Overview</a><a href="findings.html">Public findings</a><a href="https://github.com/gigioneggiando/argo/wiki" target="_blank" rel="noopener">Documentation</a><a data-parent-home href="https://github.com/gigioneggiando">More from Luigi</a></nav></div><p>Produced by Argo. AI-assisted findings, human-reviewed before disclosure. Private reports stay with the affected project's disclosure process.</p></footer></body></html>

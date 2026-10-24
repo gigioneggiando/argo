@@ -51,14 +51,26 @@ try{
  const sums=await p.eval(()=>[...document.querySelectorAll('.chart-panel')].slice(0,2).map(panel=>[...panel.querySelectorAll('.bar-value')].reduce((n,e)=>n+ +e.textContent,0)));
  ensure(sums.every(n=>n===95),'Chart totals do not match records');
  await p.goto(new URL('index.html',root).href);
+ ensure(await p.eval(()=>document.querySelectorAll('.row').length===95&&document.querySelectorAll('.chart-panel').length===3&&!document.getElementById('filters').hidden),'Home must include charts and the complete searchable archive');
+ await p.eval(()=>document.querySelector('[data-chart-filter="sev"][data-value="Critical"]').click());
+ ensure(await p.eval(()=>document.getElementById('severityFilter').value==='Critical'&&[...document.querySelectorAll('.rows li:not([hidden]) .row')].every(r=>r.dataset.sev==='Critical')),'Severity chart shortcut failed');
+ await p.eval(()=>document.querySelector('[data-chart-filter="q"]').click());
+ ensure(await p.eval(()=>{const q=document.getElementById('searchInput').value;return q.length>0&&[...document.querySelectorAll('.case:not([hidden])')].every(s=>s.querySelector('.name a').textContent===q);}), 'Project chart shortcut failed');
+ ensure(await p.eval(()=>document.querySelectorAll('#themeToggle svg:not([hidden])').length===1&&getComputedStyle(document.getElementById('themeToggle')).borderRadius==='50%'),'Theme control must be round with one visible icon');
  await p.eval(()=>document.getElementById('themeToggle').click());
  const theme=await p.eval(()=>document.documentElement.dataset.theme);
  await p.goto(new URL('findings.html',root).href);
  ensure(await p.eval(t=>document.documentElement.dataset.theme===t,theme),'Theme did not persist');
+ ensure(await p.eval(()=>document.querySelectorAll('#themeToggle svg:not([hidden])').length===1),'Theme icon did not update');
  await p.screenshot({path:'.taste-skill/findings-light-mobile.jpg',quality:85});
  const noJS=await b.newPage({width:390,height:844,mobile:true});
  await noJS.send('Emulation.setScriptExecutionDisabled',{value:true});
  await noJS.goto(new URL('findings.html',root).href);
  ensure(await noJS.eval(()=>document.querySelectorAll('.row').length===95&&document.querySelectorAll('.case[open]').length===26&&document.getElementById('filters').hidden),'No-JS archive is incomplete');
- console.log('PASS: all 95 original records, statuses, severities and evidence links preserved; search, zero/reset, filter intersections, project controls, deep links, charts, theme persistence, mobile width and no-JS archive. One broken placeholder now links to the verified fork PR.');
+ await noJS.goto(new URL('index.html',root).href);
+ ensure(await noJS.eval(()=>document.querySelectorAll('.row').length===95&&document.querySelectorAll('.chart-panel').length===3&&[...document.querySelectorAll('.chart-panel')].slice(0,2).every(panel=>[...panel.querySelectorAll('.bar-value')].reduce((n,e)=>n+ +e.textContent,0)===95)),'No-JS home/charts are incomplete');
+ const desktop=await b.newPage({width:1440,height:900,reducedMotion:true});
+ await desktop.goto(new URL('index.html',root).href);
+ ensure(await desktop.eval(()=>document.querySelectorAll('.chart-panel').length===3&&[...document.querySelectorAll('.chart-panel')].every(el=>el.getBoundingClientRect().bottom<innerHeight)&&document.getElementById('searchInput').getBoundingClientRect().bottom<innerHeight),'Charts and search must be visible on the first desktop screen');
+ console.log('PASS: all 95 original records and evidence links preserved; home and archive search, zero/reset, filters, chart shortcuts, direct links, chart totals, round sun/moon switch, theme persistence, first-screen visibility, mobile width and no-JS content.');
 }finally{await b.close();}

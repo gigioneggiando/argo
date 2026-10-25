@@ -21,6 +21,7 @@
   const count=document.getElementById('filterCount'),empty=document.getElementById('noResults'),toggle=document.getElementById('toggleCases'),search=document.getElementById('searchInput');
   const statuses=['merged','advisory','fixed','open','issue','closed'];
   const state={sev:'',status:'',lang:'',stars:0,q:''};
+  const severityGroup=label=>label==='Moderate'?'Medium':label;
   const counts={severity:new Map(),status:new Map(),projects:new Map()},languages=new Set();
   cases.forEach(sec=>{
     sec.dataset.lang=sec.querySelector('.chip-lang')?.textContent.trim()||'';
@@ -30,7 +31,7 @@
     sec._rows.forEach(row=>{
       row.dataset.status=statuses.find(s=>row.classList.contains(s))||'open';
       row._search=(name+' '+sec.dataset.lang+' '+sec.querySelector('.blurb').textContent+' '+row.textContent).toLowerCase().replace(/\s+/g,' ');
-      for(const [key,value] of [['severity',row.dataset.sev||'Unspecified'],['status',row.dataset.status],['projects',name]])counts[key].set(value,(counts[key].get(value)||0)+1);
+      for(const [key,value] of [['severity',severityGroup(row.dataset.sev||'Unspecified')],['status',row.dataset.status],['projects',name]])counts[key].set(value,(counts[key].get(value)||0)+1);
     });
   });
   const option=(parent,value,label)=>{const el=document.createElement('option');el.value=value;el.textContent=label;parent.append(el);};
@@ -63,7 +64,7 @@
       const projectMatches=(+sec.dataset.stars>=state.stars)&&(!state.lang||sec.dataset.lang===state.lang);
       let matches=0;
       sec._rows.forEach(row=>{
-        const show=projectMatches&&(!state.sev||(row.dataset.sev||'Unspecified')===state.sev)&&(!state.status||row.dataset.status===state.status)&&(!state.q||row._search.includes(state.q));
+        const show=projectMatches&&(!state.sev||severityGroup(row.dataset.sev||'Unspecified')===state.sev)&&(!state.status||row.dataset.status===state.status)&&(!state.q||row._search.includes(state.q));
         row.closest('li').hidden=!show;
         if(show)matches++;
       });

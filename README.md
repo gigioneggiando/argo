@@ -6,7 +6,7 @@
 
 > *Argus Panoptes, the all-seeing watchman — a hundred eyes on your code.*
 
-**Live findings:** [gigioneggiando.github.io/argo](https://gigioneggiando.github.io/argo/) · [Wiki](https://github.com/gigioneggiando/argo/wiki) · [Discussions](https://github.com/gigioneggiando/argo/discussions) · [Changelog](CHANGELOG.md)
+**Live findings:** [gigioneggiando.com/argo](https://gigioneggiando.com/argo/) · [Wiki](https://github.com/gigioneggiando/argo/wiki) · [Discussions](https://github.com/gigioneggiando/argo/discussions) · [Changelog](CHANGELOG.md)
 
 Before a paid audit, use `argo screen ./repo` for a deterministic read-only fingerprint, `argo plan
 ./repo --objective balanced` for an explainable cost/time range, and `argo show-routing` to inspect
@@ -43,7 +43,7 @@ These are the current public totals (snapshot: 21 October 2026). Private reports
 | [coturn](https://github.com/coturn/coturn) | 14k★ | Two published advisories, including the IPv6 ACL/SSRF issue [CVE-2026-73213](https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99) |
 | [DuckDB](https://github.com/duckdb/duckdb) | 33k★ | Parquet GZIP footer out-of-bounds read [fixed upstream](https://github.com/duckdb/duckdb/issues/24955) in PR #26499 |
 
-**[See every disclosed finding →](https://gigioneggiando.github.io/argo/)**
+**[See every disclosed finding →](https://gigioneggiando.com/argo/findings.html)**
 
 <sub>\* The historical validation sample contains 134 findings that reached an independent maintainer verdict:
 124 were confirmed genuine and 10 were rejected as false positives (93%). This is a separate study metric,
@@ -106,7 +106,7 @@ admitting a false negative, mid-conversation.
 
 None of this makes Argo infallible — it's a probabilistic tool, and says so throughout these docs
 (see [design-decisions.md](docs/design-decisions.md)). See it working on real, unmodified
-open-source code, not a curated demo: **[live findings](https://gigioneggiando.github.io/argo/)**.
+open-source code, not a curated demo: **[live findings](https://gigioneggiando.com/argo/)**.
 
 ---
 

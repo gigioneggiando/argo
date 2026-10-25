@@ -1,4 +1,5 @@
 import {readFileSync,writeFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {extractRecords} from './records.mjs';
 const source=readFileSync('content/disclosures.html','utf8');
 const cases=[...source.matchAll(/<section class="case"[^>]*>[\s\S]*?<\/section>/g)].map(m=>m[0]);
@@ -51,7 +52,12 @@ const about=`<section class="about-panel" id="support" aria-labelledby="about-ti
 const index=`<div class="dashboard"><section class="intro" aria-labelledby="intro-title"><div><h1 id="intro-title">Bugs found, fixes shared.</h1><p>Argo helps me look for security bugs in open-source code. I review the results and report them upstream. Here’s what became public.</p></div><div class="intro-actions"><a class="button" href="#findings">Explore the findings <span aria-hidden="true">↓</span></a><a href="https://github.com/gigioneggiando/argo" target="_blank" rel="noopener">Meet the project on GitHub ↗</a></div></section>${stats}${charts}<section class="archive" id="findings" aria-labelledby="findings-title"><div class="archive-heading"><h2 id="findings-title">Explore the findings</h2><p>Every record leads to a public pull request or advisory.</p></div>${archiveContent}</section>${about}</div>`;
 const findings=`<div class="dashboard"><section class="archive-intro"><h1>Public findings</h1><p>Explore the work, follow a fix, or look up a project.</p></section>${stats}${charts}<section class="archive" id="findings" aria-label="Search public findings">${archiveContent}</section>${about}</div>`;
 const scripts='<script src="controls.js" defer></script><script src="stars.js" defer></script><script src="script.js" defer></script>';
-const page=html=>html.replace('<script src="script.js" defer></script>',scripts).replaceAll(' data-ui','').replace(/[ \t]+$/gm,'');
+const arrow=path=>`<svg class="link-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`;
+const page=html=>html.replace('<script src="script.js" defer></script>',scripts).replaceAll(' data-ui','').replace(/[ \t]+$/gm,'')
+  .replaceAll('data-parent-home href="https://github.com/gigioneggiando"','data-parent-home href="https://gigioneggiando.com/"')
+  .replace(/↗\uFE0F?|&#8599;|&#x2197;|&nearr;/gi,arrow('M6 18 18 6M6 6h12v12'))
+  .replace(/↓/g,arrow('M12 5v14m-6-6 6 6 6-6'))
+  .replace(/(href|src)="(style\.css|(?:script|controls|stars)\.js)"/g,(_,attr,file)=>`${attr}="${file}?v=${createHash('sha256').update(readFileSync(file)).digest('hex').slice(0,12)}"`);
 writeFileSync('index.html',page(document('index','Bugs found, fixes shared','Argo: source-code auditing with language models, human review and public upstream evidence.',index)));
 writeFileSync('findings.html',page(document('findings','Public findings','Search public Argo findings by project, severity, status and language. Every record links upstream.',findings)));
 writeFileSync('assets/archive-totals.json',JSON.stringify(totals,null,2)+'\n');

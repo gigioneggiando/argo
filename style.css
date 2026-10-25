@@ -1,5 +1,6 @@
 @font-face{font-family:Fraunces;src:url('assets/fonts/fraunces-var.woff2') format('woff2');font-weight:100 900;font-display:swap}
 @font-face{font-family:Inter;src:url('assets/fonts/inter-var.woff2') format('woff2');font-weight:100 900;font-display:swap}
+.link-arrow{display:inline-block;width:1em;height:1em;vertical-align:-.15em;flex-shrink:0}
 :root{color-scheme:dark;--bg:#121419;--surface:#191c22;--surface-2:#252830;--ink:#e9ebee;--soft:#babfc7;--muted:#a2a8b2;--accent:#d98a3d;--accent-ink:#17120a;--good:#79bd94;--pending:#96b5d5;--critical:#ff8d95;--high:#ffad7d;--medium:#e8c974;--low:#bbc5d5;--line:#343943;--display:Fraunces,Georgia,serif;--body:Inter,Arial,sans-serif;--radius:20px;--gap:20px;--page-width:1200px;--ease:cubic-bezier(.22,1,.36,1)}
 @media(prefers-color-scheme:light){:root:not([data-theme=dark]){color-scheme:light;--bg:#eceef0;--surface:#f8f9fa;--surface-2:#fff;--ink:#191c22;--soft:#464b54;--muted:#535b68;--accent:#a85d24;--accent-ink:#fff;--good:#245b3b;--pending:#365775;--critical:#a51b2c;--high:#95400b;--medium:#725400;--low:#48566b;--line:#cbd0d7}}
 :root[data-theme=light]{color-scheme:light;--bg:#eceef0;--surface:#f8f9fa;--surface-2:#fff;--ink:#191c22;--soft:#464b54;--muted:#535b68;--accent:#a85d24;--accent-ink:#fff;--good:#245b3b;--pending:#365775;--critical:#a51b2c;--high:#95400b;--medium:#725400;--low:#48566b;--line:#cbd0d7}

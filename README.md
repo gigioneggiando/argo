@@ -10,6 +10,8 @@ still explicitly compares record counts, a separate metric.
 controlled metadata, without spending public GitHub API quota.
 
 This is the `gh-pages` worktree of `gigioneggiando/argo`.
+For the complete finding-to-publication procedure, including the separate
+personal-site deployment, see [AGENTS.md](AGENTS.md).
 
 - `index.html`: project introduction, totals, visible charts and searchable archive.
 - `findings.html`: static, searchable public archive.
@@ -30,8 +32,8 @@ Private Fleece records are not a build input. The archive needs no client-side
 fetch or GitHub token. All public records and real totals are present without JS;
 scripts add filters, chart-to-filter shortcuts, native disclosure controls and
 theme choice. Charts are static HTML/SVG generated from the public source, not
-hidden behind a disclosure. Severity labels such as Moderate and Info remain
-distinct and are included in chart totals and filters.
+hidden behind a disclosure. GitHub's Moderate rows are grouped with Medium in
+charts and filters; Info remains a separate label. Every public row is included.
 
 Star badges initially show the archive snapshot (`~` means approximate; a dash
 means unavailable). `stars.js` refreshes a repository's public star count as its
@@ -47,16 +49,16 @@ https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
 Counts use `stargazers_count` from GET /repos/{owner}/{repo}:
 https://docs.github.com/en/rest/repos/repos#get-a-repository
 
-The standalone site links Luigi's name to his public GitHub profile. The copy
-under the personal site's `/argo/` uses `../index.html` for that backlink. All
-project-local links and asset paths are relative, supporting both GitHub Pages
-and a future `gigioneggiando.com/argo/` deployment. The custom domain is not
-configured by this presentation change.
+The standalone GitHub Pages site links Luigi's name to his public GitHub
+profile. The separately deployed copy under the personal site's `/argo/` uses
+`../index.html` for that backlink. All project-local links and asset paths are
+relative. Pushing `gh-pages` does not update the personal-site snapshot.
 
 Check with `node verify.mjs` (Node 22+ and `CHROME_PATH` pointing to Chromium).
 `node verify-controls-stars.mjs` additionally checks keyboard/dropdown behaviour,
 semantic colours, the full-width context panel and deterministic cache/rate-limit/
 offline metadata fixtures. Tests block public API requests, so repeated local
 checks do not spend visitors' or the developer's anonymous GitHub quota.
-Design decisions and visual results are in DESIGN.md and REVIEW.md. Deployment
-is a normal push to `gh-pages`; do not force-push for routine site updates.
+Design decisions and visual results are in DESIGN.md and REVIEW.md. GitHub Pages
+deployment is a normal push to `gh-pages`; do not force-push for routine site
+updates. Then refresh the personal-site repository as described in AGENTS.md.

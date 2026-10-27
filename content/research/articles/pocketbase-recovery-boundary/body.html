@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>PocketBase already had middleware that recovered panics during ordinary HTTP request handling. That sounds like a boundary around the request, but in Go the real boundary is narrower: recovery belongs to the goroutine in which it runs.</p>
+  <p>Some PocketBase operations moved work into child or worker goroutines. If one of those workers panicked, the deferred recovery surrounding the parent request could not intercept it. The panic escaped the request's error path and could terminate the whole server process.</p>
+  <p>Argo surfaced the pattern during a source review. I traced the affected paths, checked the runtime behaviour, and reported the issue privately. The important part was not simply finding a call that could panic. It was following that call across an execution boundary and asking which recovery mechanism, if any, still applied on the other side.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The published advisory rates the issue High. Its CVSS 4.0 vector describes a network-reachable attack with low complexity, no additional attack requirements, no required privileges, no user interaction, and high availability impact. In practical terms, a request that reached one of the vulnerable worker paths could turn an otherwise recoverable failure into a process-level denial of service.</p>
+  <p>This was an availability issue, not evidence of data disclosure or code execution. That distinction matters. So does the deployment boundary: an external supervisor might restart a crashed process, but a restart does not remove the vulnerable path and still interrupts service.</p>
+  <p>GitHub lists 0.39.7 as the patched release for the current line and 0.22.48 as the backport for installations that remained below 0.23.0. Users on affected versions therefore needed to upgrade rather than rely on the existing request middleware.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The repair moved recovery to the place where it could work. PocketBase added <code>routine.SafeWrap</code>, a helper that wraps a worker function, recovers a panic inside that same goroutine, and returns it as an ordinary error. The public test confirms both parts of the contract: the worker still runs, and its panic becomes an error the caller can handle.</p>
+  <p>The maintainer then applied that boundary consistently. Workers launched through <code>errgroup</code> were wrapped with <code>SafeWrap</code>, while fire-and-forget jobs used the project's guarded helper. The public diff covers batch and realtime code and also audits other internal workers instead of treating the first crash site as an isolated exception.</p>
+  <p>The change shipped in PocketBase 0.39.7 and was backported to 0.22.48. The advisory was published with the releases and credits <code>@gigioneggiando</code> as the reporter.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>An error boundary is also an execution boundary. Middleware can protect the goroutine it surrounds; it cannot make every goroutine created beneath it safe by inheritance. The same question applies beyond panics: cancellation, tracing, authentication context, and resource ownership can all disappear when work is detached without an explicit hand-off.</p>
+  <p>A useful review habit is therefore to pause at every <code>go</code> statement or worker-pool submission and ask what crossed the boundary, what did not, and who owns failure on the other side. In this case, moving recovery a few lines closer to the work turned a process-ending event back into what the surrounding system expected: an error.</p>
+</section>

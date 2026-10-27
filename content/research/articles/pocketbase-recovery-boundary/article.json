@@ -1,0 +1,42 @@
+{
+  "slug": "pocketbase-recovery-boundary",
+  "title": "Panic recovery stays local",
+  "description": "PocketBase recovered panics during ordinary request handling, but work moved into child goroutines lived beyond that boundary. A reachable panic could terminate the server instead of becoming a regular error.",
+  "project": "PocketBase",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "category": "Disclosure",
+  "tags": ["Go", "error handling", "denial of service"],
+  "severity": "High",
+  "status": "Fixed",
+  "identifiers": ["CVE-2026-82410", "GHSA-84vh-m24q-wjjx"],
+  "publicEvidence": [
+    {
+      "label": "PocketBase security advisory",
+      "url": "https://github.com/pocketbase/pocketbase/security/advisories/GHSA-84vh-m24q-wjjx"
+    },
+    {
+      "label": "Upstream fix",
+      "url": "https://github.com/pocketbase/pocketbase/commit/f1618ee59b6d1c0308bb474c827a2b1f24b12a95"
+    },
+    {
+      "label": "PocketBase 0.39.7 release",
+      "url": "https://github.com/pocketbase/pocketbase/releases/tag/v0.39.7"
+    },
+    {
+      "label": "PocketBase 0.22.48 backport",
+      "url": "https://github.com/pocketbase/pocketbase/releases/tag/v0.22.48"
+    },
+    {
+      "label": "Go vulnerability record",
+      "url": "https://pkg.go.dev/vuln/GO-2026-6489"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

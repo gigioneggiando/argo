@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Argo Research</title>
+  <id>https://gigioneggiando.com/argo/research/</id>
+  <link href="https://gigioneggiando.com/argo/research/"/>
+  <link href="https://gigioneggiando.com/argo/research/feed.xml" rel="self" type="application/atom+xml"/>
+  <updated>2026-10-27T00:00:00Z</updated>
+  <author><name>Luigi Colluto</name><uri>https://gigioneggiando.com/</uri></author>
+  <entry>
+    <title>Panic recovery stays local</title>
+    <id>https://gigioneggiando.com/argo/research/pocketbase-recovery-boundary/</id>
+    <link href="https://gigioneggiando.com/argo/research/pocketbase-recovery-boundary/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>PocketBase recovered panics during ordinary request handling, but work moved into child goroutines lived beyond that boundary. A reachable panic could terminate the server instead of becoming a regular error.</summary>
+    <category term="Go"/>
+    <category term="error handling"/>
+    <category term="denial of service"/>
+  </entry>
+</feed>

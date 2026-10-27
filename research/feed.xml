@@ -51,6 +51,17 @@
     <category term="replay"/>
   </entry>
   <entry>
+    <title>Viewing is not revealing</title>
+    <id>https://gigioneggiando.com/argo/research/authentik-view-permission-stored-credentials/</id>
+    <link href="https://gigioneggiando.com/argo/research/authentik-view-permission-stored-credentials/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>authentik returned stored credentials when an account could view the configuration that contained them. Read-only access could therefore expose secrets used by connected systems.</summary>
+    <category term="access control"/>
+    <category term="credentials"/>
+    <category term="API serialization"/>
+  </entry>
+  <entry>
     <title>A guest memory limit does not cover host buffers</title>
     <id>https://gigioneggiando.com/argo/research/surrealdb-wasi-host-buffer/</id>
     <link href="https://gigioneggiando.com/argo/research/surrealdb-wasi-host-buffer/"/>

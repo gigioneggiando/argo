@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>authentik stores configuration for the systems it connects to. Some of those objects contain two different kinds of information: settings that an operator may need to inspect, and credentials that connected services use to authenticate. The API serializers returned both together.</p>
+  <p>An account with permission to view an affected object could therefore receive the secret fields in ordinary list or detail responses. The boundary existed in the role model but disappeared during serialization: permission to read a configuration became permission to read the credentials inside it.</p>
+  <p>The affected surface was broad because the same assumption appeared across several configuration types. The advisory names email and SMS delivery, outbound provisioning, device-trust integrations, identity sources, the Kubernetes outpost integration, applications using client or shared secrets, and proxy providers. The issue was not that these values were stored; it was that the read path did not distinguish operational metadata from secret material.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The advisory rates the issue High, with a CVSS 3.1 score of 8.1. It was network reachable, required a low-privileged account and no user interaction, and assigned high confidentiality and integrity impact. A read-only role intended for support, inspection or auditing could collect credentials that its holder was not meant to possess.</p>
+  <p>What those credentials could do depended on the installation. They might authenticate an application, an outbound provisioning target, a delivery service or another integration. The advisory does not claim that every exposed value granted the same downstream privileges, and deployments were not affected when everyone allowed to view those configurations was already trusted to read their credentials.</p>
+  <p>The affected maintained lines were versions through 2026.2.6, 2026.5.6 and 2026.8.1. Before upgrading, the published workaround was to revoke view permission from every user, role and group that did not need access to the stored credentials.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>authentik shipped the repair in 2026.2.7, 2026.5.7 and 2026.8.2. The public patch adds a shared <code>secret_fields</code> rule to its model serializer. A serializer may name fields that remain visible to an account allowed to change that specific object, while those fields are removed from responses for an account that can only view it.</p>
+  <p>The repair uses stricter treatments where the context requires them. Some credentials become write-only, so the API can accept a replacement without returning the stored value. Outpost configuration endpoints that legitimately need complete secrets are restricted to outpost service accounts rather than ordinary users, including administrators using normal sessions. The web forms also switch to secret-aware inputs and partial updates, allowing an unchanged secret to stay on the server instead of being read back into the browser and submitted again.</p>
+  <p>Regression tests preserve these distinctions. They verify that a view-only account receives the configuration without its secret, that change permission restores the intended response where applicable, that write-only fields stay absent, and that only the proper outpost identity can retrieve full outpost configuration.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>A configuration object is not one indivisible unit of authority. Its name, mode and destination may be safe to inspect while its password, token or private material is not. Object-level read permission is therefore only the first decision; serializers still have to decide which fields may cross that boundary.</p>
+  <p>This is worth checking anywhere an API supports delegated or read-only administration. Ask whether a response contains values that are needed to operate the system but not to understand its configuration. If a secret is required only when it is created, changed or consumed by a trusted component, the ordinary read path should not reveal it merely because that is convenient for the form.</p>
+</section>

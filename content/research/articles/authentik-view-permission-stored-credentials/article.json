@@ -1,0 +1,51 @@
+{
+  "slug": "authentik-view-permission-stored-credentials",
+  "title": "Viewing is not revealing",
+  "description": "authentik returned stored credentials when an account could view the configuration that contained them. Read-only access could therefore expose secrets used by connected systems.",
+  "project": "authentik",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "resolved": "2026-09-09",
+  "category": "Disclosure",
+  "tags": ["access control", "credentials", "API serialization"],
+  "severity": "High",
+  "status": "Fixed",
+  "identifiers": ["CVE-2026-94611", "GHSA-m9h4-7j9c-55x9"],
+  "publicEvidence": [
+    {
+      "label": "authentik security advisory",
+      "url": "https://github.com/goauthentik/authentik/security/advisories/GHSA-m9h4-7j9c-55x9"
+    },
+    {
+      "label": "Public repair and 2026.8 backport",
+      "url": "https://github.com/goauthentik/authentik/pull/25965"
+    },
+    {
+      "label": "2026.5 backport",
+      "url": "https://github.com/goauthentik/authentik/pull/25960"
+    },
+    {
+      "label": "2026.2 backport",
+      "url": "https://github.com/goauthentik/authentik/pull/25955"
+    },
+    {
+      "label": "authentik 2026.8.2 release",
+      "url": "https://github.com/goauthentik/authentik/releases/tag/version%2F2026.8.2"
+    },
+    {
+      "label": "authentik 2026.5.7 release",
+      "url": "https://github.com/goauthentik/authentik/releases/tag/version%2F2026.5.7"
+    },
+    {
+      "label": "authentik 2026.2.7 release",
+      "url": "https://github.com/goauthentik/authentik/releases/tag/version%2F2026.2.7"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

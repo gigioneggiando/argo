@@ -11,6 +11,7 @@
     "vaultwarden-cross-organization-groups",
     "surrealdb-wasi-host-buffer",
     "coturn-ipv6-total-order",
-    "navidrome-share-owner-request-data"
+    "navidrome-share-owner-request-data",
+    "authentik-view-permission-stored-credentials"
   ]
 }

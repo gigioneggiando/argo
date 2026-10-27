@@ -1,0 +1,30 @@
+{
+  "slug": "project-short-problem",
+  "title": "A title about the broken assumption",
+  "description": "In one or two sentences, explain the failure, consequence, and necessary conditions.",
+  "project": "Project name",
+  "author": "Luigi Colluto",
+  "published": "YYYY-MM-DD",
+  "updated": "YYYY-MM-DD",
+  "category": "Disclosure",
+  "tags": ["access control"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["CVE-YYYY-NNNN"],
+  "publicEvidence": [
+    {
+      "label": "Published advisory",
+      "url": "https://example.com/public-advisory"
+    },
+    {
+      "label": "Upstream fix",
+      "url": "https://example.com/public-fix"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "YYYY-MM-DD",
+    "publicEvidenceCheckedOn": "YYYY-MM-DD"
+  }
+}

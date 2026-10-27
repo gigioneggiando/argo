@@ -1,9 +1,11 @@
 import {pathToFileURL} from 'node:url';
 import path from 'node:path';
+import {readFileSync} from 'node:fs';
 import {Browser} from 'file:///C:/Users/gigi/.codex-b/skills/design-taste-frontend/scripts/lib/cdp.mjs';
 const ensure=(ok,message)=>{if(!ok)throw Error(message);};
 const wait=async(test,message)=>{for(let i=0;i<60;i++){if(await test())return;await new Promise(r=>setTimeout(r,100));}throw Error(message);};
 const b=await Browser.launch();
+const totals=JSON.parse(readFileSync('assets/archive-totals.json','utf8'));
 try{
  const p=await b.newPage({width:1440,height:900,reducedMotion:true});
  await p.send('Page.addScriptToEvaluateOnNewDocument',{source:`
@@ -32,8 +34,8 @@ try{
   window.previousTop=n8n.getBoundingClientRect().top;
   window.starGate=true;window.starPending.forEach(resolve=>resolve());
  });
- await wait(()=>p.eval(()=>{const projects=[...document.querySelectorAll('.case')];return window.starRequests===26&&projects[0].id==='project-open-webui'&&projects.at(-1).id==='project-n8n';}),'Live star updates did not reorder projects');
- ensure(await p.eval(()=>{const projects=[...document.querySelectorAll('.case')];return projects.every((s,i)=>!i||+projects[i-1].dataset.stars>=+s.dataset.stars)&&document.querySelectorAll('.row').length===95;}),'Live ordering or complete public records failed');
+ await wait(()=>p.eval(expected=>{const projects=[...document.querySelectorAll('.case')];return window.starRequests===expected&&projects[0].id==='project-open-webui'&&projects.at(-1).id==='project-n8n';},totals.projects),'Live star updates did not reorder projects');
+ ensure(await p.eval(expected=>{const projects=[...document.querySelectorAll('.case')];return projects.every((s,i)=>!i||+projects[i-1].dataset.stars>=+s.dataset.stars)&&document.querySelectorAll('.row').length===expected;},totals.records),'Live ordering or complete public records failed');
  ensure(await p.eval(()=>document.activeElement.closest('.case')?.id==='project-n8n'&&document.getElementById('project-n8n').open&&document.getElementById('project-gitea').open),'Reordering lost focus or disclosure state');
  ensure(await p.eval(()=>Math.abs(document.getElementById('project-n8n').getBoundingClientRect().top-window.previousTop)<2),'Reordering moved the reader away from the current project');
  await p.goto(url);

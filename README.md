@@ -16,13 +16,17 @@ personal-site deployment, see [AGENTS.md](AGENTS.md).
 - `index.html`: project introduction, totals, visible charts and searchable archive.
 - `findings.html`: static, searchable public archive.
 - `content/disclosures.html`: the authoritative public record source.
+- `content/research/manifest.json`: explicit allow-list for approved Research articles.
+- `content/research/articles/<slug>/`: approved article metadata and body source.
+- `research/`: generated editorial index, stable article paths and Atom feed; absent until the first approved article.
 - `build.mjs`: shared shell, counts, project disclosures and page generation.
+- `research.mjs`: fail-closed article validation and Research page/feed generation.
 - `style.css` / `script.js`: shared presentation and progressive enhancement.
 - `controls.js`: rounded, keyboard-accessible filter popups over native selects.
 - `stars.js`: optional public GitHub star metadata, cached in the visitor's browser.
 
 Edit the source chapters and run `node build.mjs`. Do not hand-edit generated
-HTML or headline totals. Totals derive from the public rows; one row can be a
+HTML, Research output or headline totals. Totals derive from the public rows; one row can be a
 backport, a public issue or an advisory, so records are not distinct vulnerabilities.
 
 Every row must already have a public upstream URL. An unpublished/private
@@ -55,6 +59,9 @@ profile. The separately deployed copy under the personal site's `/argo/` uses
 relative. Pushing `gh-pages` does not update the personal-site snapshot.
 
 Check with `node verify.mjs` (Node 22+ and `CHROME_PATH` pointing to Chromium).
+Run `node verify-research.mjs` as well; it exercises the explicit allow-list,
+metadata/approval rules, stable canonical path, structured data, Atom output and
+private-data rejection without publishing a real article.
 `node verify-controls-stars.mjs` additionally checks keyboard/dropdown behaviour,
 semantic colours, the full-width context panel and deterministic cache/rate-limit/
 offline metadata fixtures. Tests block public API requests, so repeated local

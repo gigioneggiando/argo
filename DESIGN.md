@@ -1,5 +1,27 @@
 # Argo site revision, 24 October 2026
 
+## Research surface prepared, 27 October 2026
+
+The future editorial section is named **Research** and lives inside Argo at
+`/argo/research/`; it is not a second brand or a replacement for the findings
+dashboard. The dashboard remains the immediate searchable evidence view. Research
+adds short, human-written accounts of individual public findings: what failed, the
+conditions that made it matter, how maintainers repaired it, and one lesson after
+the patch.
+
+Its visual direction keeps Argo's Fraunces/Inter pair, neutral light/dark fields,
+amber accent, rounded controls and semantic severity colours. The reading surface
+is deliberately calmer: a large title, one featured article followed by a
+chronological list, a 70ch article measure, and a compact facts rail. There is no
+stock security imagery or decorative motion. A real public diff, flow or screenshot
+may appear only when it carries technical meaning.
+
+The index line is “Notes from looking closely: what broke, why it mattered, and
+how maintainers repaired it.” This gives the section a personal ethic of attention
+and repair without inserting unrelated philosophy into technical copy. Research is
+hidden from navigation while the explicit allow-list is empty, so the public site
+does not launch an unfinished section.
+
 ## Latest ordering preference
 
 Luigi asked to order the public projects by GitHub stars descending. Generate
@@ -27,7 +49,7 @@ Every project heading carries a small star glyph and count linked to GitHub's
 stargazers. Optional public metadata refresh is lazy, cached and rate limited;
 see README.md. Unknown or unavailable metadata never becomes an invented zero.
 The context panel at the bottom now fills its box, as Luigi requested, instead
-of using a 90ch inner wrapper inside a wider panel. All 95 finding records remain
+of using a 90ch inner wrapper inside a wider panel. All 96 finding records remain
 the unchanged public source; pipeline diagrams/wiki still describe the same tool.
 
 ## Current direction: an approachable public findings dashboard

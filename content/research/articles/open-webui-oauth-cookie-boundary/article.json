@@ -1,0 +1,43 @@
+{
+  "slug": "open-webui-oauth-cookie-boundary",
+  "title": "OAuth is not a cookie-forwarding policy",
+  "description": "Open WebUI’s OAuth-mode connectors forwarded each requesting user’s browser cookies to downstream servers. A destination could replay the leaked session cookie and impersonate that user.",
+  "project": "Open WebUI",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "resolved": "2026-09-07",
+  "category": "Disclosure",
+  "tags": ["OAuth", "session security", "credential boundaries"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["GHSA-gqfh-jxvw-74rp"],
+  "publicEvidence": [
+    {
+      "label": "Open WebUI security advisory",
+      "url": "https://github.com/open-webui/open-webui/security/advisories/GHSA-gqfh-jxvw-74rp"
+    },
+    {
+      "label": "OpenAI connection fix",
+      "url": "https://github.com/open-webui/open-webui/commit/f9f815c86220f809fad5ee1300c44f55dea74c79"
+    },
+    {
+      "label": "Terminal fix",
+      "url": "https://github.com/open-webui/open-webui/commit/b71744b17823f7a3a9a64cb363e79a7164ed5b23"
+    },
+    {
+      "label": "Tool-server fix",
+      "url": "https://github.com/open-webui/open-webui/commit/3cda47cdb449aac970426f0929c9e5f8bb8bd807"
+    },
+    {
+      "label": "Open WebUI 0.11.4 release",
+      "url": "https://github.com/open-webui/open-webui/releases/tag/v0.11.4"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

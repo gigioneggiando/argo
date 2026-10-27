@@ -1,0 +1,22 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>SurrealDB’s experimental Surrealism runtime executes WebAssembly modules through Wasmtime and places a ceiling on the guest’s linear memory. That limit covered memory allocated inside the module, but the host also created resources on the module’s behalf.</p>
+  <p>The WASI stdout and stderr callbacks collected an incomplete line in a host-side <code>Vec</code> until they encountered a newline. A module could repeatedly write bytes without ever finishing the line. Each write remained within the guest’s own memory budget, while the pending output grew in the SurrealDB process outside Wasmtime’s store limiter.</p>
+  <p>Argo surfaced the uncapped buffer during source review. I traced the data across the guest–host boundary and reported the issue privately. The published advisory credits <code>@gigioneggiando</code> as the reporter.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>A malicious or faulty module could keep extending that newline-free output until the host exhausted memory and the database process became unavailable. This did not escape the WebAssembly sandbox or expose data; the demonstrated consequence was denial of service.</p>
+  <p>Surrealism was experimental and disabled by default. Installing a module required an Owner-level user, which narrowed initial exposure. Once a module was installed, however, users permitted to invoke its functions could trigger the behaviour, and module function permissions defaulted to full access. The resource belonged to the host process, so one module could affect service for other users and namespaces.</p>
+  <p>The advisory rates the issue Medium. It covers SurrealDB 3.1.0 up to, but not including, 3.3.0, and <code>surrealism-runtime</code> 0.3.0 up to, but not including, 0.6.0.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The repair added a one-mebibyte ceiling for each pending line. When output reaches that threshold without a newline, the callback emits a chunk to the log and continues instead of retaining the entire stream. The implementation also respects UTF-8 boundaries, so bounding memory does not require dropping or corrupting output.</p>
+  <p>The public regression tests exercise both guarantees: the internal pending buffer stays bounded, and all bytes are eventually emitted. The fix was committed on 7 September 2026 and shipped in SurrealDB 3.3.0 together with <code>surrealism-runtime</code> 0.6.0.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>A sandbox limit is only as complete as the resources it counts. Guest memory, instructions and execution time may be bounded while logs, response buffers, caches, queues or file descriptors allocated by the host remain unlimited.</p>
+  <p>The useful review question is therefore broader than “how much can the guest allocate?” It is “what can the guest cause the host to retain?” Every callback that converts untrusted guest activity into host state needs its own lifetime and budget. Here, a small cap at that boundary made the configured memory ceiling meaningful again.</p>
+</section>

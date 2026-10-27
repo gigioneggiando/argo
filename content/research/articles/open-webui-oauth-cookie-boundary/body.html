@@ -1,0 +1,22 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Open WebUI can call OpenAI-compatible connections, OpenAPI tool servers and terminal servers on behalf of a signed-in user. Each destination has an authentication mode. In <code>Session</code> mode, forwarding the user’s session is deliberate; in <code>OAuth</code> mode, the destination should receive an OAuth access token instead.</p>
+  <p>The implementation blurred those two contracts. The OAuth branch copied the incoming browser cookie jar into the outbound request, including the Open WebUI session cookie. This happened independently of OAuth token lookup, so the cookie could be sent even when no OAuth provider or access token was available.</p>
+  <p>Argo surfaced the shared credential path during source review. I traced it across the affected connection types, reproduced the leak against a request-capturing destination, and reported it privately. The published advisory credits <code>@gigioneggiando</code> and <code>@brodmart</code> as reporters.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>An administrator first had to configure an affected destination with OAuth authentication, so this was not a default deployment. Once configured, however, ordinary use was enough to cross the boundary: every user whose request reached that destination disclosed their own live session credential. The destination could replay that cookie to impersonate the user inside Open WebUI; a cookie belonging to an administrator carried the corresponding administrative access.</p>
+  <p>The distinction between secrets matters here. A server trusted to receive an OAuth access token is not automatically trusted with the session that protects the application issuing it. The published advisory rates the issue Medium and covers Open WebUI versions from 0.6.27 up to, but not including, 0.11.4.</p>
+  <p>The scope is also precise. Explicit <code>Session</code> mode was documented to forward cookies and therefore was not the bug. MCP tool servers were not affected. The vulnerable paths were OAuth-mode OpenAI-compatible connections, OpenAPI tool servers and terminal servers.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>Open WebUI repaired the three outbound request paths in separate commits. OAuth mode now sends its access token without implicitly inheriting the browser’s cookies. Cookie forwarding became an independent <code>forward_cookies</code> setting that is disabled by default, so choosing OAuth no longer grants a second, hidden credential.</p>
+  <p>The changes landed on 7 September 2026 and shipped in Open WebUI 0.11.4. The public advisory also credits <code>@Classic298</code> for developing the remediation.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Neighbouring authentication modes may share transport code, but they do not share a trust policy. Copying a convenient header or cookie assignment from one branch to another can silently turn the destination’s credential set into the union of both modes.</p>
+  <p>A safer design makes each mode an explicit allow-list: which credentials may leave, where they may go, and whether forwarding is opt-in. During review, it is useful to inspect the complete outbound request after every middleware layer has run. The question is not only whether the intended token is present, but whether any unrelated secret travelled with it.</p>
+</section>

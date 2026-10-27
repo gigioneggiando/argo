@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Vaultwarden groups and organization memberships are identified by UUIDs. Two member-management endpoints accepted group UUIDs from the request body and created the corresponding membership rows without first proving that each group belonged to the organization being edited. A valid group from organization B could therefore be attached to a member record in organization A.</p>
+  <p>That malformed relationship would have been harmless if every later authorization query had restored the tenant boundary. One did not. The query used to decide whether a member belonged to a full-access group joined groups, group memberships and organization memberships, but did not require the group’s organization UUID to match the membership’s organization UUID. A sibling query already contained that condition.</p>
+  <p>Argo surfaced the mismatched checks during source review. I followed the stored relationship into the authorization path, validated how the two gaps composed, and reported the chain privately. The public advisory credits <code>@gigioneggiando</code> as the reporter.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The attack required an authenticated user who was an administrator or owner in an organization they controlled. Organization groups also had to be enabled, which was not the default, and the attacker needed the UUIDs of a target group and target ciphers; the issue did not provide an enumeration mechanism by itself.</p>
+  <p>With those conditions met, the planted relationship could make the attacker appear to belong to a full-access group in another organization. That granted read, write and management access to specific foreign ciphers. Vaultwarden’s client-side encryption limits what server-side access reveals directly: encrypted vault contents remained ciphertext, although associated metadata and destructive or modifying operations were still exposed. The advisory therefore rates the issue Medium.</p>
+  <p>The affected range begins at 1.27.0 and extends through 1.36.0. The chain is a useful example of why two individually small omissions can produce a meaningful authorization failure: the write path admitted a cross-tenant reference, and the read path later treated that reference as authority.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The repair closed both sides of the chain. The invitation and member-editing paths now resolve each supplied group with an organization-scoped lookup before storing it. A UUID that exists elsewhere is no longer enough.</p>
+  <p>The full-access query also gained an explicit equality condition between the organization on the membership and the organization that owns the group. This protects existing data and makes the authorization decision enforce its own tenant invariant instead of assuming every stored relationship was created correctly.</p>
+  <p>The fix was committed and released in Vaultwarden 1.37.0 on 24 July 2026.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>An object identifier proves identity, not ownership. In a multi-tenant system, accepting a real UUID is only the first check; every lookup and every join must also carry the tenant key that gives the object meaning.</p>
+  <p>The strongest repair uses both defences seen here. Validate ownership when a relationship is written, then enforce it again when that relationship authorizes access. Either layer can catch old data, future regressions or a different write path. Tenant boundaries are safer when they are expressed in the query itself rather than remembered as an assumption about how the row arrived.</p>
+</section>

@@ -1,0 +1,35 @@
+{
+  "slug": "surrealdb-wasi-host-buffer",
+  "title": "A guest memory limit does not cover host buffers",
+  "description": "SurrealDB limited a module’s guest memory but buffered its unfinished output in unbounded host memory. A module could therefore exhaust the database process outside its configured ceiling.",
+  "project": "SurrealDB",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "resolved": "2026-09-07",
+  "category": "Disclosure",
+  "tags": ["WASI", "resource limits", "denial of service"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["GHSA-jj89-wvrw-c4gp"],
+  "publicEvidence": [
+    {
+      "label": "SurrealDB security advisory",
+      "url": "https://github.com/surrealdb/surrealdb/security/advisories/GHSA-jj89-wvrw-c4gp"
+    },
+    {
+      "label": "Upstream fix",
+      "url": "https://github.com/surrealdb/surrealdb/commit/5674ef5fdf862e0206cc8add719f56754aa7aec8"
+    },
+    {
+      "label": "SurrealDB 3.3.0 release",
+      "url": "https://github.com/surrealdb/surrealdb/releases/tag/v3.3.0"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

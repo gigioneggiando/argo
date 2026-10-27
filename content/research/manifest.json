@@ -6,6 +6,9 @@
     "authentik-saml-assertion-binding",
     "moquette-pattern-acl-wildcard-injection",
     "mediamtx-moq-length-allocation",
-    "navidrome-artist-role-order-by-sqli"
+    "navidrome-artist-role-order-by-sqli",
+    "open-webui-oauth-cookie-boundary",
+    "vaultwarden-cross-organization-groups",
+    "surrealdb-wasi-host-buffer"
   ]
 }

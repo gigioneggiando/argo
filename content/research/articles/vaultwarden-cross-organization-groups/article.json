@@ -1,0 +1,35 @@
+{
+  "slug": "vaultwarden-cross-organization-groups",
+  "title": "A group ID does not carry its tenant",
+  "description": "Vaultwarden accepted group IDs without proving they belonged to the current organization, then trusted a join missing the same tenant boundary. Together, the gaps granted cross-organization access to specific ciphers.",
+  "project": "Vaultwarden",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "resolved": "2026-07-24",
+  "category": "Disclosure",
+  "tags": ["multi-tenancy", "authorization", "object ownership"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["GHSA-xwf8-pjh7-h589"],
+  "publicEvidence": [
+    {
+      "label": "Vaultwarden security advisory",
+      "url": "https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-xwf8-pjh7-h589"
+    },
+    {
+      "label": "Upstream fix",
+      "url": "https://github.com/dani-garcia/vaultwarden/commit/46ae59eaf444f0ae0a799070cf2bd6c415284a51"
+    },
+    {
+      "label": "Vaultwarden 1.37.0 release",
+      "url": "https://github.com/dani-garcia/vaultwarden/releases/tag/1.37.0"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

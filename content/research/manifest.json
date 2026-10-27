@@ -5,6 +5,7 @@
     "ntfy-revocation-live-streams",
     "authentik-saml-assertion-binding",
     "moquette-pattern-acl-wildcard-injection",
-    "mediamtx-moq-length-allocation"
+    "mediamtx-moq-length-allocation",
+    "navidrome-artist-role-order-by-sqli"
   ]
 }

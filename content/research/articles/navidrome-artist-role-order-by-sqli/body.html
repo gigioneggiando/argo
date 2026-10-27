@@ -1,0 +1,24 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Navidrome's native artist API accepts a <code>role</code> parameter used to select categories such as album artist or composer. The set of meaningful roles is small, so the value looks like an enum. At the HTTP boundary, however, it is still an arbitrary string supplied by the requester.</p>
+  <p>The filtering path checked that string against Navidrome's known roles. The sorting path did not. When the artist list was ordered by song count, album count or size, the repository inserted the raw role inside a JSON-path expression and stored the resulting text in its sort mapping. That mapping later entered the SQL <code>ORDER BY</code> clause as a trusted fragment.</p>
+  <p>This distinction matters because values and SQL structure are protected differently. A database placeholder can safely carry a value, but it cannot stand in for an identifier or a complete ordering expression. Once request data was used to construct that expression, characters in the role stopped being data and became SQL syntax.</p>
+  <p>Argo surfaced the unsafe sort path. I traced the value from the authenticated artist endpoint into the unparameterised ordering expression before reporting it privately. The published advisory credits <code>@Sudo-Ivan</code> and <code>@gigioneggiando</code> as independent reporters.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The vulnerable endpoint was available to any user who could log in to the web interface; administrator privileges were not required. The advisory states that the resulting injection could execute arbitrary SQL against <code>navidrome.db</code>, allowing access to other users' data and stored secrets as well as modification or deletion of database contents.</p>
+  <p>The upstream advisory rates the issue High with a CVSS 3.1 score of 8.8. It lists versions from 0.55.0 up to, but not including, 0.64.0 as affected. The native API used by the web interface was vulnerable, while the Subsonic API was not. At publication time, the advisory has no assigned CVE.</p>
+  <p>This was therefore not an unauthenticated compromise of every Navidrome installation. It required a valid account and a reachable native API. Within that boundary, however, a low-privileged user could reach a database operation that should never have been controlled by an artist-list option.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The repair introduces one helper that converts the requested role into a safe application value. Empty or aggregate requests resolve to the fixed <code>total</code> key, known roles are accepted, and unknown strings are rejected instead of entering SQL construction.</p>
+  <p>Both filtering and sorting now use that shared allow-list. The sort mapping is built only after the role has crossed it, so every expression that reaches <code>ORDER BY</code> contains a value chosen by the application rather than text chosen by the requester. Regression tests cover accepted roles, the aggregate case and malicious or unknown input.</p>
+  <p>The fix shipped in Navidrome v0.64.0. The advisory lists no workaround, so affected installations should upgrade rather than rely on account trust or on filtering elsewhere in the request path.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>A value does not become safe because the application intends to use it like an enum. It becomes safe only when the program turns the external string into an internal choice and refuses everything outside that choice.</p>
+  <p>This is especially important around query builders. Their value parameters may be safe while methods for ordering, grouping, identifiers or expressions still accept raw SQL. When reviewing those calls, follow each fragment back to its origin and look for duplicated validation: one protected filter path does not protect a neighbouring sort path. The strongest design maps a validated semantic option to a fixed expression and never lets the request supply the expression itself.</p>
+</section>

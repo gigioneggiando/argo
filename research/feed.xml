@@ -18,6 +18,17 @@
     <category term="parsing"/>
   </entry>
   <entry>
+    <title>A role name is not an SQL fragment</title>
+    <id>https://gigioneggiando.com/argo/research/navidrome-artist-role-order-by-sqli/</id>
+    <link href="https://gigioneggiando.com/argo/research/navidrome-artist-role-order-by-sqli/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>Navidrome treated an artist role as a small, enum-like value but inserted the raw request string into an SQL ORDER BY expression. Any authenticated web user could cross that syntax boundary and execute arbitrary SQL against the application database.</summary>
+    <category term="SQL injection"/>
+    <category term="ORDER BY"/>
+    <category term="input validation"/>
+  </entry>
+  <entry>
     <title>A valid signature is not a valid login</title>
     <id>https://gigioneggiando.com/argo/research/authentik-saml-assertion-binding/</id>
     <link href="https://gigioneggiando.com/argo/research/authentik-saml-assertion-binding/"/>

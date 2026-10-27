@@ -7,6 +7,17 @@
   <updated>2026-10-27T00:00:00Z</updated>
   <author><name>Luigi Colluto</name><uri>https://gigioneggiando.com/</uri></author>
   <entry>
+    <title>A length field is not an allocation budget</title>
+    <id>https://gigioneggiando.com/argo/research/mediamtx-moq-length-allocation/</id>
+    <link href="https://gigioneggiando.com/argo/research/mediamtx-moq-length-allocation/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>MediaMTX trusted compact MoQ length fields as slice sizes before checking whether the message could contain that much data. A small unauthenticated input could trigger an unrecoverable allocation panic and stop the entire media server.</summary>
+    <category term="MoQ"/>
+    <category term="denial of service"/>
+    <category term="parsing"/>
+  </entry>
+  <entry>
     <title>A valid signature is not a valid login</title>
     <id>https://gigioneggiando.com/argo/research/authentik-saml-assertion-binding/</id>
     <link href="https://gigioneggiando.com/argo/research/authentik-saml-assertion-binding/"/>

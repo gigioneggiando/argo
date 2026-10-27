@@ -1,0 +1,24 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>MediaMTX is a single media server for protocols including RTSP, RTMP, HLS, WebRTC, SRT and Media over QUIC, or MoQ. In MoQ, variable-length integers let a message represent small numbers compactly while retaining a very large numerical range. The encoded field may occupy only a few bytes, but the number it describes can be enormous.</p>
+  <p>Several MoQ parsers treated those numbers as memory instructions. The SUBSCRIBE and PUBLISH control-message paths read a namespace field count and used it directly in <code>make([]string, nsCount)</code>. The subgroup object parser similarly used a declared properties length in <code>make([]byte, propsLen)</code>.</p>
+  <p>The parsers had checks for missing message data, but those checks happened after the allocation. A very large declared count or length therefore reached Go's allocator before the parser could notice that the small input could not possibly contain the promised elements. The result was a <code>makeslice: len out of range</code> panic or an attempt to reserve excessive memory.</p>
+  <p>Argo surfaced these two instances of the same boundary failure. I traced them through the MoQ parsing paths and reproduced the panic in the real decoder before reporting them privately. The published advisory credits both <code>@iaohkut-from-NightWolf-Team</code> and <code>@gigioneggiando</code> as reporters.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>Both paths ran before authentication. An unauthenticated client with network access to the MoQ WebTransport listener could reach them with a small input whose length field described a much larger allocation.</p>
+  <p>The panic occurred in a goroutine without recovery. In Go, a panic that escapes any goroutine terminates the process, not only that connection. Because one MediaMTX process serves all of its configured protocols, stopping it also interrupted streams unrelated to the attacking MoQ session.</p>
+  <p>The upstream advisory rates the issue High. It affected MediaMTX versions 1.19.0 through 1.19.2 and currently has no assigned CVE. The scope still depends on the MoQ listener being reachable; the issue was not an authentication bypass or a loss of stored media confidentiality.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The repair validates each attacker-controlled size before allocating. Namespace field counts above 16 are now rejected, while subgroup properties are limited to 128 KiB. Related byte-length comparisons were also changed to compare unsigned values safely before slicing the buffer.</p>
+  <p>The maintainer added fuzz targets for the MoQ control-message, subgroup, parameter and property parsers, together with a corpus of inputs that had exposed parser failures. This protects the individual limits and gives future parser changes a broader way to discover panics and excessive allocations.</p>
+  <p>Pull request #5964 was merged and released in MediaMTX v1.19.3. Operators on an affected version should upgrade rather than rely on panic recovery: rejecting an impossible resource request before allocation is the actual security boundary.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>A protocol type tells us how a value is encoded; it does not tell us how much work the application should permit. The maximum value of a wire integer is almost never a sensible maximum for memory, loops, nesting or stored state.</p>
+  <p>When reviewing a parser, follow every count and length beyond the decoding function. Ask what it controls before the parser proves that the input contains the corresponding data. If it reaches an allocation or loop first, a tiny message may be able to command a disproportionate amount of work. Resource limits belong before that command is obeyed.</p>
+</section>

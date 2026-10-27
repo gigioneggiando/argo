@@ -22,7 +22,8 @@ const html=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</
 const xml=s=>html(s).replace(/'/g,'&apos;');
 const plain=s=>String(s).replace(/<pre[\s\S]*?<\/pre>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&[a-z0-9#]+;/gi,' ').replace(/\s+/g,' ').trim();
 const words=s=>plain(s).split(/\s+/).filter(Boolean).length;
-const formatDate=value=>new Intl.DateTimeFormat('en',{dateStyle:'long',timeZone:'UTC'}).format(new Date(`${value}T00:00:00Z`));
+const formatDate=value=>new Intl.DateTimeFormat('en-GB',{dateStyle:'long',timeZone:'UTC'}).format(new Date(`${value}T00:00:00Z`));
+const formatIndexDate=value=>new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(`${value}T00:00:00Z`));
 const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex').slice(0,12);
 const canonicalFor=slug=>`${SITE_ORIGIN}/research/${slug?`${slug}/`:''}`;
 
@@ -69,6 +70,8 @@ export function validateResearchArticle(meta,body,expectedSlug=meta?.slug,{requi
   ensure(meta.updated>=meta.published,`${meta.slug} updated date predates publication`);
   ensure(allowedCategories.has(meta.category),`${meta.slug} category must be Disclosure, Engineering note, or Method`);
   ensure(allowedStatuses.has(meta.status),`${meta.slug} has unsupported status ${meta.status}`);
+  if(meta.resolved!==undefined)validDate(meta.resolved,`${meta.slug} resolved`);
+  if(meta.status==='Fixed'||meta.status==='Mitigated')ensure(meta.resolved,`${meta.slug} needs the public upstream resolution date`);
   if(meta.severity!==undefined)ensure(allowedSeverities.has(meta.severity),`${meta.slug} severity must use Argo's grouped labels; use Medium for GitHub Moderate`);
   ensure(Array.isArray(meta.tags)&&meta.tags.length>=1&&meta.tags.length<=5,`${meta.slug} needs 1–5 tags`);
   ensure(meta.tags.every(tag=>typeof tag==='string'&&tag.trim()&&tag.length<=32),`${meta.slug} has an invalid tag`);
@@ -109,7 +112,7 @@ export function loadResearchArticles({sourceRoot=SOURCE_ROOT}={}){
     ensure(existsSync(metaPath)&&existsSync(bodyPath),`${slug} is allow-listed but its source files are missing`);
     const meta=JSON.parse(readFileSync(metaPath,'utf8'));
     return validateResearchArticle(meta,readFileSync(bodyPath,'utf8'),slug);
-  }).sort((a,b)=>b.published.localeCompare(a.published)||a.title.localeCompare(b.title,'en'));
+  }).sort((a,b)=>(b.resolved||b.published).localeCompare(a.resolved||a.published)||a.title.localeCompare(b.title,'en'));
 }
 
 function metadata(meta){
@@ -117,6 +120,7 @@ function metadata(meta){
     ['Project',meta.project],
     ...(meta.severity?[['Severity',meta.severity]]:[]),
     ['Status',meta.status],
+    ...(meta.resolved?[['Resolved upstream',formatDate(meta.resolved)]]:[]),
     ...(meta.identifiers.length?[['Identifiers',meta.identifiers.join(', ')]]:[]),
   ];
   return `<dl class="article-facts">${facts.map(([label,value])=>`<div><dt>${html(label)}</dt><dd>${html(value)}</dd></div>`).join('')}</dl>`;
@@ -150,15 +154,20 @@ function shell({title,description,canonical,type='website',prefix,body,header,fo
 }
 
 function buildIndex(articles,{renderHeader,renderFooter}){
-  const cards=articles.map((article,index)=>`<article class="research-entry${index===0?' research-entry-featured':''}"><div class="research-entry-meta"><span>${html(article.category)}</span><time datetime="${article.published}">${html(formatDate(article.published))}</time><span>${article.readMinutes} min read</span></div><h2><a href="./${article.slug}/">${html(article.title)}</a></h2><p>${html(article.description)}</p><div class="research-entry-foot"><span>${html(article.project)}</span>${article.identifiers[0]?`<span>${html(article.identifiers[0])}</span>`:''}</div></article>`).join('');
-  const body=`<div class="research-shell"><section class="research-intro" aria-labelledby="research-title"><h1 id="research-title">Notes from looking closely.</h1><p>Short accounts of what broke, why it mattered, and how maintainers repaired it.</p><a href="feed.xml">Follow the Atom feed</a></section><section class="research-index" aria-label="Research articles">${cards}</section></div>`;
+  const cards=articles.map((article,index)=>{
+    const date=article.resolved||article.published;
+    const dateLabel=article.resolved?'Resolved upstream':'Published';
+    return `<li class="research-entry"><article><a class="research-entry-link" href="./${article.slug}/"><div class="research-entry-index"><span class="research-entry-number">${String(index+1).padStart(2,'0')}</span><span>${dateLabel}</span><time datetime="${date}">${html(formatIndexDate(date))}</time></div><div class="research-entry-copy"><div class="research-entry-meta"><span>${html(article.category)}</span><span>${html(article.project)}</span>${article.identifiers[0]?`<span>${html(article.identifiers[0])}</span>`:''}</div><h2>${html(article.title)}</h2><p>${html(article.description)}</p></div><div class="research-entry-side"><span class="sev ${article.severity?html(article.severity.toLowerCase()):''}">${html(article.severity||article.status)}</span><span>${article.readMinutes} min read</span><svg class="research-entry-arrow" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></div></a></article></li>`;
+  }).join('');
+  const body=`<div class="research-shell"><section class="research-intro" aria-labelledby="research-title"><h1 id="research-title">Notes from looking closely.</h1><p>Short accounts of what broke, why it mattered, and how maintainers repaired it.</p><a href="feed.xml">Follow the Atom feed</a></section><ol class="research-index" aria-label="Research articles">${cards}</ol></div>`;
   return shell({title:'Research',description:'Short, evidence-backed accounts of public Argo findings: what broke, why it mattered, and how it was repaired.',canonical:canonicalFor(),prefix:'../',body,header:renderHeader('research',1),footer:renderFooter(1)});
 }
 
 function buildArticle(meta,{renderHeader,renderFooter}){
   const dates=meta.updated===meta.published?`Published ${formatDate(meta.published)}`:`Published ${formatDate(meta.published)} · Updated ${formatDate(meta.updated)}`;
   const displayedDates=meta.approval?.decision==='draft'?`Draft dated ${formatDate(meta.updated)}`:dates;
-  const body=`<div class="article-shell"><a class="article-back" href="../">Back to Research</a><header class="article-header"><div class="article-kicker"><span>${html(meta.category)}</span><span>${html(meta.project)}</span></div><h1>${html(meta.title)}</h1><p class="article-dek">${html(meta.description)}</p><p class="article-byline">By ${html(meta.author)} · ${html(displayedDates)} · ${meta.readMinutes} min read</p></header><div class="article-layout"><aside aria-label="Article facts">${metadata(meta)}</aside><article class="article-body">${meta.body}${evidenceList(meta)}</article></div></div>`;
+  const resolution=meta.resolved?`Resolved upstream ${formatDate(meta.resolved)} · `:'';
+  const body=`<div class="article-shell"><a class="article-back" href="../">Back to Research</a><header class="article-header"><div class="article-kicker"><span>${html(meta.category)}</span><span>${html(meta.project)}</span></div><h1>${html(meta.title)}</h1><p class="article-dek">${html(meta.description)}</p><p class="article-byline">By ${html(meta.author)} · ${html(resolution+displayedDates)} · ${meta.readMinutes} min read</p></header><div class="article-layout"><aside aria-label="Article facts">${metadata(meta)}</aside><article class="article-body">${meta.body}${evidenceList(meta)}</article></div></div>`;
   return shell({title:meta.title,description:meta.description,canonical:canonicalFor(meta.slug),type:'article',prefix:'../../',body,header:renderHeader('research',2),footer:renderFooter(2),jsonLd:articleJsonLd(meta)});
 }
 

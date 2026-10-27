@@ -6,6 +6,7 @@
   "author": "Luigi Colluto",
   "published": "2026-10-27",
   "updated": "2026-10-27",
+  "resolved": "2026-07-15",
   "category": "Disclosure",
   "tags": ["Go", "error handling", "denial of service"],
   "severity": "High",

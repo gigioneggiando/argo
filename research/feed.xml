@@ -7,15 +7,15 @@
   <updated>2026-10-27T00:00:00Z</updated>
   <author><name>Luigi Colluto</name><uri>https://gigioneggiando.com/</uri></author>
   <entry>
-    <title>A length field is not an allocation budget</title>
-    <id>https://gigioneggiando.com/argo/research/mediamtx-moq-length-allocation/</id>
-    <link href="https://gigioneggiando.com/argo/research/mediamtx-moq-length-allocation/"/>
+    <title>Revocation must reach every live stream</title>
+    <id>https://gigioneggiando.com/argo/research/ntfy-revocation-live-streams/</id>
+    <link href="https://gigioneggiando.com/argo/research/ntfy-revocation-live-streams/"/>
     <published>2026-10-27T00:00:00Z</published>
     <updated>2026-10-27T00:00:00Z</updated>
-    <summary>MediaMTX trusted compact MoQ length fields as slice sizes before checking whether the message could contain that much data. A small unauthenticated input could trigger an unrecoverable allocation panic and stop the entire media server.</summary>
-    <category term="MoQ"/>
-    <category term="denial of service"/>
-    <category term="parsing"/>
+    <summary>ntfy removed a user&apos;s access or account, but its teardown helper stopped after cancelling the first matching subscription. Other live streams could continue receiving that topic&apos;s messages until they disconnected.</summary>
+    <category term="access control"/>
+    <category term="revocation"/>
+    <category term="streaming"/>
   </entry>
   <entry>
     <title>A role name is not an SQL fragment</title>
@@ -40,6 +40,17 @@
     <category term="replay"/>
   </entry>
   <entry>
+    <title>A length field is not an allocation budget</title>
+    <id>https://gigioneggiando.com/argo/research/mediamtx-moq-length-allocation/</id>
+    <link href="https://gigioneggiando.com/argo/research/mediamtx-moq-length-allocation/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>MediaMTX trusted compact MoQ length fields as slice sizes before checking whether the message could contain that much data. A small unauthenticated input could trigger an unrecoverable allocation panic and stop the entire media server.</summary>
+    <category term="MoQ"/>
+    <category term="denial of service"/>
+    <category term="parsing"/>
+  </entry>
+  <entry>
     <title>Panic recovery stays local</title>
     <id>https://gigioneggiando.com/argo/research/pocketbase-recovery-boundary/</id>
     <link href="https://gigioneggiando.com/argo/research/pocketbase-recovery-boundary/"/>
@@ -49,17 +60,6 @@
     <category term="Go"/>
     <category term="error handling"/>
     <category term="denial of service"/>
-  </entry>
-  <entry>
-    <title>Revocation must reach every live stream</title>
-    <id>https://gigioneggiando.com/argo/research/ntfy-revocation-live-streams/</id>
-    <link href="https://gigioneggiando.com/argo/research/ntfy-revocation-live-streams/"/>
-    <published>2026-10-27T00:00:00Z</published>
-    <updated>2026-10-27T00:00:00Z</updated>
-    <summary>ntfy removed a user&apos;s access or account, but its teardown helper stopped after cancelling the first matching subscription. Other live streams could continue receiving that topic&apos;s messages until they disconnected.</summary>
-    <category term="access control"/>
-    <category term="revocation"/>
-    <category term="streaming"/>
   </entry>
   <entry>
     <title>When identity data becomes policy syntax</title>

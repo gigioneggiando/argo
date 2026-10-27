@@ -6,6 +6,7 @@
   "author": "Luigi Colluto",
   "published": "2026-10-27",
   "updated": "2026-10-27",
+  "resolved": "2026-07-19",
   "category": "Disclosure",
   "tags": ["MoQ", "denial of service", "parsing"],
   "severity": "High",

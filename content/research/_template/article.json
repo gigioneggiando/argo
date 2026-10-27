@@ -6,6 +6,7 @@
   "author": "Luigi Colluto",
   "published": "YYYY-MM-DD",
   "updated": "YYYY-MM-DD",
+  "resolved": "YYYY-MM-DD",
   "category": "Disclosure",
   "tags": ["access control"],
   "severity": "Medium",

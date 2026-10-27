@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "approvedArticles": [
     "pocketbase-recovery-boundary",
-    "ntfy-revocation-live-streams"
+    "ntfy-revocation-live-streams",
+    "authentik-saml-assertion-binding"
   ]
 }

@@ -1,0 +1,42 @@
+{
+  "slug": "authentik-saml-assertion-binding",
+  "title": "A valid signature is not a valid login",
+  "description": "authentik verified a SAML assertion's signature and lifetime without proving it was meant for that SAML Source or tied to its login request. Because accepted assertions were not remembered, a valid assertion could also be replayed.",
+  "project": "authentik",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "category": "Disclosure",
+  "tags": ["SAML", "authentication", "replay"],
+  "severity": "High",
+  "status": "Fixed",
+  "identifiers": ["CVE-2026-94612", "GHSA-cqj8-fxxf-9pg7"],
+  "publicEvidence": [
+    {
+      "label": "authentik security advisory",
+      "url": "https://github.com/goauthentik/authentik/security/advisories/GHSA-cqj8-fxxf-9pg7"
+    },
+    {
+      "label": "Public repair and 2026.2 backport",
+      "url": "https://github.com/goauthentik/authentik/pull/25957"
+    },
+    {
+      "label": "authentik 2026.8.2 release",
+      "url": "https://github.com/goauthentik/authentik/releases/tag/version%2F2026.8.2"
+    },
+    {
+      "label": "authentik 2026.5.7 release",
+      "url": "https://github.com/goauthentik/authentik/releases/tag/version%2F2026.5.7"
+    },
+    {
+      "label": "authentik 2026.2.7 release",
+      "url": "https://github.com/goauthentik/authentik/releases/tag/version%2F2026.2.7"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

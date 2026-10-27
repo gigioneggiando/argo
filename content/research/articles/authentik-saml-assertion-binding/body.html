@@ -1,0 +1,24 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>A SAML assertion is a signed statement from an identity provider: it names a user and carries the information a service provider needs to begin a session. Checking the signature is essential, but it answers only one question—whether the trusted identity provider signed those bytes.</p>
+  <p>authentik's SAML Source also checked the assertion's validity period. It did not, however, establish that the assertion had been issued for that Source or in response to its current login request. It also kept no record of assertions already accepted. A statement could therefore be authentic in the cryptographic sense while still being wrong for this recipient, this request, or this moment of use.</p>
+  <p>These were two related failures of binding. Assertion confusion allowed a valid assertion intended for a different service provider to cross into authentik. Replay allowed the same assertion to be accepted more than once. In either case, possession of a signed document was treated too much like proof of a fresh login addressed to this service.</p>
+  <p>Argo surfaced this class during a source review. I validated the relevant paths and reported it privately. authentik later consolidated several independent reports into one public advisory, which credits every listed reporter, including <code>@gigioneggiando</code>.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>An actor who obtained a suitable assertion from an identity provider trusted by the target SAML Source could present it to authentik and sign in as the user named by that assertion. The advisory therefore rates the issue High, with CVSS 3.1 score 7.4: it is network reachable and requires no account or user interaction, but obtaining the necessary valid assertion makes attack complexity high.</p>
+  <p>The scope is narrower than “all authentik authentication”. Only deployments using a SAML Source were affected. authentik's SAML Providers and every other Source type were not. The published impact is authentication as the asserted user, with high confidentiality and integrity consequences; the advisory does not claim an availability impact.</p>
+  <p>The affected maintained lines were versions through 2026.2.6, 2026.5.6 and 2026.8.1. authentik released fixes in 2026.2.7, 2026.5.7 and 2026.8.2. No workaround was offered: the advisory recommended not relying on a SAML Source until upgrading.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The repair made the missing context explicit. The response processor now checks that a SAML Response's Destination, when present, matches the Source's assertion consumer service URL. It examines bearer subject confirmations and requires one that is valid for this Source, checking its Recipient and, where applicable, its <code>InResponseTo</code> value against the login request kept in the session.</p>
+  <p>Replay protection was added at the assertion level. authentik derives a cache key from the Source and a hash of the assertion ID, then uses an add-if-absent operation with a unique marker. The first request records the marker; another attempt to accept the same assertion sees that it did not win the insertion and is rejected. The entry remains for 24 hours, longer than the expected validity of most assertions.</p>
+  <p>The public backport includes regression coverage for different combinations of Destination, Recipient, request IDs, bearer confirmations and repeated assertions. The same repair shipped across all three maintained release lines.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Cryptographic validity and protocol validity are different layers. A signature can prove who made a statement without proving who may consume it, which transaction it belongs to, or whether it has already been consumed.</p>
+  <p>That distinction travels well beyond SAML. Signed webhooks, one-time links, OAuth assertions and capability tokens all need contextual questions after signature verification: Is it for me? Is it for this operation? Is it still timely? Has it been used before? Authentication succeeds only when the answers belong together. “The signature is valid” is the beginning of that decision, not its conclusion.</p>
+</section>

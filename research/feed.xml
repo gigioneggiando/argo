@@ -7,6 +7,17 @@
   <updated>2026-10-27T00:00:00Z</updated>
   <author><name>Luigi Colluto</name><uri>https://gigioneggiando.com/</uri></author>
   <entry>
+    <title>A valid signature is not a valid login</title>
+    <id>https://gigioneggiando.com/argo/research/authentik-saml-assertion-binding/</id>
+    <link href="https://gigioneggiando.com/argo/research/authentik-saml-assertion-binding/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>authentik verified a SAML assertion&apos;s signature and lifetime without proving it was meant for that SAML Source or tied to its login request. Because accepted assertions were not remembered, a valid assertion could also be replayed.</summary>
+    <category term="SAML"/>
+    <category term="authentication"/>
+    <category term="replay"/>
+  </entry>
+  <entry>
     <title>Panic recovery stays local</title>
     <id>https://gigioneggiando.com/argo/research/pocketbase-recovery-boundary/</id>
     <link href="https://gigioneggiando.com/argo/research/pocketbase-recovery-boundary/"/>

@@ -1,0 +1,25 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Moquette is a Java MQTT broker. MQTT clients publish and subscribe through named topics, while access-control lists decide which topics each client may read or write. In Moquette, a <code>pattern</code> rule could contain <code>%c</code> for the client ID or <code>%u</code> for the username. A rule such as <code>sensor/%c/#</code> was meant to give every device access to its own branch of the topic tree.</p>
+  <p>The broker replaced those placeholders with the connecting client's values and then interpreted the result as an MQTT topic filter. That ordering mattered because <code>+</code> and <code>#</code> are not ordinary characters in a filter: they are single-level and multi-level wildcards. Identity data was therefore allowed to become part of the authorization language.</p>
+  <p>For example, a client ID of <code>+</code> changed <code>sensor/%c/#</code> into <code>sensor/+/#</code>. Instead of naming one client's branch, the resulting filter matched every branch at that level. The same expansion was used for both read and write decisions.</p>
+  <p>Argo surfaced the unsafe substitution during a source review. I traced it through the authorization path and reproduced the boundary failure in Moquette's real matching logic before reporting it privately. The published advisory credits <code>@gigioneggiando</code>, and the eventual public repair records my authored patch and the maintainer's commit.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The issue affected deployments that used pattern-based ACL rules containing the client ID or username, especially rules intended to separate tenants or devices. It did not make every Moquette installation vulnerable: the relevant pattern configuration had to exist, and an untrusted client had to be able to connect with an identity containing an MQTT wildcard.</p>
+  <p>Under those conditions, a client confined to its own topic branch could read messages from another branch or publish messages into it. That is a direct loss of confidentiality and integrity across the boundary the ACL was meant to enforce.</p>
+  <p>The upstream advisory rates the bundled vulnerability record Critical at CVSS 9.6, with network reachability, low privileges, no user interaction, and high confidentiality and integrity impact. This article covers only the pattern-ACL injection identified as Critical in that record; the same advisory documents several separate denial-of-service and correctness issues.</p>
+  <p>Versions through 0.18.0 were affected. The advisory lists 0.18.1 and 0.19.0 as patched, and the public 0.18.1 security release strongly recommends upgrading.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The repair makes the boundary explicit before substitution. Moquette now checks whether the client ID or username contains <code>+</code> or <code>#</code>. If either identity contains an MQTT topic wildcard, the broker skips pattern-based authorization and logs a warning. In other words, it fails closed instead of trying to interpret ambiguous policy text.</p>
+  <p>The public commit also adds regression tests for wildcard client IDs and usernames across read and write checks. They verify that identities containing <code>+</code> or <code>#</code> cannot use the pattern rule to reach another client's topics, and that the previously crashing malformed-filter case is rejected safely.</p>
+  <p>The patch was released in Moquette 0.18.1. Existing operators do not need to redesign ordinary tenant patterns, but they do need a fixed version for the identity-to-policy boundary to be enforced by the broker.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>A template that produces a policy is a small interpreter. Values inserted into it cannot be treated as harmless strings when the destination gives some characters structural meaning.</p>
+  <p>The review question travels beyond MQTT: can a username, tenant ID, path segment or resource name introduce operators into the language that will consume it? SQL placeholders, regular expressions, route templates and IAM resource patterns all expose versions of the same mistake. Validation is not only about whether a value is well formed in isolation. It must also ask what that value becomes after substitution.</p>
+</section>

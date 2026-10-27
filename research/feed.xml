@@ -39,4 +39,15 @@
     <category term="revocation"/>
     <category term="streaming"/>
   </entry>
+  <entry>
+    <title>When identity data becomes policy syntax</title>
+    <id>https://gigioneggiando.com/argo/research/moquette-pattern-acl-wildcard-injection/</id>
+    <link href="https://gigioneggiando.com/argo/research/moquette-pattern-acl-wildcard-injection/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>Moquette inserted client IDs and usernames directly into pattern-based ACL rules. MQTT wildcard characters in those identities could broaden a tenant-scoped rule and grant cross-tenant read or write access.</summary>
+    <category term="MQTT"/>
+    <category term="authorization"/>
+    <category term="injection"/>
+  </entry>
 </feed>

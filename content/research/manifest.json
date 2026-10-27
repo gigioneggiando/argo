@@ -3,6 +3,7 @@
   "approvedArticles": [
     "pocketbase-recovery-boundary",
     "ntfy-revocation-live-streams",
-    "authentik-saml-assertion-binding"
+    "authentik-saml-assertion-binding",
+    "moquette-pattern-acl-wildcard-injection"
   ]
 }

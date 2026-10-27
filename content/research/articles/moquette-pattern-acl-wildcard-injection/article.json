@@ -1,0 +1,34 @@
+{
+  "slug": "moquette-pattern-acl-wildcard-injection",
+  "title": "When identity data becomes policy syntax",
+  "description": "Moquette inserted client IDs and usernames directly into pattern-based ACL rules. MQTT wildcard characters in those identities could broaden a tenant-scoped rule and grant cross-tenant read or write access.",
+  "project": "Moquette",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "category": "Disclosure",
+  "tags": ["MQTT", "authorization", "injection"],
+  "severity": "Critical",
+  "status": "Fixed",
+  "identifiers": ["CVE-2026-85724", "GHSA-5f42-97gr-vfhq"],
+  "publicEvidence": [
+    {
+      "label": "Moquette security advisory",
+      "url": "https://github.com/moquette-io/moquette/security/advisories/GHSA-5f42-97gr-vfhq"
+    },
+    {
+      "label": "Public repair and regression tests",
+      "url": "https://github.com/moquette-io/moquette/commit/b4a98bb3f3425ece476ed073aa080c627c1239af"
+    },
+    {
+      "label": "Moquette 0.18.1 release",
+      "url": "https://github.com/moquette-io/moquette/releases/tag/v0.18.1"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

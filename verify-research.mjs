@@ -42,6 +42,7 @@ try{
   const article=readFileSync(path.join(output,slug,'index.html'),'utf8');
   const feed=readFileSync(path.join(output,'feed.xml'),'utf8');
   ensure(index.includes(`./${slug}/`)&&index.includes('Notes from looking closely.'),'Research index is incomplete');
+  ensure(index.includes('rel="alternate" type="application/atom+xml" title="Argo Research" href="/argo/research/feed.xml"'),'Research index does not expose the stable public feed path');
   ensure(article.includes(`https://gigioneggiando.com/argo/research/${slug}/`)&&article.includes('application/ld+json')&&article.includes('Public record'),'Article metadata or evidence is incomplete');
   ensure(feed.includes('<feed xmlns="http://www.w3.org/2005/Atom">')&&feed.includes(meta.title),'Atom feed is incomplete');
   let rejectedPrivate=false;

@@ -9,6 +9,7 @@
     "navidrome-artist-role-order-by-sqli",
     "open-webui-oauth-cookie-boundary",
     "vaultwarden-cross-organization-groups",
-    "surrealdb-wasi-host-buffer"
+    "surrealdb-wasi-host-buffer",
+    "coturn-ipv6-total-order"
   ]
 }

@@ -1,0 +1,35 @@
+{
+  "slug": "coturn-ipv6-total-order",
+  "title": "An address range needs one total order",
+  "description": "coturn compared IPv6 range endpoints byte by byte instead of as one ordered address. Under custom non-prefix-aligned deny rules, an authenticated client could relay traffic to peers the operator intended to block.",
+  "project": "coturn",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "resolved": "2026-07-27",
+  "category": "Disclosure",
+  "tags": ["IPv6", "access control", "range checks"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["CVE-2026-73213", "GHSA-4v97-rxjj-4f99"],
+  "publicEvidence": [
+    {
+      "label": "coturn security advisory",
+      "url": "https://github.com/coturn/coturn/security/advisories/GHSA-4v97-rxjj-4f99"
+    },
+    {
+      "label": "Upstream fix",
+      "url": "https://github.com/coturn/coturn/commit/6c13608c28a04af5d63abddd7565a0dcc4771c28"
+    },
+    {
+      "label": "coturn 4.16.0 release",
+      "url": "https://github.com/coturn/coturn/releases/tag/4.16.0"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

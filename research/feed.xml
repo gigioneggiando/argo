@@ -62,6 +62,17 @@
     <category term="credential boundaries"/>
   </entry>
   <entry>
+    <title>An address range needs one total order</title>
+    <id>https://gigioneggiando.com/argo/research/coturn-ipv6-total-order/</id>
+    <link href="https://gigioneggiando.com/argo/research/coturn-ipv6-total-order/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>coturn compared IPv6 range endpoints byte by byte instead of as one ordered address. Under custom non-prefix-aligned deny rules, an authenticated client could relay traffic to peers the operator intended to block.</summary>
+    <category term="IPv6"/>
+    <category term="access control"/>
+    <category term="range checks"/>
+  </entry>
+  <entry>
     <title>A group ID does not carry its tenant</title>
     <id>https://gigioneggiando.com/argo/research/vaultwarden-cross-organization-groups/</id>
     <link href="https://gigioneggiando.com/argo/research/vaultwarden-cross-organization-groups/"/>

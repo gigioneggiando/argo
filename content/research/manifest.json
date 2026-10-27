@@ -1,4 +1,7 @@
 {
   "schemaVersion": 1,
-  "approvedArticles": ["pocketbase-recovery-boundary"]
+  "approvedArticles": [
+    "pocketbase-recovery-boundary",
+    "ntfy-revocation-live-streams"
+  ]
 }

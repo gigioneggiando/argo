@@ -1,0 +1,34 @@
+{
+  "slug": "ntfy-revocation-live-streams",
+  "title": "Revocation must reach every live stream",
+  "description": "ntfy removed a user's access or account, but its teardown helper stopped after cancelling the first matching subscription. Other live streams could continue receiving that topic's messages until they disconnected.",
+  "project": "ntfy",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "category": "Disclosure",
+  "tags": ["access control", "revocation", "streaming"],
+  "severity": "High",
+  "status": "Fixed",
+  "identifiers": [],
+  "publicEvidence": [
+    {
+      "label": "Original report and patch proposal",
+      "url": "https://github.com/binwiederhier/ntfy/pull/1845"
+    },
+    {
+      "label": "Merged upstream repair",
+      "url": "https://github.com/binwiederhier/ntfy/pull/2077"
+    },
+    {
+      "label": "ntfy 2.34.0 release notes",
+      "url": "https://github.com/binwiederhier/ntfy/blob/main/docs/releases.md#ntfy-server-v2340"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

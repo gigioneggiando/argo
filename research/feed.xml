@@ -17,4 +17,15 @@
     <category term="error handling"/>
     <category term="denial of service"/>
   </entry>
+  <entry>
+    <title>Revocation must reach every live stream</title>
+    <id>https://gigioneggiando.com/argo/research/ntfy-revocation-live-streams/</id>
+    <link href="https://gigioneggiando.com/argo/research/ntfy-revocation-live-streams/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>ntfy removed a user&apos;s access or account, but its teardown helper stopped after cancelling the first matching subscription. Other live streams could continue receiving that topic&apos;s messages until they disconnected.</summary>
+    <category term="access control"/>
+    <category term="revocation"/>
+    <category term="streaming"/>
+  </entry>
 </feed>

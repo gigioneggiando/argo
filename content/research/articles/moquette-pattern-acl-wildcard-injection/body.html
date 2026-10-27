@@ -3,7 +3,6 @@
   <p>Moquette is a Java MQTT broker. MQTT clients publish and subscribe through named topics, while access-control lists decide which topics each client may read or write. In Moquette, a <code>pattern</code> rule could contain <code>%c</code> for the client ID or <code>%u</code> for the username. A rule such as <code>sensor/%c/#</code> was meant to give every device access to its own branch of the topic tree.</p>
   <p>The broker replaced those placeholders with the connecting client's values and then interpreted the result as an MQTT topic filter. That ordering mattered because <code>+</code> and <code>#</code> are not ordinary characters in a filter: they are single-level and multi-level wildcards. Identity data was therefore allowed to become part of the authorization language.</p>
   <p>For example, a client ID of <code>+</code> changed <code>sensor/%c/#</code> into <code>sensor/+/#</code>. Instead of naming one client's branch, the resulting filter matched every branch at that level. The same expansion was used for both read and write decisions.</p>
-  <p>Argo surfaced the unsafe substitution during a source review. I traced it through the authorization path and reproduced the boundary failure in Moquette's real matching logic before reporting it privately. The published advisory credits <code>@gigioneggiando</code>, and the eventual public repair records my authored patch and the maintainer's commit.</p>
 </section>
 <section aria-labelledby="why-it-mattered">
   <h2 id="why-it-mattered">Why it mattered</h2>

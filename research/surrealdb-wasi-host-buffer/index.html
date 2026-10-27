@@ -3,7 +3,7 @@
   <h2 id="what-went-wrong">What went wrong</h2>
   <p>SurrealDB’s experimental Surrealism runtime executes WebAssembly modules through Wasmtime and places a ceiling on the guest’s linear memory. That limit covered memory allocated inside the module, but the host also created resources on the module’s behalf.</p>
   <p>The WASI stdout and stderr callbacks collected an incomplete line in a host-side <code>Vec</code> until they encountered a newline. A module could repeatedly write bytes without ever finishing the line. Each write remained within the guest’s own memory budget, while the pending output grew in the SurrealDB process outside Wasmtime’s store limiter.</p>
-  <p>Argo surfaced the uncapped buffer during source review. I traced the data across the guest–host boundary and reported the issue privately. The published advisory credits <code>@gigioneggiando</code> as the reporter.</p>
+  <p>The mismatch sat at the callback boundary: a constrained guest controlled how much state an unconstrained host-side consumer retained.</p>
 </section>
 <section aria-labelledby="why-it-mattered">
   <h2 id="why-it-mattered">Why it mattered</h2>

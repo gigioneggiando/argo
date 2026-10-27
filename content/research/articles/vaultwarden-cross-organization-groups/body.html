@@ -2,7 +2,6 @@
   <h2 id="what-went-wrong">What went wrong</h2>
   <p>Vaultwarden groups and organization memberships are identified by UUIDs. Two member-management endpoints accepted group UUIDs from the request body and created the corresponding membership rows without first proving that each group belonged to the organization being edited. A valid group from organization B could therefore be attached to a member record in organization A.</p>
   <p>That malformed relationship would have been harmless if every later authorization query had restored the tenant boundary. One did not. The query used to decide whether a member belonged to a full-access group joined groups, group memberships and organization memberships, but did not require the group’s organization UUID to match the membership’s organization UUID. A sibling query already contained that condition.</p>
-  <p>Argo surfaced the mismatched checks during source review. I followed the stored relationship into the authorization path, validated how the two gaps composed, and reported the chain privately. The public advisory credits <code>@gigioneggiando</code> as the reporter.</p>
 </section>
 <section aria-labelledby="why-it-mattered">
   <h2 id="why-it-mattered">Why it mattered</h2>

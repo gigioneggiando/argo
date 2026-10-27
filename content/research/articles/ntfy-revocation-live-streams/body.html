@@ -3,7 +3,6 @@
   <p>In ntfy, one account can keep several live subscriptions to the same topic: different browser tabs, devices, or streaming transports can all remain connected at once. When an administrator revokes access or deletes the account, changing the stored permission is only half of the job. Every connection that still carries the old authority must also be ended.</p>
   <p>The helper responsible for that teardown, <code>CancelSubscriberUser</code>, iterated over the topic's subscribers and looked for the specified user. It cancelled the first match, then returned immediately. That control flow quietly treated “one user” as if it meant “one connection”. Any other matching streams were left alive.</p>
   <p>The access-reset and user-deletion paths both relied on this helper. As a result, the durable account state and the in-memory connection state could disagree: the user was no longer authorised, while some sessions created under the previous policy were still receiving messages.</p>
-  <p>Argo surfaced the pattern during a source review. I followed the relevant call paths, checked the behaviour by hand, and opened a public pull request with a small repair and a regression test for two subscriptions belonging to the same user.</p>
 </section>
 <section aria-labelledby="why-it-mattered">
   <h2 id="why-it-mattered">Why it mattered</h2>
@@ -15,7 +14,7 @@
   <h2 id="how-it-was-fixed">How it was fixed</h2>
   <p>The essential repair was to remove the early return and continue through the subscriber collection, cancelling every stream whose user ID matched. The regression test gives one user two subscriptions on the same topic and verifies that both are ended.</p>
   <p>The original pull request was closed after the maintainer incorporated the repair into a broader change for propagating access changes across ntfy's experimental cluster. That upstream work also rechecked subscriptions when access state changed on another node. For the narrower bug described here, its explicit contract is simple: <code>CancelSubscriberUser</code> ends all of a user's streams on the topic, not only the first.</p>
-  <p>The correction shipped in ntfy server 2.34.0 on 24 October 2026. The release notes name the previous behaviour, link the original report, and credit <code>@gigioneggiando</code>.</p>
+  <p>The correction shipped in ntfy server 2.34.0 on 24 October 2026. The release notes name the previous behaviour and link the original report.</p>
 </section>
 <section aria-labelledby="after-the-patch">
   <h2 id="after-the-patch">After the patch</h2>

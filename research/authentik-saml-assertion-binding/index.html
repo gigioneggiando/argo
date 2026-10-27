@@ -4,7 +4,6 @@
   <p>A SAML assertion is a signed statement from an identity provider: it names a user and carries the information a service provider needs to begin a session. Checking the signature is essential, but it answers only one question—whether the trusted identity provider signed those bytes.</p>
   <p>authentik's SAML Source also checked the assertion's validity period. It did not, however, establish that the assertion had been issued for that Source or in response to its current login request. It also kept no record of assertions already accepted. A statement could therefore be authentic in the cryptographic sense while still being wrong for this recipient, this request, or this moment of use.</p>
   <p>These were two related failures of binding. Assertion confusion allowed a valid assertion intended for a different service provider to cross into authentik. Replay allowed the same assertion to be accepted more than once. In either case, possession of a signed document was treated too much like proof of a fresh login addressed to this service.</p>
-  <p>Argo surfaced this class during a source review. I validated the relevant paths and reported it privately. authentik later consolidated several independent reports into one public advisory, which credits every listed reporter, including <code>@gigioneggiando</code>.</p>
 </section>
 <section aria-labelledby="why-it-mattered">
   <h2 id="why-it-mattered">Why it mattered</h2>

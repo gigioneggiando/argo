@@ -3,7 +3,6 @@
   <p>MediaMTX is a single media server for protocols including RTSP, RTMP, HLS, WebRTC, SRT and Media over QUIC, or MoQ. In MoQ, variable-length integers let a message represent small numbers compactly while retaining a very large numerical range. The encoded field may occupy only a few bytes, but the number it describes can be enormous.</p>
   <p>Several MoQ parsers treated those numbers as memory instructions. The SUBSCRIBE and PUBLISH control-message paths read a namespace field count and used it directly in <code>make([]string, nsCount)</code>. The subgroup object parser similarly used a declared properties length in <code>make([]byte, propsLen)</code>.</p>
   <p>The parsers had checks for missing message data, but those checks happened after the allocation. A very large declared count or length therefore reached Go's allocator before the parser could notice that the small input could not possibly contain the promised elements. The result was a <code>makeslice: len out of range</code> panic or an attempt to reserve excessive memory.</p>
-  <p>Argo surfaced these two instances of the same boundary failure. I traced them through the MoQ parsing paths and reproduced the panic in the real decoder before reporting them privately. The published advisory credits both <code>@iaohkut-from-NightWolf-Team</code> and <code>@gigioneggiando</code> as reporters.</p>
 </section>
 <section aria-labelledby="why-it-mattered">
   <h2 id="why-it-mattered">Why it mattered</h2>

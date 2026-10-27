@@ -3,7 +3,6 @@
   <p>Navidrome's native artist API accepts a <code>role</code> parameter used to select categories such as album artist or composer. The set of meaningful roles is small, so the value looks like an enum. At the HTTP boundary, however, it is still an arbitrary string supplied by the requester.</p>
   <p>The filtering path checked that string against Navidrome's known roles. The sorting path did not. When the artist list was ordered by song count, album count or size, the repository inserted the raw role inside a JSON-path expression and stored the resulting text in its sort mapping. That mapping later entered the SQL <code>ORDER BY</code> clause as a trusted fragment.</p>
   <p>This distinction matters because values and SQL structure are protected differently. A database placeholder can safely carry a value, but it cannot stand in for an identifier or a complete ordering expression. Once request data was used to construct that expression, characters in the role stopped being data and became SQL syntax.</p>
-  <p>Argo surfaced the unsafe sort path. I traced the value from the authenticated artist endpoint into the unparameterised ordering expression before reporting it privately. The published advisory credits <code>@Sudo-Ivan</code> and <code>@gigioneggiando</code> as independent reporters.</p>
 </section>
 <section aria-labelledby="why-it-mattered">
   <h2 id="why-it-mattered">Why it mattered</h2>

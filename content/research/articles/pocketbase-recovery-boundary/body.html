@@ -2,7 +2,7 @@
   <h2 id="what-went-wrong">What went wrong</h2>
   <p>PocketBase already had middleware that recovered panics during ordinary HTTP request handling. That sounds like a boundary around the request, but in Go the real boundary is narrower: recovery belongs to the goroutine in which it runs.</p>
   <p>Some PocketBase operations moved work into child or worker goroutines. If one of those workers panicked, the deferred recovery surrounding the parent request could not intercept it. The panic escaped the request's error path and could terminate the whole server process.</p>
-  <p>Argo surfaced the pattern during a source review. I traced the affected paths, checked the runtime behaviour, and reported the issue privately. The important part was not simply finding a call that could panic. It was following that call across an execution boundary and asking which recovery mechanism, if any, still applied on the other side.</p>
+  <p>The important part was not simply finding a call that could panic. It was following that call across an execution boundary and asking which recovery mechanism, if any, still applied on the other side.</p>
 </section>
 <section aria-labelledby="why-it-mattered">
   <h2 id="why-it-mattered">Why it mattered</h2>
@@ -14,7 +14,7 @@
   <h2 id="how-it-was-fixed">How it was fixed</h2>
   <p>The repair moved recovery to the place where it could work. PocketBase added <code>routine.SafeWrap</code>, a helper that wraps a worker function, recovers a panic inside that same goroutine, and returns it as an ordinary error. The public test confirms both parts of the contract: the worker still runs, and its panic becomes an error the caller can handle.</p>
   <p>The maintainer then applied that boundary consistently. Workers launched through <code>errgroup</code> were wrapped with <code>SafeWrap</code>, while fire-and-forget jobs used the project's guarded helper. The public diff covers batch and realtime code and also audits other internal workers instead of treating the first crash site as an isolated exception.</p>
-  <p>The change shipped in PocketBase 0.39.7 and was backported to 0.22.48. The advisory was published with the releases and credits <code>@gigioneggiando</code> as the reporter.</p>
+  <p>The change shipped in PocketBase 0.39.7 and was backported to 0.22.48.</p>
 </section>
 <section aria-labelledby="after-the-patch">
   <h2 id="after-the-patch">After the patch</h2>

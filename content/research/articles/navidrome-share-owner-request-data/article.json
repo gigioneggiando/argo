@@ -1,0 +1,35 @@
+{
+  "slug": "navidrome-share-owner-request-data",
+  "title": "A share owner is not request data",
+  "description": "Navidrome let a logged-in user assign a new share to someone with broader library access by submitting that user's ID. On affected multi-library installations, the share could expose tracks its creator was not allowed to read or stream.",
+  "project": "Navidrome",
+  "author": "Luigi Colluto",
+  "published": "2026-10-27",
+  "updated": "2026-10-27",
+  "resolved": "2026-09-12",
+  "category": "Disclosure",
+  "tags": ["access control", "IDOR", "server-managed ownership"],
+  "severity": "High",
+  "status": "Fixed",
+  "identifiers": ["GHSA-82gh-4ggp-gfg5"],
+  "publicEvidence": [
+    {
+      "label": "Navidrome security advisory",
+      "url": "https://github.com/navidrome/navidrome/security/advisories/GHSA-82gh-4ggp-gfg5"
+    },
+    {
+      "label": "Public repair and regression tests",
+      "url": "https://github.com/navidrome/navidrome/commit/1a8463f7d"
+    },
+    {
+      "label": "Navidrome v0.64.0 release",
+      "url": "https://github.com/navidrome/navidrome/releases/tag/v0.64.0"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-27",
+    "publicEvidenceCheckedOn": "2026-10-27"
+  }
+}

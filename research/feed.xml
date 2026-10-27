@@ -29,6 +29,17 @@
     <category term="input validation"/>
   </entry>
   <entry>
+    <title>A share owner is not request data</title>
+    <id>https://gigioneggiando.com/argo/research/navidrome-share-owner-request-data/</id>
+    <link href="https://gigioneggiando.com/argo/research/navidrome-share-owner-request-data/"/>
+    <published>2026-10-27T00:00:00Z</published>
+    <updated>2026-10-27T00:00:00Z</updated>
+    <summary>Navidrome let a logged-in user assign a new share to someone with broader library access by submitting that user&apos;s ID. On affected multi-library installations, the share could expose tracks its creator was not allowed to read or stream.</summary>
+    <category term="access control"/>
+    <category term="IDOR"/>
+    <category term="server-managed ownership"/>
+  </entry>
+  <entry>
     <title>A valid signature is not a valid login</title>
     <id>https://gigioneggiando.com/argo/research/authentik-saml-assertion-binding/</id>
     <link href="https://gigioneggiando.com/argo/research/authentik-saml-assertion-binding/"/>

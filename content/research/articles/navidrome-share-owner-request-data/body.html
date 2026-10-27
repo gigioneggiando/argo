@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Navidrome lets users create public links for music they want to share. Each share has an owner. That owner is not simply a name shown in the interface: Navidrome uses the owner's library permissions when it resolves the share's contents and serves its tracks.</p>
+  <p>The native <code>POST /api/share</code> endpoint decoded a <code>userId</code> from the request body into the share model. The repository supplied the logged-in user's ID only when that field was empty. If the client sent a non-empty ID, Navidrome preserved it and stored the share as belonging to that user instead.</p>
+  <p>That made a server-side authority attribute behave like ordinary request data. In Navidrome 0.63.x, a logged-in user could take a public playlist, submit the ID of another user with access to more libraries, and create a share resolved under that wider access context. The request did not merely choose what to share; it also chose whose permissions would govern the result.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The advisory rates the issue High with a CVSS 3.1 score of 7.1. On versions 0.63.0 through 0.63.2, any authenticated user could use the affected native API to read and stream tracks from libraries they had not been granted, provided the installation used per-user library restrictions and the attacker could start from a public playlist. The created share also appeared under the other user's name.</p>
+  <p>The limits are important. The cross-library disclosure requires a meaningful difference between the two users' library access. Before version 0.63.0, spoofing the owner caused mis-attribution but did not create this same cross-library path. The Subsonic <code>createShare</code> endpoint was not affected because it does not accept a <code>userId</code> parameter.</p>
+  <p>Sharing is enabled by default from 0.63.0. Earlier installations were exposed to the ownership problem only when <code>EnableSharing</code> was enabled. The supplied owner also had to be a real user ID, although a public playlist exposed its owner's ID through the native API.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>Navidrome 0.64.0 makes the ownership rule explicit: a share is always owned by the authenticated user who creates it. The service layer replaces any submitted <code>UserID</code> with the caller's ID before resolving the share, and the persistence layer enforces the same rule again before saving it.</p>
+  <p>The second check is useful defence in depth. It protects the invariant even if another caller reaches the repository without passing through the usual service wrapper. Regression tests now submit one user's ID while authenticated as another and verify that the stored owner is still the authenticated caller.</p>
+  <p>This changes behaviour for administrators too: they can no longer create a share on behalf of another user by supplying <code>userId</code>. For installations that cannot upgrade immediately, the advisory's workaround is to disable sharing with <code>EnableSharing = false</code>.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Ownership fields often look harmless because they are represented as ordinary IDs. But when an ID determines whose permissions, tenant or library scope a later operation will use, it is part of the authorization model. The server should derive it from the authenticated principal, not accept it as a client preference.</p>
+  <p>A useful review question is: which fields describe the requested object, and which fields decide the authority under which that object will later be interpreted? Create paths deserve particular attention. Code that fills an owner only when it is missing may appear to provide a safe default while quietly allowing the caller to override the security boundary.</p>
+</section>

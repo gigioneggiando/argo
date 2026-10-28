@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>coturn's <code>--multiplex-peer</code> mode lets many TURN allocations share relay sockets. To route an incoming datagram back to the right allocation, each relay thread kept a demultiplexing table from an exact peer endpoint — an IP address and port — to the session that owned it.</p>
+  <p>TURN permissions use a different unit: they authorize a peer IP address, regardless of port. One valid permission could therefore cover thousands of distinct endpoints, and every new port named by the client could add another entry to the shared table. The permission count was bounded; the state created from those permissions was not.</p>
+  <p>Removal made the mismatch more expensive. Permission expiry and session teardown scanned the table shared by every allocation on the relay thread. As the table grew, one allocation increased both the stored state and the cleanup work paid by its neighbours.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The maintainer's advisory rates the issue Medium and lists every version through 4.15.0 as affected. Exploitation required multiplex-peer mode and either an authenticated TURN client or a deployment that did not require authentication. It did not bypass peer permissions or allow server-side request forgery.</p>
+  <p>Within those conditions, one client could keep introducing new ports for an already permitted IP. The resulting table growth consumed memory, while repeated full-table scans amplified CPU use during cleanup. Because the table belonged to the worker rather than to one allocation, the degradation could affect unrelated sessions handled by the same thread.</p>
+  <p>The same failure did not require hostile intent. A legitimate high-volume workload with many ephemeral peer ports could create the pattern naturally. This was therefore both an availability vulnerability and a robustness problem at a shared-resource boundary.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>coturn 4.16.0 introduced <code>--multiplex-peer-max-peers</code>, a per-allocation endpoint limit with a default of 256. Once an allocation reaches that limit, further permission and channel-binding requests receive error 508, while additional SEND endpoints are dropped. Normal allocations below the limit keep their previous behaviour.</p>
+  <p>The repair also added a reverse index from each session to its own endpoints. Expiry and teardown now visit the endpoints owned by that session instead of scanning unrelated entries in the worker's shared table. The state has a per-owner budget, and its cleanup cost follows the owner rather than the size of the shared structure.</p>
+  <p>The public pull request includes focused unit and integration coverage: registration stops at the configured limit, the limit applies independently to each session, released slots can be reused, and deregistration does not traverse entries belonging to another session. Upgrading to 4.16.0 or later applies both parts of the repair.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Authentication answers who may ask a system to do work. It does not answer how much memory, CPU time or shared state one authenticated principal may consume. A permission limit is equally incomplete when the permission and the resource it creates are counted in different units.</p>
+  <p>A useful review question is therefore: what is the actual key of the stored object? If policy counts IP addresses while storage counts IP-and-port pairs, the smaller policy space does not bound the larger state space. Shared indexes should carry an explicit per-owner budget, and their removal paths should be proportional to that owner's entries wherever possible.</p>
+</section>

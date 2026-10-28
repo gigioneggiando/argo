@@ -117,6 +117,17 @@
     <category term="range checks"/>
   </entry>
   <entry>
+    <title>Permissions do not bound state</title>
+    <id>https://gigioneggiando.com/argo/research/coturn-multiplex-peer-state-bound/</id>
+    <link href="https://gigioneggiando.com/argo/research/coturn-multiplex-peer-state-bound/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>coturn limited TURN permissions per IP, but multiplex-peer mode stored one shared demux entry per IP:port without a matching bound. Version 4.16.0 capped that state and made cleanup local to each allocation.</summary>
+    <category term="resource exhaustion"/>
+    <category term="state management"/>
+    <category term="TURN"/>
+  </entry>
+  <entry>
     <title>A group ID does not carry its tenant</title>
     <id>https://gigioneggiando.com/argo/research/vaultwarden-cross-organization-groups/</id>
     <link href="https://gigioneggiando.com/argo/research/vaultwarden-cross-organization-groups/"/>

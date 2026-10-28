@@ -1,0 +1,35 @@
+{
+  "slug": "coturn-multiplex-peer-state-bound",
+  "title": "Permissions do not bound state",
+  "description": "coturn limited TURN permissions per IP, but multiplex-peer mode stored one shared demux entry per IP:port without a matching bound. Version 4.16.0 capped that state and made cleanup local to each allocation.",
+  "project": "coturn",
+  "author": "Luigi Colluto",
+  "published": "2026-10-28",
+  "updated": "2026-10-28",
+  "resolved": "2026-07-27",
+  "category": "Disclosure",
+  "tags": ["resource exhaustion", "state management", "TURN"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["GHSA-67c2-q5xv-f85p"],
+  "publicEvidence": [
+    {
+      "label": "coturn security advisory",
+      "url": "https://github.com/coturn/coturn/security/advisories/GHSA-67c2-q5xv-f85p"
+    },
+    {
+      "label": "Public repair",
+      "url": "https://github.com/coturn/coturn/pull/2017"
+    },
+    {
+      "label": "coturn 4.16.0 release",
+      "url": "https://github.com/coturn/coturn/releases/tag/4.16.0"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-28",
+    "publicEvidenceCheckedOn": "2026-10-28"
+  }
+}

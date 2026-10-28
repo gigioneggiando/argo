@@ -15,6 +15,7 @@
     "authentik-view-permission-stored-credentials",
     "vaultwarden-favicon-resolver-boundary",
     "open-webui-tool-export-write-scope",
-    "surrealdb-header-bytes-panic"
+    "surrealdb-header-bytes-panic",
+    "coturn-multiplex-peer-state-bound"
   ]
 }

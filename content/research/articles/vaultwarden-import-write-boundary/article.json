@@ -1,0 +1,35 @@
+{
+  "slug": "vaultwarden-import-write-boundary",
+  "title": "Import is still a write",
+  "description": "Vaultwarden's organization import accepted a collection a member could only read, then treated the submitted collection list as proof that write checks had passed. Version 1.37.0 restored the write boundary.",
+  "project": "Vaultwarden",
+  "author": "Luigi Colluto",
+  "published": "2026-10-28",
+  "updated": "2026-10-28",
+  "resolved": "2026-07-24",
+  "category": "Disclosure",
+  "tags": ["access control", "bulk import", "integrity"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["GHSA-f3qw-qg77-hmm4"],
+  "publicEvidence": [
+    {
+      "label": "Vaultwarden security advisory",
+      "url": "https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-f3qw-qg77-hmm4"
+    },
+    {
+      "label": "Public repair",
+      "url": "https://github.com/dani-garcia/vaultwarden/pull/7472"
+    },
+    {
+      "label": "Vaultwarden 1.37.0 release",
+      "url": "https://github.com/dani-garcia/vaultwarden/releases/tag/1.37.0"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-28",
+    "publicEvidenceCheckedOn": "2026-10-28"
+  }
+}

@@ -155,10 +155,13 @@ function shell({title,description,canonical,type='website',prefix,body,header,fo
 }
 
 function buildIndex(articles,{renderHeader,renderFooter,projectStars=new Map()}){
+  const starsByProject=new Map(
+    [...projectStars].map(([project,stars])=>[String(project).trim().toLocaleLowerCase('en'),stars]),
+  );
   const cards=articles.map(article=>{
     const date=article.resolved||article.published;
     const dateLabel=article.resolved?'Resolved upstream':'Published';
-    const stars=projectStars.get(article.project)||0;
+    const stars=starsByProject.get(article.project.trim().toLocaleLowerCase('en'))||0;
     const searchable=[article.title,article.description,article.project,article.category,article.severity,article.status,...article.identifiers,...article.tags].filter(Boolean).join(' ').toLowerCase();
     return `<li class="research-entry" data-severity="${html(article.severity||'')}" data-resolved="${html(date)}" data-published="${html(article.published)}" data-stars="${stars}" data-search="${html(searchable)}"><article><a class="research-entry-link" href="./${article.slug}/"><div class="research-entry-date"><span>${dateLabel}</span><time datetime="${date}">${html(formatIndexDate(date))}</time><span>Published ${html(formatIndexDate(article.published))}</span></div><div class="research-entry-copy"><div class="research-entry-meta"><span>${html(article.category)}</span><span>${html(article.project)}</span>${article.identifiers[0]?`<span>${html(article.identifiers[0])}</span>`:''}</div><h2>${html(article.title)}</h2><p>${html(article.description)}</p></div><div class="research-entry-side"><span class="sev ${article.severity?html(article.severity.toLowerCase()):''}">${html(article.severity||article.status)}</span><span>${article.readMinutes} min read</span>${stars?`<span title="GitHub stars · archive snapshot">~${compactNumber.format(stars)} stars</span>`:''}<svg class="research-entry-arrow" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></div></a></article></li>`;
   }).join('');

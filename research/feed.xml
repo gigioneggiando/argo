@@ -139,6 +139,17 @@
     <category term="object ownership"/>
   </entry>
   <entry>
+    <title>Import is still a write</title>
+    <id>https://gigioneggiando.com/argo/research/vaultwarden-import-write-boundary/</id>
+    <link href="https://gigioneggiando.com/argo/research/vaultwarden-import-write-boundary/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>Vaultwarden&apos;s organization import accepted a collection a member could only read, then treated the submitted collection list as proof that write checks had passed. Version 1.37.0 restored the write boundary.</summary>
+    <category term="access control"/>
+    <category term="bulk import"/>
+    <category term="integrity"/>
+  </entry>
+  <entry>
     <title>Some URLs never need DNS</title>
     <id>https://gigioneggiando.com/argo/research/vaultwarden-favicon-resolver-boundary/</id>
     <link href="https://gigioneggiando.com/argo/research/vaultwarden-favicon-resolver-boundary/"/>

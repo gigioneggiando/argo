@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Vaultwarden's organization import is a bulk mutation. It creates vault items and can attach them to existing collections, so the endpoint must preserve the same write boundary that protects an ordinary collection update.</p>
+  <p>On affected versions, the first collection check answered a weaker question. For an existing collection, it verified whether the member could access it rather than whether the member could write to it. A member with strictly read-only access therefore passed the import's collection validation.</p>
+  <p>A second assumption completed the bypass. The cipher update path treated the presence of a submitted collection list as evidence that collection authorization had already happened. That shortcut was safe only if the earlier check had established write access. Instead, the two checks composed into a gap: visibility was accepted at the first boundary, and the later write check trusted that result.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The maintainer's advisory rates the issue Medium, with a CVSS 3.1 score of 4.3, and lists versions through 1.36.0 as affected. Reaching it required an authenticated, confirmed organization member with read-only access to a restricted collection.</p>
+  <p>That member could not read data beyond the access already granted and could not use this path to alter an existing item. The broken boundary was integrity: the account could add new items to a collection it was not allowed to manage. Other members would then see those entries as part of the shared collection.</p>
+  <p>An injected item could be plausible and readable, such as a login entry pointing to a destination chosen by the sender. Administrators or owners could remove it, but they first had to identify and clean up content that should never have entered the collection. The result was unauthorized data, avoidable confusion, and administrative work rather than a confidentiality loss.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>Vaultwarden 1.37.0 changed the import validation from collection visibility to actual writability. The endpoint now resolves each existing collection and asks whether it is writable by the importing user. A read-only member is rejected before imported items are attached.</p>
+  <p>The repair also tightened the hand-off to the cipher update path. A collection list can support that later operation only when it is non-empty and has passed the import's stronger validation; otherwise the ordinary membership and cipher-level write checks still apply. The presence of client-supplied structure is no longer enough by itself.</p>
+  <p>The same public patch replaces the imported organization identifier with the route's real target organization and validates relationship indexes before using them. Together, these changes make the server derive scope from the trusted request context and reject malformed or unauthorized relationships before saving them. The repair was merged on 24 July 2026 and released the same day in version 1.37.0.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Bulk operations are authorization boundaries of their own. Import, migration and synchronization routes often rebuild an object graph in one request, but convenience does not make their relationships less privileged than the equivalent individual mutations.</p>
+  <p>The deeper warning is about proof. A non-empty list, a resolved identifier or an earlier function call records that data exists; it does not prove that the current principal may change it. If one stage validates authority for another, the contract must carry the exact capability established — here, write access — rather than asking the next stage to infer it from the shape of the payload.</p>
+</section>

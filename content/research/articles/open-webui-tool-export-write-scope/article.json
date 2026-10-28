@@ -6,7 +6,7 @@
   "author": "Luigi Colluto",
   "published": "2026-10-28",
   "updated": "2026-10-28",
-  "resolved": "2026-09-21",
+  "resolved": "2026-09-06",
   "category": "Disclosure",
   "tags": ["access control", "source disclosure", "bulk export"],
   "severity": "Medium",

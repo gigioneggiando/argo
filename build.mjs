@@ -64,5 +64,5 @@ const page=html=>html.replace('<script src="script.js" defer></script>',scripts)
 writeFileSync('index.html',page(document('index','Bugs found, fixes shared','Argo: source-code auditing with language models, human review and public upstream evidence.',index)));
 writeFileSync('findings.html',page(document('findings','Public findings','Search public Argo findings by project, severity, status and language. Every record links upstream.',findings)));
 writeFileSync('assets/archive-totals.json',JSON.stringify(totals,null,2)+'\n');
-const researchBuild=writeResearchSite(researchArticles,{renderHeader:header,renderFooter:footer});
+const researchBuild=writeResearchSite(researchArticles,{renderHeader:header,renderFooter:footer,projectStars:new Map(projects.map(project=>[text(project.name),+project.stars]))});
 console.log(`Built Argo overview and ${totals.records} public records across ${totals.projects} projects. Research: ${researchBuild.articles} approved articles.`);

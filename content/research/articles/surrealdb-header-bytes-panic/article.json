@@ -6,7 +6,7 @@
   "author": "Luigi Colluto",
   "published": "2026-10-28",
   "updated": "2026-10-28",
-  "resolved": "2026-09-28",
+  "resolved": "2026-09-07",
   "category": "Disclosure",
   "tags": ["panic", "type conversion", "embedded JavaScript"],
   "severity": "Medium",

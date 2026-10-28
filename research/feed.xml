@@ -18,28 +18,6 @@
     <category term="streaming"/>
   </entry>
   <entry>
-    <title>Not every header is text</title>
-    <id>https://gigioneggiando.com/argo/research/surrealdb-header-bytes-panic/</id>
-    <link href="https://gigioneggiando.com/argo/research/surrealdb-header-bytes-panic/"/>
-    <published>2026-10-28T00:00:00Z</published>
-    <updated>2026-10-28T00:00:00Z</updated>
-    <summary>SurrealDB&apos;s embedded JavaScript asserted that HTTP header bytes were text. A non-ASCII value could abort the server; version 3.3.0 made conversion total and non-panicking.</summary>
-    <category term="panic"/>
-    <category term="type conversion"/>
-    <category term="embedded JavaScript"/>
-  </entry>
-  <entry>
-    <title>Export is not just another read</title>
-    <id>https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/</id>
-    <link href="https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/"/>
-    <published>2026-10-28T00:00:00Z</published>
-    <updated>2026-10-28T00:00:00Z</updated>
-    <summary>Open WebUI hid Python source from read-only tool users, but bulk export returned every readable tool with its source. Version 0.11.4 aligned export with write permission.</summary>
-    <category term="access control"/>
-    <category term="source disclosure"/>
-    <category term="bulk export"/>
-  </entry>
-  <entry>
     <title>A role name is not an SQL fragment</title>
     <id>https://gigioneggiando.com/argo/research/navidrome-artist-role-order-by-sqli/</id>
     <link href="https://gigioneggiando.com/argo/research/navidrome-artist-role-order-by-sqli/"/>
@@ -95,6 +73,17 @@
     <category term="denial of service"/>
   </entry>
   <entry>
+    <title>Not every header is text</title>
+    <id>https://gigioneggiando.com/argo/research/surrealdb-header-bytes-panic/</id>
+    <link href="https://gigioneggiando.com/argo/research/surrealdb-header-bytes-panic/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>SurrealDB&apos;s embedded JavaScript asserted that HTTP header bytes were text. A non-ASCII value could abort the server; version 3.3.0 made conversion total and non-panicking.</summary>
+    <category term="panic"/>
+    <category term="type conversion"/>
+    <category term="embedded JavaScript"/>
+  </entry>
+  <entry>
     <title>OAuth is not a cookie-forwarding policy</title>
     <id>https://gigioneggiando.com/argo/research/open-webui-oauth-cookie-boundary/</id>
     <link href="https://gigioneggiando.com/argo/research/open-webui-oauth-cookie-boundary/"/>
@@ -104,6 +93,17 @@
     <category term="OAuth"/>
     <category term="session security"/>
     <category term="credential boundaries"/>
+  </entry>
+  <entry>
+    <title>Export is not just another read</title>
+    <id>https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/</id>
+    <link href="https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>Open WebUI hid Python source from read-only tool users, but bulk export returned every readable tool with its source. Version 0.11.4 aligned export with write permission.</summary>
+    <category term="access control"/>
+    <category term="source disclosure"/>
+    <category term="bulk export"/>
   </entry>
   <entry>
     <title>An address range needs one total order</title>

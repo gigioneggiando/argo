@@ -5,6 +5,7 @@ import {Browser} from 'file:///C:/Users/gigi/.codex-b/skills/design-taste-fronte
 const ensure=(ok,message)=>{if(!ok)throw Error(message);};
 const wait=async(test,message)=>{for(let i=0;i<40;i++){try{if(await test())return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error(message);};
 const source=readFileSync('content/disclosures.html','utf8');
+const researchManifest=JSON.parse(readFileSync('content/research/manifest.json','utf8'));
 const agentGuide=readFileSync('llms.txt','utf8');
 ensure(agentGuide.includes('open the complete findings archive before answering')&&agentGuide.includes('https://gigioneggiando.com/argo/findings'),'Agent guide is missing archive instructions or the canonical archive URL');
 const migrationBaseline=process.env.ARGO_IGNORE_MIGRATION_BASELINE==='1'?null:existsSync('.taste-skill/baseline-dom.json')?JSON.parse(readFileSync('.taste-skill/baseline-dom.json','utf8')):null;
@@ -66,6 +67,18 @@ try{
  await p.goto(new URL('findings.html',root).href);
  ensure(await p.eval(t=>document.documentElement.dataset.theme===t,theme),'Theme did not persist');
  ensure(await p.eval(()=>document.querySelectorAll('#themeToggle svg:not([hidden])').length===1),'Theme icon did not update');
+ await p.goto(new URL('research/index.html',root).href);
+ ensure(await p.eval(n=>document.querySelectorAll('.research-entry').length===n&&!document.getElementById('researchFilters').hidden,researchManifest.approvedArticles.length),'Research index or controls are incomplete');
+ await p.eval(()=>{const select=document.getElementById('researchSeverity');select.value='High';select.dispatchEvent(new Event('change',{bubbles:true}));});
+ ensure(await p.eval(()=>[...document.querySelectorAll('.research-entry:not([hidden])')].length>0&&[...document.querySelectorAll('.research-entry:not([hidden])')].every(entry=>entry.dataset.severity==='High')),'Research severity filter failed');
+ await p.eval(()=>document.getElementById('researchFilters').reset());
+ await wait(()=>p.eval(n=>document.getElementById('researchCount').textContent.startsWith(`${n} articles`),researchManifest.approvedArticles.length),'Research reset failed');
+ await p.eval(()=>{const select=document.getElementById('researchSort');select.value='stars';select.dispatchEvent(new Event('change',{bubbles:true}));});
+ ensure(await p.eval(()=>{const values=[...document.querySelectorAll('.research-entry')].map(entry=>+entry.dataset.stars);return values.every((value,index)=>!index||values[index-1]>=value);}), 'Research star sorting failed');
+ await p.eval(()=>{const select=document.getElementById('researchSort');select.value='published';select.dispatchEvent(new Event('change',{bubbles:true}));});
+ ensure(await p.eval(()=>{const values=[...document.querySelectorAll('.research-entry')].map(entry=>entry.dataset.published);return values.every((value,index)=>!index||values[index-1]>=value);}), 'Research publication-date sorting failed');
+ await p.eval(()=>{const input=document.getElementById('researchSearch');input.value='SurrealDB';input.dispatchEvent(new Event('input',{bubbles:true}));});
+ await wait(()=>p.eval(()=>[...document.querySelectorAll('.research-entry:not([hidden])')].length>0&&[...document.querySelectorAll('.research-entry:not([hidden])')].every(entry=>entry.dataset.search.includes('surrealdb'))),'Research search failed');
  await p.screenshot({path:'.taste-skill/findings-light-mobile.jpg',quality:85});
  const noJS=await offlinePage({width:390,height:844,mobile:true});
  await noJS.send('Emulation.setScriptExecutionDisabled',{value:true});
@@ -74,6 +87,8 @@ try{
  await noJS.goto(new URL('index.html',root).href);
  ensure(await noJS.eval(n=>document.querySelectorAll('.row').length===n&&document.querySelectorAll('.chart-panel').length===3&&[...document.querySelectorAll('.chart-panel')].slice(0,2).every(panel=>[...panel.querySelectorAll('.bar-value')].reduce((sum,e)=>sum+ +e.textContent,0)===n),expected),'No-JS home/charts are incomplete');
  ensure(await noJS.eval(()=>{const values=[...document.querySelectorAll('.case')].map(s=>+s.dataset.stars);return values.every((n,i)=>!i||values[i-1]>=n);}), 'Static archive is not ordered by stars');
+ await noJS.goto(new URL('research/index.html',root).href);
+ ensure(await noJS.eval(n=>document.querySelectorAll('.research-entry').length===n&&document.getElementById('researchFilters').hidden,researchManifest.approvedArticles.length),'No-JS Research index is incomplete');
  const desktop=await offlinePage({width:1440,height:900,reducedMotion:true});
  await desktop.goto(new URL('index.html',root).href);
  ensure(await desktop.eval(()=>document.querySelectorAll('.chart-panel').length===3&&[...document.querySelectorAll('.chart-panel')].every(el=>el.getBoundingClientRect().bottom<innerHeight)&&document.getElementById('searchInput').getBoundingClientRect().bottom<innerHeight),'Charts and search must be visible on the first desktop screen');

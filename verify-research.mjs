@@ -37,13 +37,15 @@ try{
   writeFileSync(path.join(articleFolder,'body.html'),body);
   const articles=loadResearchArticles({sourceRoot:source});
   ensure(articles.length===1&&articles[0].readMinutes>=1,'Approved fixture did not load');
-  const result=writeResearchSite(articles,{outputRoot:output,renderHeader:(current,depth)=>`<header data-current="${current}" data-depth="${depth}"></header>`,renderFooter:depth=>`<footer data-depth="${depth}"></footer>`});
+  const result=writeResearchSite(articles,{outputRoot:output,renderHeader:(current,depth)=>`<header data-current="${current}" data-depth="${depth}"></header>`,renderFooter:depth=>`<footer data-depth="${depth}"></footer>`,projectStars:new Map([['Example',4242]])});
   ensure(result.articles===1&&result.files===3,'Unexpected generated file count');
   const index=readFileSync(path.join(output,'index.html'),'utf8');
   const article=readFileSync(path.join(output,slug,'index.html'),'utf8');
   const feed=readFileSync(path.join(output,'feed.xml'),'utf8');
   ensure(index.includes(`./${slug}/`)&&index.includes('Notes from looking closely.'),'Research index is incomplete');
-  ensure(index.includes('Resolved upstream')&&index.includes('25 Oct 2026')&&index.includes('research-entry-number'),'Research index does not expose the upstream chronology');
+  ensure(index.includes('Resolved upstream')&&index.includes('25 Oct 2026')&&!index.includes('research-entry-number'),'Research index does not expose the upstream chronology cleanly');
+  ensure(index.includes('id="researchFilters"')&&index.includes('id="researchSearch"')&&index.includes('id="researchSeverity"')&&index.includes('id="researchSort"'),'Research exploration controls are incomplete');
+  ensure(index.includes('data-stars="4242"')&&index.includes('~4.2K stars'),'Research project reach is missing from the index');
   ensure(index.includes('research-process')&&index.includes('<span>close review</span>'),'Research index is missing its source-to-repair diagram');
   ensure(index.includes('rel="alternate" type="application/atom+xml" title="Argo Research" href="/argo/research/feed.xml"'),'Research index does not expose the stable public feed path');
   ensure(index.includes('rel="describedby" href="https://gigioneggiando.com/argo/llms.txt"'),'Research index does not link to the agent guide');

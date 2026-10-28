@@ -24,6 +24,7 @@ const plain=s=>String(s).replace(/<pre[\s\S]*?<\/pre>/gi,' ').replace(/<[^>]+>/g
 const words=s=>plain(s).split(/\s+/).filter(Boolean).length;
 const formatDate=value=>new Intl.DateTimeFormat('en-GB',{dateStyle:'long',timeZone:'UTC'}).format(new Date(`${value}T00:00:00Z`));
 const formatIndexDate=value=>new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(`${value}T00:00:00Z`));
+const compactNumber=new Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:1});
 const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex').slice(0,12);
 const canonicalFor=slug=>`${SITE_ORIGIN}/research/${slug?`${slug}/`:''}`;
 
@@ -153,15 +154,18 @@ function shell({title,description,canonical,type='website',prefix,body,header,fo
 `;
 }
 
-function buildIndex(articles,{renderHeader,renderFooter}){
-  const cards=articles.map((article,index)=>{
+function buildIndex(articles,{renderHeader,renderFooter,projectStars=new Map()}){
+  const cards=articles.map(article=>{
     const date=article.resolved||article.published;
     const dateLabel=article.resolved?'Resolved upstream':'Published';
-    const chapter=articles.length-index;
-    return `<li class="research-entry"><article><a class="research-entry-link" href="./${article.slug}/"><div class="research-entry-index"><span class="research-entry-number">${String(chapter).padStart(2,'0')}</span><span>${dateLabel}</span><time datetime="${date}">${html(formatIndexDate(date))}</time></div><div class="research-entry-copy"><div class="research-entry-meta"><span>${html(article.category)}</span><span>${html(article.project)}</span>${article.identifiers[0]?`<span>${html(article.identifiers[0])}</span>`:''}</div><h2>${html(article.title)}</h2><p>${html(article.description)}</p></div><div class="research-entry-side"><span class="sev ${article.severity?html(article.severity.toLowerCase()):''}">${html(article.severity||article.status)}</span><span>${article.readMinutes} min read</span><svg class="research-entry-arrow" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></div></a></article></li>`;
+    const stars=projectStars.get(article.project)||0;
+    const searchable=[article.title,article.description,article.project,article.category,article.severity,article.status,...article.identifiers,...article.tags].filter(Boolean).join(' ').toLowerCase();
+    return `<li class="research-entry" data-severity="${html(article.severity||'')}" data-resolved="${html(date)}" data-published="${html(article.published)}" data-stars="${stars}" data-search="${html(searchable)}"><article><a class="research-entry-link" href="./${article.slug}/"><div class="research-entry-date"><span>${dateLabel}</span><time datetime="${date}">${html(formatIndexDate(date))}</time><span>Published ${html(formatIndexDate(article.published))}</span></div><div class="research-entry-copy"><div class="research-entry-meta"><span>${html(article.category)}</span><span>${html(article.project)}</span>${article.identifiers[0]?`<span>${html(article.identifiers[0])}</span>`:''}</div><h2>${html(article.title)}</h2><p>${html(article.description)}</p></div><div class="research-entry-side"><span class="sev ${article.severity?html(article.severity.toLowerCase()):''}">${html(article.severity||article.status)}</span><span>${article.readMinutes} min read</span>${stars?`<span title="GitHub stars · archive snapshot">~${compactNumber.format(stars)} stars</span>`:''}<svg class="research-entry-arrow" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 18 18 6M6 6h12v12"/></svg></div></a></article></li>`;
   }).join('');
   const processFigure=`<figure class="research-process"><svg viewBox="0 0 480 220" aria-hidden="true" focusable="false"><rect class="research-paper" x="18" y="36" width="126" height="148" rx="18"/><path class="research-code" d="M43 69h69M43 91h46M43 113h76M43 135h57M43 157h70"/><path class="research-path" d="M144 110C176 110 181 83 211 83M269 83c31 0 38 27 67 27"/><circle class="research-lens" cx="240" cy="83" r="30"/><circle class="research-pupil" cx="240" cy="83" r="10"/><rect class="research-paper" x="336" y="36" width="126" height="148" rx="18"/><path class="research-removed" d="M361 75h47"/><path class="research-added" d="M361 105h68M361 127h54M361 149h65"/><path class="research-check" d="m411 171 9 9 20-24"/></svg><figcaption><span>Source</span><i aria-hidden="true">→</i><span>close review</span><i aria-hidden="true">→</i><span>repair</span></figcaption></figure>`;
-  const body=`<div class="research-shell"><section class="research-intro" aria-labelledby="research-title"><h1 id="research-title">Notes from looking closely.</h1><div class="research-intro-side">${processFigure}<p>Short accounts of vulnerabilities found through Argo: what broke, why it mattered, and how maintainers repaired it. The linked upstream records preserve the complete attribution.</p><a href="feed.xml">Follow the Atom feed</a></div></section><ol class="research-index" aria-label="Research articles">${cards}</ol></div>`;
+  const filters=`<form id="researchFilters" class="research-controls" role="search" hidden><label class="research-search">Find an article<input id="researchSearch" type="search" placeholder="Title, project, CVE or lesson" autocomplete="off"></label><label>Severity<select id="researchSeverity"><option value="">All severities</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option><option>Info</option></select></label><label>Order<select id="researchSort"><option value="resolved">Recently fixed</option><option value="published">Newly published</option><option value="stars">Most starred project</option><option value="severity">Highest severity</option></select></label><button type="reset">Reset</button></form>`;
+  const explorer=`<section class="research-explorer" aria-labelledby="research-explorer-title"><div class="research-explorer-heading"><h2 id="research-explorer-title">Explore the notes</h2><p id="researchCount" role="status" aria-live="polite">${articles.length} ${articles.length===1?'article':'articles'} · recently fixed first</p></div>${filters}<div id="researchNoResults" class="research-no-results" hidden><h3>No matching notes</h3><p>Try another term or clear the filters.</p></div><ol id="researchIndex" class="research-index" aria-label="Research articles">${cards}</ol><noscript><p class="research-noscript">All articles are shown in upstream-resolution order. Search and sorting are available when JavaScript is enabled.</p></noscript></section>`;
+  const body=`<div class="research-shell"><section class="research-intro" aria-labelledby="research-title"><h1 id="research-title">Notes from looking closely.</h1><div class="research-intro-side">${processFigure}<p>Short accounts of vulnerabilities found through Argo: what broke, why it mattered, and how maintainers repaired it. The linked upstream records preserve the complete attribution.</p><a href="feed.xml">Follow the Atom feed</a></div></section>${explorer}</div>`;
   return shell({title:'Research',description:'Short, evidence-backed accounts of public Argo findings: what broke, why it mattered, and how it was repaired.',canonical:canonicalFor(),prefix:'../',body,header:renderHeader('research',1),footer:renderFooter(1)});
 }
 
@@ -196,12 +200,12 @@ ${a.tags.map(tag=>`    <category term="${xml(tag)}"/>`).join('\n')}
 `;
 }
 
-export function writeResearchSite(articles,{outputRoot=OUTPUT_ROOT,renderHeader,renderFooter}={}){
+export function writeResearchSite(articles,{outputRoot=OUTPUT_ROOT,renderHeader,renderFooter,projectStars=new Map()}={}){
   ensure(typeof renderHeader==='function'&&typeof renderFooter==='function','shared header/footer renderers are required');
   if(existsSync(outputRoot))rmSync(outputRoot,{recursive:true,force:true});
   if(!articles.length)return {articles:0,files:0};
   mkdirSync(outputRoot,{recursive:true});
-  writeFileSync(path.join(outputRoot,'index.html'),buildIndex(articles,{renderHeader,renderFooter}));
+  writeFileSync(path.join(outputRoot,'index.html'),buildIndex(articles,{renderHeader,renderFooter,projectStars}));
   writeFileSync(path.join(outputRoot,'feed.xml'),atom(articles));
   for(const article of articles){
     const folder=path.join(outputRoot,article.slug);

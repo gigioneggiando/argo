@@ -15,6 +15,45 @@
   }
   // Former archive fragments remain useful now that the archive is on home too.
   if(location.hash==='#disclosures')location.hash='#findings';
+  const researchForm=document.getElementById('researchFilters');
+  if(researchForm){
+    const index=document.getElementById('researchIndex');
+    const entries=[...index.querySelectorAll('.research-entry')];
+    const count=document.getElementById('researchCount');
+    const empty=document.getElementById('researchNoResults');
+    const search=document.getElementById('researchSearch');
+    const severity=document.getElementById('researchSeverity');
+    const sort=document.getElementById('researchSort');
+    const severityRank={Critical:5,High:4,Medium:3,Low:2,Info:1};
+    const label={resolved:'recently fixed first',published:'newly published first',stars:'most starred project first',severity:'highest severity first'};
+    const compare={
+      resolved:(a,b)=>b.dataset.resolved.localeCompare(a.dataset.resolved)||b.dataset.published.localeCompare(a.dataset.published),
+      published:(a,b)=>b.dataset.published.localeCompare(a.dataset.published)||b.dataset.resolved.localeCompare(a.dataset.resolved),
+      stars:(a,b)=>+b.dataset.stars-+a.dataset.stars||b.dataset.resolved.localeCompare(a.dataset.resolved),
+      severity:(a,b)=>(severityRank[b.dataset.severity]||0)-(severityRank[a.dataset.severity]||0)||b.dataset.resolved.localeCompare(a.dataset.resolved),
+    };
+    const apply=()=>{
+      const term=search.value.trim().toLowerCase();
+      const selectedSeverity=severity.value;
+      let visible=0;
+      for(const entry of entries){
+        const show=(!term||entry.dataset.search.includes(term))&&(!selectedSeverity||entry.dataset.severity===selectedSeverity);
+        entry.hidden=!show;
+        if(show)visible++;
+      }
+      entries.sort(compare[sort.value]||compare.resolved);
+      index.append(...entries);
+      count.textContent=`${visible} ${visible===1?'article':'articles'} · ${label[sort.value]}`;
+      empty.hidden=visible!==0;
+    };
+    let timer;
+    search.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(apply,100);});
+    researchForm.addEventListener('change',apply);
+    researchForm.addEventListener('submit',event=>event.preventDefault());
+    researchForm.addEventListener('reset',()=>{clearTimeout(timer);requestAnimationFrame(apply);});
+    researchForm.hidden=false;
+    apply();
+  }
   const form=document.getElementById('filters');
   if(!form)return;
   const cases=[...document.querySelectorAll('#cases .case')];

@@ -1,0 +1,22 @@
+{
+  "slug": "apache-answer-parent-visibility",
+  "title": "A hidden question should stay immutable",
+  "description": "Apache Answer checked that mutation targets existed but did not consistently verify that the caller could see their parent content. Version 2.0.3 restored the missing authorization boundary.",
+  "project": "Apache Answer",
+  "author": "Luigi Colluto",
+  "published": "2026-10-28",
+  "updated": "2026-10-28",
+  "resolved": "2026-10-09",
+  "category": "Disclosure",
+  "tags": ["access control", "content visibility", "mutations"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["CVE-2026-79633", "GHSA-c9rx-95m5-mr25"],
+  "publicEvidence": [
+    {"label": "Apache security announcement", "url": "https://lists.apache.org/thread/m301yrn0fwgr957q8qzfzt8tpjklocv9"},
+    {"label": "Public repair", "url": "https://github.com/apache/answer/commit/76739fcfd790dbc79f7df19d7294f26015de4ea1"},
+    {"label": "Apache Answer 2.0.3 release", "url": "https://github.com/apache/answer/releases/tag/v2.0.3"},
+    {"label": "CVE record", "url": "https://www.cve.org/CVERecord?id=CVE-2026-79633"}
+  ],
+  "approval": {"decision": "approved", "approvedBy": "Luigi Colluto", "approvedOn": "2026-10-28", "publicEvidenceCheckedOn": "2026-10-28"}
+}

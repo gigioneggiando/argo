@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Apache Answer can keep questions and related content non-public while they are hidden or pending moderation. Read paths applied that visibility model, but several mutation paths asked a narrower question: does the requested object exist and has it not been deleted?</p>
+  <p>That check was not enough. The services that added answers or created comments, votes and reports did not consistently call the shared visibility check for the target object or its parent question. An ordinary authenticated user who knew an identifier and met the feature's normal rank requirement could therefore act on content the same account was not permitted to view.</p>
+  <p>The bug did not remove every authorization rule. Rank thresholds, authentication and object-state checks still ran. The missing layer was contextual: before changing a child object, the service also had to establish that this principal could operate on the content graph containing it.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>Apache's announcement rates the vulnerability Moderate and lists versions through 2.0.2 as affected. It required an authenticated user and knowledge of a target identifier; it was not an unauthenticated path and did not bypass the platform's ordinary rank thresholds.</p>
+  <p>Within those conditions, the caller could create visible side effects around non-public content. Depending on the operation, that could include adding an answer or comment, changing a vote, filing a report, updating scores or causing related activity and reputation events.</p>
+  <p>The core integrity problem was the mismatch between reading and acting. Content hidden for review or moderation should not remain mutable through a lower-level endpoint merely because its database row can be resolved.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The public repair routes the caller's identity and administrator-or-moderator state into the affected services. Before an answer is inserted or a comment, vote or report is created, the service now calls the common visibility check on the target content.</p>
+  <p>For a new answer, the patch reconstructs the relevant question context — its author, status and visibility — and applies the same rule before continuing. For the other mutations, it checks the resolved object before decoding identifiers or writing side effects. Administrators and moderators retain the elevated access expected by the existing visibility model.</p>
+  <p>The fix was released in Apache Answer 2.0.3 on 9 October 2026. Apache's public announcement credits Luigi Colluto as the reporter and recommends upgrading from affected versions to 2.0.3.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Existence is not authority. A successful lookup proves that a row is present; authentication proves who is asking. Neither proves that the caller may change that object in its current context.</p>
+  <p>This matters whenever an API mutates a graph rather than an isolated record: comments belong to posts, answers to questions, attachments to issues and reactions to messages. Review each mutation from the parent boundary outward. If the parent is hidden, pending, locked or outside the caller's tenant, every child operation must preserve that state before it produces a side effect.</p>
+</section>

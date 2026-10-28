@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Gitea lets an account restrict who can see its profile. The main user API route enforced that setting through a shared visibility middleware: callers without the required relationship received the same not-found response they would receive for an unavailable user.</p>
+  <p>The API did not define the user's subresources under one protected boundary. A sibling route group loaded the same target user but omitted the middleware. Its handlers could therefore return followers, following relationships, SSH and GPG public keys, starred repositories and watched repositories even when the main profile was hidden from the caller.</p>
+  <p>Each handler behaved normally in isolation. The failure came from routing composition: authentication loaded a real user and token scopes controlled the kind of resource being requested, but neither answered whether this viewer was allowed to see that target user at all.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The advisory rates the issue Low and lists versions through 1.27.2 as affected. A caller needed a valid token with the relevant user scope. The routes did not expose private repository contents or secret keys, but they weakened a privacy setting that users and administrators expected to apply consistently.</p>
+  <p>The leaked metadata could reveal a private user's social graph, projects of interest and public cryptographic identifiers. In an instance where profile visibility separates teams or communities, those relationships can be meaningful even when every individual object is public elsewhere.</p>
+  <p>The inconsistency also made the boundary easy to misunderstand. A successful 404 on the canonical profile route looked like evidence that the user was protected, while alternate routes reached the same underlying identity through a different middleware chain.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>Gitea attached <code>individualPermsChecker</code> to the missing user-subresource and organization route groups. The checker itself was refactored to use the project's canonical user-visibility function, so the API no longer maintains a separate, partial interpretation of the setting.</p>
+  <p>The public patch added integration coverage for restricted and permitted viewers. It verifies that feeds, heatmaps, keys and organization routes return not found to a restricted token while remaining available to a viewer with the required relationship.</p>
+  <p>The repair merged on 22 August 2026 and was released in Gitea 1.27.3 on 29 August. The advisory credits <code>@gigioneggiando</code> among the reporters.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>An authorization rule belongs to a resource family, not only to its most obvious URL. Profiles, exports, feeds, keys and relationship endpoints may present different representations, but they can all disclose facts about the same protected subject.</p>
+  <p>Route reviews should therefore begin with the resource and enumerate every path that reaches it. Apply the common guard at the highest shared boundary, then test both the canonical route and its siblings with the same principals. A privacy control is only as strong as the least protected representation of the person or object it claims to hide.</p>
+</section>

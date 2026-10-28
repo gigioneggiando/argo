@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>OAuth access tokens and refresh tokens serve different purposes. An access token authorizes requests for a limited lifetime; a refresh token can ask the authorization server to issue another token pair. They may share a signed format, but a valid signature does not make the two roles interchangeable.</p>
+  <p>Gitea encoded that distinction in a token-kind field. The normal API authentication path required an access token, while the refresh grant parsed the value submitted as a refresh token and verified its signature and grant. It did not perform the matching kind check.</p>
+  <p>That left a semantic gap inside otherwise valid cryptography. An unexpired access token for the same client and grant could reach the refresh flow because every property being checked was genuine; only the property's purpose was wrong. The endpoint then treated the access token as authority to create a new access token and refresh token.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>Gitea's advisory rates the issue Moderate and lists versions through 28.0.0 as affected. Exploitation required possession of a valid, unexpired OAuth access token. It did not allow an attacker to forge a signature, invent a grant or gain scopes the user had not already approved.</p>
+  <p>The boundary it broke was time. A captured access token should stop working when its short lifetime ends. Exchanging it at the refresh endpoint produced renewable credentials, so access could continue beyond that original expiry.</p>
+  <p>This makes token exposure more durable than the system promises. The immediate authority remained bounded to the victim, client and existing grant, but the distinction between a short-lived bearer credential and a renewal credential no longer held.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The repair added the missing invariant directly after parsing: the refresh flow now rejects the value unless its kind is <code>KindRefreshToken</code>. Signature validation and grant checks still matter, but they are no longer asked to stand in for token purpose.</p>
+  <p>Gitea also added an integration test that submits a newly issued access token in the refresh-token field and expects the request to fail. That test is important because both token types are individually valid; a malformed-token test would not cover the confusion between them.</p>
+  <p>The change merged on 30 September 2026. The public advisory identifies 28.1.0 as the patched version and credits <code>@gigioneggiando</code> among the reporters.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Cryptographic validity answers only one question: was this value issued by a trusted authority and left unchanged? Security protocols usually need a second answer: was it issued for this operation?</p>
+  <p>The same review rule applies to session cookies, signed links, identity assertions and API keys. At every exchange boundary, check issuer, audience, purpose and type rather than allowing a shared representation to erase the distinctions the protocol depends on. A token can be perfectly authentic and still be the wrong token.</p>
+</section>

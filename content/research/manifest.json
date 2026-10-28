@@ -17,6 +17,9 @@
     "open-webui-tool-export-write-scope",
     "surrealdb-header-bytes-panic",
     "coturn-multiplex-peer-state-bound",
-    "vaultwarden-import-write-boundary"
+    "vaultwarden-import-write-boundary",
+    "gitea-token-kind-exchange",
+    "gitea-user-route-visibility",
+    "apache-answer-parent-visibility"
   ]
 }

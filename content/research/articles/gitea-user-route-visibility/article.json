@@ -1,0 +1,21 @@
+{
+  "slug": "gitea-user-route-visibility",
+  "title": "The visibility check that stopped at the profile",
+  "description": "Gitea hid a private user's main profile route while sibling API routes still exposed keys, social relationships and repository interests. Version 1.27.3 extended the same visibility boundary across the route family.",
+  "project": "Gitea",
+  "author": "Luigi Colluto",
+  "published": "2026-10-28",
+  "updated": "2026-10-28",
+  "resolved": "2026-08-29",
+  "category": "Disclosure",
+  "tags": ["access control", "API routing", "privacy"],
+  "severity": "Low",
+  "status": "Fixed",
+  "identifiers": ["CVE-2026-97859", "GHSA-xvfh-qwmh-f92w"],
+  "publicEvidence": [
+    {"label": "Gitea security advisory", "url": "https://github.com/go-gitea/gitea/security/advisories/GHSA-xvfh-qwmh-f92w"},
+    {"label": "Public repair and regression test", "url": "https://github.com/go-gitea/gitea/pull/39004"},
+    {"label": "Gitea 1.27.3 release", "url": "https://github.com/go-gitea/gitea/releases/tag/v1.27.3"}
+  ],
+  "approval": {"decision": "approved", "approvedBy": "Luigi Colluto", "approvedOn": "2026-10-28", "publicEvidenceCheckedOn": "2026-10-28"}
+}

@@ -18,6 +18,28 @@
     <category term="streaming"/>
   </entry>
   <entry>
+    <title>A hidden question should stay immutable</title>
+    <id>https://gigioneggiando.com/argo/research/apache-answer-parent-visibility/</id>
+    <link href="https://gigioneggiando.com/argo/research/apache-answer-parent-visibility/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>Apache Answer checked that mutation targets existed but did not consistently verify that the caller could see their parent content. Version 2.0.3 restored the missing authorization boundary.</summary>
+    <category term="access control"/>
+    <category term="content visibility"/>
+    <category term="mutations"/>
+  </entry>
+  <entry>
+    <title>A valid token can still be the wrong token</title>
+    <id>https://gigioneggiando.com/argo/research/gitea-token-kind-exchange/</id>
+    <link href="https://gigioneggiando.com/argo/research/gitea-token-kind-exchange/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>Gitea&apos;s refresh endpoint verified a token&apos;s signature and grant but not whether it was actually a refresh token. An unexpired access token could therefore be exchanged for a new token pair.</summary>
+    <category term="OAuth"/>
+    <category term="token validation"/>
+    <category term="authentication"/>
+  </entry>
+  <entry>
     <title>A role name is not an SQL fragment</title>
     <id>https://gigioneggiando.com/argo/research/navidrome-artist-role-order-by-sqli/</id>
     <link href="https://gigioneggiando.com/argo/research/navidrome-artist-role-order-by-sqli/"/>
@@ -104,6 +126,17 @@
     <category term="access control"/>
     <category term="source disclosure"/>
     <category term="bulk export"/>
+  </entry>
+  <entry>
+    <title>The visibility check that stopped at the profile</title>
+    <id>https://gigioneggiando.com/argo/research/gitea-user-route-visibility/</id>
+    <link href="https://gigioneggiando.com/argo/research/gitea-user-route-visibility/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>Gitea hid a private user&apos;s main profile route while sibling API routes still exposed keys, social relationships and repository interests. Version 1.27.3 extended the same visibility boundary across the route family.</summary>
+    <category term="access control"/>
+    <category term="API routing"/>
+    <category term="privacy"/>
   </entry>
   <entry>
     <title>An address range needs one total order</title>

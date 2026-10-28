@@ -139,6 +139,13 @@ const VERDICT_META = {
   needs_runtime_verification: { label: "Needs runtime check", color: "var(--warn)" },
 };
 const verdictMeta = (v) => VERDICT_META[v] || { label: (v || "unverified").replace(/_/g, " "), color: "var(--info)" };
+const isDemoRun = (run) => run && run.runner === "mock";
+function resultVerdictPill(finding, simulated = false) {
+  const value = verdict(finding);
+  if (!simulated || !value) return verdictPill(value);
+  return h("span", { class: `pill vd-${value} demo-verdict` },
+    h("span", { class: "dot" }), `simulated: ${value.replace(/_/g, " ")}`);
+}
 async function pool(items, worker, limit = 4) {
   const out = []; let i = 0;
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
@@ -154,7 +161,7 @@ function kpiTiles(runs, evidence) {
   const confirmed = evidence ? evidence.confirmed : null;
   const runtime = evidence ? evidence.runtime : null;
   return [
-    statTile({ label: "Total runs", value: total, sub: `${completed} completed` }),
+    statTile({ label: "Real audits", value: total, sub: `${completed} completed` }),
     statTile({ label: "Validated findings", value: findings == null ? "…" : findings,
       sub: findings == null ? "Reading completed runs" : "survived review", accent: true }),
     statTile({ label: "Confirmed", value: confirmed == null ? "…" : confirmed,
@@ -165,6 +172,7 @@ function kpiTiles(runs, evidence) {
 }
 
 function overviewView() {
+  const notice = h("div", {});
   const statRow = h("div", { class: "stat-row" }, ...Array.from({ length: 4 }, () => h("div", { class: "skeleton", style: { height: "94px" } })));
   const grid = h("div", { class: "dash-grid" }, ...Array.from({ length: 4 }, () => h("div", { class: "skeleton", style: { height: "260px" } })));
   const root = h("div", {},
@@ -172,14 +180,23 @@ function overviewView() {
       h("div", {}, h("h1", {}, "Overview"),
         h("p", {}, "A quiet view of what Argo found, what survived review, and what still needs proof.")),
       h("a", { class: "btn btn-primary", href: "#/new" }, "New audit")),
-    statRow, grid);
-  api.listRuns().then((runs) => renderOverview(runs, statRow, grid)).catch((e) => mount(grid, h("div", { class: "empty" }, e.message)));
+    notice, statRow, grid);
+  api.listRuns().then((runs) => renderOverview(runs, notice, statRow, grid)).catch((e) => mount(grid, h("div", { class: "empty" }, e.message)));
   return root;
 }
 
-function renderOverview(runs, statRow, grid) {
+function renderOverview(allRuns, notice, statRow, grid) {
+  const demos = allRuns.filter(isDemoRun);
+  const runs = allRuns.filter((run) => !isDemoRun(run));
+  if (demos.length) {
+    mount(notice, h("div", { class: "banner demo-banner overview-demo" },
+      icon("info", 17),
+      h("span", {}, h("strong", {}, `${demos.length} synthetic demo ${demos.length === 1 ? "run is" : "runs are"} excluded. `),
+        "Fixture results never contribute to audit metrics. ", h("a", { href: "#/history" }, "View run history"))));
+  } else mount(notice);
   if (!runs.length) {
     mount(statRow);
+    statRow.classList.add("hidden");
     grid.className = "first-run";
     mount(grid,
       h("div", { class: "first-run-copy" },
@@ -192,6 +209,7 @@ function renderOverview(runs, statRow, grid) {
         h("div", {}, h("strong", {}, "Stay honest"), h("p", {}, "Separate confirmed findings from questions that still need runtime proof."))));
     return;
   }
+  statRow.className = "stat-row";
   mount(statRow, ...kpiTiles(runs, null));
 
   const sevBody = h("div", {}, h("div", { class: "skeleton", style: { height: "180px" } }));
@@ -239,13 +257,14 @@ function newRunView() {
   const linksEl = h("textarea", { placeholder: "https://project.example/docs\nhttps://project.example/security", style: { minHeight: "70px" }, oninput: (e) => form.links = e.target.value });
   const repoEl = h("input", { type: "text", placeholder: "/home/me/project   ·   C:\\dev\\app   ·   https://github.com/org/repo", oninput: (e) => form.repo = e.target.value });
 
-  const runnerSeg = seg([["mock", "Mock · free"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => {
+  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => {
     form.runner = v; costBanner.classList.toggle("hidden", v === "mock");
+    demoBanner.classList.toggle("hidden", v !== "mock");
     claudeRow.classList.toggle("hidden", v !== "headless");
     codexRow.classList.toggle("hidden", v !== "codex");
     codexKeyRow.classList.toggle("hidden", v !== "codex");
     geminiRow.classList.toggle("hidden", v !== "gemini");
-    startBtn.lastChild.textContent = v === "mock" ? "Start run (free)" : "Start real run";
+    startBtn.lastChild.textContent = v === "mock" ? "Run synthetic demo" : "Start real audit";
   }, ["headless", "codex", "gemini"]);
   const claudeApiKeyEl = h("input", { type: "password", placeholder: "blank = server's Claude Code login / ANTHROPIC_API_KEY", oninput: (e) => form.claude_api_key = e.target.value.trim() });
   const claudeRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
@@ -290,7 +309,7 @@ function newRunView() {
 
   const adv = h("div", { class: "adv hidden" },
     h("div", { class: "grid-2" },
-      field("Runner", runnerSeg, "Mock replays fixtures (zero tokens). Claude = Claude Code; Codex = Codex CLI (OpenAI / local-OSS); Gemini = Gemini CLI (Google)."),
+      field("Runner", runnerSeg, "Demo replays synthetic fixtures and does not assess the selected repository. Claude, Codex, and Gemini perform real model-backed analysis."),
       field("Mode", drySeg, "Dry-run shows the generated prompts before paying for audits.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Budget (USD)", budgetEl, "Hard per-run ceiling in USD. Leave blank for no limit — the default: the audit runs to completion regardless of cost. Set a number to abort once spending reaches it."),
@@ -314,8 +333,13 @@ function newRunView() {
     icon("alert", 18),
     h("span", {}, h("strong", {}, "Real run. "), "Spends real tokens on the selected backend (Claude / Codex / Gemini; a full audit can cost real money). Set a budget and confirm before starting."));
 
+  const demoBanner = h("div", { class: "banner demo-banner", style: { marginTop: "16px" } },
+    icon("info", 18),
+    h("span", {}, h("strong", {}, "Synthetic pipeline demo. "),
+      "It replays a fixed sample application to test Argo's workflow. Findings and verdicts do not describe the repository you select."));
+
   const startBtn = h("button", { class: "btn btn-primary btn-lg", onclick: submit },
-    icon("play"), h("span", {}, "Start run (free)"));
+    icon("play"), h("span", {}, "Run synthetic demo"));
 
   // ---- "Let the AI choose" ---------------------------------------------------
   let recoTarget = "standard";
@@ -334,7 +358,7 @@ function newRunView() {
   const recoCard = h("div", { class: "card reco-card" },
     h("div", { class: "spread" },
       h("div", { class: "grow" }, h("h2", {}, "Let the pipeline choose"),
-        h("div", { class: "hint" }, "Pick how thorough this run should be — models, budget and parallelism are set for you (runner stays Mock until you switch it).")),
+        h("div", { class: "hint" }, "Pick how thorough this run should be. Models, budget and parallelism are set for you; the runner stays Demo until you choose a real backend.")),
       recoSeg, recoBtn),
     recoBanner);
 
@@ -366,7 +390,7 @@ function newRunView() {
       location.hash = `#/run/${encodeURIComponent(res.run_id)}`;
     } catch (e) {
       toast(e.message, true); startBtn.disabled = false;
-      startBtn.lastChild.textContent = form.runner === "mock" ? "Start run (free)" : "Start real run";
+      startBtn.lastChild.textContent = form.runner === "mock" ? "Run synthetic demo" : "Start real audit";
     }
   }
 
@@ -438,9 +462,9 @@ function newRunView() {
       screenCard, planSummary,
       modeField,
       briefField, linksField,
-      advToggle, adv, costBanner,
+      advToggle, adv, demoBanner, costBanner,
       h("div", { class: "run-footer" },
-        h("span", { class: "faint", style: { fontSize: "13px" } }, "Mock is free and selected by default. Real backends are an explicit choice."),
+        h("span", { class: "faint", style: { fontSize: "13px" } }, "Demo data is synthetic. Choose a model backend for a real repository assessment."),
         startBtn)),
     recoCard);
 }
@@ -478,7 +502,7 @@ function settingsView() {
   const STAGES = ["ingest", "research", "recon", "audit", "validate", "evidence", "report"];
   const s = { runner: "mock", budget_usd: null, parallel: 3, audit_model: null, calibration: false, models: {} };
 
-  const runnerSeg = seg([["mock", "Mock · free"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => s.runner = v, ["headless", "codex", "gemini"]);
+  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => s.runner = v, ["headless", "codex", "gemini"]);
   const calSeg = seg([["false", "Off"], ["true", "Calibration"]], "false", (v) => s.calibration = v === "true");
   const budgetEl = h("input", { type: "number", min: "0", placeholder: "none", oninput: (e) => s.budget_usd = e.target.value ? Number(e.target.value) : null });
   const parallelEl = h("input", { type: "number", min: "1", max: "16", value: "3", oninput: (e) => s.parallel = +e.target.value || 3 });
@@ -514,10 +538,10 @@ function settingsView() {
     h("section", { class: "settings-section" },
       h("div", { class: "settings-copy" },
         h("h2", {}, "Run defaults"),
-        h("p", {}, "Set the ordinary starting point. Mock remains the safest default because it spends nothing.")),
+        h("p", {}, "Set the ordinary starting point. Demo spends nothing, but only replays synthetic fixtures; choose a model backend for real audits.")),
       h("div", { class: "settings-panel" },
         h("div", { class: "grid-2" },
-          field("Default runner", runnerSeg, "Real backends spend tokens. Provider keys are chosen per-run and are not stored here."),
+          field("Default runner", runnerSeg, "Demo is a pipeline test, not a repository assessment. Real backends spend tokens; provider keys stay per-run."),
           field("Default budget (USD)", budgetEl, "Hard per-run ceiling.")),
         h("div", { class: "grid-2", style: { marginTop: "16px" } },
           field("Parallel sessions", parallelEl),
@@ -537,6 +561,7 @@ function settingsView() {
 function runView(id) {
   const stateChipHost = h("span", {});
   const costHost = h("span", {});
+  const modeBannerHost = h("div", {});
   const cancelBtn = h("button", { class: "btn btn-danger hidden", onclick: async () => {
     cancelBtn.disabled = true; cancelBtn.textContent = "Cancelling…";
     try { await api.cancelRun(id); toast("Cancelling — stopping the active session"); }
@@ -550,6 +575,12 @@ function runView(id) {
   let resultsRendered = false;
 
   function renderStatus(st) {
+    if (isDemoRun(st)) {
+      mount(modeBannerHost, h("div", { class: "banner demo-banner run-demo" },
+        icon("info", 18),
+        h("span", {}, h("strong", {}, "Synthetic fixture run. "),
+          "This screen exercises the pipeline with fixed demo data. It is not a security assessment of the selected repository.")));
+    } else if (st.runner) mount(modeBannerHost);
     mount(stateChipHost, stateChip(st.state));
     mount(costHost, costChip(st.cost_usd));
     cancelBtn.classList.toggle("hidden", !["starting", "running"].includes(st.state));
@@ -571,6 +602,7 @@ function runView(id) {
         h("h1", { class: "grow" }, "Audit run"),
         costHost, stateChipHost, cancelBtn),
       h("p", { class: "mono", style: { fontSize: "13px" } }, id)),
+    modeBannerHost,
     h("div", { class: "card evidence-card" },
       h("div", { class: "evidence-intro" },
         h("h2", {}, "Evidence chain"),
@@ -632,10 +664,11 @@ function renderResults(host, id, st) {
   const panel = h("div", {});
   const cache = {};
   const tabBar = h("div", { class: "tabs" });
+  const simulated = isDemoRun(st);
   function select(name, btn) {
     [...tabBar.children].forEach((c) => c.classList.remove("on")); btn.classList.add("on");
     mount(panel, h("div", { class: "skeleton", style: { height: "120px" } }));
-    loadTab(name, id, cache).then((node) => mount(panel, node)).catch((e) => { mount(panel, h("div", { class: "empty" }, e.message)); });
+    loadTab(name, id, cache, simulated).then((node) => mount(panel, node)).catch((e) => { mount(panel, h("div", { class: "empty" }, e.message)); });
   }
   tabs.forEach((name, i) => {
     const b = h("button", { class: i === 0 ? "on" : "", onclick: () => select(name, b) }, name);
@@ -645,7 +678,7 @@ function renderResults(host, id, st) {
   select("Report", tabBar.firstChild);
 }
 
-async function loadTab(name, id, cache) {
+async function loadTab(name, id, cache, simulated = false) {
   if (name === "Chat") return chatPanel(id);
   if (name === "Fixes") return fixesPanel(id);
   if (name === "Report") {
@@ -662,12 +695,12 @@ async function loadTab(name, id, cache) {
   }
   if (name === "Findings") {
     const doc = cache.validated || (cache.validated = await api.validated(id));
-    return findingsTable(doc);
+    return findingsTable(doc, simulated);
   }
   if (name === "Drafts") {
     const ds = cache.drafts || (cache.drafts = await api.drafts(id));
     if (!ds.length) return h("div", { class: "empty" }, h("div", { class: "big" }, "No submission drafts"),
-      "Drafts are produced only for confirmed findings.");
+      simulated ? "Demo drafts are generated only for fixture-confirmed results." : "Drafts are produced only for confirmed findings.");
     return h("div", {}, ...ds.map((d) => {
       const body = h("div", { class: "md", style: { marginTop: "8px" } });
       body.innerHTML = window.marked ? window.marked.parse(d.content) : `<pre>${escapeHtml(d.content)}</pre>`;
@@ -693,7 +726,7 @@ async function loadTab(name, id, cache) {
   return h("div", {}, bar, out);
 }
 
-function findingsTable(doc) {
+function findingsTable(doc, simulated = false) {
   const findings = (doc.findings || []).slice().sort((a, b) =>
     sevRank(effSev(b)) - sevRank(effSev(a)) || confRank(effConf(b)) - confRank(effConf(a)));
   const stats = doc.stats || {};
@@ -701,10 +734,10 @@ function findingsTable(doc) {
   const wrap = h("div", {});
 
   const summary = h("div", { class: "row" },
-    statChip("Survivors", findings.length),
-    statChip("Confirmed", findings.filter((f) => verdict(f) === "confirmed").length),
-    statChip("Needs runtime check", findings.filter((f) => verdict(f) === "needs_runtime_verification").length),
-    statChip("Dropped", (doc.dropped || []).length));
+    statChip(simulated ? "Fixture survivors" : "Survivors", findings.length),
+    statChip(simulated ? "Simulated confirmed" : "Confirmed", findings.filter((f) => verdict(f) === "confirmed").length),
+    statChip(simulated ? "Fixture needs runtime" : "Needs runtime check", findings.filter((f) => verdict(f) === "needs_runtime_verification").length),
+    statChip(simulated ? "Fixture dropped" : "Dropped", (doc.dropped || []).length));
 
   const sevMap = countBy(findings, (f) => effSev(f));
   const sevData = SEVERITIES.filter((s) => sevMap.get(s)).map((s) => ({ label: s, value: sevMap.get(s), color: SEV_COLOR[s] }));
@@ -725,13 +758,13 @@ function findingsTable(doc) {
     const rows = findings.filter((f) => active.has(effSev(f)));
     if (!rows.length) return mount(tableHost, h("div", { class: "empty" }, "No findings match the filter."));
     const table = h("table", { class: "findings" },
-      h("thead", {}, h("tr", {}, ...["#", "Finding", "Severity", "Verdict", "Location"].map((t) => h("th", {}, t)))),
+      h("thead", {}, h("tr", {}, ...["#", "Finding", "Severity", simulated ? "Fixture result" : "Verdict", "Location"].map((t) => h("th", {}, t)))),
       h("tbody", {}, ...rows.map((f) => {
-        const tr = h("tr", { class: "frow", onclick: () => mount(detailHost, findingDetail(f)) },
+        const tr = h("tr", { class: "frow", onclick: () => mount(detailHost, findingDetail(f, simulated)) },
           h("td", {}, h("span", { class: "fid" }, f.id)),
           h("td", {}, h("div", { class: "ftitle" }, f.title), h("div", { class: "fid" }, f.cwe || "")),
           h("td", {}, sevPill(effSev(f))),
-          h("td", {}, verdictPill(verdict(f))),
+          h("td", {}, resultVerdictPill(f, simulated)),
           h("td", {}, h("span", { class: "floc" }, primaryRef(f))));
         return tr;
       })));
@@ -746,11 +779,11 @@ function findingsTable(doc) {
   return wrap;
 }
 
-function findingDetail(f) {
+function findingDetail(f, simulated = false) {
   const v = f.validation || {};
   const block = (k, val, mono) => val ? h("div", { class: "block" }, h("div", { class: "bk" }, k), h("div", { class: "bv" + (mono ? " mono" : "") }, val)) : null;
   return h("div", { class: "detail" },
-    h("div", { class: "spread" }, h("h3", { class: "grow" }, f.title), sevPill(effSev(f)), verdictPill(verdict(f))),
+    h("div", { class: "spread" }, h("h3", { class: "grow" }, f.title), sevPill(effSev(f)), resultVerdictPill(f, simulated)),
     h("div", { class: "row", style: { marginTop: "8px" } },
       h("span", { class: "pill" }, f.id), h("span", { class: "pill" }, f.cwe || ""),
       f.owasp ? h("span", { class: "pill" }, f.owasp) : null),
@@ -782,13 +815,14 @@ function historyView() {
       h("div", { class: "big" }, "No runs yet"), h("a", { href: "#/new" }, "Start your first audit →")));
     const complete = runs.filter((r) => r.state === "completed").length;
     const active = runs.filter((r) => !["completed", "failed", "cancelled"].includes(r.state)).length;
-    const failed = runs.filter((r) => ["failed", "cancelled"].includes(r.state)).length;
+    const demos = runs.filter(isDemoRun).length;
+    const real = runs.length - demos;
     mount(host,
       h("div", { class: "stat-row history-summary" },
-        statTile({ label: "All runs", value: runs.length, sub: "kept locally" }),
-        statTile({ label: "Completed", value: complete, sub: "ready to review", accent: true }),
-        statTile({ label: "In progress", value: active, sub: "currently running" }),
-        statTile({ label: "Interrupted", value: failed, sub: "failed or cancelled" })),
+        statTile({ label: "Real audits", value: real, sub: "model-backed runs", accent: true }),
+        statTile({ label: "Synthetic demos", value: demos, sub: "excluded from metrics" }),
+        statTile({ label: "Completed", value: complete, sub: "all run types" }),
+        statTile({ label: "In progress", value: active, sub: "currently running" })),
       h("div", { class: "list-heading" },
         h("h2", {}, "Audits"),
         h("span", {}, "Newest first")),
@@ -796,6 +830,7 @@ function historyView() {
         h("div", { class: "grow" },
           h("div", { class: "rprog" }, r.program_name || "(unnamed run)"),
           h("div", { class: "rid" }, r.run_id)),
+        isDemoRun(r) ? h("span", { class: "pill demo-pill" }, "synthetic demo") : null,
         r.archetype ? h("span", { class: "pill" }, ARCH_LABELS[r.archetype] || r.archetype) : null,
         r.target_type ? h("span", { class: "pill" }, r.target_type) : null,
         costChip(r.cost_usd), stateChip(r.state))));
@@ -873,12 +908,12 @@ function chatPanel(id) {
   }).catch((e) => toast(e.message, true));
 
   mount(root, list, chips, h("div", { class: "chat-inputrow" }, input, sendBtn),
-    h("div", { class: "help" }, "Cmd/Ctrl+Enter to send. Chat uses the run's runner (free for mock runs), is read-only on the repo, and writes any generated tests to a separate folder — never the target."));
+    h("div", { class: "help" }, "Cmd/Ctrl+Enter to send. Chat uses the run's runner (synthetic in Demo), is read-only on the repo, and writes any generated tests to a separate folder — never the target."));
   return root;
 }
 
 // backend ids -> display labels (mirrors GET /models' backend list)
-const BACKEND_LABELS = { headless: "Claude", codex: "Codex", gemini: "Gemini", mock: "Mock" };
+const BACKEND_LABELS = { headless: "Claude", codex: "Codex", gemini: "Gemini", mock: "Demo" };
 
 // ------------------------------------------------------------------ fixes panel (Phase 6)
 function fixesPanel(id) {
@@ -936,7 +971,7 @@ function fixesPanel(id) {
   mount(root,
     h("div", { class: "row", style: { justifyContent: "space-between", alignItems: "center", marginBottom: "10px" } },
       h("div", { class: "help", style: { margin: 0 } },
-        "Proposes a root-cause patch per confirmed finding and verifies each on an isolated copy (applies? compiles? no new errors?). Uses this run's runner — free for mock runs."),
+        "Proposes a root-cause patch per confirmed finding and verifies each on an isolated copy (applies? compiles? no new errors?). Demo output is synthetic; real runs use their selected backend."),
       genBtn),
     body);
   load(false);
@@ -1030,7 +1065,7 @@ function costsView() {
 
   return h("div", {},
     h("div", { class: "page-head" }, h("h1", {}, "Costs"),
-      h("p", {}, "Observed economics from your local ledger — real per-call costs, not estimates. This data lives only on this machine (the ledger is git-ignored, served on localhost); it is never bundled with the app or shared. Mock runs are free ($0); figures populate as you do real (headless) runs. This also feeds the budget hint in “Let the pipeline choose”.")),
+      h("p", {}, "Observed economics from your local ledger — real per-call costs, not estimates. This data lives only on this machine (the ledger is git-ignored, served on localhost); it is never bundled with the app or shared. Synthetic demo runs cost $0; figures populate as you do real model-backed audits. This also feeds the budget hint in “Let the pipeline choose”.")),
     host);
 }
 

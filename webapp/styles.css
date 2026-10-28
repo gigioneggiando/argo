@@ -136,10 +136,17 @@ code, pre, .mono { font-family: var(--mono); }
   color: var(--text);
 }
 .brand:hover { text-decoration: none; }
-.brand-logo { width: 30px; height: 30px; color: var(--accent); flex: none; }
 .brand-copy { display: flex; flex-direction: column; min-width: 0; line-height: 1.18; }
-.brand-copy strong { font-size: 17px; font-weight: 670; letter-spacing: -.025em; }
+.brand-name { display: flex; align-items: center; gap: 9px; }
+.brand-copy strong { font-size: 19px; font-weight: 670; letter-spacing: -.03em; }
 .brand-copy small { margin-top: 3px; overflow: hidden; color: var(--text-faint); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.watchpoints { position: relative; width: 18px; height: 12px; display: block; }
+.watchpoints i { position: absolute; width: 3px; height: 3px; display: block; border-radius: 50%; background: var(--accent); }
+.watchpoints i:nth-child(1) { left: 0; top: 2px; }
+.watchpoints i:nth-child(2) { left: 7px; top: 0; opacity: .48; }
+.watchpoints i:nth-child(3) { left: 14px; top: 3px; }
+.watchpoints i:nth-child(4) { left: 4px; top: 9px; opacity: .48; }
+.watchpoints i:nth-child(5) { left: 11px; top: 8px; }
 .sidebar-action { width: calc(100% - 16px); margin: 20px 8px 18px; }
 .nav { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 22px; }
 .nav-group { display: flex; flex-direction: column; gap: 3px; }
@@ -482,6 +489,11 @@ table.findings tr.frow:hover td { background: var(--surface-2); }
 .banner.info { background: var(--surface-2); }
 .banner.warn { border-color: color-mix(in srgb, var(--warn) 30%, var(--border)); background: color-mix(in srgb, var(--warn) 8%, var(--surface)); color: var(--warn); }
 .banner.danger { border-color: color-mix(in srgb, var(--danger) 30%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); color: var(--danger); }
+.demo-banner { border-color: color-mix(in srgb, var(--low) 30%, var(--border)); background: color-mix(in srgb, var(--low) 7%, var(--surface)); }
+.demo-banner .icon { color: var(--low); }
+.overview-demo { margin-bottom: 16px; }
+.run-demo { margin-bottom: 18px; }
+.demo-pill, .demo-verdict { border-color: color-mix(in srgb, var(--low) 28%, var(--border)); background: color-mix(in srgb, var(--low) 8%, var(--surface)); color: var(--low); }
 .empty { min-height: 120px; display: grid; place-content: center; gap: 5px; padding: 24px; color: var(--text-faint); text-align: center; }
 .empty pre { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 .empty .big { color: var(--text); font-size: 15px; font-weight: 570; }
@@ -567,7 +579,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 0; 
 }
 
 @media (max-width: 480px) {
-  main { padding-inline: 16px; }
+  main { padding-inline: 18px; }
   h1 { font-size: 21px; }
   .page-head { gap: 14px; }
   .dash-head .btn { min-width: 96px; }

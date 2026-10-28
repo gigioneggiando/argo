@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Vaultwarden can download a site's icon so that clients do not have to contact the site themselves. That operation has two stages: it first retrieves the requested page, then parses the HTML and follows the favicon URLs it discovers there. The security checks did not cover both stages in the same way.</p>
+  <p>The initial host passed through <code>should_block_host()</code>, while domain names also passed through a custom DNS resolver that inspected the addresses returned by DNS. But a favicon URL found inside the page went directly to <code>get_page_with_referer()</code>. That helper created the request without first checking the new URL's host.</p>
+  <p>This left a narrow but important gap. A URL containing an IP address does not need DNS resolution, so the HTTP client can connect without calling the custom resolver. The component responsible for rejecting a non-global address never sees it. Vaultwarden had validated the first destination and the answers produced by DNS, but not every destination the icon workflow could later introduce.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The public advisory rates the issue Medium, with a CVSS 3.1 score of 5.8. It affected Vaultwarden 1.36.0 and earlier. When internal icon downloading was enabled, a remote unauthenticated request could make the server contact loopback or private addresses from its own network position.</p>
+  <p>The strongest result recorded publicly is reachability of a loopback service through the second-stage helper. Responses that matched a supported image format could be returned through the icon path. Even when a response was not a usable image, differences in timing, status and caching could reveal whether an internal destination was reachable.</p>
+  <p>The boundary matters because the request originates from the Vaultwarden host, not from the person making the external request. Its view of the network may include services that are invisible from the internet. The advisory does not claim arbitrary reads from every internal service, and the actual destinations and consequences still depended on each deployment.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>Vaultwarden fixed the issue in version 1.37.0. Before every request, <code>get_page_with_referer()</code> now parses the complete URL, accepts only HTTP or HTTPS, requires a host and applies <code>should_block_host()</code>. The same gate therefore covers the first page and the favicon or base URLs discovered inside its HTML.</p>
+  <p>The DNS-side check remains necessary. A textual domain may look harmless and still resolve to a blocked address, while a literal address may bypass DNS entirely. The repair keeps both layers: URL and host validation before the fetch, then address validation when a name is resolved. The public advisory also records regression testing of the exact second-stage path.</p>
+  <p>Users should upgrade to 1.37.0 or later. For installations that cannot upgrade immediately, the published workarounds are to use an external icon provider or set <code>DISABLE_ICON_DOWNLOAD=true</code>.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>An outbound-request policy is only as complete as the last address the application can reach. Checking the URL supplied at the entrance is not enough when redirects, document parsing, service discovery or DNS can introduce another destination later.</p>
+  <p>A useful review question is therefore not only “was the input URL validated?” but “does every path to the network pass through the same policy immediately before connection?” Literal addresses and resolved names take different routes through an HTTP stack. A security boundary must cover both, instead of assuming the resolver will always be present to enforce it.</p>
+</section>

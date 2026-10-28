@@ -12,6 +12,7 @@
     "surrealdb-wasi-host-buffer",
     "coturn-ipv6-total-order",
     "navidrome-share-owner-request-data",
-    "authentik-view-permission-stored-credentials"
+    "authentik-view-permission-stored-credentials",
+    "vaultwarden-favicon-resolver-boundary"
   ]
 }

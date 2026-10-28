@@ -1,0 +1,35 @@
+{
+  "slug": "vaultwarden-favicon-resolver-boundary",
+  "title": "Some URLs never need DNS",
+  "description": "Vaultwarden checked the first icon host and DNS answers, but not IP-literal favicon URLs discovered in HTML. An unauthenticated request could therefore reach internal addresses.",
+  "project": "Vaultwarden",
+  "author": "Luigi Colluto",
+  "published": "2026-10-28",
+  "updated": "2026-10-28",
+  "resolved": "2026-07-24",
+  "category": "Disclosure",
+  "tags": ["SSRF", "URL validation", "DNS resolution"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["CVE-2026-116678", "GHSA-hw4g-2v3f-74x5"],
+  "publicEvidence": [
+    {
+      "label": "Vaultwarden security advisory",
+      "url": "https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-hw4g-2v3f-74x5"
+    },
+    {
+      "label": "Public repair",
+      "url": "https://github.com/dani-garcia/vaultwarden/commit/46ae59eaf444f0ae0a799070cf2bd6c415284a51"
+    },
+    {
+      "label": "Vaultwarden 1.37.0 release",
+      "url": "https://github.com/dani-garcia/vaultwarden/releases/tag/1.37.0"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-28",
+    "publicEvidenceCheckedOn": "2026-10-28"
+  }
+}

@@ -4,7 +4,7 @@
   <id>https://gigioneggiando.com/argo/research/</id>
   <link href="https://gigioneggiando.com/argo/research/"/>
   <link href="https://gigioneggiando.com/argo/research/feed.xml" rel="self" type="application/atom+xml"/>
-  <updated>2026-10-27T00:00:00Z</updated>
+  <updated>2026-10-28T00:00:00Z</updated>
   <author><name>Luigi Colluto</name><uri>https://gigioneggiando.com/</uri></author>
   <entry>
     <title>Revocation must reach every live stream</title>
@@ -104,6 +104,17 @@
     <category term="multi-tenancy"/>
     <category term="authorization"/>
     <category term="object ownership"/>
+  </entry>
+  <entry>
+    <title>Some URLs never need DNS</title>
+    <id>https://gigioneggiando.com/argo/research/vaultwarden-favicon-resolver-boundary/</id>
+    <link href="https://gigioneggiando.com/argo/research/vaultwarden-favicon-resolver-boundary/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>Vaultwarden checked the first icon host and DNS answers, but not IP-literal favicon URLs discovered in HTML. An unauthenticated request could therefore reach internal addresses.</summary>
+    <category term="SSRF"/>
+    <category term="URL validation"/>
+    <category term="DNS resolution"/>
   </entry>
   <entry>
     <title>A length field is not an allocation budget</title>

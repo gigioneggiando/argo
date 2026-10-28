@@ -9,6 +9,20 @@ import { icon } from "./icons.js";
 
 const app = () => document.getElementById("app");
 const STAGES = ["ingest", "recon", "audit", "validate", "evidence", "report"];
+const SCREEN_LABELS = {
+  overview: "Overview", new: "New audit", history: "Run history",
+  knowledge: "Vulnerability index", costs: "Costs", benchmark: "Benchmarks",
+  settings: "Settings", run: "Audit run",
+};
+// Canonical archetype keys -> display labels (mirrors argo/archetype.py).
+// Keep this before the initial render: the knowledge route uses it synchronously.
+const ARCH_LABELS = {
+  web_api_cms: "Web / API / CMS", plugin_extension: "Plugin / Extension / Mod",
+  library_sdk: "Library / SDK / Framework", cli_desktop: "CLI / Desktop",
+  agent_llm_mcp: "Agent / LLM / MCP", mobile: "Mobile", data_ml: "Data / ML pipeline",
+  smart_contract: "Smart contract", firmware: "Firmware / Embedded",
+  iac: "Infrastructure-as-code", other: "Other",
+};
 let teardown = null;  // called before leaving a view (e.g. close an SSE stream)
 
 // --------------------------------------------------------------------- router
@@ -30,15 +44,23 @@ function render() {
   const r = parseRoute();
   document.querySelectorAll("#nav a").forEach((a) => {
     const target = a.getAttribute("href").replace(/^#/, "");
-    a.classList.toggle("active",
+    const active =
       (r.name === "overview" && (target === "/" || target === "/overview")) ||
       (r.name === "new" && target === "/new") ||
       (r.name === "history" && target === "/history") ||
       (r.name === "settings" && target === "/settings") ||
       (r.name === "knowledge" && target === "/knowledge") ||
       (r.name === "costs" && target === "/costs") ||
-      (r.name === "benchmark" && target === "/benchmark"));
+      (r.name === "benchmark" && target === "/benchmark");
+    a.classList.toggle("active", active);
+    if (active) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
+  const screenName = document.getElementById("screenName");
+  if (screenName) screenName.textContent = SCREEN_LABELS[r.name] || "Argo";
+  const canvas = document.querySelector("main");
+  if (canvas) canvas.classList.toggle("content-fit", ["history", "benchmark"].includes(r.name));
+  document.title = `${SCREEN_LABELS[r.name] || "Argo"} · Argo`;
+  closeNavigation();
   const view = r.name === "run" ? runView(r.id)
     : r.name === "overview" ? overviewView()
     : r.name === "history" ? historyView()
@@ -58,6 +80,8 @@ function setupTheme() {
   const paint = () => {
     const light = document.documentElement.getAttribute("data-theme") === "light";
     mount(btn, icon(light ? "moon" : "sun", 17));
+    btn.setAttribute("aria-label", light ? "Use dark theme" : "Use light theme");
+    btn.title = light ? "Use dark theme" : "Use light theme";
   };
   paint();
   btn.addEventListener("click", () => {
@@ -68,7 +92,30 @@ function setupTheme() {
   });
 }
 
+function closeNavigation() {
+  document.body.classList.remove("nav-open");
+  const toggle = document.getElementById("menuToggle");
+  const backdrop = document.getElementById("navBackdrop");
+  if (toggle) toggle.setAttribute("aria-expanded", "false");
+  if (backdrop) backdrop.hidden = true;
+}
+
+function setupShell() {
+  const toggle = document.getElementById("menuToggle");
+  const backdrop = document.getElementById("navBackdrop");
+  if (!toggle || !backdrop) return;
+  toggle.addEventListener("click", () => {
+    const open = !document.body.classList.contains("nav-open");
+    document.body.classList.toggle("nav-open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+    backdrop.hidden = !open;
+  });
+  backdrop.addEventListener("click", closeNavigation);
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeNavigation(); });
+}
+
 setupTheme();
+setupShell();
 render();
 
 // -------------------------------------------------------------- OVERVIEW (dashboard)
@@ -100,16 +147,20 @@ async function pool(items, worker, limit = 4) {
   return out;
 }
 
-function kpiTiles(runs, findingsCount) {
+function kpiTiles(runs, evidence) {
   const total = runs.length;
   const completed = runs.filter((r) => r.state === "completed").length;
-  const spend = runs.reduce((a, r) => a + (r.cost_usd || 0), 0);
+  const findings = evidence ? evidence.findings : null;
+  const confirmed = evidence ? evidence.confirmed : null;
+  const runtime = evidence ? evidence.runtime : null;
   return [
     statTile({ label: "Total runs", value: total, sub: `${completed} completed` }),
-    statTile({ label: "Findings", value: findingsCount == null ? "…" : findingsCount,
-      sub: findingsCount == null ? "aggregating…" : "validated", accent: true }),
-    statTile({ label: "Total spend", value: "$" + spend.toFixed(2), sub: "across all runs" }),
-    statTile({ label: "Avg / run", value: "$" + (total ? spend / total : 0).toFixed(2), sub: "mean cost" }),
+    statTile({ label: "Validated findings", value: findings == null ? "…" : findings,
+      sub: findings == null ? "Reading completed runs" : "survived review", accent: true }),
+    statTile({ label: "Confirmed", value: confirmed == null ? "…" : confirmed,
+      sub: "supported by evidence" }),
+    statTile({ label: "Needs runtime", value: runtime == null ? "…" : runtime,
+      sub: "uncertainty kept visible" }),
   ];
 }
 
@@ -119,8 +170,8 @@ function overviewView() {
   const root = h("div", {},
     h("div", { class: "page-head dash-head" },
       h("div", {}, h("h1", {}, "Overview"),
-        h("p", {}, "Every audit at a glance — severity mix, outcomes, and spend across all runs.")),
-      h("a", { class: "btn btn-primary", href: "#/new" }, "＋ New run")),
+        h("p", {}, "A quiet view of what Argo found, what survived review, and what still needs proof.")),
+      h("a", { class: "btn btn-primary", href: "#/new" }, "New audit")),
     statRow, grid);
   api.listRuns().then((runs) => renderOverview(runs, statRow, grid)).catch((e) => mount(grid, h("div", { class: "empty" }, e.message)));
   return root;
@@ -129,41 +180,50 @@ function overviewView() {
 function renderOverview(runs, statRow, grid) {
   if (!runs.length) {
     mount(statRow);
-    mount(grid, h("div", { class: "empty" },
-      h("div", { class: "big" }, "No runs yet"),
-      h("a", { class: "btn btn-primary", href: "#/new" }, "Start your first audit →")));
+    grid.className = "first-run";
+    mount(grid,
+      h("div", { class: "first-run-copy" },
+        h("h2", {}, "Begin with the code, not a claim"),
+        h("p", {}, "Argo reads a repository, builds a review specific to it, and preserves the difference between a candidate and a finding."),
+        h("a", { class: "btn btn-primary", href: "#/new" }, "Start your first audit")),
+      h("div", { class: "first-run-steps" },
+        h("div", {}, h("strong", {}, "Understand"), h("p", {}, "Map the code, its trust boundaries, and the rules that constrain the review.")),
+        h("div", {}, h("strong", {}, "Challenge"), h("p", {}, "Ask a second pass to refute each candidate and retain the evidence.")),
+        h("div", {}, h("strong", {}, "Stay honest"), h("p", {}, "Separate confirmed findings from questions that still need runtime proof."))));
     return;
   }
   mount(statRow, ...kpiTiles(runs, null));
 
-  const stateData = [...countBy(runs, (r) => r.state).entries()]
-    .map(([label, value]) => ({ label, value, color: STATE_COLOR[label] || "var(--text-faint)" }));
-  const archData = topN(countBy(runs, (r) => (ARCH_LABELS[r.archetype] || r.archetype)), 8);
-  const spendData = runs.filter((r) => (r.cost_usd || 0) > 0)
-    .sort((a, b) => (b.cost_usd || 0) - (a.cost_usd || 0)).slice(0, 8)
-    .map((r) => ({ label: r.program_name || r.run_id, value: r.cost_usd || 0 }));
-
   const sevBody = h("div", {}, h("div", { class: "skeleton", style: { height: "180px" } }));
   const verBody = h("div", {}, h("div", { class: "skeleton", style: { height: "180px" } }));
   const cweBody = h("div", {}, h("div", { class: "skeleton", style: { height: "180px" } }));
+  const recent = h("div", { class: "runlist" }, ...runs.slice(0, 5).map((r) =>
+    h("div", { class: "runrow", onclick: () => location.hash = `#/run/${encodeURIComponent(r.run_id)}` },
+      h("div", { class: "grow" },
+        h("div", { class: "rprog" }, r.program_name || "Unnamed audit"),
+        h("div", { class: "rid" }, r.run_id)),
+      costChip(r.cost_usd), stateChip(r.state))));
 
   mount(grid,
-    chartCard("Findings by severity", sevBody, "validated · all completed runs"),
-    chartCard("Findings by verification", verBody, "proven vs. needs runtime check"),
-    chartCard("Runs by outcome", donut(stateData, { centerBottom: "runs" })),
-    chartCard("Top CWEs", cweBody, "by finding count"),
-    chartCard("Spend by run", barsH(spendData, { color: "var(--accent)", fmt: (v) => "$" + v.toFixed(2) }), "top 8"),
-    archData.length ? chartCard("Runs by archetype", barsH(archData)) : null);
+    chartCard("Evidence quality", verBody, "confirmed and unresolved"),
+    chartCard("Severity mix", sevBody, "validated findings"),
+    chartCard("Recent audits", recent, `${Math.min(runs.length, 5)} of ${runs.length}`),
+    chartCard("Recurring weakness", cweBody, "top CWEs"));
 
   const done = runs.filter((r) => r.state === "completed");
   pool(done, (r) => api.validated(r.run_id).catch(() => null), 4).then((all) => {
-    const findings = all.filter(Boolean).flat().filter(Boolean);
+    const findings = all.filter(Boolean).flatMap((doc) =>
+      Array.isArray(doc) ? doc : (doc.findings || [])).filter(Boolean);
     const sevMap = countBy(findings, (f) => effSev(f));
     const sevData = SEVERITIES.filter((sv) => sevMap.get(sv)).map((sv) => ({ label: sv, value: sevMap.get(sv), color: SEV_COLOR[sv] }));
     const cweData = topN(countBy(findings, (f) => cweLabel(f.cwe)), 8);
     const verMap = countBy(findings, (f) => verdict(f) || "unverified");
     const verData = [...verMap.entries()].map(([v, n]) => ({ label: verdictMeta(v).label, value: n, color: verdictMeta(v).color }));
-    mount(statRow, ...kpiTiles(runs, findings.length));
+    mount(statRow, ...kpiTiles(runs, {
+      findings: findings.length,
+      confirmed: findings.filter((f) => verdict(f) === "confirmed").length,
+      runtime: findings.filter((f) => verdict(f) === "needs_runtime_verification").length,
+    }));
     mount(sevBody, findings.length ? donut(sevData, { centerBottom: "findings" }) : h("div", { class: "chart-empty" }, "No validated findings yet"));
     mount(verBody, findings.length ? donut(verData, { centerBottom: "findings" }) : h("div", { class: "chart-empty" }, "No validated findings yet"));
     mount(cweBody, cweData.length ? barsH(cweData) : h("div", { class: "chart-empty" }, "No CWE data"));
@@ -334,7 +394,7 @@ function newRunView() {
   const repoControl = h("div", {}, repoEl,
     h("div", { class: "row", style: { marginTop: "8px", alignItems: "center" } }, uploadBtn, uploadStatus, fileEl));
   const repoField = field("Code to audit", repoControl,
-    "A local folder path (resolved on the machine running the server) or a git URL (cloned read-only) — or **upload a .zip** of the repo. The repo is mounted read-only and never pushed anywhere — but a cloud backend (Claude / Codex / Gemini) sends the source to that provider's API to analyze it; only a local / OSS model keeps everything on-device. Examples: ./src · C:\\dev\\app · https://github.com/org/repo", true);
+    "Use a local path, a git URL, or a .zip. Argo mounts source read-only and never pushes it. Cloud backends send source to their provider; a local model keeps it on-device.", true);
   const screenSummary = h("div", { class: "banner info hidden", style: { marginTop: "12px" } });
   const planSummary = h("div", { class: "banner hidden", style: { marginTop: "8px" } });
   const screenBtn = h("button", { type: "button", class: "btn btn-ghost", onclick: async () => {
@@ -371,9 +431,8 @@ function newRunView() {
   return h("div", { class: "newrun" },
     claudeDL, codexDL, geminiDL,
     h("div", { class: "page-head" },
-      h("h1", {}, "New audit run"),
-      h("p", {}, "Point Argo at any codebase and an LLM audits the source like a human reviewer — it profiles the code, writes target-specific prompts, hunts findings, and adversarially validates them, stopping at human-review drafts. Never touches a live host; never patches.")),
-    recoCard,
+      h("h1", {}, "Start an audit"),
+      h("p", {}, "Choose the code. Argo profiles it, hunts for vulnerabilities, and challenges every candidate before it becomes a finding. Live targets remain untouched.")),
     h("div", { class: "card newrun-card" },
       repoField,
       screenCard, planSummary,
@@ -381,8 +440,9 @@ function newRunView() {
       briefField, linksField,
       advToggle, adv, costBanner,
       h("div", { class: "run-footer" },
-        h("span", { class: "faint", style: { fontSize: "13px" } }, "Runner: Mock (free) by default — switch to a real backend in Advanced."),
-        startBtn)));
+        h("span", { class: "faint", style: { fontSize: "13px" } }, "Mock is free and selected by default. Real backends are an explicit choice."),
+        startBtn)),
+    recoCard);
 }
 
 function optionCard(title, desc, onclick) {
@@ -447,24 +507,30 @@ function settingsView() {
   }
   api.getSettings().then(apply).catch((e) => toast(e.message, true));
 
-  return h("div", {},
+  return h("div", { class: "settings-page" },
     setDL,
     h("div", { class: "page-head" }, h("h1", {}, "Settings"),
-      h("p", {}, "Defaults applied to the New Run form. Each run can still override them. Stored server-side (not in the browser).")),
-    h("div", { class: "card" },
-      h("div", { class: "grid-2" },
-        field("Default runner", runnerSeg, "Mock is free; Claude/Codex/Gemini spend real tokens. Per-backend model/key fields (Codex provider, Gemini API key) are set per-run in New Run, not stored here."),
-        field("Default budget (USD)", budgetEl, "Hard per-run ceiling.")),
-      h("div", { class: "grid-2", style: { marginTop: "14px" } },
-        field("Parallel sessions", parallelEl),
-        field("Calibration", calSeg, "Force audit on Opus.")),
-      field("Audit model override", auditEl, "Shortcut for the Stage-3 model.")),
-    h("div", { class: "card" },
-      h("h2", {}, "Per-stage models"),
-      h("div", { class: "hint" }, "Leave blank for the smart defaults (Sonnet ingest/audit, Opus recon/validate)."),
-      h("div", { class: "grid-2", style: { marginTop: "14px" } },
-        ...STAGES.map((st) => field(st[0].toUpperCase() + st.slice(1), modelEls[st])))),
-    h("div", { class: "spread", style: { marginTop: "18px" } }, h("span", { class: "grow" }), saveBtn));
+      h("p", {}, "Defaults for new audits. Every run can still override them, and secrets remain per-run.")),
+    h("section", { class: "settings-section" },
+      h("div", { class: "settings-copy" },
+        h("h2", {}, "Run defaults"),
+        h("p", {}, "Set the ordinary starting point. Mock remains the safest default because it spends nothing.")),
+      h("div", { class: "settings-panel" },
+        h("div", { class: "grid-2" },
+          field("Default runner", runnerSeg, "Real backends spend tokens. Provider keys are chosen per-run and are not stored here."),
+          field("Default budget (USD)", budgetEl, "Hard per-run ceiling.")),
+        h("div", { class: "grid-2", style: { marginTop: "16px" } },
+          field("Parallel sessions", parallelEl),
+          field("Calibration", calSeg, "Force the strongest audit model.")),
+        field("Audit model override", auditEl, "Shortcut for the audit stage."))),
+    h("section", { class: "settings-section" },
+      h("div", { class: "settings-copy" },
+        h("h2", {}, "Model routing"),
+        h("p", {}, "Leave fields blank to let Argo use its stage-aware defaults.")),
+      h("div", { class: "settings-panel" },
+        h("div", { class: "grid-2" },
+          ...STAGES.map((st) => field(st[0].toUpperCase() + st.slice(1), modelEls[st]))))),
+    h("div", { class: "settings-actions" }, saveBtn));
 }
 
 // ------------------------------------------------------------------- RUN view
@@ -502,17 +568,21 @@ function runView(id) {
   return h("div", {},
     h("div", { class: "page-head" },
       h("div", { class: "spread" },
-        h("h1", { class: "grow" }, "Run"),
+        h("h1", { class: "grow" }, "Audit run"),
         costHost, stateChipHost, cancelBtn),
       h("p", { class: "mono", style: { fontSize: "13px" } }, id)),
-    h("div", { class: "card" }, tlHost, artHost),
+    h("div", { class: "card evidence-card" },
+      h("div", { class: "evidence-intro" },
+        h("h2", {}, "Evidence chain"),
+        h("p", {}, "Candidates move forward only when the next stage can support them. Missing proof remains visible instead of becoming certainty.")),
+      tlHost, artHost),
     resultsHost);
 }
 
 function renderTimeline(host, stages) {
   const prog = h("div", { class: "progress" });
-  const steps = stages.map((s, i) => h("div", { class: `step ${s.state}` },
-    h("div", { class: "node" }, s.state === "done" ? icon("check", 15) : s.state === "failed" ? "!" : String(i + 1)),
+  const steps = stages.map((s) => h("div", { class: `step ${s.state}` },
+    h("div", { class: "node", title: s.state, "aria-label": `${s.name}: ${s.state}` }, s.state === "failed" ? "!" : ""),
     h("div", { class: "lab" }, s.name)));
   const n = stages.length;
   let lastActive = -1;
@@ -582,6 +652,12 @@ async function loadTab(name, id, cache) {
     const md = cache.report || (cache.report = await api.report(id));
     const div = h("div", { class: "md" });
     div.innerHTML = window.marked ? window.marked.parse(md) : `<pre>${escapeHtml(md)}</pre>`;
+    div.querySelectorAll("h1").forEach((heading) => {
+      const replacement = document.createElement("h2");
+      replacement.className = "report-title";
+      replacement.innerHTML = heading.innerHTML;
+      heading.replaceWith(replacement);
+    });
     return div;
   }
   if (name === "Findings") {
@@ -704,13 +780,25 @@ function historyView() {
   api.listRuns().then((runs) => {
     if (!runs.length) return mount(host, h("div", { class: "empty" },
       h("div", { class: "big" }, "No runs yet"), h("a", { href: "#/new" }, "Start your first audit →")));
-    mount(host, ...runs.map((r) => h("div", { class: "runrow", onclick: () => location.hash = `#/run/${encodeURIComponent(r.run_id)}` },
-      h("div", { class: "grow" },
-        h("div", { class: "rprog" }, r.program_name || "(unnamed run)"),
-        h("div", { class: "rid" }, r.run_id)),
-      r.archetype ? h("span", { class: "pill" }, ARCH_LABELS[r.archetype] || r.archetype) : null,
-      r.target_type ? h("span", { class: "pill" }, r.target_type) : null,
-      costChip(r.cost_usd), stateChip(r.state))));
+    const complete = runs.filter((r) => r.state === "completed").length;
+    const active = runs.filter((r) => !["completed", "failed", "cancelled"].includes(r.state)).length;
+    const failed = runs.filter((r) => ["failed", "cancelled"].includes(r.state)).length;
+    mount(host,
+      h("div", { class: "stat-row history-summary" },
+        statTile({ label: "All runs", value: runs.length, sub: "kept locally" }),
+        statTile({ label: "Completed", value: complete, sub: "ready to review", accent: true }),
+        statTile({ label: "In progress", value: active, sub: "currently running" }),
+        statTile({ label: "Interrupted", value: failed, sub: "failed or cancelled" })),
+      h("div", { class: "list-heading" },
+        h("h2", {}, "Audits"),
+        h("span", {}, "Newest first")),
+      ...runs.map((r) => h("div", { class: "runrow", onclick: () => location.hash = `#/run/${encodeURIComponent(r.run_id)}` },
+        h("div", { class: "grow" },
+          h("div", { class: "rprog" }, r.program_name || "(unnamed run)"),
+          h("div", { class: "rid" }, r.run_id)),
+        r.archetype ? h("span", { class: "pill" }, ARCH_LABELS[r.archetype] || r.archetype) : null,
+        r.target_type ? h("span", { class: "pill" }, r.target_type) : null,
+        costChip(r.cost_usd), stateChip(r.state))));
   }).catch((e) => mount(host, h("div", { class: "empty" }, e.message)));
   return h("div", {},
     h("div", { class: "page-head" }, h("h1", {}, "Run history"),
@@ -791,15 +879,6 @@ function chatPanel(id) {
 
 // backend ids -> display labels (mirrors GET /models' backend list)
 const BACKEND_LABELS = { headless: "Claude", codex: "Codex", gemini: "Gemini", mock: "Mock" };
-
-// canonical archetype keys -> display labels (mirrors argo/archetype.py)
-const ARCH_LABELS = {
-  web_api_cms: "Web / API / CMS", plugin_extension: "Plugin / Extension / Mod",
-  library_sdk: "Library / SDK / Framework", cli_desktop: "CLI / Desktop",
-  agent_llm_mcp: "Agent / LLM / MCP", mobile: "Mobile", data_ml: "Data / ML pipeline",
-  smart_contract: "Smart contract", firmware: "Firmware / Embedded",
-  iac: "Infrastructure-as-code", other: "Other",
-};
 
 // ------------------------------------------------------------------ fixes panel (Phase 6)
 function fixesPanel(id) {
@@ -888,10 +967,10 @@ function costsView() {
   const usd = (n) => "$" + Number(n || 0).toFixed(4);
   const kv = (k, v) => h("div", { class: "acard" }, h("div", { class: "k" }, k), h("div", { class: "v" }, String(v)));
   const dataTable = (headers, rows) => rows.length
-    ? h("table", { class: "findings" },
+    ? h("div", { class: "table-scroll" }, h("table", { class: "findings data-table" },
         h("thead", {}, h("tr", {}, ...headers.map((x) => h("th", {}, x)))),
         h("tbody", {}, ...rows.map((r) => h("tr", {}, ...r.map((c, i) =>
-          h("td", { class: i === 0 ? "floc" : "" }, String(c)))))))
+          h("td", { class: i === 0 ? "floc" : "" }, String(c))))))))
     : h("div", { class: "empty" }, "No data yet — run a real (headless) audit to populate this.");
   const cardOf = (title, body) => h("div", { class: "card" }, h("h2", {}, title),
     h("div", { style: { marginTop: "12px" } }, body));
@@ -902,7 +981,7 @@ function costsView() {
     const usd2 = (n) => "$" + Number(n || 0).toFixed(2);
     const head = h("div", { class: "stat-row" },
       statTile({ label: "Total spent", value: usd2(t.cost_usd), sub: `${t.runs} runs` }),
-      statTile({ label: "Avg / run", value: usd2(t.avg_cost_per_run), sub: "mean cost", accent: true }),
+      statTile({ label: "Avg / run", value: usd(t.avg_cost_per_run), sub: "mean cost", accent: true }),
       statTile({ label: "Runs", value: t.runs, sub: "with cost data" }),
       statTile({ label: "LLM calls", value: t.calls, sub: "total" }));
     const costCharts = h("div", { class: "dash-grid" },

@@ -5,6 +5,8 @@ import {Browser} from 'file:///C:/Users/gigi/.codex-b/skills/design-taste-fronte
 const ensure=(ok,message)=>{if(!ok)throw Error(message);};
 const wait=async(test,message)=>{for(let i=0;i<40;i++){try{if(await test())return;}catch{}await new Promise(r=>setTimeout(r,100));}throw Error(message);};
 const source=readFileSync('content/disclosures.html','utf8');
+const agentGuide=readFileSync('llms.txt','utf8');
+ensure(agentGuide.includes('open the complete findings archive before answering')&&agentGuide.includes('https://gigioneggiando.com/argo/findings'),'Agent guide is missing archive instructions or the canonical archive URL');
 const migrationBaseline=process.env.ARGO_IGNORE_MIGRATION_BASELINE==='1'?null:existsSync('.taste-skill/baseline-dom.json')?JSON.parse(readFileSync('.taste-skill/baseline-dom.json','utf8')):null;
 const b=await Browser.launch();
 const offlinePage=async options=>{const page=await b.newPage(options);await page.send('Network.enable');await page.send('Network.setBlockedURLs',{urls:['https://api.github.com/*']});return page;};
@@ -16,6 +18,8 @@ try{
  const root=pathToFileURL(path.resolve('.')+path.sep);
  await p.goto(new URL('findings.html',root).href);
  const initial=await p.eval(()=>({overflow:document.documentElement.scrollWidth>innerWidth,open:document.querySelectorAll('.case[open]').length,cases:document.querySelectorAll('.case').length,rows:[...document.querySelectorAll('.row')].map(r=>({url:r.href||r.querySelector('a')?.href,title:r.querySelector('.ttl').textContent.trim(),status:r.querySelector('.status').textContent.trim(),severity:r.dataset.sev||'',urls:[...r.querySelectorAll('a')].map(a=>a.href)}))}));
+ const findingsMeta=await p.eval(()=>({canonical:document.querySelector('link[rel="canonical"]')?.href,guide:document.querySelector('link[rel="describedby"]')?.href}));
+ ensure(findingsMeta.canonical==='https://gigioneggiando.com/argo/findings'&&findingsMeta.guide==='https://gigioneggiando.com/argo/llms.txt','Findings page is missing its canonical or agent-guide link');
  ensure(!initial.overflow&&initial.open===1&&initial.cases===baseline.projects&&initial.rows.length===expected,'Archive opening state failed');
  const fixed=url=>url?.includes('/antirez/ds4/pull/?')?'https://github.com/elkaix/ds4/pull/1':url;
  const canonical=records=>records.map(r=>JSON.stringify([fixed(r.url),r.title,r.status,r.severity,r.urls.map(fixed)])).sort();
@@ -50,6 +54,7 @@ try{
  const sums=await p.eval(()=>[...document.querySelectorAll('.chart-panel')].slice(0,2).map(panel=>[...panel.querySelectorAll('.bar-value')].reduce((n,e)=>n+ +e.textContent,0)));
  ensure(sums.every(n=>n===expected),'Chart totals do not match records');
  await p.goto(new URL('index.html',root).href);
+ ensure(await p.eval(()=>document.querySelector('link[rel="canonical"]')?.href==='https://gigioneggiando.com/argo'&&document.querySelector('link[rel="describedby"]')?.href==='https://gigioneggiando.com/argo/llms.txt'),'Overview is missing its canonical or agent-guide link');
  ensure(await p.eval(n=>document.querySelectorAll('.row').length===n&&document.querySelectorAll('.chart-panel').length===3&&!document.getElementById('filters').hidden,expected),'Home must include charts and the complete searchable archive');
  await p.eval(()=>document.querySelector('[data-chart-filter="sev"][data-value="Critical"]').click());
  ensure(await p.eval(()=>document.getElementById('severityFilter').value==='Critical'&&[...document.querySelectorAll('.rows li:not([hidden]) .row')].every(r=>r.dataset.sev==='Critical')),'Severity chart shortcut failed');

@@ -46,7 +46,9 @@ try{
   ensure(index.includes('Resolved upstream')&&index.includes('25 Oct 2026')&&index.includes('research-entry-number'),'Research index does not expose the upstream chronology');
   ensure(index.includes('research-process')&&index.includes('<span>close review</span>'),'Research index is missing its source-to-repair diagram');
   ensure(index.includes('rel="alternate" type="application/atom+xml" title="Argo Research" href="/argo/research/feed.xml"'),'Research index does not expose the stable public feed path');
+  ensure(index.includes('rel="describedby" href="https://gigioneggiando.com/argo/llms.txt"'),'Research index does not link to the agent guide');
   ensure(article.includes(`https://gigioneggiando.com/argo/research/${slug}/`)&&article.includes('application/ld+json')&&article.includes('Public record'),'Article metadata or evidence is incomplete');
+  ensure(article.includes('rel="describedby" href="https://gigioneggiando.com/argo/llms.txt"'),'Research article does not link to the agent guide');
   ensure(feed.includes('<feed xmlns="http://www.w3.org/2005/Atom">')&&feed.includes(meta.title),'Atom feed is incomplete');
   let rejectedPrivate=false;
   try{validateResearchArticle(meta,`${body}<p>C:\\Users\\private\\draft.txt</p>`,slug);}catch{rejectedPrivate=true;}

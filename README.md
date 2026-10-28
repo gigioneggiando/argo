@@ -15,6 +15,7 @@ personal-site deployment, see [AGENTS.md](AGENTS.md).
 
 - `index.html`: project introduction, totals, visible charts and searchable archive.
 - `findings.html`: static, searchable public archive.
+- `llms.txt`: concise agent guide to the public pages and how to interpret archive records.
 - `content/disclosures.html`: the authoritative public record source.
 - `content/research/manifest.json`: explicit allow-list for approved Research articles.
 - `content/research/articles/<slug>/`: approved article metadata and body source.

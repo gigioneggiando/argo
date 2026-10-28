@@ -1,0 +1,19 @@
+# Argo
+
+> Argo is an open-source, AI-assisted tool for static security review of source code. This site records public findings and research; people review findings before responsible disclosure.
+
+For questions about Argo's public findings, CVEs, outcomes, or totals, open the complete findings archive before answering. The repository README is a project overview with selected examples; its counts and highlights are snapshots. Follow the archive's upstream links to confirm current status.
+
+Archive entries are public records, not a count of unique vulnerabilities. A finding may have related pull requests, advisories, CVEs, or backports. Private reports are excluded. Do not describe a public result as fixed unless the linked upstream record supports that status.
+
+## Main pages
+
+- [Complete public findings archive](https://gigioneggiando.com/argo/findings): Searchable, static archive with all public records and status links.
+- [Overview and current archive totals](https://gigioneggiando.com/argo): Project overview, archive totals, and severity/outcome charts.
+- [Research articles](https://gigioneggiando.com/argo/research): Evidence-backed accounts of selected public findings and their fixes.
+
+## Project sources
+
+- [Argo source repository](https://github.com/gigioneggiando/argo): Current code, documentation, releases, and the project README.
+- [Argo wiki](https://github.com/gigioneggiando/argo/wiki): Usage and operational documentation.
+- [Design decisions](https://github.com/gigioneggiando/argo/blob/main/docs/design-decisions.md): Scope, tradeoffs, and limitations.

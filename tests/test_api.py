@@ -144,10 +144,15 @@ def test_spa_assets_served(tmp_path):
         idx = client.get("/")
         assert idx.status_code == 200
         assert "Argo" in idx.text and "js/app.js" in idx.text
+        assert 'class="sidebar"' in idx.text
+        assert 'id="menuToggle"' in idx.text
+        assert "Evidence before certainty" in idx.text
         # static JS module is served
         js = client.get("/app/js/app.js")
         assert js.status_code == 200 and "router" in js.text.lower()
-        assert client.get("/app/styles.css").status_code == 200
+        styles = client.get("/app/styles.css")
+        assert styles.status_code == 200
+        assert "linear-gradient" not in styles.text
     finally:
         app.state.ledger.close()
 

@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>SurrealDB exposes a <code>Headers</code> class to embedded JavaScript. Scripts can build headers themselves or receive them from <code>fetch()</code>. Internally, those values are HTTP header bytes, but the JavaScript accessors have to present them as strings.</p>
+  <p>The conversion assumed that every value was visible ASCII. Methods including <code>get()</code>, <code>entries()</code>, <code>values()</code> and <code>getSetCookie()</code> called Rust's fallible <code>to_str()</code> conversion and then used <code>expect()</code>. A non-ASCII value therefore turned an ordinary representation mismatch into a panic.</p>
+  <p>The assumption was plausible for values created from simple script strings, but not for the whole class. HTTP permits header values containing other bytes, and response headers arrive from outside the JavaScript runtime. One storage type was serving two origins with different guarantees, while the accessors silently relied on the stronger one.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The public advisory rates the issue Medium, with a CVSS 3.1 score of 6.5 and high availability impact. It affected SurrealDB versions before 3.3.0, but only when embedded scripting was enabled. Scripting is disabled by default.</p>
+  <p>On an affected server, any account allowed to run arbitrary queries could construct a header containing a non-ASCII value and read it back. A record user was sufficient, as was a guest where guest access was enabled. A script could also encounter the same failure while reading headers returned by an allowed network destination; restricting outbound access did not prevent the direct construction path.</p>
+  <p>SurrealDB's official release builds use an abort-on-panic profile. The failed conversion therefore did not become a JavaScript exception or terminate only one query: it ended the server process and denied service to every namespace and database until restart. The issue did not disclose or modify data.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>SurrealDB 3.3.0 replaces the assertion with a shared conversion function. Visible ASCII is borrowed and returned exactly as before. Other values are decoded as UTF-8, with invalid byte sequences replaced by the Unicode replacement character. Every accepted header value now has a string representation, so the JavaScript API remains unchanged without a panic path.</p>
+  <p>The public patch routes all affected accessors through that function and adds regression tests using response-style <code>HeaderMap</code> values. The tests cover bytes that the HTTP library accepts but <code>to_str()</code> rejects, preserve ordinary ASCII exactly, and verify that valid multi-byte UTF-8 remains intact.</p>
+  <p>Users should upgrade to 3.3.0 or later. Published mitigations include leaving scripting disabled, restricting who may run arbitrary queries, limiting network destinations used by stored scripts, and running the server under a restart policy. Automatic restart limits downtime but does not remove the crash.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Crossing a language boundary changes what a value must guarantee. Rust may safely hold opaque header bytes while JavaScript expects a string; neither representation is wrong, but their intersection is smaller than either side. A fallible conversion is part of that boundary, not evidence that the input is impossible.</p>
+  <p>This suggests a useful review rule: assertions belong to invariants established locally, not to assumptions about data that arrived through a protocol, parser or foreign runtime. When a host application embeds another language, conversion failure should become a value or a local exception. It should not inherit the power to terminate the host process.</p>
+</section>

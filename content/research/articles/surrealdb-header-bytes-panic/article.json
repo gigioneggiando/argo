@@ -1,0 +1,39 @@
+{
+  "slug": "surrealdb-header-bytes-panic",
+  "title": "Not every header is text",
+  "description": "SurrealDB's embedded JavaScript asserted that HTTP header bytes were text. A non-ASCII value could abort the server; version 3.3.0 made conversion total and non-panicking.",
+  "project": "SurrealDB",
+  "author": "Luigi Colluto",
+  "published": "2026-10-28",
+  "updated": "2026-10-28",
+  "resolved": "2026-09-28",
+  "category": "Disclosure",
+  "tags": ["panic", "type conversion", "embedded JavaScript"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["CVE-2026-109338", "GHSA-84w9-87hm-mxqx"],
+  "publicEvidence": [
+    {
+      "label": "SurrealDB security advisory",
+      "url": "https://github.com/surrealdb/surrealdb/security/advisories/GHSA-84w9-87hm-mxqx"
+    },
+    {
+      "label": "Public repair",
+      "url": "https://github.com/surrealdb/surrealdb/commit/529a01dbe3e74e92fc9b8e43042001153b32e53a"
+    },
+    {
+      "label": "SurrealDB 3.3.0 release",
+      "url": "https://github.com/surrealdb/surrealdb/releases/tag/v3.3.0"
+    },
+    {
+      "label": "CVE-2026-109338 record",
+      "url": "https://www.cve.org/CVERecord?id=CVE-2026-109338"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-28",
+    "publicEvidenceCheckedOn": "2026-10-28"
+  }
+}

@@ -18,6 +18,17 @@
     <category term="streaming"/>
   </entry>
   <entry>
+    <title>Not every header is text</title>
+    <id>https://gigioneggiando.com/argo/research/surrealdb-header-bytes-panic/</id>
+    <link href="https://gigioneggiando.com/argo/research/surrealdb-header-bytes-panic/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>SurrealDB&apos;s embedded JavaScript asserted that HTTP header bytes were text. A non-ASCII value could abort the server; version 3.3.0 made conversion total and non-panicking.</summary>
+    <category term="panic"/>
+    <category term="type conversion"/>
+    <category term="embedded JavaScript"/>
+  </entry>
+  <entry>
     <title>Export is not just another read</title>
     <id>https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/</id>
     <link href="https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/"/>

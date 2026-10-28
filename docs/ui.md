@@ -53,8 +53,9 @@ Mono remain self-hosted so the local application stays offline-safe.
 
 ## The views
 
-- **Overview** (`#/`, the landing) — a restrained summary over **all** runs. Four KPI tiles show total
-  runs, validated findings, confirmed findings, and findings that still need runtime proof. Below
+- **Overview** (`#/`, the landing) — a restrained summary over **real model-backed audits**. Synthetic
+  demo runs are named and counted separately, but never contribute to finding metrics. Four KPI
+  tiles show real audits, validated findings, confirmed findings, and findings that still need runtime proof. Below
   them, **Evidence quality**, **Severity mix**, **Recent audits**, and **Recurring weakness** answer
   the four questions needed before opening a report. A first-run state explains Argo as
   *understand → challenge → stay honest* instead of showing empty charts. Charts use dependency-free
@@ -74,7 +75,8 @@ Mono remain self-hosted so the local application stays offline-safe.
   server-side (path-traversal + zip-bomb guarded) and its path fills the field. The
   **Web research (Stage 1)** toggle (default **On**) runs the opt-out web-OSINT pass before recon
   (one of two networked steps, with corroborate; never the live in-scope hosts); **Off** keeps the run fully offline.
-  The **runner** selector offers **Mock** (free) · **Claude** (with an API-key field, shown when
+  The **runner** selector offers **Demo** (free, fixed synthetic fixtures; explicitly not a repository
+  assessment) · **Claude** (with an API-key field, shown when
   Claude is picked — blank uses the server's ambient login) · **Codex** (with a Codex model +
   local/OSS provider field, plus an API-key field that makes Argo bootstrap a dedicated Codex
   profile for it) · **Gemini** (with a Gemini model + API-key field, shown when Gemini is picked —
@@ -83,11 +85,11 @@ Mono remain self-hosted so the local application stays offline-safe.
   **pickers** populated from `GET /models` (Claude opus/sonnet/haiku; Codex examples + the
   **detected Codex default**, shown in the placeholder; Gemini pro/flash/flash-lite). The **Costs**
   page adds a **Model pricing & backends** card (the `$/1M token` table + which backend reports real
-  vs. estimated cost). **Cost-aware**: the runner defaults to **Mock (free)**; switching to any real
+  vs. estimated cost). **Cost-aware**: the runner defaults to **Demo**; switching to any real
   backend (Claude/Codex/Gemini) reveals a cost warning. A **"Let the pipeline choose"** card
   (Quick / Standard / Thorough) calls `POST /recommend` and fills the config for you (runner stays
-  Mock). Start → navigates to the live run.
-- **Settings** (`#/settings`) — persisted defaults for the New Run form: **default runner** (Mock /
+  Demo until explicitly changed). Start → navigates to the live run.
+- **Settings** (`#/settings`) — persisted defaults for the New Run form: **default runner** (Demo /
   Claude / Codex / Gemini), budget, parallelism, audit model, calibration, and **per-stage Claude
   models**. Per-backend sub-fields (Codex provider/API key, Gemini model/API key, Claude API key)
   are set per-run in New Run, not persisted here — `Settings` (`server/schemas.py`) is deliberately
@@ -132,10 +134,10 @@ Mono remain self-hosted so the local application stays offline-safe.
   vulnerability, the analyst can propose a candidate finding that is **re-checked independently by
   the pipeline's adversarial validator**; the verdict (✅ confirmed / ❌ refuted / ⚠️ needs-runtime)
   appears as a pill under the reply (an interactive probe — it is **not** added to the run's
-  findings). Chat uses the run's runner (free for mock runs); its cost is added to the run total.
+  findings). Chat uses the run's runner (synthetic for Demo runs); its cost is added to the run total.
   See a **real worked transcript** in [chat-example.md](chat-example.md).
-- **History** (`#/history`) — a compact state summary followed by every past run; click one to reopen
-  its live status or results.
+- **History** (`#/history`) — a compact state summary that separates real audits from synthetic demos,
+  followed by every past run; click one to reopen its live status or results.
 
 ## How live progress works
 
@@ -146,7 +148,8 @@ cards update in real time and partial results are shown as soon as each stage pr
 
 ## Safety / guardrails in the UI
 
-- Default runner is **Mock** → a click costs nothing until you explicitly choose Real.
+- Default runner is **Demo** → a click costs nothing, but the UI labels every result as synthetic
+  and excludes it from audit metrics until you explicitly choose a real backend.
 - The UI only calls whitelisted artifact endpoints; it never receives the repo copy or arbitrary
   paths. All the engine guardrails (read-only repo, no live host, no patching, no auto-submit)
   are unchanged — the UI is a viewer/launcher, not a new execution path.

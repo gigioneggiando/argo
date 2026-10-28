@@ -89,6 +89,8 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
         rd = _run_dir(run_id)
         st = read_status(rd) or {"run_id": run_id, "state": "unknown",
                                  "stages": [], "artifacts": {}, "cost_usd": 0.0}
+        meta = _read_json(rd / "meta.json") or {}
+        st["runner"] = meta.get("runner")
         try:
             st["cost_usd"] = round(ledger.run_cost(run_id), 6)  # live cost, even mid-stage
         except Exception:
@@ -190,7 +192,7 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
         from argo.model_catalog import catalog_by_provider, catalog_snapshot
         return {
             "backends": [
-                {"id": "mock", "label": "Mock (free)", "cost": "free", "models": []},
+                {"id": "mock", "label": "Demo (synthetic)", "cost": "free", "models": []},
                 {"id": "headless", "label": "Claude Code", "cost": "authoritative (USD per call)",
                  "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("anthropic")]},
                 {"id": "codex", "label": "Codex CLI (OpenAI / open-source)",
@@ -260,6 +262,7 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
                     "program_name": meta.get("program_name"),
                     "target_type": meta.get("target_type"),
                     "archetype": meta.get("archetype"),
+                    "runner": meta.get("runner"),
                     "cost_usd": round(_safe_cost(rd.name), 6),
                     "started_at": (st or {}).get("started_at"),
                 })

@@ -81,6 +81,7 @@ def test_full_pipeline_via_api(tmp_path):
         run_id = _start(client)
         st = _wait(client, run_id)
         assert st["state"] == "completed"
+        assert st["runner"] == "mock"
         # ingest + revision-bound target memory + research (default on) + recon + audit + validate + corroborate
         # + evidence + report
         assert [s["state"] for s in st["stages"]] == ["done"] * 9
@@ -95,7 +96,7 @@ def test_full_pipeline_via_api(tmp_path):
         assert len(client.get(f"/runs/{run_id}/findings").json()) == 2          # 2 focuses
         assert {d["name"] for d in client.get(f"/runs/{run_id}/drafts").json()} == \
             {"FULL-001.md", "AUTHZ-002.md"}
-        assert any(r["run_id"] == run_id and r["state"] == "completed"
+        assert any(r["run_id"] == run_id and r["state"] == "completed" and r["runner"] == "mock"
                    for r in client.get("/runs").json())
         assert client.get(f"/runs/{run_id}/artifacts/nope").status_code == 404  # whitelist
     finally:
@@ -147,6 +148,7 @@ def test_spa_assets_served(tmp_path):
         assert 'class="sidebar"' in idx.text
         assert 'id="menuToggle"' in idx.text
         assert "Evidence before certainty" in idx.text
+        assert "brand-logo" not in idx.text
         # static JS module is served
         js = client.get("/app/js/app.js")
         assert js.status_code == 200 and "router" in js.text.lower()

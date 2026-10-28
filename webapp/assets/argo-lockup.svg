@@ -1,8 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" fill="none" role="img" aria-label="Argo">
-  <!-- mark -->
-  <path fill="#1f6f66" fill-rule="evenodd" d="M3 32C15 14 49 14 61 32 49 50 15 50 3 32Zm11 0c8-10 28-10 36 0-8 10-28 10-36 0Z"/>
-  <circle cx="32" cy="32" r="7.5" fill="#1f6f66"/>
-  <!-- wordmark -->
-  <text x="76" y="42" font-family="Inter, Segoe UI, system-ui, -apple-system, sans-serif"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 64" role="img" aria-label="Argo">
+  <path fill="#1f6f66" fill-rule="evenodd" d="M4 54 25 10h10l21 44H44l-5-11H21l-5 11H4Zm22-21h9l-4.5-11L26 33Z"/>
+  <text x="74" y="42" font-family="Inter, Segoe UI, system-ui, -apple-system, sans-serif"
         font-size="34" font-weight="650" letter-spacing="-0.5" fill="#18201d">Argo</text>
+  <g fill="#1f6f66">
+    <circle cx="155" cy="25" r="2.2"/><circle cx="163" cy="25" r="2.2" opacity=".5"/>
+    <circle cx="171" cy="25" r="2.2"/><circle cx="159" cy="33" r="2.2" opacity=".5"/>
+    <circle cx="167" cy="33" r="2.2"/>
+  </g>
 </svg>

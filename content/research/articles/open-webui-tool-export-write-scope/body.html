@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Open WebUI tools are Python programs that extend what the application can do. A tool may be shared so that another user can use it without being allowed to edit it. Since version 0.11.0, the ordinary detail endpoint reflected that distinction: a read-only recipient could see the tool, but its source code was withheld.</p>
+  <p>The bulk export endpoint followed a different rule. Export necessarily included the Python source, because its purpose was to produce a portable copy, but the handler selected every tool the caller could read. A user with read-only access therefore received a writer-level representation when exporting all tools.</p>
+  <p>The permission check was not missing in the usual sense. The query was authorized, but for the wrong operation. It answered “which tools may this account see?” when the response it was about to create required “which tools may this account copy in full?”</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The maintainer's advisory rates the issue Medium, with a CVSS 3.1 score of 6.5 and high confidentiality impact. Affected versions were 0.6.37 through 0.11.3. The user had to be authenticated, non-admin, allowed to export tools, and given read access to a tool owned by someone else.</p>
+  <p>Tool export is disabled for ordinary users by default, and deployments that never granted that permission were not affected. Where the preconditions did hold, one request could return the full source of every tool shared read-only with that account. The detail page still hid the same source, so the bulk route quietly broke the boundary users and administrators saw elsewhere.</p>
+  <p>The immediate loss was source-code confidentiality. That source can also contain API keys, credentials or internal service addresses, although the consequence depends on how each tool was written. The export did not grant permission to modify or execute a tool and the advisory claims no integrity or availability impact.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>Open WebUI changed the export query to request tools with <code>permission='write'</code>. This single constraint brings the bulk route into line with the existing single-tool export and model export: administrators keep their bypass, while other users export only tools they own or may edit.</p>
+  <p>The repair was merged to the development branch in pull request 29310 and released in version 0.11.4. The release notes describe the same boundary explicitly: exporting all tools now returns only the tools the account may edit. Upgrading fully resolves the issue without a configuration change.</p>
+  <p>The public advisory records the before-and-after behavior as well. On an affected version, a read-only tool was absent from the user's detail response source but present in bulk export; on 0.11.4, that tool is excluded from the export while its owner can still export it.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Bulk operations are not merely faster versions of detail views. They often serialize more fields, cross more objects and create data that can leave the system. That can require a stronger permission than the one used to list the same objects on screen.</p>
+  <p>A useful review habit is to compare every export with its single-object counterpart: do they select the same principals, apply the same field redaction and mean the same thing by “read”? Permission names should follow the authority of the response, not just the database query used to assemble it. Being allowed to use a capability does not automatically include being allowed to inspect its implementation.</p>
+</section>

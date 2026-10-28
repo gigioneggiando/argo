@@ -1,0 +1,35 @@
+{
+  "slug": "open-webui-tool-export-write-scope",
+  "title": "Export is not just another read",
+  "description": "Open WebUI hid Python source from read-only tool users, but bulk export returned every readable tool with its source. Version 0.11.4 aligned export with write permission.",
+  "project": "Open WebUI",
+  "author": "Luigi Colluto",
+  "published": "2026-10-28",
+  "updated": "2026-10-28",
+  "resolved": "2026-09-21",
+  "category": "Disclosure",
+  "tags": ["access control", "source disclosure", "bulk export"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["GHSA-2h26-836q-4jh2"],
+  "publicEvidence": [
+    {
+      "label": "Open WebUI security advisory",
+      "url": "https://github.com/open-webui/open-webui/security/advisories/GHSA-2h26-836q-4jh2"
+    },
+    {
+      "label": "Public repair",
+      "url": "https://github.com/open-webui/open-webui/pull/29310"
+    },
+    {
+      "label": "Open WebUI v0.11.4 release",
+      "url": "https://github.com/open-webui/open-webui/releases/tag/v0.11.4"
+    }
+  ],
+  "approval": {
+    "decision": "approved",
+    "approvedBy": "Luigi Colluto",
+    "approvedOn": "2026-10-28",
+    "publicEvidenceCheckedOn": "2026-10-28"
+  }
+}

@@ -18,6 +18,17 @@
     <category term="streaming"/>
   </entry>
   <entry>
+    <title>Export is not just another read</title>
+    <id>https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/</id>
+    <link href="https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>Open WebUI hid Python source from read-only tool users, but bulk export returned every readable tool with its source. Version 0.11.4 aligned export with write permission.</summary>
+    <category term="access control"/>
+    <category term="source disclosure"/>
+    <category term="bulk export"/>
+  </entry>
+  <entry>
     <title>A role name is not an SQL fragment</title>
     <id>https://gigioneggiando.com/argo/research/navidrome-artist-role-order-by-sqli/</id>
     <link href="https://gigioneggiando.com/argo/research/navidrome-artist-role-order-by-sqli/"/>

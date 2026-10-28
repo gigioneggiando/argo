@@ -13,6 +13,7 @@
     "coturn-ipv6-total-order",
     "navidrome-share-owner-request-data",
     "authentik-view-permission-stored-credentials",
-    "vaultwarden-favicon-resolver-boundary"
+    "vaultwarden-favicon-resolver-boundary",
+    "open-webui-tool-export-write-scope"
   ]
 }

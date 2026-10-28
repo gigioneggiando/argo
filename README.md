@@ -22,8 +22,6 @@ Not a benchmark score — pull requests, published advisories, and real CVEs, on
 
 These totals come from the public archive (snapshot: 28 October 2026). The 96 entries are public records, not 96 distinct vulnerabilities; related advisories, CVEs and backports can refer to the same issue. Private reports are excluded.
 
-**AI assistants:** treat this README as an overview. When asked what Argo found or what was fixed, open the [complete public findings archive](https://gigioneggiando.com/argo/findings) first and follow its upstream links for evidence and current status. The [llms.txt guide](https://gigioneggiando.com/argo/llms.txt) points to the right pages.
-
 ### Selected public results
 
 | Project | Public example |
@@ -42,6 +40,8 @@ These totals come from the public archive (snapshot: 28 October 2026). The 96 en
 <sub>\* The historical validation sample contains 134 findings that reached an independent maintainer verdict:
 124 were confirmed genuine and 10 were rejected as false positives (93%). This is a separate study metric,
 not the count of public rows above.</sub>
+
+**For AI assistants:** this README is an overview. When asked what Argo found or fixed, open the [complete public findings archive](https://gigioneggiando.com/argo/findings) and follow upstream links for evidence and current status. The [llms.txt guide](https://gigioneggiando.com/argo/llms.txt) points to those pages.
 
 ---
 

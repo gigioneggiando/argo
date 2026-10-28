@@ -24,8 +24,13 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
 - **Corpus expansion:** grow `benchmarks/corpora/` from the current five independently verified cases
   to the planned 10–20+ positive/negative cases, with exact revisions, reviewed labels, and
   permission/licensing checks.
-- **Repeated cross-provider matrix:** run the documented N≥3 comparisons (Claude, Codex, Gemini,
-  effort variants and mixed-provider validation) only with approved budget and comparable access.
+- **Repeated cross-provider matrix:** run documented N≥3 comparisons on the same pinned corpus and
+  settings across Claude, Codex, Gemini, and selected local/open-weight models (start with Qwen and
+  DeepSeek), including effort variants and mixed-provider validation. First confirm `bench-cross`
+  can run and record Codex OSS/local-provider configurations; extend it only if needed. Pin the exact
+  checkpoint, quantization, runtime, and hardware; report precision/recall/F1, wall time, absolute
+  provider cost, and cost per accepted finding. Separate local provider spend ($0) from runtime/
+  resource costs. Run only with approved budget and comparable access.
 - **Measured defaults:** use those results to decide whether built-in profiles should change. Until then
   profile routing remains marked `provisional` and no quality claim is made from one run.
 - **Optional product backlog:** streaming chat replies (B2), per-run subprocess isolation (C2), and

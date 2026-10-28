@@ -18,7 +18,7 @@ models.
 
 Not a benchmark score — pull requests, published advisories, and real CVEs, on real open-source projects.
 
-**27** projects · **96** public records · **66** public PRs · **24** published advisories · **85** resolved records · **10** CVEs listed · **8** languages represented\*
+**27** projects · **96** public records · **66** public PRs · **24** published advisories · **85** resolved records · **11** CVEs listed · **8** languages represented\*
 
 These totals come from the public archive (snapshot: 28 October 2026). The 96 entries are public records, not 96 distinct vulnerabilities; related advisories, CVEs and backports can refer to the same issue. Private reports are excluded.
 
@@ -28,7 +28,7 @@ These totals come from the public archive (snapshot: 28 October 2026). The 96 en
 |---|---|
 | [n8n](https://github.com/n8n-io/n8n) | MCP browser session leak fixed in [PR #36850](https://github.com/n8n-io/n8n/pull/36850). |
 | [Open WebUI](https://github.com/open-webui/open-webui) | Two published advisories, fixed in v0.11.4 ([example](https://github.com/open-webui/open-webui/security/advisories/GHSA-gqfh-jxvw-74rp)). |
-| [Vaultwarden](https://github.com/dani-garcia/vaultwarden) | Three published advisories, including cross-organization cipher access ([GHSA](https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-xwf8-pjh7-h589)). |
+| [Vaultwarden](https://github.com/dani-garcia/vaultwarden) | Three published advisories, including an icon-endpoint SSRF bypass ([CVE-2026-116678](https://www.cve.org/CVERecord?id=CVE-2026-116678)) and cross-organization cipher access ([GHSA](https://github.com/dani-garcia/vaultwarden/security/advisories/GHSA-xwf8-pjh7-h589)). |
 | [Gitea](https://github.com/go-gitea/gitea) | Two published advisories, including OAuth token-kind confusion ([GHSA](https://github.com/go-gitea/gitea/security/advisories/GHSA-xvfh-qwmh-f92w)). |
 | [SurrealDB](https://github.com/surrealdb/surrealdb) | Two published advisories and CVEs for WASI output buffering and non-ASCII headers ([CVE-2026-109339](https://www.cve.org/CVERecord?id=CVE-2026-109339), [CVE-2026-109338](https://www.cve.org/CVERecord?id=CVE-2026-109338)). |
 | [LiveKit](https://github.com/livekit/livekit) | 14 public fixes; listed in its [Security Hall of Fame](https://livekit.com/security/hall-of-fame). |

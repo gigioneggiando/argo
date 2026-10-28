@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>open62541 can use a TPM through PKCS#11 to protect OPC UA PubSub messages with AES in counter mode. The affected encryption and decryption path treated the input as though it needed the block alignment of a conventional block-cipher operation. It rounded the payload length up to a 16-byte boundary before passing the buffer to the cryptographic mechanism.</p>
+  <p>AES-CTR does not require that padding. It turns the block cipher into a stream-like construction and can process a final partial block directly. Rounding the length therefore described bytes that the caller had never supplied. For payloads whose size was not a multiple of 16, the TPM path could read beyond the input and write beyond the output buffer.</p>
+  <p>The rounded value was also stored in <code>CK_BYTE</code>, an eight-bit type. A length above 255 could wrap or truncate before processing. The function could then report success even though only part of the message had been encrypted or decrypted. One incorrect length model created both a spatial memory error and an incomplete-operation error.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The vulnerable path required a TPM-backed PKCS#11 PubSub security policy; deployments using other crypto providers did not enter this implementation. Within that configuration, message lengths can naturally fall between block boundaries or exceed an eight-bit range. They do not need to be malformed to expose the faulty assumptions.</p>
+  <p>An out-of-bounds read or write in C can crash the process or corrupt memory, while truncated processing can leave message contents inconsistent with the success status returned to the caller. The public repair does not establish reliable code execution or publish a formal severity, so this article does not assign either claim.</p>
+  <p>The issue affected both encryption and decryption, and the same length logic appeared in the AES-128 and AES-256 TPM-backed policy implementations. It was therefore a shared primitive boundary rather than a single message parser mistake.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>The repair stopped inventing a padded size. It preserves the exact payload length in types capable of representing it, processes bounded chunks and passes the shorter remainder as the final chunk. No temporary padding is needed because the mechanism already supports arbitrary byte lengths.</p>
+  <p>The maintainers merged corresponding changes for the maintained branches in September 2026. The fix then shipped on 4 October in releases 1.3.22, 1.4.21 and 1.5.9. The public pull requests identify the internal advisory as <code>open62541-SA-2026-0033</code> and credit Luigi Colluto, <code>@gigioneggiando</code>, as the reporter.</p>
+  <p>The public record explains the corrected loop and release coverage but does not include a dedicated regression test. The released code is therefore the durable outcome; the absence of a public test is worth keeping distinct from the completeness of the repair itself.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>Cryptographic APIs are especially prone to borrowed assumptions. AES has a fixed block size, but that does not mean every mode accepts data only in full blocks. The mode defines the data model, and the surrounding buffer logic has to follow it.</p>
+  <p>Length types carry assumptions too. A byte-sized type may be correct for one PKCS#11 field without being suitable for the size of an application message. Keep the full input length in a size type, narrow only where the API explicitly requires it, and make every chunk no larger than the memory actually owned. A stream length is not a block length, and neither is automatically one byte wide.</p>
+</section>

@@ -1,0 +1,22 @@
+{
+  "slug": "open62541-aes-ctr-length-boundary",
+  "title": "A stream length is not a block length",
+  "description": "open62541 rounded TPM-backed AES-CTR payloads to a block boundary and stored the result in an eight-bit length. The result could truncate processing or read and write beyond the caller's buffer.",
+  "project": "open62541",
+  "author": "Luigi Colluto",
+  "published": "2026-10-28",
+  "updated": "2026-10-28",
+  "resolved": "2026-10-04",
+  "category": "Disclosure",
+  "tags": ["memory safety", "AES-CTR", "integer truncation"],
+  "status": "Fixed",
+  "identifiers": [],
+  "publicEvidence": [
+    {"label": "Repair for the 1.3 branch", "url": "https://github.com/open62541/open62541/pull/8440"},
+    {"label": "Repair for the 1.5 branch", "url": "https://github.com/open62541/open62541/pull/8441"},
+    {"label": "open62541 1.3.22 release", "url": "https://github.com/open62541/open62541/releases/tag/v1.3.22"},
+    {"label": "open62541 1.4.21 release", "url": "https://github.com/open62541/open62541/releases/tag/v1.4.21"},
+    {"label": "open62541 1.5.9 release", "url": "https://github.com/open62541/open62541/releases/tag/v1.5.9"}
+  ],
+  "approval": {"decision": "approved", "approvedBy": "Luigi Colluto", "approvedOn": "2026-10-28", "publicEvidenceCheckedOn": "2026-10-28"}
+}

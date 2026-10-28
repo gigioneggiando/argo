@@ -1,0 +1,23 @@
+<section aria-labelledby="what-went-wrong">
+  <h2 id="what-went-wrong">What went wrong</h2>
+  <p>Navidrome plugins can request permission to make HTTP calls. The host service tried to keep those calls away from private networks by inspecting each destination before sending the request. Literal loopback and private IP addresses were rejected, but a hostname was still only a string at that point.</p>
+  <p>A name can resolve to a private address even when it contains no suspicious text. It can also produce a different address between checks, or lead a redirect to another destination. Navidrome's policy ran before the transport resolved the name, so it could approve one representation while the network stack later connected to an address the policy meant to deny.</p>
+  <p>The result was a gap between URL validation and connection establishment. A plugin with HTTP permission could use a DNS name to reach loopback, private-network or cloud-metadata destinations and receive their responses. Checking the hostname again during a redirect did not close that gap because resolution still happened afterwards.</p>
+</section>
+<section aria-labelledby="why-it-mattered">
+  <h2 id="why-it-mattered">Why it mattered</h2>
+  <p>The public advisory rates the issue Medium and covers Navidrome versions from 0.57.0 up to, but not including, 0.64.0. Exploitation required plugins to be enabled and an administrator to install or authorize a malicious or compromised plugin with network access. This was not a path for an unauthenticated remote visitor.</p>
+  <p>Within that boundary, however, the plugin could cross the network isolation promised by the host. Internal services often rely on not being reachable from less trusted code, and metadata endpoints may expose deployment credentials depending on the environment. The affected HTTP service returned response data to the plugin, so the problem was not limited to blind requests.</p>
+  <p>A wildcard host permission remained intentional: an administrator can explicitly allow a plugin to contact any destination. The flaw concerned narrower policies that were supposed to exclude private addresses, not the meaning of an explicit wildcard grant.</p>
+</section>
+<section aria-labelledby="how-it-was-fixed">
+  <h2 id="how-it-was-fixed">How it was fixed</h2>
+  <p>Version 0.64.0 moved the decisive private-address check to the dial boundary. The repaired transport resolves the destination and evaluates the actual IP address immediately before opening the connection. That makes the policy apply to ordinary DNS resolution, redirects and address changes rather than to an earlier textual approximation.</p>
+  <p>The host also stopped relying on the plugin runtime's built-in HTTP path and routed requests through the controlled service. Explicit host and CIDR permissions can still allow private destinations, but a symbolic hostname no longer bypasses the default restriction simply because it was unresolved during validation.</p>
+  <p>The 0.64.0 release credits <code>@gigioneggiando</code> for this HTTP repair. The same advisory also discusses a WebSocket path reported and fixed separately. This article is deliberately limited to the HTTP service and does not attribute the adjacent WebSocket finding to the same report.</p>
+</section>
+<section aria-labelledby="after-the-patch">
+  <h2 id="after-the-patch">After the patch</h2>
+  <p>A hostname allow-list and a network-address policy answer different questions. The first decides which name a caller may request. The second decides which machine the application may actually contact. Combining them in one early string check leaves time and DNS between the decision and its effect.</p>
+  <p>The durable rule is to enforce destination policy where the connection becomes concrete. Validation may begin at the URL, but restrictions on private networks belong beside name resolution and socket creation. A hostname check cannot bind a future connection; the dialer can.</p>
+</section>

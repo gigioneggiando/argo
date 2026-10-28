@@ -20,6 +20,8 @@
     "vaultwarden-import-write-boundary",
     "gitea-token-kind-exchange",
     "gitea-user-route-visibility",
-    "apache-answer-parent-visibility"
+    "apache-answer-parent-visibility",
+    "navidrome-dial-time-host-policy",
+    "open62541-aes-ctr-length-boundary"
   ]
 }

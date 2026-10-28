@@ -1,0 +1,21 @@
+{
+  "slug": "navidrome-dial-time-host-policy",
+  "title": "A hostname check cannot bind a connection",
+  "description": "Navidrome's plugin HTTP service rejected literal private addresses but evaluated DNS names before the network stack resolved them. Version 0.64.0 moved the private-address policy to the dial boundary.",
+  "project": "Navidrome",
+  "author": "Luigi Colluto",
+  "published": "2026-10-28",
+  "updated": "2026-10-28",
+  "resolved": "2026-09-12",
+  "category": "Disclosure",
+  "tags": ["SSRF", "DNS rebinding", "plugin sandbox"],
+  "severity": "Medium",
+  "status": "Fixed",
+  "identifiers": ["GHSA-pr2j-mfc8-qjcc"],
+  "publicEvidence": [
+    {"label": "Navidrome security advisory", "url": "https://github.com/navidrome/navidrome/security/advisories/GHSA-pr2j-mfc8-qjcc"},
+    {"label": "HTTP service repair", "url": "https://github.com/navidrome/navidrome/commit/1a8463f7d"},
+    {"label": "Navidrome 0.64.0 release", "url": "https://github.com/navidrome/navidrome/releases/tag/v0.64.0"}
+  ],
+  "approval": {"decision": "approved", "approvedBy": "Luigi Colluto", "approvedOn": "2026-10-28", "publicEvidenceCheckedOn": "2026-10-28"}
+}

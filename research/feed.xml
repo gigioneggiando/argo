@@ -29,6 +29,17 @@
     <category term="mutations"/>
   </entry>
   <entry>
+    <title>A stream length is not a block length</title>
+    <id>https://gigioneggiando.com/argo/research/open62541-aes-ctr-length-boundary/</id>
+    <link href="https://gigioneggiando.com/argo/research/open62541-aes-ctr-length-boundary/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>open62541 rounded TPM-backed AES-CTR payloads to a block boundary and stored the result in an eight-bit length. The result could truncate processing or read and write beyond the caller&apos;s buffer.</summary>
+    <category term="memory safety"/>
+    <category term="AES-CTR"/>
+    <category term="integer truncation"/>
+  </entry>
+  <entry>
     <title>A valid token can still be the wrong token</title>
     <id>https://gigioneggiando.com/argo/research/gitea-token-kind-exchange/</id>
     <link href="https://gigioneggiando.com/argo/research/gitea-token-kind-exchange/"/>
@@ -38,6 +49,17 @@
     <category term="OAuth"/>
     <category term="token validation"/>
     <category term="authentication"/>
+  </entry>
+  <entry>
+    <title>A hostname check cannot bind a connection</title>
+    <id>https://gigioneggiando.com/argo/research/navidrome-dial-time-host-policy/</id>
+    <link href="https://gigioneggiando.com/argo/research/navidrome-dial-time-host-policy/"/>
+    <published>2026-10-28T00:00:00Z</published>
+    <updated>2026-10-28T00:00:00Z</updated>
+    <summary>Navidrome&apos;s plugin HTTP service rejected literal private addresses but evaluated DNS names before the network stack resolved them. Version 0.64.0 moved the private-address policy to the dial boundary.</summary>
+    <category term="SSRF"/>
+    <category term="DNS rebinding"/>
+    <category term="plugin sandbox"/>
   </entry>
   <entry>
     <title>A role name is not an SQL fragment</title>

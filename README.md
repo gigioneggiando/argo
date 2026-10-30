@@ -13,6 +13,13 @@ This is the `gh-pages` worktree of `gigioneggiando/argo`.
 For the complete finding-to-publication procedure, including the separate
 personal-site deployment, see [AGENTS.md](AGENTS.md).
 
+The overview at `https://gigioneggiando.github.io/argo/` redirects JavaScript-enabled
+browsers to `https://gigioneggiando.com/argo`. GitHub Pages does not provide a
+server-side redirect for this project path, so the generated overview uses a
+hostname-guarded browser redirect and shows a link when JavaScript is disabled.
+The same page is synced to the custom domain; the hostname check prevents a redirect
+loop there. The findings archive remains available at its existing path on both hosts.
+
 - `index.html`: project introduction, totals, visible charts and searchable archive.
 - `findings.html`: static, searchable public archive.
 - `llms.txt`: concise agent guide to the public pages and how to interpret archive records.

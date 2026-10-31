@@ -32,8 +32,8 @@ def test_build_cmd_is_sandboxed_and_offline_for_audit(tmp_path):
     cmd = r._build_codex_cmd(model="m", policy=session_policy("audit"),
                              last_msg_file=tmp_path / "msg")
     # sandboxed, non-interactive (exec never prompts), reads prompt from stdin
-    assert cmd[cmd.index("-s") + 1] == "workspace-write"
-    assert "-a" not in cmd                          # `exec` rejects the interactive approval flag
+    assert "--approve-for-me" in cmd
+    assert "-s" not in cmd and "--sandbox" not in cmd
     assert cmd[-1] == "-" and "--skip-git-repo-check" in cmd and "--ephemeral" in cmd
     # NEVER a sandbox-escape
     assert "danger-full-access" not in cmd

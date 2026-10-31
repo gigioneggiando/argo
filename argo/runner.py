@@ -838,7 +838,7 @@ class CodexRunner(AgentRunner):
 
     def _build_codex_cmd(self, *, model, policy, last_msg_file: Path) -> list[str]:
         cmd = [self._bin(), "exec",            # `exec` is non-interactive (never prompts for approval)
-               "-s", "workspace-write",        # write only the scratch cwd; network off by default
+               "--approve-for-me",              # workspace-write plus automatic review
                "--skip-git-repo-check",        # the scratch cwd is not a git repo
                "--ephemeral",                  # do not persist session files
                "--json",                       # JSONL events on stdout (token usage)

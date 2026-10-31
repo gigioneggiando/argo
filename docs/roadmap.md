@@ -24,8 +24,13 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
 - **Corpus expansion:** grow `benchmarks/corpora/` from the current five independently verified cases
   to the planned 10–20+ positive/negative cases, with exact revisions, reviewed labels, and
   permission/licensing checks.
-- **Repeated cross-provider matrix:** run the documented N≥3 comparisons (Claude, Codex, Gemini,
-  effort variants and mixed-provider validation) only with approved budget and comparable access.
+- **Repeated cross-provider matrix:** run documented N≥3 comparisons on the same pinned corpus and
+  settings across Claude, Codex, Gemini, and selected local/open-weight models (start with Qwen and
+  DeepSeek), including effort variants and mixed-provider validation. First confirm `bench-cross`
+  can run and record Codex OSS/local-provider configurations; extend it only if needed. Pin the exact
+  checkpoint, quantization, runtime, and hardware; report precision/recall/F1, wall time, absolute
+  provider cost, and cost per accepted finding. Separate local provider spend ($0) from runtime/
+  resource costs. Run only with approved budget and comparable access.
 - **Measured defaults:** use those results to decide whether built-in profiles should change. Until then
   profile routing remains marked `provisional` and no quality claim is made from one run.
 - **Optional product backlog:** streaming chat replies (B2), per-run subprocess isolation (C2), and
@@ -980,6 +985,37 @@ covering concrete capabilities, evaluation evidence, safety model, maturity, and
 Deduplicate forks and marketing-only entries. Translate only demonstrated gaps into Argo proposals,
 each with an acceptance metric and an explanation of why the present pipeline cannot cover it. Do
 not copy agent counts, branding, or enterprise connectors merely because another tool has them.
+
+### R2 — Strix-inspired interoperability review — EVALUATE BEFORE IMPLEMENTATION · priority **P2**
+
+Review of `usestrix/strix` (2026-10-31) suggests a few integration ideas, but its autonomous
+pentesting workflow is not a design replacement for Argo's source-first audit pipeline. Keep this
+as a small evaluation backlog; do not add an agent swarm or active-testing behavior by default.
+
+- **SARIF 2.1.0 export — candidate.** Argo already has structured `validated_findings.json` and the
+  deterministic evidence gate, but no SARIF exporter. Prototype export from evidence-gated active
+  findings only, with stable fingerprints, source locations, CWE/severity, and proof-level details
+  retained as SARIF properties. Exclude drafts, refuted/conflicted claims, and findings blocked by
+  unresolved obligations. Validate schema compatibility and deduplication across repeated runs, then
+  assess whether GitHub Code Scanning or another SARIF consumer presents Argo's evidence clearly
+  without flooding users with weak findings. Do not build a CI gate until that review passes.
+- **OpenAPI input as bounded recon context — candidate.** Test whether an optional, size-bounded
+  OpenAPI/Swagger parser helps recon connect declared operations and security schemes to source
+  handlers or identify coverage gaps. Treat the specification as untrusted context, not proof of
+  reachability or authorization. It must never expand live scope or trigger requests; existing
+  explicit authorization, scope checks, and live-stage gates remain authoritative. Keep only if a
+  repository-disjoint pilot improves route/handler coverage or useful findings over the same run
+  without increasing unsupported claims.
+- **Agent skill for Argo workflows — low-priority UX candidate.** Consider a small `SKILL.md` for
+  compatible coding agents to invoke deterministic screening/planning, start or resume an Argo run,
+  and summarize artifacts. It should call Argo's existing CLI/API, never substitute its own scanner,
+  and must preserve authorization, read-only, budget, and no-auto-submit controls. Implement only if
+  it reduces setup or resume errors in a short usability trial.
+
+**Explicitly not adopted from Strix:** writable target mounts, default autonomous exploitation,
+unrestricted shared agent workspaces, always-on scans, and automated submission or production
+changes. Strix's public CLI documents writable local-directory mounts and shared agent state; these
+conflict with Argo's read-only audit boundary or add operational risk without demonstrated benefit.
 
 ### Evaluation and safety gates for F1–F6
 

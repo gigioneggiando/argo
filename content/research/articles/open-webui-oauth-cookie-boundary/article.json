@@ -5,13 +5,13 @@
   "project": "Open WebUI",
   "author": "Luigi Colluto",
   "published": "2026-10-27",
-  "updated": "2026-10-27",
+  "updated": "2026-11-02",
   "resolved": "2026-09-07",
   "category": "Disclosure",
   "tags": ["OAuth", "session security", "credential boundaries"],
   "severity": "Medium",
   "status": "Fixed",
-  "identifiers": ["GHSA-gqfh-jxvw-74rp"],
+  "identifiers": ["GHSA-gqfh-jxvw-74rp", "CVE-2026-109292"],
   "publicEvidence": [
     {
       "label": "Open WebUI security advisory",
@@ -38,6 +38,6 @@
     "decision": "approved",
     "approvedBy": "Luigi Colluto",
     "approvedOn": "2026-10-27",
-    "publicEvidenceCheckedOn": "2026-10-27"
+    "publicEvidenceCheckedOn": "2026-11-02"
   }
 }

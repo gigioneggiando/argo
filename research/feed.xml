@@ -4,7 +4,7 @@
   <id>https://gigioneggiando.com/argo/research/</id>
   <link href="https://gigioneggiando.com/argo/research/"/>
   <link href="https://gigioneggiando.com/argo/research/feed.xml" rel="self" type="application/atom+xml"/>
-  <updated>2026-10-28T00:00:00Z</updated>
+  <updated>2026-11-02T00:00:00Z</updated>
   <author><name>Luigi Colluto</name><uri>https://gigioneggiando.com/</uri></author>
   <entry>
     <title>Revocation must reach every live stream</title>
@@ -132,7 +132,7 @@
     <id>https://gigioneggiando.com/argo/research/open-webui-oauth-cookie-boundary/</id>
     <link href="https://gigioneggiando.com/argo/research/open-webui-oauth-cookie-boundary/"/>
     <published>2026-10-27T00:00:00Z</published>
-    <updated>2026-10-27T00:00:00Z</updated>
+    <updated>2026-11-02T00:00:00Z</updated>
     <summary>Open WebUI’s OAuth-mode connectors forwarded each requesting user’s browser cookies to downstream servers. A destination could replay the leaked session cookie and impersonate that user.</summary>
     <category term="OAuth"/>
     <category term="session security"/>
@@ -143,7 +143,7 @@
     <id>https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/</id>
     <link href="https://gigioneggiando.com/argo/research/open-webui-tool-export-write-scope/"/>
     <published>2026-10-28T00:00:00Z</published>
-    <updated>2026-10-28T00:00:00Z</updated>
+    <updated>2026-11-02T00:00:00Z</updated>
     <summary>Open WebUI hid Python source from read-only tool users, but bulk export returned every readable tool with its source. Version 0.11.4 aligned export with write permission.</summary>
     <category term="access control"/>
     <category term="source disclosure"/>

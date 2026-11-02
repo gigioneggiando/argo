@@ -30,6 +30,8 @@ try{
  const findingsMeta=await p.eval(()=>({canonical:document.querySelector('link[rel="canonical"]')?.href,guide:document.querySelector('link[rel="describedby"]')?.href}));
  ensure(findingsMeta.canonical==='https://gigioneggiando.com/argo/findings'&&findingsMeta.guide==='https://gigioneggiando.com/argo/llms.txt','Findings page is missing its canonical or agent-guide link');
  ensure(!initial.overflow&&initial.open===1&&initial.cases===baseline.projects&&initial.rows.length===expected,'Archive opening state failed');
+ const scoreLabels=await p.eval(()=>[...document.querySelectorAll('.sev .score')].map(score=>score.parentElement.textContent.trim()));
+ ensure(scoreLabels.every(label=>/\s·\s\d/.test(label)),'CVSS scores must be separated from severity labels as “Severity · score”');
  const fixed=url=>url?.includes('/antirez/ds4/pull/?')?'https://github.com/elkaix/ds4/pull/1':url;
  const canonical=records=>records.map(r=>JSON.stringify([fixed(r.url),r.title,r.status,r.severity,r.urls.map(fixed)])).sort();
  ensure(JSON.stringify(canonical(initial.rows))===JSON.stringify(canonical(baseline.records)),'Public record content or auxiliary evidence changed during sorting');

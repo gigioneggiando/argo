@@ -37,6 +37,14 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
   additional CI/Fast profiles remain lower-priority work; they are not prerequisites for the shipped
   routing/planning tranche.
 
+### Severity-gated deep verification (implemented 2026-11-03)
+
+`argo pipeline --verify-high` escalates only validation-confirmed High/Critical survivors to the
+existing offline, full-repository `deep_verify` stage before ASan/runtime/report. It is off by
+default and costs one unbatched agentic session per selected finding; full `--verify` remains the
+explicit all-survivor mode. ASan and runtime remain separately opt-in because they require an
+eligible finding plus Docker/launcher prerequisites.
+
 ## Precision & depth uplift — ✅ DONE (2026-06-19)
 
 Triggered by a head-to-head: a 3-prompt, multi-pass manual Claude audit of Umbraco-CMS surfaced

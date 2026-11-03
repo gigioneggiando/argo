@@ -381,6 +381,9 @@ class PipelineConfig:
     # standard of manual re-verification used before a disclosure ships: read every cited line, trace
     # every sibling function, and show the work. See docs/deep-verify.md.
     verify_enabled: bool = False
+    # Lower-cost pipeline mode: run deep-verify only for validation-confirmed High/Critical
+    # survivors. Independent from verify_enabled so resume preserves the operator's exact mode.
+    verify_high_enabled: bool = False
     # Hard cap on how many survivors get a deep-verify session (cost control on a huge survivor set);
     # None = verify every survivor. Findings past the cap are left unverified (kept, never dropped).
     verify_max_findings: int | None = None

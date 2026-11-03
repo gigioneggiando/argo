@@ -263,6 +263,10 @@ def _run_stage_sequence(ctx: RunContext, stage_fns: list[tuple[str, object]],
         ctx.set_cancel_event(cancel_event)
     else:
         ctx.runner.cancel_event = cancel_event
+    # Fan-out stages can publish durable sub-stage progress without threading the reporter through
+    # every public stage signature.  RunContext is intentionally not slotted; direct stage callers
+    # that have no reporter simply retain the legacy behavior.
+    ctx._progress_reporter = reporter
 
     def _check_cancel() -> None:
         if cancel_event is not None and cancel_event.is_set():
@@ -419,6 +423,15 @@ def resume_pipeline(ctx: RunContext, from_stage: str | None = None,
         for st in (status.get("stages") or [])
         if isinstance(st, dict)
     }
+    audit_status = next((st for st in (status.get("stages") or [])
+                         if isinstance(st, dict) and st.get("name") == "audit"), {})
+    audit_focuses = audit_status.get("focuses") or {}
+    audit_focus_resume = any(
+        isinstance(focus, dict)
+        and focus.get("state") in {"pending", "running", "failed"}
+        and focus.get("retryable", True)
+        for focus in audit_focuses.values()
+    )
     # Pre-F2 runs have already completed recon without a target-memory snapshot.  Do not make a
     # resume appear to replay an old stage, nor infer facts retrospectively from its artifacts.
     if "target_memory" not in state_by_stage and state_by_stage.get("recon") == "done":
@@ -431,6 +444,11 @@ def resume_pipeline(ctx: RunContext, from_stage: str | None = None,
         if from_stage not in stages:
             raise ValueError(f"stage {from_stage!r} is not in this run's configured stage sequence")
         start = from_stage
+    elif audit_focus_resume:
+        # A prior audit may have produced useful findings while one or more sessions exhausted all
+        # backends.  The stage can legitimately be marked done so validation/reporting proceeded;
+        # the durable focus states still make the missing coverage resumable later.
+        start = "audit"
     else:
         start = next((s for s in stages if state_by_stage.get(s) != "done"), None)
     if start is None:
@@ -441,6 +459,11 @@ def resume_pipeline(ctx: RunContext, from_stage: str | None = None,
             "argo resume. Re-run argo pipeline/ingest with the original inputs.")
 
     done = {s for s, state in state_by_stage.items() if state == "done"}
+    if from_stage is not None or audit_focus_resume:
+        # Explicit replay and per-focus audit repair both invalidate the selected stage and every
+        # downstream artifact.  In particular, newly recovered findings must be revalidated and
+        # included in a freshly generated report.
+        done.difference_update(stages[stages.index(start):])
     # Backward-compatible resume: a completed pre-F1 run has report=done but no evidence stage.
     # When evidence is therefore the first unfinished stage, the old report must be regenerated;
     # otherwise resume would normalize the JSON and leave REPORT.md/drafts stale.

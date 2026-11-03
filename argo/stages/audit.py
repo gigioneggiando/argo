@@ -20,10 +20,25 @@ from ..guardrails import PromptGuardrailError, assert_prohibited_present
 from ..rendering import ensure_context_pack_present, neutralize_audit_prompt, with_artifact_contract
 from ..runner import RunnerError
 from ..schemas import SchemaValidationError, validate_findings
+from ..progress import read_status
 
 
 def _log(msg: str) -> None:
     print(f"[audit] {msg}", file=sys.stderr)
+
+
+def _focus_progress(ctx: RunContext, slug: str, state: str, **details) -> None:
+    reporter = getattr(ctx, "_progress_reporter", None)
+    if reporter is not None:
+        reporter.update_stage_focus("audit", slug, state, **details)
+
+
+def _saved_focuses(ctx: RunContext) -> dict[str, dict]:
+    status = read_status(ctx.run_dir) or {}
+    audit_status = next((st for st in (status.get("stages") or [])
+                         if isinstance(st, dict) and st.get("name") == "audit"), {})
+    focuses = audit_status.get("focuses") or {}
+    return {str(k): v for k, v in focuses.items() if isinstance(v, dict)}
 
 
 def _neutral_variant(prompt: str, scope, slug: str) -> str | None:
@@ -430,15 +445,33 @@ def run(ctx: RunContext) -> list[Path]:
     ctx.findings_dir.mkdir(parents=True, exist_ok=True)
     results: list[Path] = []
     skipped: list[str] = []
+    saved = _saved_focuses(ctx)
+    completed: dict[str, Path] = {}
+    for prompt in prompts:
+        slug = prompt.stem
+        expected = ctx.findings_dir / f"{slug}.json"
+        if saved.get(slug, {}).get("state") == "done" and expected.is_file():
+            try:
+                validate_findings(json.loads(expected.read_text(encoding="utf-8-sig")), ctx.assets_dir)
+            except (OSError, ValueError, SchemaValidationError):
+                _log(f"{slug}: saved success artifact is missing/invalid; scheduling it again")
+            else:
+                completed[slug] = expected
+                results.append(expected)
+                _log(f"{slug}: already completed in a prior attempt; skipping")
 
     # Budget pre-check: only launch focuses while under the cap. Skips are logged, not silent.
     launch: list[Path] = []
-    for p in prompts:
+    pending_prompts = [p for p in prompts if p.stem not in completed]
+    for p in pending_prompts:
         try:
             ctx.assert_budget()
             launch.append(p)
         except BudgetExceeded as exc:
-            skipped = [pp.stem for pp in prompts[len(launch):]]
+            skipped = [pp.stem for pp in pending_prompts[len(launch):]]
+            for slug in skipped:
+                _focus_progress(ctx, slug, "pending", retryable=True,
+                                error=f"budget reached before launch: {exc}")
             _log(f"budget reached, skipping {len(skipped)} focus(es): {skipped} ({exc})")
             break
 
@@ -449,7 +482,10 @@ def run(ctx: RunContext) -> list[Path]:
         retryable: list[Path] = []
         workers = max(1, min(ctx.config.max_parallel_audits, len(paths)))
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            futures = {ex.submit(_audit_one, ctx, scope, p): p for p in paths}
+            futures = {}
+            for p in paths:
+                _focus_progress(ctx, p.stem, "running", attempt=attempt, retryable=True)
+                futures[ex.submit(_audit_one, ctx, scope, p)] = p
             for fut in as_completed(futures):
                 slug, path, err, can_retry = fut.result()
                 if err:
@@ -457,9 +493,16 @@ def run(ctx: RunContext) -> list[Path]:
                          + (f" [attempt {attempt}]" if attempt > 1 else ""))
                     if can_retry:
                         retryable.append(futures[fut])
+                        _focus_progress(ctx, slug, "failed", attempt=attempt,
+                                        retryable=True, error=err)
+                    else:
+                        _focus_progress(ctx, slug, "invalid", attempt=attempt,
+                                        retryable=False, error=err)
                 elif path is not None:
                     results.append(path)
                     produced[slug] = path
+                    _focus_progress(ctx, slug, "done", attempt=attempt, retryable=False,
+                                    artifact=str(path.relative_to(ctx.run_dir)))
         return retryable
 
     # A focus whose session never started is lost work, not a result: both backends can blip

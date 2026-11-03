@@ -126,6 +126,9 @@ def do_corroborate(ctx: RunContext):
 
 
 def do_verify(ctx: RunContext):
+    if ctx.config.verify_high_enabled and not ctx.config.verify_enabled:
+        selected = deep_verify.high_confirmed_ids(ctx.validated_findings_path)
+        return deep_verify.run(ctx, finding_ids=selected)
     return deep_verify.run(ctx)
 
 
@@ -181,7 +184,7 @@ def pipeline_stages(ctx: RunContext, *, dry_run: bool = False,
     stages.append("validate")
     if ctx.config.corroborate_enabled:
         stages.append("corroborate")
-    if ctx.config.verify_enabled:
+    if ctx.config.verify_enabled or ctx.config.verify_high_enabled:
         stages.append("verify")
     if ctx.config.asan_poc_enabled:
         stages.append("asan_poc")

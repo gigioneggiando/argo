@@ -228,6 +228,18 @@ never contains a credential or the full CODEX_HOME path. It makes fallback and r
 auditable without adding machine usernames or secrets to the per-call log. Existing cost and token
 fields remain unchanged.
 
+## Incremental audit checkpoints
+
+Each audit focus initializes its scratch findings JSON before the backend starts. The audit prompt
+requires the backend to rewrite that file as valid JSON immediately after every completed finding,
+keeping all earlier findings in each checkpoint. If a session crashes, times out, or returns without
+a manifest, the existing scratch glob recovers the last valid checkpoint and the normal schema
+repair/dedup pipeline still runs before the artifact reaches `runs/<id>/findings/`.
+
+An untouched empty seed is not treated as an answer: normal bounded retry/fallback behavior still
+applies when the backend failed before producing its first finding. Common pre-execution failures
+such as rate limits and moderation refusals therefore do not turn into false empty audit results.
+
 ## Verify your backend
 
 ```bash

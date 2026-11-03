@@ -86,6 +86,32 @@ _FIELD_ALIASES = {
     "exploit_scenarios": "exploit_scenario", "root_cause": "why_vulnerable",
 }
 
+_STREAMING_SEED_KEY = "_argo_streaming_seed"
+
+
+def _streaming_seed(ctx: RunContext, scope, slug: str) -> dict:
+    """Valid scratch document created before the model starts.
+
+    The marker distinguishes an untouched seed from a model-produced empty answer.  It is removed
+    before the focus artifact leaves scratch, so it never changes the public findings schema.
+    """
+    return {
+        "program_name": scope.program_name,
+        "audit_focus": slug,
+        "generated_at": ctx.timestamp(),
+        "findings": [],
+        _STREAMING_SEED_KEY: True,
+    }
+
+
+def _streaming_rule(filename: str) -> str:
+    return (
+        f"The scratch file `{filename}` is already initialized as valid JSON. As soon as each "
+        "finding is complete, add it to `findings` and immediately overwrite the whole file with "
+        "valid JSON before continuing the audit. Keep every earlier finding in each rewrite. Do "
+        "not wait until the end of the session: this file is the crash-recovery checkpoint."
+    )
+
 
 def _coerce_finding(f: dict) -> tuple[dict, bool]:
     out = dict(f)
@@ -150,6 +176,7 @@ def _normalize_findings_doc(raw_doc: dict, ctx: RunContext, scope, slug: str):
     and for any that still fail, REPAIR (backfill required fields, flag ``schema_repair_failed``)
     rather than drop — a drifted finding kept-for-review beats a whole focus silently lost."""
     doc = dict(raw_doc)
+    doc.pop(_STREAMING_SEED_KEY, None)
     doc.setdefault("program_name", scope.program_name)
     doc["audit_focus"] = slug
     if not isinstance(doc.get("generated_at"), str) or not doc.get("generated_at"):
@@ -209,6 +236,7 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
         }],
         extra_rules=[
             "Detection and reporting ONLY: do not patch, do not contact any live host.",
+            _streaming_rule(findings_filename),
         ],
     )
     # The audit template lists per-finding fields in PROSE; give the model the EXACT JSON
@@ -221,6 +249,8 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
         + schema_text + "\n```\n")
 
     work = ctx.work_dir("audit", slug)            # isolated per focus -> no collisions
+    scratch_findings = work / findings_filename
+    atomic_write_json(scratch_findings, _streaming_seed(ctx, scope, slug))
     partial = False
     try:
         result = ctx.runner_for("audit").run(
@@ -253,6 +283,11 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
         raw_doc = json.loads(chosen.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         return slug, None, f"findings file is not valid JSON: {exc}", False
+
+    if raw_doc.get(_STREAMING_SEED_KEY) and not raw_doc.get("findings"):
+        # The backend failed before checkpointing even one finding.  Preserve the existing retry
+        # semantics: an untouched seed is not an answer and must not suppress the bounded retry.
+        return slug, None, "session produced no checkpointed findings", True
 
     doc, repaired_ids, unrecoverable, coerced = _normalize_findings_doc(raw_doc, ctx, scope, slug)
     if repaired_ids:

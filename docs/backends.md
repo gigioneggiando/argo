@@ -255,14 +255,26 @@ build it:
 - For the two common failure shapes above there is **nothing useful to read** — a 429 produced no
   model turn at all, and a moderation refusal produced only a refusal.
 - The one case it would help — a session that produced substantial findings and then died *before*
-  the write step — is **already covered** by the incremental-scratch salvage above.
+  the write step — is **already covered** by the incremental-scratch checkpointing below.
 - Re-feeding another backend's raw transcript has real downsides: a moderation-flagged transcript
   can **re-trigger** moderation on the fallback; transcript formats differ per backend; and it adds
   session-id→path resolution and transcript parsing surface for little gain.
 
-The higher-ROI direction (see the roadmap) is to make the recoverable case *always* recoverable —
-stream/flush audit findings to scratch as they are produced, and make a fully-failed focus resumable
-on its own — rather than to parse a dead session's chat log.
+Rather than parse a dead session's chat log, the recoverable case is made *always* recoverable by
+the incremental checkpointing below, and a fully-failed focus is made independently resumable (see
+"Runner resilience" in the roadmap — both shipped 2026-11).
+
+## Incremental audit checkpoints
+
+Each audit focus initializes its scratch findings JSON before the backend starts. The audit prompt
+requires the backend to rewrite that file as valid JSON immediately after every completed finding,
+keeping all earlier findings in each checkpoint. If a session crashes, times out, or returns without
+a manifest, the existing scratch glob recovers the last valid checkpoint and the normal schema
+repair/dedup pipeline still runs before the artifact reaches `runs/<id>/findings/`.
+
+An untouched empty seed is not treated as an answer: normal bounded retry/fallback behavior still
+applies when the backend failed before producing its first finding. Common pre-execution failures
+such as rate limits and moderation refusals therefore do not turn into false empty audit results.
 
 ## Verify your backend
 

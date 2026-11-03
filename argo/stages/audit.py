@@ -20,10 +20,25 @@ from ..guardrails import PromptGuardrailError, assert_prohibited_present
 from ..rendering import ensure_context_pack_present, neutralize_audit_prompt, with_artifact_contract
 from ..runner import RunnerError
 from ..schemas import SchemaValidationError, validate_findings
+from ..progress import read_status
 
 
 def _log(msg: str) -> None:
     print(f"[audit] {msg}", file=sys.stderr)
+
+
+def _focus_progress(ctx: RunContext, slug: str, state: str, **details) -> None:
+    reporter = getattr(ctx, "_progress_reporter", None)
+    if reporter is not None:
+        reporter.update_stage_focus("audit", slug, state, **details)
+
+
+def _saved_focuses(ctx: RunContext) -> dict[str, dict]:
+    status = read_status(ctx.run_dir) or {}
+    audit_status = next((st for st in (status.get("stages") or [])
+                         if isinstance(st, dict) and st.get("name") == "audit"), {})
+    focuses = audit_status.get("focuses") or {}
+    return {str(k): v for k, v in focuses.items() if isinstance(v, dict)}
 
 
 def _neutral_variant(prompt: str, scope, slug: str) -> str | None:
@@ -70,6 +85,32 @@ _FIELD_ALIASES = {
     "affected_files": "affected", "affected_components": "affected",
     "exploit_scenarios": "exploit_scenario", "root_cause": "why_vulnerable",
 }
+
+_STREAMING_SEED_KEY = "_argo_streaming_seed"
+
+
+def _streaming_seed(ctx: RunContext, scope, slug: str) -> dict:
+    """Valid scratch document created before the model starts.
+
+    The marker distinguishes an untouched seed from a model-produced empty answer.  It is removed
+    before the focus artifact leaves scratch, so it never changes the public findings schema.
+    """
+    return {
+        "program_name": scope.program_name,
+        "audit_focus": slug,
+        "generated_at": ctx.timestamp(),
+        "findings": [],
+        _STREAMING_SEED_KEY: True,
+    }
+
+
+def _streaming_rule(filename: str) -> str:
+    return (
+        f"The scratch file `{filename}` is already initialized as valid JSON. As soon as each "
+        "finding is complete, add it to `findings` and immediately overwrite the whole file with "
+        "valid JSON before continuing the audit. Keep every earlier finding in each rewrite. Do "
+        "not wait until the end of the session: this file is the crash-recovery checkpoint."
+    )
 
 
 def _coerce_finding(f: dict) -> tuple[dict, bool]:
@@ -135,6 +176,7 @@ def _normalize_findings_doc(raw_doc: dict, ctx: RunContext, scope, slug: str):
     and for any that still fail, REPAIR (backfill required fields, flag ``schema_repair_failed``)
     rather than drop — a drifted finding kept-for-review beats a whole focus silently lost."""
     doc = dict(raw_doc)
+    doc.pop(_STREAMING_SEED_KEY, None)
     doc.setdefault("program_name", scope.program_name)
     doc["audit_focus"] = slug
     if not isinstance(doc.get("generated_at"), str) or not doc.get("generated_at"):
@@ -194,6 +236,7 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
         }],
         extra_rules=[
             "Detection and reporting ONLY: do not patch, do not contact any live host.",
+            _streaming_rule(findings_filename),
         ],
     )
     # The audit template lists per-finding fields in PROSE; give the model the EXACT JSON
@@ -206,6 +249,8 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
         + schema_text + "\n```\n")
 
     work = ctx.work_dir("audit", slug)            # isolated per focus -> no collisions
+    scratch_findings = work / findings_filename
+    atomic_write_json(scratch_findings, _streaming_seed(ctx, scope, slug))
     partial = False
     try:
         result = ctx.runner_for("audit").run(
@@ -238,6 +283,11 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
         raw_doc = json.loads(chosen.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         return slug, None, f"findings file is not valid JSON: {exc}", False
+
+    if raw_doc.get(_STREAMING_SEED_KEY) and not raw_doc.get("findings"):
+        # The backend failed before checkpointing even one finding.  Preserve the existing retry
+        # semantics: an untouched seed is not an answer and must not suppress the bounded retry.
+        return slug, None, "session produced no checkpointed findings", True
 
     doc, repaired_ids, unrecoverable, coerced = _normalize_findings_doc(raw_doc, ctx, scope, slug)
     if repaired_ids:
@@ -395,19 +445,36 @@ def run(ctx: RunContext) -> list[Path]:
     ctx.findings_dir.mkdir(parents=True, exist_ok=True)
     results: list[Path] = []
     skipped: list[str] = []
+    saved = _saved_focuses(ctx)
+    completed: dict[str, Path] = {}
+    for prompt in prompts:
+        slug = prompt.stem
+        expected = ctx.findings_dir / f"{slug}.json"
+        if saved.get(slug, {}).get("state") == "done" and expected.is_file():
+            try:
+                validate_findings(json.loads(expected.read_text(encoding="utf-8-sig")), ctx.assets_dir)
+            except (OSError, ValueError, SchemaValidationError):
+                _log(f"{slug}: saved success artifact is missing/invalid; scheduling it again")
+            else:
+                completed[slug] = expected
+                results.append(expected)
+                _log(f"{slug}: already completed in a prior attempt; skipping")
 
     # Budget pre-check: only launch focuses while under the cap. Skips are logged, not silent.
     launch: list[Path] = []
-    for p in prompts:
+    pending_prompts = [p for p in prompts if p.stem not in completed]
+    for p in pending_prompts:
         try:
             ctx.assert_budget()
             launch.append(p)
         except BudgetExceeded as exc:
-            skipped = [pp.stem for pp in prompts[len(launch):]]
+            skipped = [pp.stem for pp in pending_prompts[len(launch):]]
+            for slug in skipped:
+                _focus_progress(ctx, slug, "pending", retryable=True,
+                                error=f"budget reached before launch: {exc}")
             _log(f"budget reached, skipping {len(skipped)} focus(es): {skipped} ({exc})")
             break
 
-    max_workers = max(1, min(ctx.config.max_parallel_audits, len(launch)))
     produced: dict[str, Path] = {}   # slug -> focus findings doc
 
     def _pass(paths: list[Path], attempt: int) -> list[Path]:
@@ -415,7 +482,10 @@ def run(ctx: RunContext) -> list[Path]:
         retryable: list[Path] = []
         workers = max(1, min(ctx.config.max_parallel_audits, len(paths)))
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            futures = {ex.submit(_audit_one, ctx, scope, p): p for p in paths}
+            futures = {}
+            for p in paths:
+                _focus_progress(ctx, p.stem, "running", attempt=attempt, retryable=True)
+                futures[ex.submit(_audit_one, ctx, scope, p)] = p
             for fut in as_completed(futures):
                 slug, path, err, can_retry = fut.result()
                 if err:
@@ -423,9 +493,16 @@ def run(ctx: RunContext) -> list[Path]:
                          + (f" [attempt {attempt}]" if attempt > 1 else ""))
                     if can_retry:
                         retryable.append(futures[fut])
+                        _focus_progress(ctx, slug, "failed", attempt=attempt,
+                                        retryable=True, error=err)
+                    else:
+                        _focus_progress(ctx, slug, "invalid", attempt=attempt,
+                                        retryable=False, error=err)
                 elif path is not None:
                     results.append(path)
                     produced[slug] = path
+                    _focus_progress(ctx, slug, "done", attempt=attempt, retryable=False,
+                                    artifact=str(path.relative_to(ctx.run_dir)))
         return retryable
 
     # A focus whose session never started is lost work, not a result: both backends can blip

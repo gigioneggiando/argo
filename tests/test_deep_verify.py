@@ -66,6 +66,25 @@ def test_verify_off_by_default(env):
     assert all("verification" not in f for f in vf["findings"])
 
 
+def test_verify_high_only_escalates_confirmed_high_survivors(env):
+    ctx = env(verify_high_enabled=True)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    vf = _validated(ctx)
+    findings = {f["id"]: f for f in vf["findings"]}
+
+    assert findings["FULL-001"]["verification"]["verdict"] == "reconfirmed"
+    assert findings["AUTHZ-002"]["verification"]["verdict"] == "reconfirmed"
+    # High severity alone is insufficient: this survivor still needs runtime verification.
+    assert "verification" not in findings["FULL-003"]
+    assert _verify_call_count(ctx) == 2
+
+
+def test_full_verify_takes_precedence_over_verify_high(env):
+    ctx = env(verify_enabled=True, verify_high_enabled=True)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    assert _verify_call_count(ctx) == 3
+
+
 # --------------------------------------------------------------------------- corrected
 def test_corrected_kept_with_note(env, make_scenario):
     fixtures_dir, scen = make_scenario(

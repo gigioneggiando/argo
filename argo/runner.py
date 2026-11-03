@@ -1229,10 +1229,17 @@ class MockClaudeRunner(ClaudeRunner):
                 encoding="utf-8")
             return self._envelope(self._manifest(
                 [{"type": "findings", "path": out.name, "status": "ok"}]))
-        self._copy(src, out)
-        # Sentinel: simulate a session that died mid-write (no manifest, partial-ish file).
-        if (self.scenario_dir / "audit" / f"{slug}._partial").exists():
+        partial_sentinel = self.scenario_dir / "audit" / f"{slug}._partial"
+        if partial_sentinel.exists():
+            # Simulate the streaming contract faithfully: checkpoint a prefix of the findings,
+            # then die before the focus is complete and before a manifest is emitted.
+            doc = json.loads(src.read_text(encoding="utf-8-sig"))
+            findings = list(doc.get("findings", []))
+            checkpointed = max(1, len(findings) // 2) if findings else 0
+            doc["findings"] = findings[:checkpointed]
+            out.write_text(json.dumps(doc, indent=2), encoding="utf-8")
             return self._envelope("Session interrupted.", is_error=True)
+        self._copy(src, out)
         if (self.scenario_dir / "audit" / f"{slug}._no_manifest").exists():
             return self._envelope("Audit complete; manifest omitted.")
         return self._envelope(self._manifest(

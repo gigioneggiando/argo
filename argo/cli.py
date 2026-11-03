@@ -1088,6 +1088,9 @@ def estimate(
         help="documentation URL to ground corroboration (repeatable)"),
     verify: bool = typer.Option(False, "--verify/--no-verify",
                                 help="include/exclude deep verify in the estimate"),
+    verify_high: bool = typer.Option(
+        False, "--verify-high/--no-verify-high",
+        help="include deep verify only for validation-confirmed High/Critical survivors"),
     verify_max_findings: Optional[int] = typer.Option(
         None, "--verify-max-findings",
         help="(--verify) cap how many survivors get deep verify"),
@@ -1144,7 +1147,8 @@ def estimate(
     cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
-                             verify_enabled=verify, verify_max_findings=verify_max_findings,
+                             verify_enabled=verify, verify_high_enabled=verify_high,
+                             verify_max_findings=verify_max_findings,
                              asan_poc_enabled=asan_poc, asan_poc_max_findings=asan_poc_max_findings,
                              freshness_check_enabled=freshness_check,
                              freshness_lookback_days=freshness_lookback_days,
@@ -1231,6 +1235,11 @@ def pipeline(
              "finding from the actual source (full repo access, one full session per finding, no "
              "batching) and reason across the whole survivor set to catch splits/merges/corrections "
              "that per-finding-isolated stages cannot. Offline. Off by default: expensive."),
+    verify_high: bool = typer.Option(
+        False, "--verify-high/--no-verify-high",
+        help="OPT-IN severity-gated deep-verify: run one full-repo session only for survivors "
+             "whose validation verdict is confirmed and validated severity is High/Critical. "
+             "Off by default; --verify still verifies every survivor."),
     verify_max_findings: Optional[int] = typer.Option(
         None, "--verify-max-findings",
         help="(--verify) cap how many survivors get a deep-verify session (cost control)"),
@@ -1310,7 +1319,8 @@ def pipeline(
                              sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
-                             verify_enabled=verify, verify_max_findings=verify_max_findings,
+                             verify_enabled=verify, verify_high_enabled=verify_high,
+                             verify_max_findings=verify_max_findings,
                              asan_poc_enabled=asan_poc, asan_poc_max_findings=asan_poc_max_findings,
                              asan_poc_image=asan_poc_image,
                              freshness_check_enabled=freshness_check,

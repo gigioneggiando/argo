@@ -268,10 +268,45 @@ def test_partial_audit_session_recovered(env, make_scenario):
     do_ingest(ctx, BRIEF, str(REPO))
     do_recon(ctx)
     do_audit(ctx)
-    # Even though the session reported is_error, the partial findings file is recovered.
+    # Even though the session died halfway through and emitted no manifest, the prefix that had
+    # already been checkpointed is recovered.  The mock fixture has three findings; the sentinel
+    # writes only the first one before returning is_error.
     recovered = ctx.findings_dir / "audit_p1_full_scope.json"
     assert recovered.exists()
-    validate_findings(json.loads(recovered.read_text(encoding="utf-8")))
+    doc = json.loads(recovered.read_text(encoding="utf-8"))
+    validate_findings(doc)
+    assert [f["id"] for f in doc["findings"]] == ["FULL-001"]
+
+
+def test_normal_audit_session_keeps_the_complete_findings_file(env):
+    ctx = env()
+    do_ingest(ctx, BRIEF, str(REPO))
+    do_recon(ctx)
+    do_audit(ctx)
+
+    doc = json.loads((ctx.findings_dir / "audit_p1_full_scope.json").read_text(encoding="utf-8"))
+    assert [f["id"] for f in doc["findings"]] == ["FULL-001", "FULL-002", "FULL-003"]
+    assert "_argo_streaming_seed" not in doc
+
+
+def test_audit_prompt_requires_per_finding_checkpoints(env, monkeypatch):
+    ctx = env()
+    do_ingest(ctx, BRIEF, str(REPO))
+    do_recon(ctx)
+    real_run = ctx.runner.run
+    prompts: list[str] = []
+
+    def capture(**kwargs):
+        if kwargs.get("stage") == "audit":
+            prompts.append(kwargs["prompt"])
+        return real_run(**kwargs)
+
+    monkeypatch.setattr(ctx.runner, "run", capture)
+    do_audit(ctx)
+
+    assert prompts
+    assert all("immediately overwrite the whole file with valid JSON" in p for p in prompts)
+    assert all("crash-recovery checkpoint" in p for p in prompts)
 
 
 def test_oversized_findings_no_truncation(env, make_scenario):

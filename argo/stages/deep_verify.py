@@ -68,6 +68,18 @@ def _summarize(f: Finding) -> dict:
             "summary": (f.why_vulnerable or "")[:200]}
 
 
+def high_confirmed_ids(path: Path) -> frozenset[str]:
+    """Select validation-confirmed High/Critical survivors for automatic escalation."""
+    doc = json.loads(path.read_text(encoding="utf-8-sig"))
+    selected: set[str] = set()
+    for finding in doc.get("findings", []):
+        validation = finding.get("validation") or {}
+        severity = validation.get("validated_severity") or finding.get("severity")
+        if validation.get("verdict") == "confirmed" and severity in {"High", "Critical"}:
+            selected.add(str(finding.get("id")))
+    return frozenset(selected)
+
+
 def _prior_verdicts(f: Finding) -> dict:
     out: dict = {}
     if f.validation:
@@ -219,7 +231,7 @@ def _split_child(parent: Finding, idx: int, raw: dict) -> Finding:
     return f
 
 
-def run(ctx: RunContext) -> Path:
+def run(ctx: RunContext, finding_ids: frozenset[str] | None = None) -> Path:
     scope = ctx.load_scope()
     scope_json_text = ctx.scope_path.read_text(encoding="utf-8")
     doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
@@ -228,7 +240,7 @@ def run(ctx: RunContext) -> Path:
         _log("no surviving findings to deep-verify")
         return ctx.validated_findings_path
 
-    only = ctx.config.verify_only
+    only = finding_ids if finding_ids is not None else ctx.config.verify_only
     if only is not None:
         # Explicit scope: exactly these ids get a session; everyone else is untouched, whatever
         # their current state (verified, unverified, or infra-failure) — the caller has decided.

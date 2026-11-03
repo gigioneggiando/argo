@@ -90,6 +90,21 @@ class ProgressReporter:
             st.pop("retry_after_hint", None)
             self._write()
 
+    def update_stage_focus(self, stage: str, focus: str, state: str, **details) -> None:
+        """Persist per-focus progress for fan-out stages such as ``audit``.
+
+        Focus updates may arrive from worker threads.  They live inside the owning stage entry so
+        an ordinary ``status.json`` is sufficient to decide what a later resume must replay.
+        """
+        with self._lock:
+            st = self._stage_state.setdefault(stage, {"name": stage, "state": "pending"})
+            focuses = st.setdefault("focuses", {})
+            current = focuses.setdefault(focus, {"name": focus})
+            current["state"] = state
+            current.update({k: v for k, v in details.items() if v is not None})
+            current["updated_at"] = _now()
+            self._write()
+
     def fail_stage(self, stage: str, error: str, retry_after: str | None = None,
                     retry_after_hint: str | None = None) -> None:
         """``retry_after`` is an absolute, unambiguous ISO-8601 timestamp (resolved by the caller

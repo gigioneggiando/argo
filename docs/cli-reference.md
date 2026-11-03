@@ -162,8 +162,13 @@ argo resume RUN_ID --wait --max-wait 2h   # cap how long --wait will sleep
 
 `resume` re-reads the run's persisted `config.json`, so it uses the exact same settings the
 original invocation did — you don't repeat `--repo`/`--brief`/flags. A stage already marked `done`
-in `status.json` is never re-run (and never re-billed); only the first incomplete stage onward
-executes. The one hard boundary: a run that stopped **before ingest finished** (no usable
+in `status.json` is normally never re-run (and never re-billed); only the first incomplete stage
+onward executes. Audit is tracked more finely: `status.json` records each focus as pending, running,
+done, invalid, or retryable-failed. A later `resume` reopens audit when retryable focus gaps remain,
+skips every focus whose validated findings artifact already exists, and regenerates downstream
+validation/report artifacts after the missing focuses succeed. A run where every audit backend was
+temporarily unavailable therefore remains resumable without discarding any prior focus success.
+The one hard boundary: a run that stopped **before ingest finished** (no usable
 `scope.json`/repo copy yet) can't be resumed — `resume` says so plainly and you start over with
 `pipeline`.
 

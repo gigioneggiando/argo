@@ -5,6 +5,7 @@ import pytest
 from typer.testing import CliRunner
 
 import argo.orchestrator as orchestrator
+import argo.stages.audit as audit_stage
 from argo.cli import app
 from argo.config import PipelineConfig, load_pipeline_config
 from argo.ledger import Ledger
@@ -65,6 +66,66 @@ def test_resume_from_failed_validate_skips_done_stages_and_uses_persisted_config
     assert states["verify"] == "done"
     assert states["report"] == "done"
     assert "corroborate" not in states
+
+
+def _fail_focus_attempts(monkeypatch, remaining_by_slug, calls):
+    real = audit_stage._audit_one
+
+    def scripted(ctx, scope, prompt_path):
+        slug = prompt_path.stem
+        calls.append(slug)
+        if remaining_by_slug.get(slug, 0) > 0:
+            remaining_by_slug[slug] -= 1
+            return slug, None, "session failed, no partial artifact (simulated)", True
+        return real(ctx, scope, prompt_path)
+
+    monkeypatch.setattr(audit_stage, "_audit_one", scripted)
+
+
+def test_resume_retries_only_failed_audit_focuses(env, monkeypatch):
+    ctx = env(audit_retry_delay_s=0)
+    victim = "audit_p1_full_scope"
+    calls: list[str] = []
+    _fail_focus_attempts(monkeypatch, {victim: 2}, calls)
+
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    status = json.loads((ctx.run_dir / "status.json").read_text(encoding="utf-8"))
+    audit_status = next(s for s in status["stages"] if s["name"] == "audit")
+    assert audit_status["state"] == "done"
+    assert audit_status["focuses"][victim]["state"] == "failed"
+    assert audit_status["focuses"]["audit_p2_authz"]["state"] == "done"
+
+    resumed = build_context(ctx.config, ctx.run_id, now=FIXED_NOW)
+    summary = resume_pipeline(resumed)
+    assert summary["resumed_from"] == "audit"
+    assert calls.count(victim) == 3
+    assert calls.count("audit_p2_authz") == 1
+    final = json.loads((ctx.run_dir / "status.json").read_text(encoding="utf-8"))
+    focuses = next(s for s in final["stages"] if s["name"] == "audit")["focuses"]
+    assert {f["state"] for f in focuses.values()} == {"done"}
+    resumed.ledger.close()
+
+
+def test_all_failed_audit_focuses_remain_resumable(env, monkeypatch):
+    ctx = env(audit_retry_delay_s=0)
+    calls: list[str] = []
+    remaining = {"audit_p1_full_scope": 2, "audit_p2_authz": 2}
+    _fail_focus_attempts(monkeypatch, remaining, calls)
+
+    with pytest.raises(RuntimeError, match="no valid findings files"):
+        run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    failed = json.loads((ctx.run_dir / "status.json").read_text(encoding="utf-8"))
+    audit_status = next(s for s in failed["stages"] if s["name"] == "audit")
+    assert audit_status["state"] == "failed"
+    assert {f["state"] for f in audit_status["focuses"].values()} == {"failed"}
+
+    resumed = build_context(ctx.config, ctx.run_id, now=FIXED_NOW)
+    summary = resume_pipeline(resumed)
+    assert summary["resumed_from"] == "audit"
+    final = json.loads((ctx.run_dir / "status.json").read_text(encoding="utf-8"))
+    focuses = next(s for s in final["stages"] if s["name"] == "audit")["focuses"]
+    assert {f["state"] for f in focuses.values()} == {"done"}
+    resumed.ledger.close()
 
 
 def test_resume_legacy_completed_run_adds_evidence_and_regenerates_report(env, monkeypatch):

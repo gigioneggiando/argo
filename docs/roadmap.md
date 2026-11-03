@@ -37,6 +37,28 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
   additional CI/Fast profiles remain lower-priority work; they are not prerequisites for the shipped
   routing/planning tranche.
 
+### Runner resilience — fallback partial-work recovery (analysis 2026-11-03)
+
+Studied what happens when a backend produces no output mid-audit and the fallback fires. Findings and
+the rejected transcript-replay idea are documented in [backends.md](backends.md#fallback-and-partial-work-recovery).
+Summary: today Argo salvages partial scratch artifacts per focus; the common failures (429, moderation)
+leave nothing to salvage and cost ~no tokens. Replaying the interrupted session's transcript into the
+fallback was evaluated and **rejected** (nothing useful to read on the common failures; the recoverable
+case is already covered by scratch salvage; re-feeding a moderation-flagged transcript can re-trigger
+moderation). Higher-ROI follow-ups, not yet scheduled:
+
+- **Incremental/streaming findings in `audit`:** flush each finding to the scratch findings file as it
+  is produced, so a partial always exists to salvage even if the session dies late.
+- **Per-focus resumable audit:** let a fully-failed focus be retried on its own (when quota returns)
+  without re-running the focuses that already succeeded, instead of failing the whole stage with
+  "no valid findings files were produced."
+- **Auto-escalate `deep_verify` on High/confirmed findings:** the isolated, excerpt-budgeted `validate`
+  pass confirmed an audit "High" that full-repo cross-function tracing later refuted as by-design
+  (a tailnet-lock delta case on a 2026-11 run). `deep_verify` (opt-in, full repo, one session per
+  finding) is designed to catch exactly that; running it automatically on High/confirmed survivors —
+  with `asan_poc`/`runtime` for memory-safety/HTTP findings — would fold the manual pre-disclosure
+  verification into the pipeline.
+
 ## Precision & depth uplift — ✅ DONE (2026-06-19)
 
 Triggered by a head-to-head: a 3-prompt, multi-pass manual Claude audit of Umbraco-CMS surfaced

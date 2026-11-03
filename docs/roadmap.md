@@ -37,6 +37,24 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
   additional CI/Fast profiles remain lower-priority work; they are not prerequisites for the shipped
   routing/planning tranche.
 
+### Runner resilience — fallback partial-work recovery (analysis 2026-11-03; follow-ups shipped)
+
+Studied what happens when a backend produces no output mid-audit and the fallback fires. Findings and
+the rejected transcript-replay idea are documented in [backends.md](backends.md#fallback-and-partial-work-recovery).
+Summary: Argo salvages partial scratch artifacts per focus; the common failures (429, moderation)
+leave nothing to salvage and cost ~no tokens. Replaying the interrupted session's transcript into the
+fallback was evaluated and **rejected** (nothing useful to read on the common failures; the recoverable
+case is already covered by scratch salvage; re-feeding a moderation-flagged transcript can re-trigger
+moderation). The three higher-ROI follow-ups were implemented 2026-11:
+
+- **Incremental/streaming findings in `audit`** (#60): each finding is checkpointed to the scratch
+  findings file as it is produced, so a partial always exists to salvage even if the session dies late.
+- **Per-focus resumable audit** (#58): a fully-failed focus is retried on its own on resume, without
+  re-running the focuses that already succeeded; durable per-focus state lives in `status.json`.
+- **Severity-gated deep verification** (#59, `--verify-high`): auto-escalate validation-confirmed
+  High/Critical survivors to `deep_verify` — detailed in the next entry (`asan_poc`/`runtime` remain
+  separately opt-in).
+
 ### Severity-gated deep verification (implemented 2026-11-03)
 
 `argo pipeline --verify-high` escalates only validation-confirmed High/Critical survivors to the

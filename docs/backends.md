@@ -228,6 +228,42 @@ never contains a credential or the full CODEX_HOME path. It makes fallback and r
 auditable without adding machine usernames or secrets to the per-call log. Existing cost and token
 fields remain unchanged.
 
+## Fallback and partial-work recovery
+
+When a backend call fails, the bounded retry/fallback policy (`argo/runner.py`) retries the same
+backend after a cooldown or switches to the next configured `--fallback` backend/account. Work is
+not silently lost: stages that write incremental scratch artifacts (notably `audit`) glob the
+scratch directory on a `RunnerError` and recover any partial findings a session left behind before
+it died (the partial-salvage path in `runner.py`; `audit.py` salvage). The audit is **per focus**,
+so a fallback redoes only the focus that failed, not the focuses that already succeeded.
+
+Two failure shapes leave nothing to salvage, and they are the ones most often seen in practice:
+
+- **Rate-limit / session-limit (HTTP 429).** The request is rejected before the model runs, so there
+  is no partial output and essentially no token cost for that attempt; the focus is retried on the
+  fallback (or after the reset) from scratch.
+- **Content-moderation refusal.** The model returns no usable artifact (and may consume a small
+  amount of input tokens); there is no partial finding to recover.
+
+### Rejected: replaying the interrupted backend's transcript
+
+A natural idea is, on fallback, to have the next backend read the *conversation transcript* of the
+interrupted one (the Codex rollout JSONL, or the headless-Claude session `.jsonl`) so any findings
+or reasoning produced before the interruption are not lost. We evaluated this and decided **not** to
+build it:
+
+- For the two common failure shapes above there is **nothing useful to read** — a 429 produced no
+  model turn at all, and a moderation refusal produced only a refusal.
+- The one case it would help — a session that produced substantial findings and then died *before*
+  the write step — is **already covered** by the incremental-scratch checkpointing below.
+- Re-feeding another backend's raw transcript has real downsides: a moderation-flagged transcript
+  can **re-trigger** moderation on the fallback; transcript formats differ per backend; and it adds
+  session-id→path resolution and transcript parsing surface for little gain.
+
+Rather than parse a dead session's chat log, the recoverable case is made *always* recoverable by
+the incremental checkpointing below, and a fully-failed focus is made independently resumable (see
+"Runner resilience" in the roadmap — both shipped 2026-11).
+
 ## Incremental audit checkpoints
 
 Each audit focus initializes its scratch findings JSON before the backend starts. The audit prompt

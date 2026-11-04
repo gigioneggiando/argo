@@ -28,6 +28,7 @@ used by the pipeline; they do not start a model session.
 | `second-opinion` | SECOND-OPINION | **opt-in**, offline: run N additional, fully independent blind recon+audit passes over the already-ingested scope/repo (each in its own isolated `run_dir`), merge their findings in. `--passes N`, `--backend` to use a different runner for the extra passes (real cross-engine diversity). Re-run `validate` afterward to reconcile — its existing dedup already collapses cross-pass duplicates and records `corroborating_passes`; see [architecture.md](architecture.md#second-opinion-an-llm-audit-is-one-noisy-sample-not-the-answer) |
 | `questions` | QUESTIONS | rebuild an existing run's private, deterministic architecture/business-context question queue |
 | `answer-question` | QUESTIONS | record one provenance-bearing answer, add it to same-revision target memory/context, and block affected stale drafts pending re-validation |
+| `revalidate-context` | 4 / QUESTIONS | re-run validation only for findings marked stale by answered context questions; refresh evidence/questions/report while preserving unrelated findings and keeping failed attempts blocked |
 | `validate` | 4 | dedup + adversarial validation (downgrade-don't-delete) → `validated_findings.json` |
 | `corroborate` | CORROBORATE | **opt-out**, two-pass: an offline repo-mounted docs/VCS check plus a networked public-OSINT check with no repo mount or source excerpts; merged results downgrade documented-by-design findings and move already-fixed findings to a `fixed_upstream` appendix. Rewrites `validated_findings.json`. `--docs-url` pins docs; `--only ID,ID` re-corroborates only those findings and leaves every other existing verdict untouched; never the live hosts |
 | `verify` | VERIFY | **opt-in**, offline: independently re-derive each surviving finding from the actual source (full repo access, one full session per finding, no batching, no excerpt budget) and reason across the whole survivor set → `corrected`/`split`/`merged`/`reconfirmed`/`refuted`/`inconclusive`. Rewrites `validated_findings.json`. **Resumable by default**: re-running it on the same run skips findings that already have a real verdict and only re-attempts unverified/infra-failure ones — safe to re-invoke after a rate limit or a backend running out of credits without re-spending on what already succeeded. `--only ID,ID` to force specific findings to (re-)verify regardless of their state, leaving everything else untouched; `--max-findings` to cap cost; see [architecture.md](architecture.md#deep-verify-why-a-separate-stage-from-validate) |
@@ -62,6 +63,7 @@ argo compare-recon --baseline runs/BASE --candidate runs/CAND [--max-diff-lines 
 argo run      --run RUN_ID
 argo sca      --run RUN_ID
 argo validate --run RUN_ID
+argo revalidate-context --run RUN_ID [--question rq:0123456789abcdef] [--budget USD]
 argo report   --run RUN_ID
 argo pr-draft --run RUN_ID --finding FINDING_ID [--test-command "CMD"]
 argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--commit SHA] [--dry-run] [--smoke]

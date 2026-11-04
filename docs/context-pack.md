@@ -49,6 +49,16 @@ argo answer-question --run RUN_ID --question rq:0123456789abcdef \
 
 The answer becomes a `claimed` context item and a same-revision F2 target-memory fact. It is not
 technical proof. Affected validation blocks are marked `context_revalidation_required`, and their
-stale submission drafts are removed when the report is rebuilt. Re-run validation (and then
-`argo questions --run RUN_ID`) before relying on those findings again; the queue then marks an
-answer `resolved` only after the stale validation marker is gone.
+stale submission drafts are removed when the report is rebuilt. Re-validate only the affected
+findings:
+
+```console
+argo revalidate-context --run RUN_ID --question rq:0123456789abcdef [--budget USD]
+```
+
+Omit `--question` to process every answered question still pending in the run. This command does
+not repeat recon, audit, or global validation. A completed verdict refreshes the evidence gate,
+private question queue, report, and drafts; unrelated findings are retained unchanged. A backend,
+quota, or session failure preserves the previous verdict and the draft block for a later retry.
+Existing runtime, live, and ASAN observations are retained as native evidence. The queue marks an
+answer `resolved` only after its stale validation marker is gone.

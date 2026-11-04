@@ -181,7 +181,9 @@ uncertainties already emitted by recon/findings and writes a private review queu
 runs continue normally. `argo answer-question` requires answer provenance, writes the answer into
 the context pack and exact-revision F2 memory as a `claimed` design decision, and marks every
 affected verdict `context_revalidation_required`. Report generation then removes stale drafts until
-validation is rerun. See [context-pack.md](context-pack.md).
+`argo revalidate-context` re-runs adversarial validation only for those marked findings, refreshes
+evidence, questions, the report, and drafts, and preserves unrelated findings. Infrastructure
+failures preserve the old verdict and block. See [context-pack.md](context-pack.md).
 
 Deep-verify can split a previously corroborated finding into more precise children. When that
 happens it prints the new IDs; run `argo corroborate --run <run_id> --only <id,id>` to corroborate

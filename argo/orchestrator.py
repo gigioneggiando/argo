@@ -121,6 +121,10 @@ def do_validate(ctx: RunContext):
     return validate.run(ctx)
 
 
+def do_context_revalidation(ctx: RunContext, *, question_id: str | None = None):
+    return validate.revalidate_context(ctx, question_id=question_id)
+
+
 def do_corroborate(ctx: RunContext):
     return corroborate.run(ctx)
 

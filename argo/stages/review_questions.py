@@ -151,6 +151,24 @@ def run(ctx: RunContext) -> Path:
         if len(questions) >= ctx.config.review_questions_max:
             break
 
+    # Keep answered questions as a small audit trail even when re-validation refutes/drops the
+    # only affected finding. Otherwise the successful resolution would make the question and its
+    # provenance disappear from the private queue precisely when it becomes most useful.
+    current_ids = {q.id for q in questions}
+    for qid, old in sorted(prior.items()):
+        if len(questions) >= ctx.config.review_questions_max or qid in current_ids:
+            continue
+        if old.get("status") not in {"answered_pending_revalidation", "resolved"}:
+            continue
+        historical = ReviewQuestion.model_validate(old)
+        pending = any(
+            qid in ((f.get("validation") or {}).get("context_question_ids") or [])
+            and (f.get("validation") or {}).get("context_revalidation_required") is True
+            for f in findings
+        )
+        historical.status = "answered_pending_revalidation" if pending else "resolved"
+        questions.append(historical)
+
     payload = {
         "schema_version": 1,
         "run_id": ctx.run_id,

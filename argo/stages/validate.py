@@ -44,6 +44,7 @@ _R_NO_VERDICT_FILE = "validation session produced no verdict file"
 _R_NO_VERDICT_IN_BATCH = "no verdict returned for this finding in the batch"
 _R_BUDGET_REACHED = "not adversarially validated: per-run budget reached"
 _R_UNRECOGNIZED_VERDICT = "unrecognized verdict "        # prefix; the value is appended
+_R_SCHEMA_INVALID_VERDICT = "verdict row failed schema validation"
 _R_SCHEMA_REPAIRED = ("schema-repaired audit finding (fields were backfilled); kept for human "
                       "review rather than adversarially validated against placeholder content")
 
@@ -53,6 +54,7 @@ _INFRA_UNVALIDATED_RATIONALE_PREFIXES = (
     _R_NO_VERDICT_IN_BATCH,
     _R_BUDGET_REACHED,
     _R_UNRECOGNIZED_VERDICT,
+    _R_SCHEMA_INVALID_VERDICT,
     _R_SCHEMA_REPAIRED,
 )
 
@@ -386,7 +388,8 @@ def _build_excerpts(repo_dir: Path, affected: list[str], ctx_lines: int, max_byt
 
 # --------------------------------------------------------------------------- per-finding
 def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding,
-                  ground_truth: dict | None = None) -> Validation:
+                  ground_truth: dict | None = None, *,
+                  work_namespace: str = "validate") -> Validation:
     excerpts = _grounding_note(finding) + _build_excerpts(
         ctx.repo_dir, finding.affected,
         ctx.config.excerpt_context_lines, ctx.config.excerpt_max_bytes,
@@ -431,7 +434,7 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
             prompt=prompt,
             neutral_prompt=neutral_prompt,
             run_dir=ctx.run_dir,
-            work_dir=ctx.work_dir("validate", finding.id),   # fresh, isolated context
+            work_dir=ctx.work_dir(work_namespace, finding.id),   # fresh, isolated context
             model=ctx.config.model_for("validate"),
             stage="validate",
             run_id=ctx.run_id,
@@ -467,7 +470,8 @@ _VALID_VERDICTS = {"confirmed", "refuted", "needs_runtime_verification", "out_of
 
 
 def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Finding],
-                    ground_truth: dict | None = None) -> dict[str, Validation]:
+                    ground_truth: dict | None = None, *,
+                    work_namespace: str = "validate") -> dict[str, Validation]:
     """Adversarially validate a GROUP of findings in ONE session (each judged independently) —
     the efficiency path that collapses the per-finding fan-out. Returns {finding_id: Validation};
     any finding missing from the model's output or a failed session -> needs_runtime_verification
@@ -513,7 +517,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
     try:
         result = ctx.runner_for("validate").run(
             prompt=prompt, neutral_prompt=neutral_prompt, run_dir=ctx.run_dir,
-            work_dir=ctx.work_dir("validate", "batch-" + ids[0]),   # fresh, isolated context
+            work_dir=ctx.work_dir(work_namespace, "batch-" + ids[0]),
             model=ctx.config.model_for("validate"), stage="validate",
             run_id=ctx.run_id, repo_dir=ctx.repo_dir,               # READ-ONLY
             allowed_tools=ARTIFACT_TOOLS, label="validate-batch-" + ids[0])
@@ -543,7 +547,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
                 out[fid] = Validation.model_validate(row)
             except Exception:  # noqa: BLE001 — a malformed row must never crash the stage
                 out[fid] = Validation(verdict="needs_runtime_verification",
-                                      rationale="verdict row failed schema validation")
+                                      rationale=_R_SCHEMA_INVALID_VERDICT)
     for fid in ids:  # any finding the model omitted: keep for a human, never auto-drop
         out.setdefault(fid, Validation(verdict="needs_runtime_verification",
                                        rationale=_R_NO_VERDICT_IN_BATCH))
@@ -670,6 +674,137 @@ def run(ctx: RunContext) -> Path:
     )
     _log(f"{survivor_note}, {len(dropped)} dropped -> {ctx.validated_findings_path.name}")
     return ctx.validated_findings_path
+
+
+def revalidate_context(ctx: RunContext, *, question_id: str | None = None) -> dict:
+    """Re-run adversarial validation only for findings made stale by answered F5 questions.
+
+    Existing survivors unrelated to the answer are untouched. A backend/session failure preserves
+    the old verdict and stale marker; runtime/live/ASan observations are retained as native evidence.
+    """
+    doc = json.loads(ctx.validated_findings_path.read_text(encoding="utf-8-sig"))
+    raw_findings = [f for f in doc.get("findings") or [] if isinstance(f, dict)]
+
+    if question_id is not None:
+        try:
+            queue = json.loads(ctx.review_questions_path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError) as exc:
+            raise ValueError("review_questions.json is missing or unreadable") from exc
+        question = next(
+            (q for q in queue.get("questions") or []
+             if isinstance(q, dict) and q.get("id") == question_id), None)
+        if question is None:
+            raise ValueError(f"unknown review question {question_id!r}")
+        if not question.get("answer") or not question.get("answer_provenance"):
+            raise ValueError(f"review question {question_id!r} has not been answered")
+
+    selected: list[tuple[int, Finding]] = []
+    for idx, raw in enumerate(raw_findings):
+        validation = raw.get("validation") or {}
+        if validation.get("context_revalidation_required") is not True:
+            continue
+        question_ids = validation.get("context_question_ids") or []
+        if question_id is not None and question_id not in question_ids:
+            continue
+        finding = Finding.model_validate(raw)
+        finding.validation = None  # do not bias the new judgment with the stale verdict
+        selected.append((idx, finding))
+
+    if not selected:
+        return {
+            "run_id": ctx.run_id, "question_id": question_id, "selected": 0,
+            "attempted": 0, "revalidated": 0, "dropped": 0,
+            "still_pending": sum(
+                (f.get("validation") or {}).get("context_revalidation_required") is True
+                for f in raw_findings),
+            "status": "nothing_pending",
+        }
+
+    scope = ctx.load_scope()
+    scope_json_text = ctx.scope_path.read_text(encoding="utf-8")
+    ground_truth = _load_ground_truth(ctx)
+    prior_attempts = (doc.get("stats") or {}).get("context_revalidation_attempts") or []
+    attempt_no = len(prior_attempts) + 1
+    work_namespace = f"validate-context/attempt-{attempt_no}"
+
+    launch: list[tuple[int, Finding]] = []
+    for item in selected:
+        try:
+            ctx.assert_budget()
+            launch.append(item)
+        except BudgetExceeded as exc:
+            _log(f"context re-validation budget reached; preserving {len(selected) - len(launch)} "
+                 f"stale verdict(s) ({exc})")
+            break
+
+    verdicts: dict[str, Validation] = {}
+    if launch:
+        findings = [finding for _idx, finding in launch]
+        batches = _chunk(findings, ctx.config.validate_batch_size)
+        max_workers = max(1, min(ctx.config.max_parallel_audits, len(batches)))
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            if ctx.config.validate_batch_size <= 1:
+                futs = {
+                    ex.submit(_validate_one, ctx, scope, scope_json_text, batch[0], ground_truth,
+                              work_namespace=work_namespace): batch[0]
+                    for batch in batches}
+                for fut in as_completed(futs):
+                    verdicts[futs[fut].id] = fut.result()
+            else:
+                futs = [ex.submit(_validate_batch, ctx, scope, scope_json_text, batch, ground_truth,
+                                  work_namespace=work_namespace) for batch in batches]
+                for fut in as_completed(futs):
+                    verdicts.update(fut.result())
+
+    successful = 0
+    newly_dropped = 0
+    drop_rows: list[dict] = []
+    remove_indexes: set[int] = set()
+    for idx, finding in launch:
+        verdict = verdicts[finding.id]
+        probe = finding.model_copy(deep=True)
+        probe.validation = verdict
+        if _is_infra_unvalidated(probe):
+            _log(f"{finding.id}: context re-validation did not complete; preserving stale verdict")
+            continue
+        old_validation = raw_findings[idx].get("validation") or {}
+        merged_validation = verdict.model_dump(exclude_none=True)
+        for key in ("runtime", "live", "asan_poc"):
+            if key in old_validation:
+                merged_validation[key] = old_validation[key]
+        finding.validation = Validation.model_validate(merged_validation)
+        raw_findings[idx] = finding.model_dump(exclude_none=True)
+        successful += 1
+        if verdict.verdict not in _KEEP_VERDICTS:
+            remove_indexes.add(idx)
+            drop_rows.append(_drop_record(finding, f"context_revalidation:{verdict.verdict}"))
+            newly_dropped += 1
+
+    doc["findings"] = [f for idx, f in enumerate(raw_findings) if idx not in remove_indexes]
+    doc.setdefault("dropped", []).extend(drop_rows)
+    stats = doc.setdefault("stats", {})
+    survivors = [Finding.model_validate(f) for f in doc["findings"]]
+    stats["survivors"] = len(survivors)
+    stats["dropped"] = len(doc.get("dropped") or [])
+    stats["survivors_not_actually_validated"] = sum(_is_infra_unvalidated(f) for f in survivors)
+    still_pending = sum(
+        (f.get("validation") or {}).get("context_revalidation_required") is True
+        for f in doc["findings"])
+    stats["context_revalidation_required"] = still_pending
+    attempts = list(prior_attempts)[-19:]
+    attempts.append({
+        "attempt": attempt_no, "generated_at": ctx.timestamp(), "question_id": question_id,
+        "selected": len(selected), "attempted": len(launch), "revalidated": successful,
+        "dropped": newly_dropped, "still_pending": still_pending,
+    })
+    stats["context_revalidation_attempts"] = attempts
+    atomic_write_json(ctx.validated_findings_path, doc)
+    return {
+        "run_id": ctx.run_id, "question_id": question_id, "selected": len(selected),
+        "attempted": len(launch), "revalidated": successful, "dropped": newly_dropped,
+        "still_pending": still_pending,
+        "status": "complete" if still_pending == 0 else "pending",
+    }
 
 
 def _drop_record(f: Finding, reason: str) -> dict:

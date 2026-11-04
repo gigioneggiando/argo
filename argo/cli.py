@@ -26,7 +26,8 @@ import typer
 
 from .config import PipelineConfig, load_pipeline_config
 from .estimate import estimate_cost, format_estimate
-from .orchestrator import (build_context, do_asan_poc, do_audit, do_compose, do_corroborate, do_evidence,
+from .orchestrator import (build_context, do_asan_poc, do_audit, do_compose, do_context_revalidation,
+                           do_corroborate, do_evidence,
                            do_freshness_check, do_ingest, do_live, do_recon, do_report,
                            do_review_questions, do_runtime, do_sca, do_second_opinion, do_validate,
                            do_verify, new_run_id, resume_pipeline, run_pipeline)
@@ -953,7 +954,56 @@ def answer_question_cmd(
     if (ctx.run_dir / "REPORT.md").is_file():
         do_report(ctx)
     _emit({"run_id": run, "review_questions": str(path),
-           "next_action": "re-run validation with the recorded context before using affected drafts"})
+           "next_action": f"run `argo revalidate-context --run {run}` before using affected drafts"})
+
+
+@app.command(name="revalidate-context")
+def revalidate_context_cmd(
+    run: str = RunIdArg,
+    question: Optional[str] = typer.Option(
+        None, "--question", help="only findings affected by this answered rq:... id"),
+    budget: Optional[float] = BudgetOpt,
+    runs_dir: Path = RunsDirOpt,
+    gemini_api_key: Optional[str] = GeminiApiKeyOpt,
+    claude_api_key: Optional[str] = ClaudeApiKeyOpt,
+    codex_api_key: Optional[str] = CodexApiKeyOpt,
+):
+    """Re-validate only findings made stale by answered private-context questions.
+
+    Unrelated findings are left untouched. Failed model calls preserve the prior verdict, stale
+    marker, and draft block; successful calls refresh evidence, the question queue, and an existing
+    report without repeating recon, audit, or global validation.
+    """
+    cfg = _resume_config(run, runs_dir)
+    overrides = {k: v for k, v in (
+        ("gemini_api_key", gemini_api_key),
+        ("claude_api_key", claude_api_key),
+        ("codex_api_key", codex_api_key),
+    ) if v}
+    if overrides:
+        cfg = cfg.with_overrides(**overrides)
+    if budget is not None:
+        cfg = cfg.with_overrides(budget_usd=budget)
+    ctx = build_context(cfg, run)
+    try:
+        summary = do_context_revalidation(ctx, question_id=question)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    do_evidence(ctx)
+    if ctx.review_questions_path.is_file():
+        do_review_questions(ctx)
+    report_path = None
+    if (ctx.run_dir / "REPORT.md").is_file():
+        report_path = do_report(ctx)
+    _emit({
+        **summary,
+        "validated_findings": str(ctx.validated_findings_path),
+        "review_questions": (str(ctx.review_questions_path)
+                             if ctx.review_questions_path.is_file() else None),
+        "report": str(report_path) if report_path else None,
+        "drafts_dir": str(ctx.drafts_dir),
+    })
 
 
 @app.command(name="pr-draft")

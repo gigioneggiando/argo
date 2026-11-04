@@ -37,6 +37,7 @@ chatplugin/
 /*_tail.py
 
 # Python
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/

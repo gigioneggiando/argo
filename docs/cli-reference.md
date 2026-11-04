@@ -72,7 +72,7 @@ argo show-routing [--runner headless|codex|gemini|mock] [--stage-runner STAGE=BA
 argo profiles list|show|export|validate|import|save [--name NAME] [--input FILE] [--config FILE] [--output FILE]
 argo catalog show|validate|diff [--provider openai|anthropic|gemini] [--against SNAPSHOT.json]
 argo bench-validate --suite DIR
-argo resume   RUN_ID [--wait] [--max-wait 12h]
+argo resume   --run RUN_ID [--wait] [--max-wait 12h] [--runs-dir DIR]
 argo verify   --run RUN_ID [--only ID,ID] [--max-findings N]
 argo asan-poc --run RUN_ID [--max-findings N] [--asan-poc-image IMAGE]
 argo fix      --run RUN_ID [--no-verify] [--re-audit] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
@@ -144,7 +144,8 @@ If `pipeline` (or an individual stage command) stops partway — a backend crash
 session timeout, or you hitting Ctrl+C — you do **not** need to start over. Every stage writes its
 output atomically (temp file + rename), so a hard kill mid-write leaves the last good file intact
 rather than a truncated one, and `status.json` tracks exactly which stages already finished. When a
-run stops, the CLI prints the exact command to continue it:
+run stops, the CLI prints a recovery hint. Some versions omit the required `--run`
+option in that hint; the executable commands below use the actual CLI syntax:
 
 ```
 [argo] Run 'RUN_ID' stopped: RunnerError: ...
@@ -154,10 +155,10 @@ run stops, the CLI prints the exact command to continue it:
 ```
 
 ```bash
-argo resume RUN_ID              # continue from the first not-yet-done stage
-argo resume RUN_ID --wait       # if the failure carried a "retry after TIME" hint (e.g. a rate
+argo resume --run RUN_ID              # continue from the first not-yet-done stage
+argo resume --run RUN_ID --wait       # if the failure carried a "retry after TIME" hint (e.g. a rate
                                  # limit), sleep until then instead of failing immediately
-argo resume RUN_ID --wait --max-wait 2h   # cap how long --wait will sleep
+argo resume --run RUN_ID --wait --max-wait 2h   # cap how long --wait will sleep
 ```
 
 `resume` re-reads the run's persisted `config.json`, so it uses the exact same settings the

@@ -19,6 +19,7 @@ not trip Windows' global temp rotation.
 
 | File | Covers |
 |---|---|
+| `test_agent_onboarding.py` | Agent entry-point links/headings/imports, documented CLI commands/options, marked discovery/mock-pipeline snippets, and interrupted-run CLI recovery from the agent guide; isolated state, unchanged target, guards against real runner invocation and intercepted Python TCP connections (not a full egress sandbox) |
 | `test_guardrails.py` | tool-allowlist stripping, `assert_no_network_tools`, **the `research`-stage OSINT carve-out** (research keeps WebSearch/WebFetch but loses the shell; every other stage stays offline), prohibited-technique present/missing/empty, audit-prompt well-formedness, placeholder/`.j2` rendering |
 | `test_units.py` | `split_ref` / `dedup_key`, manifest extraction + glob fallback, schema conformance of fixtures, artifact-contract shape; **neutral-register prompts** — `render_prompt_pair` finds/renders a `.neutral.md` companion or returns `None` when absent, `neutralize_audit_prompt` softens narrative vocabulary while leaving the PROHIBITED TECHNIQUES block byte-identical |
 | `test_ledger.py` | `Ledger.run_cost`/`run_call_count` combine a run with its second-opinion children (`-soN`) so the `--budget` ceiling and reported cost reflect TRUE total spend, not just the primary pass's own rows; unrelated runs never leak into each other's total; a run_id containing a literal `%`/`_` doesn't turn into an unintended LIKE wildcard; the `duration_ms`/`failure_kind`/`label` migration adds the columns cleanly to a pre-existing DB fixture |
@@ -50,12 +51,17 @@ not trip Windows' global temp rotation.
 | `test_max_focuses.py` | **`--max-focuses`**: the cap keeps the first N planned focuses in slug order (decided before any focus runs, so it cannot depend on what a focus found), is a no-op above the planned count, names every skipped focus in the log, reaches `PipelineConfig` through `_build_config`, and rejects a cap below 1 (a cap of 0 would audit nothing and still exit 0) |
 | `test_neutral_retry.py` | **neutral-register moderation-flag recovery**: `AgentRunner.run()` retries once, same backend, with a caller-supplied `neutral_prompt` on a `moderation_flagged` failure (short delay, distinct from `FallbackRunner`'s 90s same-provider cooldown); no retry when `neutral_prompt` is omitted (byte-identical to pre-feature behavior); no retry for any other failure kind; bounded to exactly one retry even if the neutral variant also flags |
 
-## The two zero-cost modes
+## Fixture replay versus real pre-audit checks
 
 - **`--runner mock`** — full glue test end-to-end with deterministic fixtures. Most orchestration
   bugs live in the glue, not the model call; debug them here, not by burning real audits.
-- **`--dry-run`** — runs ingest + recon for real, then stops before any audit, so you can eyeball
-  the generated prompts before paying.
+- **`--dry-run` with a real runner is not zero-cost** — runs ingest + recon (and enabled
+  research) for real, then stops before audit. Inspect generated prompts before paying for
+  the audit, but obtain approval for the recon/ingest spend first.
+- **`--smoke` with a real runner is also real model execution**, not a free demo.
+
+See the [agent guide](agent-guide.md) for executable free onboarding examples and
+the distinction between static analysis, cloud inference and fully local operation.
 
 ## Fixtures
 

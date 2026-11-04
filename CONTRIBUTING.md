@@ -32,8 +32,15 @@ count. So the highest-leverage contributions are:
 ```bash
 git clone https://github.com/gigioneggiando/argo.git
 cd argo
-pip install -r requirements.txt
-pip install -e .          # optional: enables the `argo` entry point
+```
+
+From the checkout, create and activate an isolated environment using the
+[installation guide](docs/agent-guide.md#installation). For agent-assisted operation,
+start with [AGENTS.md](AGENTS.md). In the activated environment:
+
+```bash
+python -m pip install -r requirements.txt
+python -m pip install -e . --no-deps   # optional: enables the `argo` entry point
 ```
 
 Run the test suite — it runs **entirely on the mock runner, zero tokens, no API calls**:
@@ -49,7 +56,7 @@ CI (`.github/workflows/tests.yml`) runs this exact same command on every PR and 
 `main`, on Python 3.11 and 3.13 — no secrets, no real model calls, so it also runs cleanly on PRs
 from forks. It's a required check on `main`; a red CI run blocks merge.
 
-## The zero-cost dev loop
+## The mock-first dev loop
 
 You almost never need to spend money to develop Argo. Most orchestration bugs live in the glue, not
 the model call — debug them for free:
@@ -58,18 +65,21 @@ the model call — debug them for free:
 # Full pipeline end-to-end on deterministic fixtures (zero tokens):
 python -m argo.cli pipeline --runner mock --brief tests/fixtures/brief.txt --repo tests/fixtures/repo
 
-# Real ingest + recon, then STOP before any audit — inspect the generated prompts:
-python -m argo.cli pipeline --dry-run --brief brief.md --repo <path>
+# After approval to spend: real ingest + recon, then STOP before audit (NOT free):
+python -m argo.cli pipeline --runner headless --dry-run --brief brief.md --repo <path>
 ```
 
-Only run a **real** model when you're specifically testing the real backend seam. The cheapest way to
-do that is the bundled smoke (~$1, one focus, tight caps):
+Only run a **real** model when specifically testing a real backend seam or prompt behavior,
+and with approval for the spend. The bundled smoke uses one focus and tight caps;
+actual usage depends on the backend/model and is not a guaranteed price:
 
 ```bash
-python -m argo.cli pipeline --smoke
+python -m argo.cli pipeline --runner headless --smoke
 ```
 
-Run `--smoke` after changing anything in the runner, its flags, or the envelope parsing.
+After changing the runner, its flags, or envelope parsing, request an approved real
+`--smoke` check before trusting that seam. If not authorized/available, report it as
+unverified rather than silently consuming tokens.
 
 ## Testing expectations for a PR
 

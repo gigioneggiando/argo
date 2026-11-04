@@ -8,6 +8,11 @@
 
 **Live findings:** [overview](https://gigioneggiando.com/argo) · [complete archive](https://gigioneggiando.com/argo/findings) · [guide for AI agents](https://gigioneggiando.com/argo/llms.txt) · [Wiki](https://github.com/gigioneggiando/argo/wiki) · [Discussions](https://github.com/gigioneggiando/argo/discussions) · [Changelog](CHANGELOG.md)
 
+**Using an AI agent?** Start with [AGENTS.md](AGENTS.md) and the
+[agent operating guide](docs/agent-guide.md): installation, a free fixture demo,
+backend/privacy/cost choices, real audits, recovery, and evidence-based result review.
+The demo uses `--runner mock`; `--dry-run` and `--smoke` with real backends can spend tokens.
+
 Before a paid audit, use `argo screen ./repo` for a deterministic read-only fingerprint, `argo plan
 ./repo --objective balanced` for an explainable cost/time range, and `argo show-routing` to inspect
 the exact per-stage backend/model selection. Advanced runs can mix providers with repeated
@@ -300,7 +305,7 @@ and the cross-model study: **[docs/backends.md](docs/backends.md)**.
 ## Operational tips
 
 - **A run that stops (crash, Ctrl+C, a rate limit) is not lost.** Every stage writes its output
-  atomically, so `argo resume RUN_ID` continues from the first unfinished stage. Details:
+  atomically, so `argo resume --run RUN_ID` continues from the first unfinished stage. Details:
   [cli-reference.md § Recovering a stopped run](docs/cli-reference.md#recovering-a-stopped-run).
 - Keep prompts under git and record which version each run used: you can A/B test them and see
   which produce accepted findings.

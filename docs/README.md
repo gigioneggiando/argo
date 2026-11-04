@@ -6,10 +6,15 @@ overview** (what the pipeline is, why prompt enrichment matters, model strategy,
 and [what makes it behave like an expert reviewer rather than a linter](../README.md#it-works-like-an-expert-reviewer-not-a-linter)),
 see the [top-level README](../README.md).
 
+**Operating Argo with an AI agent?** Read [AGENTS.md](../AGENTS.md), then the
+[agent guide](agent-guide.md) for the task-specific workflow. The guide distinguishes
+free fixture replay from real audits and documents cost, privacy, and recovery boundaries.
+
 ## Contents
 
 | Doc | Audience | What's in it |
 |---|---|---|
+| [agent-guide.md](agent-guide.md) | agents / operators | Installation, tested free discovery/demo, real-audit decisions, local models, recovery, evidence review, troubleshooting and acceptance checks |
 | [architecture.md](architecture.md) | developers | Module map, stage data flow, the `AgentRunner` interface, `RunContext`, the SQLite ledger schema, the dedup algorithm |
 | [context-pack.md](context-pack.md) | operators | Private architecture/business context schema, review-question workflow, provenance and re-validation rules |
 | [prompt-synthesis.md](prompt-synthesis.md) | prompt authors | How Stage 2 generates target-specific audit prompts: the archetype-driven meta-prompt, the specificity self-check, reuse from the legacy generator, and how to change the meta-prompt safely |
@@ -38,12 +43,13 @@ see the [top-level README](../README.md).
 
 ```
 README.md                 conceptual overview (entry point)
+AGENTS.md                 shared agent entry point; adapters point here
 BUILD_SPEC.md             the spec the orchestrator was built against
-00_/01_/02_*.md, *.json   the five reusable prompt assets + JSON Schemas
-argo/                 the orchestrator (see architecture.md)
+argo/prompts/             reusable prompt assets and JSON Schemas
+argo/                     the orchestrator (see architecture.md)
 server/                   the HTTP API on top of the pipeline (see api.md)
 webapp/                   the no-build web UI (see ui.md)
-tests/                    552 tests, zero-token by default (see testing.md)
+tests/                    mock/fake-driven tests, no real model calls (see testing.md)
 docs/                     you are here
 docs/legacy/              archived reference artifacts (e.g. the original META_PROMPT_generator)
 runs/<RUN_ID>/            per-run artifacts (git-ignored)

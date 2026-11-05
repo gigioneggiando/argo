@@ -35,6 +35,8 @@ particular while the version stays `0.y.z`.
 
 ### Changed
 
+- **`--max-turns` now applies to Codex runs** (one turn = one completed tool call). Codex runs that
+  set a low cap and previously finished will now stop at it; size it for a whole session.
 - Codex sessions run with `--disable multi_agent` (`codex_disable_features`): sub-agents escaped
   every per-session guard and the event stream.
 

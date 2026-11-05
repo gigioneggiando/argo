@@ -316,7 +316,7 @@ def test_codex_runner_uses_bootstrapped_home_for_api_key(tmp_path, monkeypatch):
     monkeypatch.setattr(runner_mod, "_ensure_codex_api_key_home",
                         lambda key, **kw: fake_home)
     captured = {}
-    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+    def fake_exec(cmd, prompt, cwd, timeout, env=None, **_kw):
         captured["env"] = env
         return _FakeProc("", "boom", 1)
     monkeypatch.setattr(r, "_exec", fake_exec)
@@ -332,7 +332,7 @@ def test_codex_runner_explicit_codex_home_wins_over_api_key(tmp_path, monkeypatc
         raise AssertionError("bootstrap should not be attempted when codex_home is explicit")
     monkeypatch.setattr(runner_mod, "_ensure_codex_api_key_home", fail_if_called)
     captured = {}
-    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+    def fake_exec(cmd, prompt, cwd, timeout, env=None, **_kw):
         captured["env"] = env
         return _FakeProc("", "boom", 1)
     monkeypatch.setattr(r, "_exec", fake_exec)

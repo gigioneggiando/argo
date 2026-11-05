@@ -9,7 +9,36 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **Codex turn cap was never enforced.** `num_turns` was hard-coded to 0 for Codex, so
+  `--max-turns` had no effect. Codex events are now streamed and the cap is enforced mid-session.
+- **Runaway Codex sessions.** Identical-call loops and failure streaks (e.g. a broken sandbox) stop
+  the session early (`failure_kind = tool_loop`) instead of running to the stage timeout or the
+  model server's context limit.
+- **Recon discarded on one bad character.** A malformed `repo_profile.json` gets one syntax-only
+  repair session before the unchanged validity gate; the original is kept as `.malformed`.
+- **Valid findings dropped over one `null`.** Audit normalization now treats a schema-forbidden
+  `null` on an optional property as absent (and on a required array as `[]`), recursively, before
+  the unchanged schema gate. Local models emitted `"validation": null` and
+  `"obligations_satisfied": null`; each previously discarded a correct finding.
+
+- **Offline Codex stages could search the web.** The workspace-write sandbox does not cover
+  Codex's provider-side `web_search` tool; an audit session used it and Ollama forwarded the query
+  to its cloud endpoint. Every non-network stage now runs with `web_search="disabled"`.
+
+### Added
+
+- `--codex-context-window` / `codex_context_window` declares a local model's window so Codex
+  auto-compacts before Ollama/LM Studio silently discard context.
+- Codex session events are persisted under `<run>/work/.argo_sessions/`.
+
+### Changed
+
+- **`--max-turns` now applies to Codex runs** (one turn = one completed tool call). Codex runs that
+  set a low cap and previously finished will now stop at it; size it for a whole session.
+- Codex sessions run with `--disable multi_agent` (`codex_disable_features`): sub-agents escaped
+  every per-session guard and the event stream.
 
 ## [0.10.0] - 2026-10-21
 

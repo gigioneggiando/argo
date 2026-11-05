@@ -137,6 +137,55 @@ def _coerce_finding(f: dict) -> tuple[dict, bool]:
     return out, changed
 
 
+def _allows_null(schema: dict) -> bool:
+    t = schema.get("type")
+    return t is None or t == "null" or (isinstance(t, list) and "null" in t)
+
+
+def _strip_schema_nulls(value, schema: dict) -> tuple[object, bool]:
+    """``null`` where the schema does not allow it means "no value": drop it from an OPTIONAL
+    property, turn it into ``[]`` for a REQUIRED array, and recurse into nested objects/arrays.
+    Required non-array nulls are left for :func:`_repair_finding` (which flags them). Never invents
+    content. Observed live on local models: ``"validation": null`` (80B) and
+    ``"obligations_satisfied": null`` (27B) each discarded an otherwise schema-valid finding."""
+    changed = False
+    if isinstance(value, dict) and isinstance(schema.get("properties"), dict):
+        props, required = schema["properties"], set(schema.get("required") or ())
+        out = {}
+        for k, v in value.items():
+            sub = props.get(k)
+            if not isinstance(sub, dict):
+                out[k] = v
+                continue
+            if v is None and not _allows_null(sub):
+                if k not in required:
+                    changed = True
+                    continue
+                if sub.get("type") == "array":
+                    out[k], changed = [], True
+                    continue
+            out[k], c = _strip_schema_nulls(v, sub)
+            changed |= c
+        return out, changed
+    if isinstance(value, list) and isinstance(schema.get("items"), dict):
+        new = []
+        for v in value:
+            nv, c = _strip_schema_nulls(v, schema["items"])
+            new.append(nv)
+            changed |= c
+        return new, changed
+    return value, False
+
+
+def _finding_item_schema(ctx: RunContext) -> dict:
+    from ..schemas import _DEFAULT_PROMPTS_DIR, _load_schema
+    try:
+        schema = _load_schema(ctx.assets_dir or _DEFAULT_PROMPTS_DIR, "findings_schema.json")
+    except (OSError, ValueError, TypeError):
+        return {}
+    return ((schema.get("properties") or {}).get("findings") or {}).get("items") or {}
+
+
 def _repair_finding(f: dict, slug: str, idx: int) -> dict:
     """Last-resort backfill so a drifted finding survives the schema gate instead of being dropped.
     Only ever ADDS minimal valid values for missing/invalid REQUIRED fields and flags the finding
@@ -185,12 +234,14 @@ def _normalize_findings_doc(raw_doc: dict, ctx: RunContext, scope, slug: str):
     repaired_ids: list[str] = []
     unrecoverable: list[str] = []
     coerced = 0
+    item_schema = _finding_item_schema(ctx)
     for idx, f in enumerate(doc.get("findings", [])):
         if not isinstance(f, dict):
             unrecoverable.append("?")
             continue
         cf, changed = _coerce_finding(f)
-        coerced += int(changed)
+        cf, nulls = _strip_schema_nulls(cf, item_schema)
+        coerced += int(changed or nulls)
         try:
             validate_findings({**doc, "findings": [cf]}, ctx.assets_dir)
             kept.append(cf)

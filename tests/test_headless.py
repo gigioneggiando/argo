@@ -237,7 +237,7 @@ def test_invoke_injects_anthropic_api_key_env(tmp_path, monkeypatch):
     ledger = Ledger(tmp_path / "l.sqlite")
     runner = HeadlessClaudeRunner(PipelineConfig(claude_api_key="sk-ant-test"), ledger)
     captured = {}
-    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+    def fake_exec(cmd, prompt, cwd, timeout, env=None, **_kw):
         captured["env"] = env
         return _FakeProc("not json {")
     monkeypatch.setattr(runner, "_exec", fake_exec)
@@ -256,7 +256,7 @@ def test_invoke_injects_both_claude_config_dir_and_api_key_additively(tmp_path, 
     runner = HeadlessClaudeRunner(
         PipelineConfig(claude_config_dir=str(tmp_path), claude_api_key="sk-ant-test"), ledger)
     captured = {}
-    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+    def fake_exec(cmd, prompt, cwd, timeout, env=None, **_kw):
         captured["env"] = env
         return _FakeProc("not json {")
     monkeypatch.setattr(runner, "_exec", fake_exec)
@@ -274,7 +274,7 @@ def test_invoke_env_stays_none_when_neither_claude_knob_set(tmp_path, monkeypatc
     ledger = Ledger(tmp_path / "l.sqlite")
     runner = HeadlessClaudeRunner(PipelineConfig(), ledger)
     captured = {}
-    def fake_exec(cmd, prompt, cwd, timeout, env=None):
+    def fake_exec(cmd, prompt, cwd, timeout, env=None, **_kw):
         captured["env"] = env
         return _FakeProc("not json {")
     monkeypatch.setattr(runner, "_exec", fake_exec)

@@ -53,6 +53,7 @@ def _build_config(
     codex_model: Optional[str] = None,
     codex_oss: bool = False,
     codex_local_provider: Optional[str] = None,
+    codex_context_window: Optional[int] = None,
     fallback: Optional[str] = None,
     claude_accounts: Optional[str] = None,
     codex_accounts: Optional[str] = None,
@@ -83,6 +84,7 @@ def _build_config(
         codex_model=codex_model,
         codex_oss=codex_oss,
         codex_local_provider=codex_local_provider,
+        codex_context_window=codex_context_window,
         gemini_api_key=gemini_api_key,
         claude_api_key=claude_api_key,
         codex_api_key=codex_api_key,
@@ -210,6 +212,11 @@ CodexModelOpt = typer.Option(None, "--codex-model",
 CodexOssOpt = typer.Option(False, "--codex-oss", help="(runner=codex) use the open-source provider (--oss)")
 CodexProviderOpt = typer.Option(None, "--codex-local-provider",
                                 help="(runner=codex --codex-oss) ollama | lmstudio")
+CodexContextWindowOpt = typer.Option(
+    None, "--codex-context-window",
+    help="(runner=codex) the local model server's real context window in tokens (e.g. Ollama's "
+         "OLLAMA_CONTEXT_LENGTH). Codex has no metadata for local models; with this it "
+         "auto-compacts at 80%% instead of the server silently discarding context.")
 GeminiModelOpt = typer.Option(
     None, "--gemini-model",
     help="(runner=gemini) flat override across every stage, e.g. gemini-3.1-pro; applied before "
@@ -1174,6 +1181,7 @@ def estimate(
     max_focuses: Optional[int] = MaxFocusesOpt,
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
+    codex_context_window: Optional[int] = CodexContextWindowOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
     codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
@@ -1189,6 +1197,7 @@ def estimate(
                         max_focuses=max_focuses,
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
+                        codex_context_window=codex_context_window,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
                         gemini_accounts=gemini_accounts,
@@ -1334,6 +1343,7 @@ def pipeline(
     max_focuses: Optional[int] = MaxFocusesOpt,
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
+    codex_context_window: Optional[int] = CodexContextWindowOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
     codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
@@ -1356,6 +1366,7 @@ def pipeline(
                         max_focuses=max_focuses,
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
+                        codex_context_window=codex_context_window,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
                         gemini_accounts=gemini_accounts,
@@ -1387,6 +1398,7 @@ def pipeline(
         # for_smoke() defaults to the Claude backend; honor an explicit --runner (e.g. codex, gemini).
         cfg = cfg.with_overrides(runner=runner, codex_model=codex_model, codex_oss=codex_oss,
                                  codex_local_provider=codex_local_provider,
+                                 codex_context_window=codex_context_window,
                                  gemini_api_key=gemini_api_key,
                                  claude_api_key=claude_api_key, codex_api_key=codex_api_key)
         research = False                                   # a cheap smoke stays fully offline

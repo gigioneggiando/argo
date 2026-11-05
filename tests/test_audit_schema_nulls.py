@@ -29,10 +29,10 @@ def _normalize(finding):
 
 
 def test_optional_null_object_is_dropped_not_the_finding():
-    doc, repaired, unrecoverable, _ = _normalize(_finding(validation=None))
+    doc, repaired, unrecoverable, _ = _normalize(_finding(owasp=None))
     assert [f["id"] for f in doc["findings"]] == ["AUTHZ-001"]
     assert repaired == [] and unrecoverable == []
-    assert "validation" not in doc["findings"][0]
+    assert "owasp" not in doc["findings"][0]
 
 
 def test_nested_null_array_in_evidence_is_dropped():
@@ -59,3 +59,16 @@ def test_required_null_array_becomes_empty():
 def test_unknown_keys_and_valid_values_untouched():
     schema = {"type": "object", "properties": {"a": {"type": "string"}}}
     assert _strip_schema_nulls({"a": "x", "zzz": None}, schema) == ({"a": "x", "zzz": None}, False)
+
+
+def test_audit_drops_stage_owned_verdicts():
+    doc, _, unrecoverable, _ = _normalize(_finding(validation={"verdict": "confirmed"},
+                                                   corroboration={}))
+    f = doc["findings"][0]
+    assert unrecoverable == [] and "validation" not in f and "corroboration" not in f
+
+
+def test_model_treats_empty_stage_object_as_absent():
+    from argo.models import Finding
+    f = Finding.model_validate(_finding(validation={}, verification={}))
+    assert f.validation is None and f.verification is None

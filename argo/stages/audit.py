@@ -87,6 +87,8 @@ _FIELD_ALIASES = {
 }
 
 _STREAMING_SEED_KEY = "_argo_streaming_seed"
+#: Filled only by validate / corroborate / deep-verify; never accepted from the audit model.
+_STAGE_OWNED_FIELDS = ("validation", "corroboration", "verification")
 
 
 def _streaming_seed(ctx: RunContext, scope, slug: str) -> dict:
@@ -102,6 +104,43 @@ def _streaming_seed(ctx: RunContext, scope, slug: str) -> dict:
         "findings": [],
         _STREAMING_SEED_KEY: True,
     }
+
+
+def _choose_findings_file(files: list[Path], expected: str) -> tuple[Path, dict]:
+    """Pick the findings document to use for a focus.
+
+    Prefer the exactly-named file, unless it is still Argo's own untouched streaming seed and the
+    model wrote its findings to a differently-named ``SECURITY_FINDINGS__*.json`` (observed live:
+    local models drop the ``audit_`` prefix of the slug, e.g. ``SECURITY_FINDINGS__authz_acl.json``).
+    Without this, the seed won, the focus was reported as "no checkpointed findings" and re-run
+    even though the findings existed. Among model-written candidates the one with the most findings
+    wins. Raises ``json.JSONDecodeError`` only when no candidate parses."""
+    exact = [f for f in files if f.name == expected]
+    ordered = exact + [f for f in files if f.name != expected]
+    parsed: list[tuple[Path, dict]] = []
+    first_error: json.JSONDecodeError | None = None
+    for f in ordered:
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            first_error = first_error or exc
+            continue
+        if isinstance(doc, dict):
+            parsed.append((f, doc))
+    if not parsed:
+        if first_error is not None:
+            raise first_error
+        raise json.JSONDecodeError("no JSON object in findings files", "", 0)
+    head_path, head = parsed[0]
+    head_is_seed = bool(head.get(_STREAMING_SEED_KEY)) and not head.get("findings")
+    if exact and head_path == exact[0] and not head_is_seed:
+        return head_path, head
+    model_written = [(f, d) for f, d in parsed if not d.get(_STREAMING_SEED_KEY) and d.get("findings")]
+    if model_written:
+        best = max(model_written, key=lambda x: len(x[1].get("findings") or []))
+        _log(f"findings written to {best[0].name} instead of {expected}; using it")
+        return best
+    return head_path, head
 
 
 def _streaming_rule(filename: str) -> str:
@@ -241,7 +280,12 @@ def _normalize_findings_doc(raw_doc: dict, ctx: RunContext, scope, slug: str):
             continue
         cf, changed = _coerce_finding(f)
         cf, nulls = _strip_schema_nulls(cf, item_schema)
-        coerced += int(changed or nulls)
+        # Verdict-bearing fields belong to later stages; an auditor must not pre-fill them (e.g.
+        # self-declare "confirmed"), and a partial/empty one crashed validate.
+        owned = [k for k in _STAGE_OWNED_FIELDS if k in cf]
+        for k in owned:
+            cf.pop(k)
+        coerced += int(changed or nulls or bool(owned))
         try:
             validate_findings({**doc, "findings": [cf]}, ctx.assets_dir)
             kept.append(cf)
@@ -328,10 +372,8 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
         _log(f"{slug}: session failed ({exc}); recovered partial artifact from scratch dir")
     if not files:
         return slug, None, "no findings JSON produced", True
-    # Prefer the exactly-named file; else take the first JSON found (glob fallback).
-    chosen = next((f for f in files if f.name == findings_filename), files[0])
     try:
-        raw_doc = json.loads(chosen.read_text(encoding="utf-8-sig"))
+        chosen, raw_doc = _choose_findings_file(files, findings_filename)
     except json.JSONDecodeError as exc:
         return slug, None, f"findings file is not valid JSON: {exc}", False
 

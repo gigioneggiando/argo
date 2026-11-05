@@ -291,6 +291,13 @@ class Finding(BaseModel):
     # their judgment stays independent of how many passes agree.
     corroborating_passes: list[str] = Field(default_factory=list)
 
+    @field_validator("validation", "corroboration", "verification", "grounding", mode="before")
+    @classmethod
+    def _empty_stage_object_is_absent(cls, value):
+        # A model-emitted `{}` means "not filled yet"; observed live (local 80B audit:
+        # `"validation": {}`), it crashed validate with "validation.verdict Field required".
+        return None if value == {} else value
+
     @field_validator("preconditions", "capabilities_gained", "remaining_uncertainty", mode="before")
     @classmethod
     def _coerce_string_lists(cls, value):

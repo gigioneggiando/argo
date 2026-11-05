@@ -16,6 +16,10 @@ particular while the version stays `0.y.z`.
   treated as a whole-string path, so citation grounding declared a real file "not in repo" and
   dropped the finding before validation. The leading file path (and a `#L`/`line N` locator) is
   now extracted; genuinely missing files are still dropped.
+- **Recon prompts silently ignored without the `audit_` prefix.** A template-conforming prompt
+  saved as e.g. `authorization_bypass.md` was dropped, so planned focuses never ran (a local 9B
+  lost 2 of 3). Such files are now accepted (renamed `audit_<name>.md`) only when they carry the
+  template's section headers, and still pass the unchanged well-formedness gate.
 - **Audit focus re-run although findings existed.** When the model wrote its findings to a
   differently named `SECURITY_FINDINGS__*.json` (local models drop the `audit_` slug prefix), Argo
   picked its own untouched seed file, reported "no checkpointed findings" and re-ran the focus.

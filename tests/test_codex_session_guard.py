@@ -199,3 +199,14 @@ def test_recon_json_repair_failure_is_not_fatal_by_itself(tmp_path):
     ctx, _ = _repair_ctx(tmp_path, boom)
     recon._repair_json_artifact(ctx, tmp_path, p)     # caller's json.loads gate still decides
     assert p.read_text() == "{broken"
+
+
+def test_web_search_disabled_on_offline_stages_only(tmp_path):
+    from argo.runner import _CODEX_NETWORK_CFG, _CODEX_WEB_SEARCH_OFF
+    r = _runner(tmp_path)
+    for stage in ("ingest", "recon", "audit", "validate", "report"):
+        cmd = r._build_codex_cmd(model="m", policy=session_policy(stage), last_msg_file=tmp_path / "m")
+        assert _CODEX_WEB_SEARCH_OFF in cmd and _CODEX_NETWORK_CFG not in cmd, stage
+    research = r._build_codex_cmd(model="m", policy=session_policy("research"),
+                                  last_msg_file=tmp_path / "m")
+    assert _CODEX_NETWORK_CFG in research and _CODEX_WEB_SEARCH_OFF not in research

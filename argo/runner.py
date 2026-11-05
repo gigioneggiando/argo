@@ -657,6 +657,9 @@ class HeadlessClaudeRunner(AgentRunner):
 #: TOML config path that re-enables network egress inside the workspace-write sandbox. Used ONLY
 #: for the research stage; isolated as a constant so a Codex-version key change is a one-line fix.
 _CODEX_NETWORK_CFG = "sandbox_workspace_write.network_access=true"
+#: Offline stages: also switch off Codex's built-in web_search tool (values: disabled | cached |
+#: indexed | live -- verified against codex-cli 0.166.0, which rejects any other variant).
+_CODEX_WEB_SEARCH_OFF = 'web_search="disabled"'
 
 
 def _scan_codex_tokens(stdout_jsonl: str) -> tuple[int, int]:
@@ -1005,6 +1008,11 @@ class CodexRunner(AgentRunner):
                     "-c", f"model_auto_compact_token_limit={int(window * 0.8)}"]
         if policy is not None and policy.network:   # ONLY the research stage gets network egress
             cmd += ["-c", _CODEX_NETWORK_CFG]
+        else:
+            # The sandbox's network denial does NOT cover Codex's provider-side web_search tool:
+            # observed live, an offline audit session searched the web and Ollama forwarded it to
+            # its cloud endpoint (/api/experimental/web_search; it failed only for lack of login).
+            cmd += ["-c", _CODEX_WEB_SEARCH_OFF]
         cmd.append("-")                         # read the prompt (instructions) from stdin
         return cmd
 

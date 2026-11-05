@@ -110,6 +110,11 @@ loaded â€” `--codex-context-window 131072` for `OLLAMA_CONTEXT_LENGTH=131072` â€
   tokens and turns never reach the session's event stream, and a recon sub-agent was observed
   writing audit prompts without the safety template.
 
+**Web search is a separate switch.** The sandbox's network denial does not cover Codex's
+provider-side `web_search` tool, so Argo passes `-c web_search="disabled"` on every stage except
+research. For local-only runs also start Ollama with `OLLAMA_NO_CLOUD=1`, so a model cannot reach
+ollama.com through server-side tools.
+
 **Sandbox prerequisite.** `workspace-write` needs a working bubblewrap. In unprivileged
 containers (e.g. Kubernetes without `CAP_SYS_ADMIN`) bwrap may fail on `--dev` or `--remount-ro`;
 every shell command then fails and a local model retries indefinitely. Verify with a one-file

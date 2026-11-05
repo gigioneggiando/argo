@@ -23,6 +23,10 @@ particular while the version stays `0.y.z`.
   the unchanged schema gate. Local models emitted `"validation": null` and
   `"obligations_satisfied": null`; each previously discarded a correct finding.
 
+- **Offline Codex stages could search the web.** The workspace-write sandbox does not cover
+  Codex's provider-side `web_search` tool; an audit session used it and Ollama forwarded the query
+  to its cloud endpoint. Every non-network stage now runs with `web_search="disabled"`.
+
 ### Added
 
 - `--codex-context-window` / `codex_context_window` declares a local model's window so Codex

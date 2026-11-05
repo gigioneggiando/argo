@@ -65,7 +65,7 @@ equivalent re-validation for the Codex sandbox), and `tests/test_gemini.py`
 ## Codex specifics (`runner = codex`)
 
 `codex exec` with: `-s workspace-write`, `--skip-git-repo-check`, `--ephemeral`, `--json`,
-`-o <last-message file>`, prompt on stdin. Options:
+`-o <last-message file>`, `--disable multi_agent`, prompt on stdin. Options:
 
 - `--codex-model <id>` is a compatibility flat override. New runs use the explicit stage map:
   `gpt-6-astra` for recon/validate/verify, `gpt-6.1-sol` for audit/runtime, and `gpt-6-luna`
@@ -89,6 +89,31 @@ python -m argo.cli pipeline --runner codex --codex-oss --codex-local-provider ol
 
 Argo just adds `--oss --local-provider ollama -m <model>` to `codex exec` (unit-tested in
 `tests/test_codex.py::test_oss_and_model_flags`); cost is ~$0 (local models estimate to $0).
+
+**Declare the server's context window.** Codex has no metadata for a local model ("Model metadata
+... not found; defaulting to fallback metadata"), so it never auto-compacts and the server silently
+drops context instead (Ollama logs `slot context shift`). Pass the window the server actually
+loaded — `--codex-context-window 131072` for `OLLAMA_CONTEXT_LENGTH=131072` — and Argo adds
+`-c model_context_window=N -c model_auto_compact_token_limit=0.8N`.
+
+**Session guards (all Codex runs).** Argo streams the `--json` events while the session runs:
+
+- `--max-turns N` is enforced **mid-session** (one turn = one completed tool call). Before this
+  it was never enforced for Codex at all, so size N for a whole recon/audit session (a synthetic
+  fixture recon used ~20–30 calls; real repositories need far more).
+- The same tool call with the same result 6× in a row, or 20 consecutive failed tool calls,
+  stops the session (`failure_kind = tool_loop`, retryable once). A sandbox that rejects every
+  command shows up here instead of as a stage timeout.
+- Every event is kept in `<run>/work/.argo_sessions/<stage>.codex.<label>.jsonl` — outside the
+  model's working directory, so it cannot read its own transcript back or edit it.
+- Codex `multi_agent` is disabled (`codex_disable_features`): a spawned sub-agent's tool calls,
+  tokens and turns never reach the session's event stream, and a recon sub-agent was observed
+  writing audit prompts without the safety template.
+
+**Sandbox prerequisite.** `workspace-write` needs a working bubblewrap. In unprivileged
+containers (e.g. Kubernetes without `CAP_SYS_ADMIN`) bwrap may fail on `--dev` or `--remount-ro`;
+every shell command then fails and a local model retries indefinitely. Verify with a one-file
+`codex exec` probe before a pipeline run.
 
 **Caveat — model capability, not plumbing.** Some stages are format-strict: recon must emit audit
 prompts that carry the RoE / prohibited-techniques / "Do NOT patch" anchors *verbatim* (a

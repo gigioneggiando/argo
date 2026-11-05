@@ -112,7 +112,10 @@ def test_invoke_maps_guard_trip_to_runner_error(tmp_path, monkeypatch):
         r._invoke(prompt="p", work_dir=tmp_path, model="m", repo_dir=None, allowed=(),
                   disallowed=(), stage="recon", run_id="r", label="recon-synthesis")
     assert ei.value.failure_kind == "turn_cap" and ei.value.retryable is False
-    assert (tmp_path / ".argo_sessions" / "codex.recon-synthesis.jsonl").exists()
+    # outside the model's cwd (it would otherwise read its own transcript back)
+    work = tmp_path
+    assert (work.parent / ".argo_sessions" / f"{work.name}.codex.recon-synthesis.jsonl").exists()
+    assert not (work / ".argo_sessions").exists()
 
 
 def test_parse_envelope_reports_real_turns(tmp_path):

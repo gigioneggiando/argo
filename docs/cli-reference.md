@@ -183,6 +183,7 @@ The one hard boundary: a run that stopped **before ingest finished** (no usable
 | `--codex-model MODEL` | — | (runner=codex) model id (e.g. `gpt-6.1-sol`); **omit to use the Codex CLI default** (recommended) |
 | `--codex-oss` | off | (runner=codex) use the open-source provider (`--oss`) |
 | `--codex-local-provider {ollama\|lmstudio}` | — | (runner=codex --codex-oss) which local provider |
+| `--codex-context-window N` | none | (runner=codex) local server's real context window; Codex then auto-compacts at 80% |
 | `--gemini-model MODEL` | — | (runner=gemini) flat model override across every stage (e.g. `gemini-3.1-pro`); applied before `--calibration`/`--audit-model`. Omit to use the built-in per-stage tiering. |
 | `--gemini-api-key KEY` | — | (runner=gemini) sets `GEMINI_API_KEY` for this run; omit to use the ambient env var / an existing `gemini` CLI login. A real secret — redacted in `runs/<id>/config.json`; `argo resume` needs it re-supplied. |
 | `--claude-api-key KEY` / `--claude-api-keys K1,K2` | — | (runner=headless) `ANTHROPIC_API_KEY` for this run (a bare key needs no login step); coexists additively with `--claude-accounts`. The plural chains multiple keys (multi-account via key — `--claude-accounts` wins if both are set). A real secret — redacted; `argo resume` needs it re-supplied. See [backends.md](backends.md#api-keys----claude-api-key----codex-api-key). |
@@ -194,7 +195,7 @@ The one hard boundary: a run that stopped **before ingest finished** (no usable
 | `--runs-dir DIR` | `runs` | root dir for run artifacts |
 | `--scenario NAME` | `happy` | mock fixtures scenario (only with `--runner mock`) |
 | `--timeout SECONDS` | 1800 | per-session wall-clock cap |
-| `--max-turns N` | none | per-session turn tripwire (orchestrator-side; this CLI has no native `--max-turns`) |
+| `--max-turns N` | none | per-session turn tripwire (Claude: checked after the call; Codex: enforced mid-session on completed tool calls) |
 | `--session-budget USD` | none | per-session cost cap (mapped to the CLI's native `--max-budget-usd`) |
 
 ## `pipeline`-only options

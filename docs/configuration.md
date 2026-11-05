@@ -103,7 +103,9 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 |---|---|---|
 | `budget_usd` | `--budget` | HARD per-run ceiling; aborts remaining sessions once real spend hits it |
 | `session_max_cost_usd` | `--session-budget` | per-session cap → the CLI's native `--max-budget-usd` |
-| `session_max_turns` | `--max-turns` | per-session turn tripwire (post-hoc; this CLI has no native turn cap) |
+| `session_max_turns` | `--max-turns` | per-session turn tripwire (Claude: post-hoc; Codex: enforced mid-session) |
+| `codex_context_window` | `--codex-context-window` | local model's real context window; Codex compacts at 80% |
+| `codex_disable_features` | — | Codex features disabled per session (default `multi_agent`) |
 | `session_timeout_s` | `--timeout` | default per-session wall-clock cap (1800s) |
 | `stage_timeouts` | — | per-stage timeout overrides (`timeout_for(stage)`); seeded with `DEFAULT_STAGE_TIMEOUTS` (recon + audit → 3600s, since the deep ground-truth extraction and per-family walk need headroom) |
 | `max_parallel_audits` | `--parallel` | concurrency cap for Stage 3 / Stage 4 fan-out (default 3) |

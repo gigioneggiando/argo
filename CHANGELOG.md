@@ -9,7 +9,26 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **Codex turn cap was never enforced.** `num_turns` was hard-coded to 0 for Codex, so
+  `--max-turns` had no effect. Codex events are now streamed and the cap is enforced mid-session.
+- **Runaway Codex sessions.** Identical-call loops and failure streaks (e.g. a broken sandbox) stop
+  the session early (`failure_kind = tool_loop`) instead of running to the stage timeout or the
+  model server's context limit.
+- **Recon discarded on one bad character.** A malformed `repo_profile.json` gets one syntax-only
+  repair session before the unchanged validity gate; the original is kept as `.malformed`.
+
+### Added
+
+- `--codex-context-window` / `codex_context_window` declares a local model's window so Codex
+  auto-compacts before Ollama/LM Studio silently discard context.
+- Codex session events are persisted under `<run>/work/.argo_sessions/`.
+
+### Changed
+
+- Codex sessions run with `--disable multi_agent` (`codex_disable_features`): sub-agents escaped
+  every per-session guard and the event stream.
 
 ## [0.10.0] - 2026-10-21
 

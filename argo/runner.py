@@ -737,6 +737,13 @@ def _codex_completed_tool_item(line: str) -> dict | None:
     return None if item.get("type") in _CODEX_NON_TOOL_ITEMS else item
 
 
+def _codex_events_path(work_dir: Path, label: str) -> Path:
+    """``<work parent>/.argo_sessions/<work name>.codex.<label>.jsonl`` -- next to, never inside,
+    the session's scratch cwd."""
+    work_dir = Path(work_dir)
+    return work_dir.parent / ".argo_sessions" / f"{work_dir.name}.codex.{label}.jsonl"
+
+
 def _count_codex_turns(stdout_jsonl: str) -> int:
     return sum(1 for _ in _codex_tool_items(stdout_jsonl))
 
@@ -1017,8 +1024,10 @@ class CodexRunner(AgentRunner):
         events_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", label or stage)
         guard = _CodexSessionGuard(
             max_turns=self.config.session_max_turns,
-            # A subdirectory, so stage `work.glob("*")` artifact recovery (is_file) never sees it.
-            events_path=Path(work_dir) / ".argo_sessions" / f"codex.{events_name}.jsonl")
+            # OUTSIDE the session's cwd: inside it the model lists and `cat`s its own growing event
+            # log (observed live), feeding the transcript back into its context. The sibling dir
+            # is also outside the workspace-write root, so the model cannot tamper with it.
+            events_path=_codex_events_path(Path(work_dir), events_name))
         try:
             proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env,
                               on_stdout_line=guard)

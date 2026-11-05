@@ -49,9 +49,39 @@ def _is_audit_prompt(name: str) -> bool:
     return bool(re.match(r"audit[-_]", name, re.I)) and name.lower().endswith(".md")
 
 
+#: Section headers every template-conforming audit prompt carries (subset of the guardrail's
+#: anchors that the model itself must write; the rest are re-inserted deterministically).
+_PROMPT_SIGNATURE = ("scope & rules of engagement", "required per-finding format")
+_NON_PROMPT_MD = {"synthesis_notes.md", "readme.md"}
+
+
+def _is_unprefixed_audit_prompt(path: Path) -> bool:
+    """A template-conforming audit prompt the model saved WITHOUT the ``audit_`` prefix (observed
+    live: a local 9B wrote ``authorization_bypass.md`` / ``persistence_deserialization.md``; both
+    were silently ignored and 2 of 3 planned focuses never ran). Only accepted when the file
+    already carries the template's section headers; it then goes through the same hard
+    well-formedness gate as any prefixed prompt."""
+    name = path.name.lower()
+    if not name.endswith(".md") or name.startswith(".") or name in _NON_PROMPT_MD             or _is_audit_prompt(path.name):
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").lower()
+    except OSError:
+        return False
+    return all(sig in text for sig in _PROMPT_SIGNATURE)
+
+
+def _is_any_audit_prompt(path: Path) -> bool:
+    return _is_audit_prompt(path.name) or _is_unprefixed_audit_prompt(path)
+
+
 def _canonical_prompt_name(name: str) -> str:
     """Normalize an audit-prompt filename to the ``audit_<rest>.md`` form the audit stage globs."""
-    return name if name.startswith("audit_") else "audit_" + name[len("audit"):].lstrip("-_")
+    if name.startswith("audit_"):
+        return name
+    if _is_audit_prompt(name):
+        return "audit_" + name[len("audit"):].lstrip("-_")
+    return "audit_" + name
 
 
 def _repo_url(scope) -> str:
@@ -173,7 +203,7 @@ def run(ctx: RunContext) -> list[Path]:
         # A transient cutoff can write ground_truth.json + repo_profile.json but NOT the audit_*.md
         # prompts, which would abort the whole run. If no audit prompt was produced, retry the
         # synthesis (read-only, idempotent); otherwise proceed with what we have.
-        if any(_is_audit_prompt(f.name) for f in files):
+        if any(_is_any_audit_prompt(f) for f in files):
             break
         if attempt < _RECON_MAX_ATTEMPTS:
             print(f"[recon] attempt {attempt}/{_RECON_MAX_ATTEMPTS} produced no audit prompts "
@@ -220,7 +250,10 @@ def run(ctx: RunContext) -> list[Path]:
         elif f.name == "synthesis_notes.md":
             (ctx.run_dir / "synthesis_notes.md").write_text(
                 f.read_text(encoding="utf-8"), encoding="utf-8")
-        elif _is_audit_prompt(f.name):
+        elif _is_any_audit_prompt(f):
+            if not _is_audit_prompt(f.name):
+                print(f"[recon] accepting unprefixed audit prompt {f.name} as "
+                      f"{_canonical_prompt_name(f.name)}", file=sys.stderr)
             text = f.read_text(encoding="utf-8")
             # Deterministically re-insert any prohibited technique the model paraphrased away
             # (only ever ADDS the scope's own constraints) before the hard gate below.

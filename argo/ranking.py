@@ -31,7 +31,23 @@ def split_ref(ref: str) -> tuple[str, str]:
         m = re.match(r"\s*(\d+)", tail)
         if m and head.strip():
             return head.strip(), m.group(1)
+    # Non-numeric locators after a real file path: ``File.java:addToTree()``,
+    # ``File.java (method x)``, ``File.java#L10``, ``File.java, line 40``. Previously the whole
+    # string was returned as the "file", so citation grounding judged a real file "not in repo"
+    # and dropped the finding before validation (observed live: a local 9B model's CTrie.java
+    # finding). Take the leading path token when it ends in a file extension.
+    m = _PATH_HEAD_RE.match(ref)
+    if m:
+        rest = ref[m.end():]
+        line = _LINE_IN_REST_RE.search(rest)
+        return m.group(1), line.group(1) if line else ""
     return ref.strip(), ""
+
+
+#: leading ``path/to/file.ext`` followed by a separator (``:``, ``#``, ``(``, ``,``, whitespace).
+_PATH_HEAD_RE = re.compile(r"\s*([^\s:#(),]+\.[A-Za-z0-9]{1,8})(?=[\s:#(,]|$)")
+#: a line number in the locator tail: ``#L10``, ``line 40``, ``L40``.
+_LINE_IN_REST_RE = re.compile(r"(?:#L|\bline\s+|\bL)(\d+)", re.I)
 
 
 def dedup_key(primary_file: str, primary_line: str, cwe: str) -> str:

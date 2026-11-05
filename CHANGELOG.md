@@ -11,6 +11,11 @@ particular while the version stays `0.y.z`.
 
 ### Fixed
 
+- **Real findings dropped as "ungrounded citation".** `split_ref` only understood `path:LINE`;
+  citations such as `File.java:addToTree()`, `File.java (method x)` or `File.java#L10` were
+  treated as a whole-string path, so citation grounding declared a real file "not in repo" and
+  dropped the finding before validation. The leading file path (and a `#L`/`line N` locator) is
+  now extracted; genuinely missing files are still dropped.
 - **Audit focus re-run although findings existed.** When the model wrote its findings to a
   differently named `SECURITY_FINDINGS__*.json` (local models drop the `audit_` slug prefix), Argo
   picked its own untouched seed file, reported "no checkpointed findings" and re-ran the focus.

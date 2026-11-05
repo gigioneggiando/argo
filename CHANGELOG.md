@@ -9,8 +9,15 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.11.0] - 2026-11-05
+
 ### Fixed
 
+- **Audit findings checkpointed incrementally.** Each focus seeds its findings JSON before the
+  session and the backend rewrites it after every finding, so a crash or timeout keeps the
+  findings written so far (#60).
 - **Codex turn cap was never enforced.** `num_turns` was hard-coded to 0 for Codex, so
   `--max-turns` had no effect. Codex events are now streamed and the cap is enforced mid-session.
 - **Runaway Codex sessions.** Identical-call loops and failure streaks (e.g. a broken sandbox) stop
@@ -22,13 +29,20 @@ particular while the version stays `0.y.z`.
   `null` on an optional property as absent (and on a required array as `[]`), recursively, before
   the unchanged schema gate. Local models emitted `"validation": null` and
   `"obligations_satisfied": null`; each previously discarded a correct finding.
-
 - **Offline Codex stages could search the web.** The workspace-write sandbox does not cover
   Codex's provider-side `web_search` tool; an audit session used it and Ollama forwarded the query
   to its cloud endpoint. Every non-network stage now runs with `web_search="disabled"`.
 
 ### Added
 
+- `argo revalidate-context` re-runs adversarial validation only for findings marked stale by
+  answered context questions, refreshing evidence/questions/report and preserving the rest.
+- `argo resume` reopens audit at focus granularity: completed focuses are skipped and only
+  missing/retryable ones re-run (#58).
+- `--verify-high` deep-verifies only validation-confirmed High/Critical survivors;
+  `--verify-max-findings N` caps the sessions (#59).
+- Redesigned web audit workspace; clearer synthetic-demo labelling and Argo branding.
+- Agent-first onboarding (`AGENTS.md`, agent guide) and documentation refreshes (#50–#57, #61).
 - `--codex-context-window` / `codex_context_window` declares a local model's window so Codex
   auto-compacts before Ollama/LM Studio silently discard context.
 - Codex session events are persisted under `<run>/work/.argo_sessions/`.

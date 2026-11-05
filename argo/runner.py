@@ -141,6 +141,18 @@ class RunnerCancelled(RuntimeError):
     it — it propagates to the orchestrator, which marks the run cancelled."""
 
 
+class SessionGuardTripped(RuntimeError):
+    """A streaming session guard (see :meth:`AgentRunner._exec` ``on_stdout_line``) killed the
+    session mid-flight. Internal to the runner: backends translate it into a :class:`RunnerError`
+    with a precise ``failure_kind`` so stage partial-recovery still runs."""
+
+    def __init__(self, reason: str, *, stdout: str = "", stderr: str = ""):
+        super().__init__(reason)
+        self.reason = reason
+        self.stdout = stdout
+        self.stderr = stderr
+
+
 # Field paths verified against the REAL claude v2.1.178 `--output-format json` envelope
 # (see tests/fixtures/real_envelope.json). On a SUCCESS envelope these MUST all be present;
 # their absence means the CLI output shape drifted and we fail loudly rather than logging a
@@ -209,9 +221,15 @@ class AgentRunner(ABC):
 
     # ---------------------------------------------------------------- cancellable subprocess
     def _exec(self, cmd: list[str], *, prompt: str, cwd, timeout: float,
-              env: dict | None = None) -> subprocess.CompletedProcess:
+              env: dict | None = None,
+              on_stdout_line=None) -> subprocess.CompletedProcess:
         """Run a backend CLI as a **cancellable** subprocess: if ``self.cancel_event`` fires (the
         user hit Cancel mid-stage) or the timeout elapses, kill the whole process **tree** and raise.
+
+        ``on_stdout_line`` (optional) streams stdout: it is called with every line as it arrives
+        and may return a non-empty reason string to **abort the session mid-flight** (process tree
+        killed, :class:`SessionGuardTripped` raised carrying the reason and the stdout seen so far).
+        Without it, stdout is buffered exactly as before.
 
         Returns a ``CompletedProcess`` (stdout/stderr captured as text). Raises
         ``subprocess.TimeoutExpired`` on timeout and :class:`RunnerCancelled` on cancellation —
@@ -224,29 +242,78 @@ class AgentRunner(ABC):
             text=True, encoding="utf-8", errors="replace", cwd=str(cwd),
             env=env, creationflags=creationflags, preexec_fn=preexec)
         box: dict = {}
+        out_lines: list[str] = []
+        threads: list[threading.Thread] = []
 
-        def _pump():
-            try:
-                box["out"], box["err"] = proc.communicate(input=prompt)
-            except Exception as exc:               # pragma: no cover - defensive
-                box["exc"] = exc
+        if on_stdout_line is None:
+            def _pump():
+                try:
+                    box["out"], box["err"] = proc.communicate(input=prompt)
+                except Exception as exc:               # pragma: no cover - defensive
+                    box["exc"] = exc
+            threads.append(threading.Thread(target=_pump, daemon=True))
+        else:
+            def _feed():
+                try:
+                    proc.stdin.write(prompt)
+                    proc.stdin.close()
+                except (OSError, ValueError):          # child exited before reading all input
+                    pass
 
-        th = threading.Thread(target=_pump, daemon=True)
-        th.start()
+            def _read_out():
+                try:
+                    for line in proc.stdout:
+                        out_lines.append(line)
+                        if "abort" in box:
+                            continue
+                        try:
+                            reason = on_stdout_line(line)
+                        except Exception as exc:       # a guard bug must never hang the session
+                            reason = None
+                            box.setdefault("guard_exc", exc)
+                        if reason:
+                            box["abort"] = reason
+                except Exception as exc:               # pragma: no cover - defensive
+                    box["exc"] = exc
+
+            def _read_err():
+                try:
+                    box["err"] = proc.stderr.read()
+                except Exception:                      # pragma: no cover - defensive
+                    box["err"] = ""
+            threads += [threading.Thread(target=f, daemon=True)
+                        for f in (_feed, _read_out, _read_err)]
+
+        for th in threads:
+            th.start()
         ev = self.cancel_event
         deadline = time.monotonic() + timeout
-        while th.is_alive():
-            th.join(0.2)
+
+        def _alive() -> bool:
+            return any(t.is_alive() for t in threads) or (
+                on_stdout_line is not None and proc.poll() is None)
+
+        while _alive():
+            threads[-1].join(0.2) if on_stdout_line is None else time.sleep(0.2)
             if ev is not None and ev.is_set():
-                self._kill_tree(proc); th.join(5)
+                self._kill_tree(proc); [t.join(5) for t in threads]
                 raise RunnerCancelled("session cancelled mid-stage")
+            if "abort" in box:
+                self._kill_tree(proc); [t.join(5) for t in threads]
+                raise SessionGuardTripped(box["abort"], stdout="".join(out_lines),
+                                          stderr=box.get("err", ""))
             if time.monotonic() > deadline:
-                self._kill_tree(proc); th.join(5)
-                raise subprocess.TimeoutExpired(cmd, timeout)
+                self._kill_tree(proc); [t.join(5) for t in threads]
+                exc = subprocess.TimeoutExpired(cmd, timeout)
+                exc.partial_stdout = "".join(out_lines)
+                raise exc
         if "exc" in box:                           # pragma: no cover - defensive
             raise box["exc"]
-        return subprocess.CompletedProcess(cmd, proc.returncode, box.get("out", ""),
-                                           box.get("err", ""))
+        if "abort" in box:   # tripped on the very last lines, after the child had already exited
+            raise SessionGuardTripped(box["abort"], stdout="".join(out_lines),
+                                      stderr=box.get("err", ""))
+        out = box.get("out", "") if on_stdout_line is None else "".join(out_lines)
+        return subprocess.CompletedProcess(cmd, proc.wait(), out, box.get("err", ""))
 
     @staticmethod
     def _kill_tree(proc: subprocess.Popen) -> None:
@@ -635,6 +702,110 @@ def _scan_codex_models(stdout_jsonl: str) -> tuple[str, ...]:
     return tuple(found)
 
 
+#: Codex `--json` item types that are NOT a tool call (everything else completed by the agent --
+#: command_execution, file_change, mcp_tool_call, web_search, collab_tool_call, ... -- counts as one
+#: turn, the closest equivalent of Claude's ``num_turns``).
+_CODEX_NON_TOOL_ITEMS = frozenset({"agent_message", "reasoning", "error", "todo_list"})
+#: The same tool call with the same result this many times IN A ROW is a loop, not progress.
+#: Observed live (Qwen3-Coder-Next via Ollama, 2026-11-05): >1000 near-identical short calls that
+#: grew one session to the 131K context limit before any artifact was written.
+_CODEX_LOOP_REPEAT = 6
+#: Consecutive FAILED tool calls (non-zero exit / failed status) before the session is declared
+#: stuck -- e.g. a sandbox that rejects every command, which a weak model just keeps retrying.
+_CODEX_FAIL_STREAK = 20
+
+
+def _codex_tool_items(stdout_jsonl: str):
+    """Yield every completed tool-call item from Codex `--json` output."""
+    for line in (stdout_jsonl or "").splitlines():
+        item = _codex_completed_tool_item(line)
+        if item is not None:
+            yield item
+
+
+def _codex_completed_tool_item(line: str) -> dict | None:
+    line = line.strip()
+    if not line or line[0] != "{":
+        return None
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if ev.get("type") != "item.completed" or not isinstance(ev.get("item"), dict):
+        return None
+    item = ev["item"]
+    return None if item.get("type") in _CODEX_NON_TOOL_ITEMS else item
+
+
+def _count_codex_turns(stdout_jsonl: str) -> int:
+    return sum(1 for _ in _codex_tool_items(stdout_jsonl))
+
+
+class _CodexSessionGuard:
+    """Streaming tripwire for one `codex exec --json` session (fed line by line by ``_exec``).
+
+    Codex has no native turn cap and Argo previously only saw its output after exit, so
+    ``session_max_turns`` was never enforced for this backend (``num_turns`` was hard-coded 0) and a
+    looping local model could run until the stage timeout. This guard returns an abort reason as
+    soon as the cap is exceeded or the agent is visibly looping, and tees every event line to
+    ``events_path`` so a failed session can be diagnosed afterwards."""
+
+    def __init__(self, *, max_turns: int | None, events_path: Path | None = None):
+        self.max_turns = max_turns
+        self.events_path = events_path
+        self.turns = 0
+        self.kind: str | None = None
+        self._last_sig: str | None = None
+        self._repeat = 0
+        self._fail_streak = 0
+        self._fh = None
+        if events_path is not None:
+            try:
+                events_path.parent.mkdir(parents=True, exist_ok=True)
+                self._fh = events_path.open("a", encoding="utf-8")
+            except OSError:
+                self._fh = None
+
+    def close(self) -> None:
+        if self._fh is not None:
+            try:
+                self._fh.close()
+            except OSError:
+                pass
+            self._fh = None
+
+    def __call__(self, line: str) -> str | None:
+        if self._fh is not None:
+            try:
+                self._fh.write(line if line.endswith("\n") else line + "\n")
+                self._fh.flush()
+            except OSError:
+                pass
+        item = _codex_completed_tool_item(line)
+        if item is None:
+            return None
+        self.turns += 1
+        if self.max_turns is not None and self.turns > self.max_turns:
+            self.kind = "turn_cap"
+            return f"session exceeded max_turns cap {self.max_turns} (num_turns={self.turns})"
+        call = item.get("command") or item.get("tool") or item.get("server") or ""
+        sig = json.dumps([item.get("type"), call, item.get("exit_code"),
+                          str(item.get("aggregated_output") or item.get("status") or "")[:300]])
+        self._repeat = self._repeat + 1 if sig == self._last_sig else 1
+        self._last_sig = sig
+        if self._repeat >= _CODEX_LOOP_REPEAT:
+            self.kind = "tool_loop"
+            return (f"agent repeated the same tool call {self._repeat}x in a row "
+                    f"({item.get('type')}: {str(call)[:120]!r})")
+        failed = (item.get("exit_code") not in (None, 0)) or item.get("status") == "failed"
+        self._fail_streak = self._fail_streak + 1 if failed else 0
+        if self._fail_streak >= _CODEX_FAIL_STREAK:
+            self.kind = "tool_loop"
+            return (f"{self._fail_streak} consecutive failed tool calls (last: "
+                    f"{str(call)[:120]!r}); the sandbox or tool contract is likely broken")
+        return None
+
+
 _CODEX_HOME_CACHE_ROOT = Path.home() / ".argo" / "codex_homes"
 
 # Serializes bootstrap of a given key's CODEX_HOME across concurrent CodexRunner instances IN THIS
@@ -812,6 +983,19 @@ class CodexRunner(AgentRunner):
                 cmd += ["--local-provider", self.config.codex_local_provider]
         if self.config.codex_model:
             cmd += ["-m", self.config.codex_model]
+        # Tools Argo never wants: multi_agent lets the model spawn sub-agents whose tool calls,
+        # tokens and turns never appear in this session's event stream (observed live: a recon
+        # session delegated its work to an invisible child) -- that defeats every per-session cap.
+        for feature in self.config.codex_disable_features:
+            cmd += ["--disable", feature]
+        # Local models are unknown to Codex ("Model metadata ... not found; defaulting to fallback
+        # metadata"), so it cannot auto-compact before the server's own context limit, and Ollama
+        # then silently discards the oldest half of the conversation (context shift). Declaring the
+        # real window lets Codex compact in time.
+        window = self.config.codex_context_window
+        if window:
+            cmd += ["-c", f"model_context_window={int(window)}",
+                    "-c", f"model_auto_compact_token_limit={int(window * 0.8)}"]
         if policy is not None and policy.network:   # ONLY the research stage gets network egress
             cmd += ["-c", _CODEX_NETWORK_CFG]
         cmd.append("-")                         # read the prompt (instructions) from stdin
@@ -830,16 +1014,32 @@ class CodexRunner(AgentRunner):
         home_value = self._codex_home_env_value()
         if home_value:
             env = {**os.environ, "CODEX_HOME": home_value}
+        events_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", label or stage)
+        guard = _CodexSessionGuard(
+            max_turns=self.config.session_max_turns,
+            # A subdirectory, so stage `work.glob("*")` artifact recovery (is_file) never sees it.
+            events_path=Path(work_dir) / ".argo_sessions" / f"codex.{events_name}.jsonl")
         try:
-            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env,
+                              on_stdout_line=guard)
+        except SessionGuardTripped as exc:
+            # turn_cap keeps the historical non-retryable semantics of the post-hoc cap check;
+            # a tool loop is stochastic for a local model, so one fresh attempt is reasonable.
+            raise RunnerError(
+                f"codex session stopped by guard: {exc.reason} (stage={stage}, run_id={run_id}, "
+                f"label={label}); events: {guard.events_path}",
+                retryable=guard.kind == "tool_loop",
+                failure_kind=guard.kind or "tool_loop") from exc
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
             # A genuine hang-then-kill is not a deterministic failure -- the same call could well
             # succeed on a retry (this backend again, after a cooldown, or a fallback). Previously
             # NOT marked retryable, so a single hang killed the whole run with no fallback attempt.
             raise RunnerError(
                 f"codex session timed out after {timeout}s (stage={stage}, "
-                f"run_id={run_id}, label={label})",
+                f"run_id={run_id}, label={label}, tool_calls={guard.turns})",
                 retryable=True, failure_kind="timeout") from exc
+        finally:
+            guard.close()
         text = last_msg.read_text(encoding="utf-8", errors="replace") if last_msg.exists() else ""
         if proc.returncode != 0 and not text and not (proc.stdout or "").strip():
             # "No output at all" is the exact shape of BOTH an immediate moderation flag (fires
@@ -874,7 +1074,7 @@ class CodexRunner(AgentRunner):
             text=text, model=model, prompt_sha256=prompt_sha256, work_dir=work_dir,
             input_tokens=in_tok, output_tokens=out_tok,
             cost_usd=estimate_cost_usd(effective_model, in_tok, out_tok),   # estimated (token-based)
-            num_turns=0, session_id=None, stop_reason=f"exit_{rc}",
+            num_turns=_count_codex_turns(stdout), session_id=None, stop_reason=f"exit_{rc}",
             is_error=(rc != 0),   # non-zero -> recoverable (the stage globs scratch for partials)
             api_error_status=None, raw=raw, requested_model=model,
             served_model=served, served_models=served_models,

@@ -295,6 +295,14 @@ class PipelineConfig:
     codex_model: str | None = None
     codex_oss: bool = False             # use Codex's open-source provider (--oss)
     codex_local_provider: str | None = None  # "ollama" | "lmstudio" (with --oss)
+    # Codex features passed as `--disable <name>` on every session. multi_agent is off by default:
+    # spawned sub-agents run outside the session's event stream, so Argo's turn/loop guards, token
+    # accounting and transcripts cannot see them.
+    codex_disable_features: tuple[str, ...] = ("multi_agent",)
+    # Real context window of a local model (tokens). Codex has no metadata for local models and so
+    # never auto-compacts; set this to the server's window (e.g. Ollama OLLAMA_CONTEXT_LENGTH) so
+    # Codex compacts at 80% instead of the server discarding half the conversation.
+    codex_context_window: int | None = None
     session_timeout_s: int = 1800       # default per-session wall-clock cap (seconds)
     # per-stage wall-clock overrides; seeded with DEFAULT_STAGE_TIMEOUTS (deep recon + audit).
     stage_timeouts: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_STAGE_TIMEOUTS))

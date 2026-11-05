@@ -182,6 +182,10 @@ def run(ctx: RunContext) -> list[Path]:
     if not files and last_exc is not None:
         raise last_exc
 
+    for f in files:
+        if f.name == "repo_profile.json":
+            _repair_json_artifact(ctx, work, f)
+
     ctx.prompts_out_dir.mkdir(parents=True, exist_ok=True)
 
     # Cheap repo signals that gate the mandatory coverage checklist injected into every audit prompt
@@ -197,7 +201,12 @@ def run(ctx: RunContext) -> list[Path]:
     prompt_paths: list[Path] = []
     for f in files:
         if f.name == "repo_profile.json":
-            json.loads(f.read_text(encoding="utf-8-sig"))  # must be valid JSON
+            try:
+                json.loads(f.read_text(encoding="utf-8-sig"))  # must be valid JSON
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"recon: repo_profile.json is not valid JSON after one repair attempt ({exc}); "
+                    f"the malformed file is kept at {f}") from exc
             ctx.repo_profile_path.write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
         elif f.name == "ground_truth.json":
             # Best-effort: the authoritative ground truth is baked into each audit prompt; this
@@ -250,6 +259,51 @@ def run(ctx: RunContext) -> list[Path]:
     if ctx.config.target_memory_enabled:
         target_memory.capture_recon(ctx)
     return sorted(prompt_paths)
+
+
+_JSON_REPAIR_PROMPT = """\
+The file `{name}` in your current working directory is not valid JSON.
+Parser error: {error}
+
+Rewrite `{name}` in place so that it is syntactically valid JSON. Fix ONLY the syntax (for
+example an array that contains `"key": value` pairs must become an object, or the pair must become
+a plain string); keep every key, value and fact otherwise unchanged. Do not read the target
+repository, do not create or modify any other file, and do not add commentary to the file.
+"""
+
+
+def _repair_json_artifact(ctx: RunContext, work: Path, path: Path) -> None:
+    """One bounded, syntax-only repair session for a malformed JSON artifact.
+
+    A single malformed character (observed live: ``"packages": ["left-pad": "1.0.0"]`` from a local
+    80B model) otherwise discards an otherwise-complete ~10-minute recon. The repair session sees
+    only the file and the parser error; the caller still re-parses the result and fails the stage
+    if it is still invalid, so this never weakens the validity gate. The original is kept as
+    ``<name>.malformed`` for audit."""
+    text = path.read_text(encoding="utf-8-sig", errors="replace")
+    try:
+        json.loads(text)
+        return
+    except ValueError as exc:
+        error = str(exc)
+    backup = path.with_name(path.name + ".malformed")
+    backup.write_text(text, encoding="utf-8")
+    print(f"[recon] {path.name} is malformed ({error}); running one syntax-repair session",
+          file=sys.stderr)
+    try:
+        ctx.runner_for("recon").run(
+            prompt=_JSON_REPAIR_PROMPT.format(name=path.name, error=error),
+            run_dir=ctx.run_dir,
+            work_dir=work,
+            model=ctx.config.model_for("recon"),
+            stage="recon",
+            run_id=ctx.run_id,
+            repo_dir=None,
+            allowed_tools=ARTIFACT_TOOLS,
+            label=f"recon-json-repair-{path.stem}",
+        )
+    except RunnerError as exc:
+        print(f"[recon] JSON repair session failed ({exc})", file=sys.stderr)
 
 
 # Section headers a gen-2 (target-specific) audit prompt must carry. Soft check: a missing section

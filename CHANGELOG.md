@@ -9,7 +9,15 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **Audit focus re-run although findings existed.** When the model wrote its findings to a
+  differently named `SECURITY_FINDINGS__*.json` (local models drop the `audit_` slug prefix), Argo
+  picked its own untouched seed file, reported "no checkpointed findings" and re-ran the focus.
+  The model-written file now wins over an untouched seed.
+- **Validate crashed on `"validation": {}`.** Empty stage objects are treated as absent, and the
+  audit stage now drops model-supplied `validation`/`corroboration`/`verification` entirely: an
+  auditor must not pre-fill (or self-confirm) verdicts owned by later stages.
 
 ## [0.11.0] - 2026-11-05
 

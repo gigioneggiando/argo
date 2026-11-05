@@ -102,7 +102,15 @@ class Ledger:
             have = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
             for name, decl in cols:
                 if name not in have:
-                    self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+                    try:
+                        self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+                    except sqlite3.OperationalError as exc:
+                        # Two Argo processes opening a fresh shared ledger at the same moment
+                        # both see the column missing; the slower ALTER then fails. The column
+                        # exists either way, so that race is benign (observed: parallel runs
+                        # started in the same second on 2026-11-05).
+                        if "duplicate column name" not in str(exc).lower():
+                            raise
 
     def close(self) -> None:
         self._conn.close()

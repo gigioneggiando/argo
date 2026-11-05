@@ -9,7 +9,11 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **Parallel runs crashed on a fresh ledger.** Two `argo` processes opening a new shared ledger
+  in the same second both ran the schema migration; the slower `ALTER TABLE` failed with
+  `duplicate column name`. That benign race is now tolerated; other SQLite errors still raise.
 
 ## [0.11.1] - 2026-11-05
 

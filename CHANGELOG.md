@@ -9,6 +9,10 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.11.1] - 2026-11-05
+
 ### Fixed
 
 - **Real findings dropped as "ungrounded citation".** `split_ref` only understood `path:LINE`;

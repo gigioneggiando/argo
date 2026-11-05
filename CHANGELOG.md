@@ -18,6 +18,10 @@ particular while the version stays `0.y.z`.
   model server's context limit.
 - **Recon discarded on one bad character.** A malformed `repo_profile.json` gets one syntax-only
   repair session before the unchanged validity gate; the original is kept as `.malformed`.
+- **Valid findings dropped over one `null`.** Audit normalization now treats a schema-forbidden
+  `null` on an optional property as absent (and on a required array as `[]`), recursively, before
+  the unchanged schema gate. Local models emitted `"validation": null` and
+  `"obligations_satisfied": null`; each previously discarded a correct finding.
 
 ### Added
 

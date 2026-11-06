@@ -839,6 +839,69 @@ def _claude_activity(line: str) -> str | None:
     return " · ".join(parts) or None
 
 
+def _gemini_events(stdout: str):
+    for line in stdout.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(ev, dict):
+                yield ev
+
+
+def _gemini_stream_envelope(stdout: str) -> dict | None:
+    """Rebuild the ``--output-format json`` envelope from a ``stream-json`` session (gemini CLI
+    0.66, verified 2026-11-06): ``response`` = the assistant deltas after the last tool result,
+    ``stats.models`` mapped to the json shape ({tokens: {prompt, candidates}}; stream
+    ``input_tokens`` already includes cached tokens, like json ``prompt``), and a non-success
+    result becomes ``error``. None when the stream never reached its ``result`` event."""
+    session_id, chunks, result = None, [], None
+    for ev in _gemini_events(stdout):
+        kind = ev.get("type")
+        if kind == "init":
+            session_id = ev.get("session_id")
+        elif kind == "tool_result":
+            chunks = []                               # only the answer after the last tool counts
+        elif kind == "message" and ev.get("role") == "assistant":
+            chunks.append(str(ev.get("content") or ""))
+        elif kind == "result":
+            result = ev
+    if result is None:
+        return None
+    stats = result.get("stats") if isinstance(result.get("stats"), dict) else {}
+    models = {
+        name: {"tokens": {"prompt": int((e or {}).get("input_tokens", 0) or 0),
+                          "candidates": int((e or {}).get("output_tokens", 0) or 0)}}
+        for name, e in (stats.get("models") or {}).items()
+    }
+    env: dict = {"session_id": session_id, "response": "".join(chunks),
+                 "stats": {"models": models} if models else {}}
+    if result.get("status") != "success":
+        err = result.get("error")
+        env["error"] = err if isinstance(err, dict) else {
+            "message": str(err or f"gemini stream ended with status {result.get('status')!r}")}
+    return env
+
+
+def _gemini_activity(line: str) -> str | None:
+    """One progress line from a Gemini ``stream-json`` event: a tool call (deltas are too fine)."""
+    line = line.strip()
+    if not line.startswith("{"):
+        return None
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if ev.get("type") != "tool_use":
+        return None
+    params = ev.get("parameters") if isinstance(ev.get("parameters"), dict) else {}
+    detail = next((str(params[k]) for k in ("command", "file_path", "pattern", "dir_path", "path",
+                                            "query", "url") if params.get(k)), "")
+    return f"{ev.get('tool_name', 'tool')} {detail}".strip()
+
+
 # -------------------------------------------------------------------------------- codex
 #: TOML config path that re-enables network egress inside the workspace-write sandbox. Used ONLY
 #: for the research stage; isolated as a constant so a Codex-version key change is a one-line fix.
@@ -1440,10 +1503,12 @@ class GeminiRunner(AgentRunner):
             self._resolved_bin = resolved
         return self._resolved_bin
 
-    def _build_gemini_cmd(self, *, model, repo_dir, policy_file: Path) -> list[str]:
+    def _build_gemini_cmd(self, *, model, repo_dir, policy_file: Path, stream=False) -> list[str]:
         cmd = [
             self._bin(),
-            "--output-format", "json",
+            # stream-json only while a live viewer is attached (chat); converted back to the json
+            # envelope by _gemini_stream_envelope, so parse_envelope is unchanged.
+            "--output-format", "stream-json" if stream else "json",
             "--skip-trust",              # see class docstring — required for a fresh scratch dir
             "--approval-mode", "yolo",   # non-interactive auto-approve for whatever isn't denied
             "-m", model,
@@ -1459,7 +1524,9 @@ class GeminiRunner(AgentRunner):
                       else _GEMINI_POLICY_OFFLINE)
         policy_file = Path(work_dir) / ".argo_gemini_policy.toml"
         policy_file.write_text(policy_toml, encoding="utf-8")
-        cmd = self._build_gemini_cmd(model=model, repo_dir=repo_dir, policy_file=policy_file)
+        stream = self.on_activity is not None
+        cmd = self._build_gemini_cmd(model=model, repo_dir=repo_dir, policy_file=policy_file,
+                                     stream=stream)
         timeout = timeout_s or self.config.session_timeout_s
         # Multi-account: point this invocation at a specific Gemini API key so an account-fallback
         # can switch keys (limits are per-key/project). See build_runner / _expand_backend. Unlike
@@ -1468,7 +1535,9 @@ class GeminiRunner(AgentRunner):
         if self.config.gemini_api_key:
             env = {**os.environ, "GEMINI_API_KEY": self.config.gemini_api_key}
         try:
-            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env,
+                              on_stdout_line=(self._with_activity(None, _gemini_activity)
+                                              if stream else None))
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
             raise RunnerError(
                 f"gemini session timed out after {timeout}s "
@@ -1497,10 +1566,13 @@ class GeminiRunner(AgentRunner):
         # Error startup-crash shape confirmed live: nothing on stdout, everything on stderr).
         out = (proc.stdout or "").strip()
         if out:
-            try:
-                envelope = json.loads(out)
-            except json.JSONDecodeError:
-                envelope = None
+            if stream:
+                envelope = _gemini_stream_envelope(out)
+            else:
+                try:
+                    envelope = json.loads(out)
+                except json.JSONDecodeError:
+                    envelope = None
             if isinstance(envelope, dict):
                 envelope["_exit_code"] = proc.returncode
                 return envelope  # parse_envelope validates shape + classifies is_error

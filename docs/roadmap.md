@@ -21,9 +21,12 @@ defaults.
 
 These are deliberately recorded as follow-ups rather than silently inferred as complete:
 
-- **Corpus expansion — dropped (owner decision, 2026-11-06).** The paper that needed it is done; the
-  five verified cases stay as a regression/smoke suite. Consequence: the matrix below, if ever run,
-  uses those five cases, and profile defaults stay `provisional`.
+- **Corpus expansion — in review (2026-11-06).** Candidates are generated from the private findings
+  registry (clear maintainer verdicts only: fixed / publicly reported / acknowledged as vulns,
+  false-positive / not-security as `kind: "safe"`), one case per repo@commit with every labelled
+  finding, grouped by vulnerability family and severity. Only cases whose every label is already
+  public (fixed or CVE'd) can move into `benchmarks/corpora/`, after owner review of labels,
+  completeness and licence.
 - **Repeated cross-provider matrix:** run documented N≥3 comparisons on the same pinned corpus and
   settings across Claude, Codex, Gemini, and selected local/open-weight models (start with Qwen and
   DeepSeek), including effort variants and mixed-provider validation. First confirm `bench-cross`

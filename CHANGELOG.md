@@ -19,10 +19,6 @@ particular while the version stays `0.y.z`.
   `result` event is the same envelope), Gemini (also `stream-json`, rebuilt into the json envelope),
   Codex (from its `--json` events) and Mistral API report; Vibe shows the spinner only for now. Results, ledger and guardrails are unchanged.
 
-### Changed
-
-- Roadmap: benchmark corpus expansion dropped (owner decision); the five verified cases remain the
-  regression/smoke suite.
 
 ## [0.12.4] - 2026-11-06
 

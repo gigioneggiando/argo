@@ -336,6 +336,32 @@ class AgentRunner(ABC):
         # Set by the orchestrator for the duration of a run; when it fires, an in-flight CLI
         # subprocess is killed (mid-stage cancellation). None => not cancellable (e.g. CLI runs).
         self.cancel_event = None
+        # Optional live-activity sink (chat UI): receives short one-line progress strings (a tool
+        # call, an interim agent message) WHILE a session runs. Purely informational: never part
+        # of the result, the ledger or the guardrails; a failing sink is ignored.
+        self.on_activity = None
+
+    def _activity(self, text) -> None:
+        sink = self.on_activity
+        if sink is None or not text:
+            return
+        try:
+            sink(" ".join(str(text).split())[:_ACTIVITY_MAX_CHARS])
+        except Exception:  # noqa: BLE001 -- a UI sink must never break a session
+            pass
+
+    def _with_activity(self, on_line, parse):
+        """Wrap an ``_exec`` stdout-line callback so each line also feeds ``parse`` -> activity."""
+        if self.on_activity is None:
+            return on_line
+
+        def line(raw: str):
+            try:
+                self._activity(parse(raw))
+            except Exception:  # noqa: BLE001
+                pass
+            return on_line(raw) if on_line is not None else None
+        return line
 
     # ---------------------------------------------------------------- cancellable subprocess
     def _exec(self, cmd: list[str], *, prompt: str, cwd, timeout: float,
@@ -932,6 +958,38 @@ def _codex_completed_tool_item(line: str) -> dict | None:
     return None if item.get("type") in _CODEX_NON_TOOL_ITEMS else item
 
 
+#: Longest activity line shown to a live viewer (a command or an interim message, one line).
+_ACTIVITY_MAX_CHARS = 200
+
+
+def _codex_activity(line: str) -> str | None:
+    """One human-readable progress line from a Codex ``--json`` event, or None.
+
+    A started command / file change / tool call, or a completed interim agent message."""
+    line = line.strip()
+    if not line or line[0] != "{":
+        return None
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    item = ev.get("item") if isinstance(ev.get("item"), dict) else None
+    if item is None:
+        return None
+    kind = item.get("type")
+    if ev.get("type") == "item.started":
+        if kind == "command_execution":
+            return "$ " + str(item.get("command") or "")
+        if kind == "file_change":
+            paths = [c.get("path") for c in item.get("changes") or [] if isinstance(c, dict)]
+            return "edit " + ", ".join(p for p in paths if p) if paths else "edit"
+        if kind in {"mcp_tool_call", "web_search"}:
+            return str(item.get("tool") or item.get("query") or kind)
+    if ev.get("type") == "item.completed" and kind == "agent_message":
+        return str(item.get("text") or "") or None
+    return None
+
+
 def _codex_events_path(work_dir: Path, label: str) -> Path:
     """``<work parent>/.argo_sessions/<work name>.codex.<label>.jsonl`` -- next to, never inside,
     the session's scratch cwd."""
@@ -1233,7 +1291,7 @@ class CodexRunner(AgentRunner):
             events_path=_codex_events_path(Path(work_dir), events_name))
         try:
             proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env,
-                              on_stdout_line=guard)
+                              on_stdout_line=self._with_activity(guard, _codex_activity))
         except SessionGuardTripped as exc:
             # turn_cap keeps the historical non-retryable semantics of the post-hoc cap check;
             # a tool loop is stochastic for a local model, so one fresh attempt is reasonable.
@@ -1580,6 +1638,8 @@ class MockClaudeRunner(ClaudeRunner):
     def _invoke(self, *, prompt, work_dir, model, repo_dir, allowed, disallowed, policy=None,
                 stage, run_id, label, session_budget_usd=None, timeout_s=None) -> dict:
         if stage == "chat":
+            self._activity("$ rg -n 'get_order' src/")      # synthetic, like a real tool call
+            self._activity("Reading the run's validated findings")
             return self._chat(work_dir, label, prompt)
         if stage == "research":
             return self._research(work_dir, label)
@@ -2148,6 +2208,15 @@ class FallbackRunner(AgentRunner):
     def cancel_event(self, ev):
         for r in getattr(self, "_runners", []):
             r.cancel_event = ev
+
+    @property                                         # and the chat UI's live-activity sink
+    def on_activity(self):
+        return self._runners[0].on_activity if self._runners else None
+
+    @on_activity.setter
+    def on_activity(self, sink):
+        for r in getattr(self, "_runners", []):
+            r.on_activity = sink
 
     def run(self, **kwargs) -> LLMResult:
         last_exc: Exception | None = None

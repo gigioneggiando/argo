@@ -1,5 +1,5 @@
 // Router + views. Hash-based routing keeps deep links working with zero server config.
-import { api, streamRun } from "./api.js";
+import { api, streamRun, streamChat } from "./api.js";
 import {
   h, mount, toast, sevPill, verdictPill, stateChip, costChip,
   SEVERITIES, sevRank, confRank, effSev, effConf, verdict, primaryRef,
@@ -895,10 +895,22 @@ function chatPanel(id) {
     if (!text || busy) return;
     busy = true; sendBtn.disabled = true; input.value = "";
     addUser(text);
-    const pending = bubble("assistant", h("span", {}, h("span", { class: "spin" }), " analyzing…"));
+    // Live activity (tool calls / interim messages) while the analyst works, on backends that
+    // expose it; otherwise the spinner alone, exactly as before.
+    const status = h("span", {}, " analyzing…");
+    const trail = h("div", { class: "chat-activity mono" });
+    const pending = bubble("assistant", h("div", {}, h("span", {}, h("span", { class: "spin" }), status), trail));
     list.append(pending); scroll();
+    let steps = 0;
+    const onActivity = (t) => {
+      steps += 1;
+      status.textContent = ` working… ${steps} step${steps === 1 ? "" : "s"}`;
+      trail.append(h("div", { class: "chat-activity-line" }, t));
+      while (trail.childElementCount > 6) trail.firstChild.remove();
+      scroll();
+    };
     try {
-      const res = await api.sendChat(id, text);
+      const res = await streamChat(id, text, onActivity);
       pending.remove(); addAssistant(res.reply);
       const vc = res.validated_candidate;
       if (vc && vc.verdict) {                 // B1: a re-validated "why didn't you find X" candidate

@@ -9,7 +9,19 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- **Review questions in the API and web UI (F5).** `GET/POST /runs/{id}/questions` (list, or build
+  the queue for a finished run), `POST /runs/{id}/questions/{qid}/answer` (provenance required, no
+  model call) and `POST /runs/{id}/revalidate-context` (re-validates only the affected findings).
+  A new **Questions** tab answers and re-validates from the browser. `RunConfig` gains
+  `review_questions_enabled`. Until now this was CLI-only (`argo questions`, `answer-question`,
+  `revalidate-context`).
+
+### Fixed
+
+- **Web UI: a slow tab could overwrite the one selected after it.** Switching tabs while the
+  previous one was still loading showed the stale tab's content. Late responses are now discarded.
 
 ## [0.12.4] - 2026-11-06
 

@@ -56,6 +56,8 @@ class JobManager:
             cfg = cfg.with_overrides(research_enabled=req.config.research_enabled)
         if req.config.corroborate_enabled is not None:
             cfg = cfg.with_overrides(corroborate_enabled=req.config.corroborate_enabled)
+        if req.config.review_questions_enabled is not None:
+            cfg = cfg.with_overrides(review_questions_enabled=req.config.review_questions_enabled)
         if req.config.calibration:
             cfg = cfg.calibrated()
         if req.config.audit_model:

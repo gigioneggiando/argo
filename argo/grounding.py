@@ -108,6 +108,15 @@ def _iter_source_files(repo_dir: Path):
             yield p
 
 
+#: A dotted qualified name used as a location: ``io.moquette.persistence.SerdesUtils.readProperties()``
+#: or ``SerdesUtils.readProperties`` (JVM/.NET/Python style), optionally with call parentheses.
+_QUALIFIED_RE = re.compile(r"^\s*((?:[A-Za-z_$][\w$]*\.)+[A-Za-z_$][\w$]*)\s*(?:\([^)]*\))?\s*$")
+#: Languages whose files are named after a dotted package/module path.
+_QUALIFIED_EXTS = (".java", ".kt", ".kts", ".scala", ".groovy", ".cs", ".py")
+#: The line part of a citation tail: ``:26-35`` / ``:26``.
+_LINE_TAIL_RE = re.compile(r":\s*(\d+(?:\s*-\s*\d+)?)")
+
+
 class RepoIndex:
     """One cheap repo pass answering 'does this basename / symbol appear anywhere?'. Built once
     per validate run and reused across every finding (O(files), not O(files * findings))."""
@@ -146,6 +155,50 @@ class RepoIndex:
         if (self.repo_dir / file).is_file():
             return True
         return Path(file).name in self._basenames
+
+    def resolve_qualified(self, head: str) -> str | None:
+        """Map a dotted qualified name to the ONE repo file that defines it, or None.
+
+        ``io.moquette.persistence.SerdesUtils.readProperties()`` -> the file whose path ends in
+        ``io/moquette/persistence/SerdesUtils.java``; a bare ``SerdesUtils.readProperties`` falls
+        back to a UNIQUE ``SerdesUtils.<ext>`` basename. Longest package path wins; anything
+        ambiguous or unmatched stays unresolved (the caller keeps the original citation)."""
+        m = _QUALIFIED_RE.match(head or "")
+        if not m:
+            return None
+        parts = m.group(1).split(".")
+        # 1) package path: drop trailing member names until ``a/b/Class.ext`` is a unique suffix.
+        for i in range(len(parts), 1, -1):
+            stem = "/".join(parts[:i])
+            for ext in _QUALIFIED_EXTS:
+                hits = [rel for rel in self._paths
+                        if rel == stem + ext or rel.endswith("/" + stem + ext)]
+                if len(hits) == 1:
+                    return hits[0]
+        # 2) bare ``Class.member``: the right-most Capitalized segment as a UNIQUE basename.
+        for name in reversed(parts):
+            if not name[:1].isupper():
+                continue
+            hits = [p for ext in _QUALIFIED_EXTS for p in self._basename_paths.get(name + ext, [])]
+            if len(hits) == 1:
+                try:
+                    return hits[0].relative_to(self.repo_dir).as_posix()
+                except ValueError:
+                    return None
+            return None                                   # nearest class is ambiguous/absent
+        return None
+
+    def normalize_ref(self, ref: str) -> str:
+        """Rewrite a qualified-name citation into ``path:lines`` when it resolves unambiguously;
+        every other citation (real paths, unresolvable names) is returned unchanged."""
+        if not ref or self.file_grounded(ref):
+            return ref
+        head = ref.split(":", 1)[0]
+        resolved = self.resolve_qualified(head)
+        if not resolved:
+            return ref
+        tail = _LINE_TAIL_RE.search(ref[len(head):])
+        return f"{resolved}:{tail.group(1).replace(' ', '')}" if tail else resolved
 
     def symbol_present(self, sym: str) -> bool:
         # A symbol the index was not built to search for is given the benefit of the doubt (never

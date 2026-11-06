@@ -286,6 +286,16 @@ def _ground_citations(ctx: RunContext, findings: list[Finding]) -> tuple[list[Fi
     dropped: list[dict] = []
     n_downgraded = 0
     for f in findings:
+        # Qualified-name citations (``io.x.Foo.bar():26``) -> real ``path:line`` first, so a real
+        # class cited Java-style is not dropped as "not in repo" and the validator gets excerpts.
+        try:
+            normalized = [index.normalize_ref(ref) for ref in (f.affected or [])]
+            if normalized != list(f.affected or []):
+                _log(f"{f.id}: resolved qualified-name citation(s) to file paths: "
+                     f"{[n for n, o in zip(normalized, f.affected) if n != o]}")
+                f.affected = normalized
+        except Exception:  # noqa: BLE001 — normalization is best-effort, never fatal
+            pass
         try:
             res = ground_finding(index, f)
         except Exception:  # noqa: BLE001 — never let one malformed finding crash the stage

@@ -9,7 +9,13 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **Qualified-name citations were dropped as "not in repo".** A finding citing
+  `io.x.Foo.bar():26-35` (Java/Kotlin/Scala/C#/Python dotted name) instead of a path was dropped
+  pre-validation by citation grounding. Validate now resolves such a citation to the unique repo
+  file (`.../io/x/Foo.java:26-35`) before grounding; ambiguous or absent names stay unchanged and
+  are still judged. Seen on 4 Mistral Medium findings in the 2026-11-06 moquette replay.
 
 ## [0.12.2] - 2026-11-06
 

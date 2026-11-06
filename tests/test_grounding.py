@@ -162,3 +162,25 @@ def test_grounded_findings_pass_through_untouched(env):
         if f.get("grounding"):
             assert not f["grounding"]["missing_files"]
             assert not f["grounding"]["missing_symbols"]
+
+
+_QUALIFIED_CITATION = {
+    "id": "FQN-CITE", "title": "Real bug cited by qualified name",
+    "severity": "High", "confidence": "High", "cwe": "CWE-89",
+    "affected": ["src.api.orders.get_order():3"],   # Java-style citation of src/api/orders.py
+    "vulnerable_flow": "x", "why_vulnerable": "get_order builds SQL from input",
+    "exploit_scenario": "x", "impact": "x", "recommended_fix": "x",
+}
+
+
+def test_qualified_name_citation_is_resolved_not_dropped(env, make_scenario):
+    fixtures_dir, scen = make_scenario(lambda s: _inject(s, _QUALIFIED_CITATION), name="ground_fqn")
+    ctx = env(scen, fixtures_dir=fixtures_dir)
+    run_pipeline(ctx, BRIEF, str(REPO), research_enabled=False)
+    vf = _validated(ctx)
+
+    dropped = {d["id"]: d for d in vf["dropped"]}
+    assert "ungrounded_citation" not in dropped.get("FQN-CITE", {}).get("reason", "")
+    kept = next((f for f in vf["findings"] if f["id"] == "FQN-CITE"), None)
+    if kept is not None:
+        assert kept["affected"][0] == "src/api/orders.py:3"

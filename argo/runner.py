@@ -78,6 +78,14 @@ FailureKind = str  # Literal["moderation_flagged", "credits_exhausted", "rate_li
                     # so a new signature can be added without a call-site type-check ripple.
 
 
+#: Failure kinds that a same-backend retry cannot fix (exhausted credits, a rejected or missing
+#: key, an invalid request, a stage the backend cannot serve, a repo mutation, a model pin
+#: mismatch). Stage-internal retry loops stop on these; FallbackRunner may still try ANOTHER backend.
+TERMINAL_FAILURE_KINDS = frozenset({"credits_exhausted", "auth_failed", "credential_bootstrap",
+                                    "invalid_request", "unsupported_stage_tool", "repo_mutated",
+                                    "model_mismatch"})
+
+
 class RunnerError(RuntimeError):
     def __init__(self, message: str, *, retry_after: str | None = None,
                  retryable: bool = False, failure_kind: FailureKind | None = None):

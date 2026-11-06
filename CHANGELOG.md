@@ -13,6 +13,13 @@ particular while the version stays `0.y.z`.
 
 - **`--runner mistral-api` failed to import after `pip install .`** without `requirements.txt`:
   `httpx` was only a `dev` extra in `pyproject.toml`. It is now a runtime dependency.
+- **Recon and audit no longer re-run a session that cannot succeed.** Their internal retries
+  fired on any session failure, so an exhausted account (observed: Mistral `402 API budget
+  exhausted`) or a rejected key was retried once more for nothing. Failures in
+  `runner.TERMINAL_FAILURE_KINDS` (`credits_exhausted`, `auth_failed`, `credential_bootstrap`,
+  `invalid_request`, `unsupported_stage_tool`, `repo_mutated`, `model_mismatch`) now end the stage's
+  own retry; transient failures (timeouts, network) are still retried once. Cross-backend
+  `--fallback` is unchanged.
 
 ## [0.12.0] - 2026-11-06
 

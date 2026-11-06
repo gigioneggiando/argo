@@ -1,0 +1,12 @@
+[
+  {
+    "label": "[FRSS-2026-0004] Login challenge nonce remains reusable after verification",
+    "cwe": "CWE-294",
+    "aliases": [],
+    "file": "app/Controllers/authController.php",
+    "line": 120,
+    "line_tolerance": 40,
+    "severity": "Low",
+    "category": "Authentication & session"
+  }
+]

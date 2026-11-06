@@ -1,0 +1,20 @@
+[
+  {
+    "label": "[SDB-2026-0001] WASI line buffering permits guest-controlled host-memory growth outside the Store limiter",
+    "cwe": "CWE-770",
+    "aliases": [],
+    "file": "surrealism/runtime/src/wasi_context.rs:60 CallbackWriter",
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[SDB-2026-0013] Remote response header bytes can panic JavaScript fetch header accessors",
+    "cwe": "CWE-248",
+    "aliases": [],
+    "file": "surrealdb/core/src/fnc/script/fetch/func.rs:130 Headers::from_map",
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Denial of service"
+  }
+]

@@ -1,0 +1,12 @@
+[
+  {
+    "label": "[FRSS-2026-0003] ZIP import expands archive members without decompression limits",
+    "cwe": "CWE-409",
+    "aliases": [],
+    "file": "app/Controllers/importExportController.php",
+    "line": 67,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Denial of service"
+  }
+]

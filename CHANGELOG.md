@@ -25,6 +25,11 @@ particular while the version stays `0.y.z`.
   `--include-unverified`; never design-accepted, fixed-upstream, refuted or stale) and make no model
   calls. New `docs/ci.md` with a GitHub Actions example (`--profile cost-saver`,
   `--incremental-base`, explicit budget).
+- **Benchmark corpus: 5 -> 19 cases.** 14 real-target cases (43 labels; moquette, ds4, proxysql,
+  gitea, surrealdb, navidrome, pocketbase, baserow, FreshRSS, PHP-CS-Fixer) from maintainer
+  verdicts. Only publicly described issues are included (published advisory, CVE or public fix PR),
+  and every pinned commit is verified upstream. Each label carries `category` and `severity`.
+  `MANIFEST.json` records coverage by category and severity, plus the public-inclusion rule.
 
 ### Fixed
 

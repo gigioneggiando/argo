@@ -1,0 +1,83 @@
+[
+  {
+    "label": "[DS4-2026-0001] safetensors header length integer overflow -> undersized heap allocation -> attacker-controlled heap OOB write (shard_load)",
+    "cwe": "CWE-190",
+    "aliases": [],
+    "file": "gguf-tools/deepseek4-quantize.c",
+    "line": 478,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Memory safety"
+  },
+  {
+    "label": "[DS4-2026-0003] Quadratic (O(n^2)) CPU amplification in pre-enqueue tool-call-id validation over attacker-controlled message arrays (/v1/responses and /v1/messages)",
+    "cwe": "CWE-407",
+    "aliases": [],
+    "file": "ds4_server.c:2474-2513 responses_validate_tool_outputs",
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[DS4-2026-0004] FP8/FP4 safetensors dequantization indexes tensor data by shape without validating the tensor's actual byte length -> heap out-of-bounds read",
+    "cwe": "CWE-125",
+    "aliases": [],
+    "file": "gguf-tools/deepseek4-quantize.c:683 dequant_fp8_weight",
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Memory safety"
+  },
+  {
+    "label": "[DS4-2026-0006] SNAPSHOT_LOAD_BEGIN allocates and reads token_count*4 bytes before validating token_count against the worker context (bounded ~4 GiB alloc)",
+    "cwe": "CWE-1284",
+    "aliases": [],
+    "file": "ds4_distributed.c:7005 malloc((size_t)begin.token_count * sizeof(tokens[0])) before the ctx check",
+    "line_tolerance": 40,
+    "severity": "Low",
+    "category": "Memory safety"
+  },
+  {
+    "label": "[DS4-2026-0011] merges.len not bounded to INT32_MAX before (int) narrowing of merge rank",
+    "cwe": "CWE-197",
+    "aliases": [],
+    "file": "ds4.c",
+    "line": 22243,
+    "line_tolerance": 40,
+    "severity": "Low",
+    "category": "Memory safety"
+  },
+  {
+    "label": "[DS4-2026-0016] Agent KV-cache text/title reader (agent_kv_read_text + title trailer) has the same xmalloc(len+1)+fread(len)-no-bound pattern as QUANT-001/DS4-2026-0015 -- a third independent sink",
+    "cwe": "CWE-190",
+    "aliases": [
+      "CWE-787"
+    ],
+    "file": "ds4_agent.c",
+    "line": 3688,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Memory safety"
+  },
+  {
+    "label": "[DS4-2026-0017] ds4.c GGUF loader (parse_metadata/parse_tensors) allocates kv/tensor tables from unbounded header counts before any file-size check -- startup denial of service",
+    "cwe": "CWE-770",
+    "aliases": [
+      "CWE-400"
+    ],
+    "file": "ds4.c",
+    "line": 1860,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Memory safety"
+  },
+  {
+    "label": "[DS4-2026-0019] Heap double-free in JSON request parser via non-string \"model\" field (systemic free-then-reparse-without-null pattern)",
+    "cwe": "CWE-415",
+    "aliases": [],
+    "file": "ds4_server.c",
+    "line": 760,
+    "line_tolerance": 40,
+    "severity": "Critical",
+    "category": "Memory safety"
+  }
+]

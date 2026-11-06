@@ -1,0 +1,12 @@
+{
+  "name": "moquette-da7f719",
+  "repo": "https://github.com/moquette-io/moquette",
+  "commit": "da7f719a6bab9829d520b5838e13ea7b1f9be3ef",
+  "archetype": "other",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "moquette@da7f719a6bab9829d520b5838e13ea7b1f9be3ef",
+  "cve_ids": [
+    "CVE-2026-85724"
+  ],
+  "expected": "expected_findings.json"
+}

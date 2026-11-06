@@ -1,0 +1,13 @@
+{
+  "name": "gitea-871c807",
+  "repo": "https://github.com/go-gitea/gitea",
+  "commit": "871c807b958b4df66740fbfffe0ff41ee12c3352",
+  "archetype": "web_api_cms",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "gitea@871c807b958b4df66740fbfffe0ff41ee12c3352",
+  "cve_ids": [
+    "CVE-2026-101023",
+    "CVE-2026-97859"
+  ],
+  "expected": "expected_findings.json"
+}

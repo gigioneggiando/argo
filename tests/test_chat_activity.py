@@ -93,3 +93,79 @@ def test_chat_stream_requires_scope(tmp_path):
     r = client.post("/runs/no-scope/chat/stream", json={"message": "hi"})
     assert r.status_code == 409
     assert client.post("/runs/missing/chat/stream", json={"message": "hi"}).status_code == 404
+
+
+# ---------------------------------------------------------------- Claude stream-json (B2)
+# Event shapes as emitted by claude 2.1.319 `-p --output-format stream-json --verbose` (captured
+# 2026-11-06); ids/paths replaced with synthetic values. The final "result" event carries the same
+# fields as the `--output-format json` envelope.
+_CLAUDE_STREAM = [
+    {"type": "system", "subtype": "init", "session_id": "s-1", "model": "claude-haiku-5-5"},
+    {"type": "system", "subtype": "thinking_tokens", "estimated_tokens": 50, "session_id": "s-1"},
+    {"type": "assistant", "message": {"role": "assistant", "content": [
+        {"type": "thinking", "thinking": "", "signature": "x"}]}, "session_id": "s-1"},
+    {"type": "assistant", "message": {"role": "assistant", "content": [
+        {"type": "text", "text": "Checking the order lookup"},
+        {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "src/api/orders.py"}}]},
+     "session_id": "s-1"},
+    {"type": "user", "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content": "def get_order(..."}]}},
+    {"type": "rate_limit_event", "rate_limit_info": {"status": "allowed"}},
+    {"type": "result", "subtype": "success", "is_error": False, "num_turns": 2, "result": "It is SQLi.",
+     "session_id": "s-1", "total_cost_usd": 0.0047, "stop_reason": "end_turn",
+     "terminal_reason": "completed", "api_error_status": None,
+     "usage": {"input_tokens": 2, "output_tokens": 76}},
+]
+
+
+def test_claude_activity_and_stream_result():
+    from argo.runner import _claude_activity, _claude_stream_result
+    lines = [json.dumps(e) for e in _CLAUDE_STREAM]
+    seen = [a for a in map(_claude_activity, lines) if a]
+    assert seen == ["Checking the order lookup · Read src/api/orders.py"]
+    env = _claude_stream_result("\n".join(lines) + "\n")
+    assert env["type"] == "result" and env["result"] == "It is SQLi." and env["num_turns"] == 2
+    assert _claude_stream_result("\n".join(lines[:-1])) is None          # stream never finished
+
+
+class _Proc:
+    def __init__(self, out, rc=0):
+        self.stdout, self.stderr, self.returncode = out, "", rc
+
+
+def test_headless_streams_only_with_a_viewer_and_parses_the_same_envelope(tmp_path, monkeypatch):
+    from argo.config import PipelineConfig
+    from argo.ledger import Ledger
+    from argo.runner import HeadlessClaudeRunner, parse_result_envelope
+    runner = HeadlessClaudeRunner(PipelineConfig(), Ledger(tmp_path / "l.sqlite"))
+    runner._resolved_bin = "claude"                                       # no PATH lookup in CI
+    stream = "\n".join(json.dumps(e) for e in _CLAUDE_STREAM) + "\n"
+    calls = []
+
+    def fake_exec(cmd, prompt, cwd, timeout, env=None, on_stdout_line=None):
+        calls.append((cmd, on_stdout_line))
+        if "stream-json" in cmd:
+            for line in stream.splitlines(keepends=True):
+                if on_stdout_line:
+                    on_stdout_line(line)
+            return _Proc(stream)
+        return _Proc(json.dumps(_CLAUDE_STREAM[-1]))
+
+    monkeypatch.setattr(runner, "_exec", fake_exec)
+    kw = dict(prompt="p", work_dir=tmp_path, model="m", repo_dir=None, allowed=[], disallowed=[],
+              stage="chat", run_id="R", label="chat")
+    try:
+        plain = runner._invoke(**kw)                                      # no viewer: json, as before
+        assert "json" in calls[0][0] and "stream-json" not in calls[0][0] and calls[0][1] is None
+        seen = []
+        runner.on_activity = seen.append
+        streamed = runner._invoke(**kw)
+        cmd = calls[1][0]
+        assert cmd[cmd.index("--output-format") + 1] == "stream-json" and "--verbose" in cmd
+        assert seen == ["Checking the order lookup · Read src/api/orders.py"]
+        parsed = [parse_result_envelope(e, model="m", prompt_sha256="h", work_dir=tmp_path)
+                  for e in (plain, streamed)]
+        assert (parsed[0].text, parsed[0].cost_usd, parsed[0].num_turns) == \
+               (parsed[1].text, parsed[1].cost_usd, parsed[1].num_turns) == ("It is SQLi.", 0.0047, 2)
+    finally:
+        runner.ledger.close()

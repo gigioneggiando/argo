@@ -33,8 +33,8 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
   resource costs. Run only with approved budget and comparable access.
 - **Measured defaults:** use those results to decide whether built-in profiles should change. Until then
   profile routing remains marked `provisional` and no quality claim is made from one run.
-- **Optional product backlog:** streaming chat replies (B2: live activity shipped 2026-11-06, Claude/
-  Gemini pending), per-run subprocess isolation (C2), and
+- **Optional product backlog:** streaming chat replies (B2: live activity shipped 2026-11-06 for Claude/
+  Codex/Mistral API; Gemini/Vibe pending), per-run subprocess isolation (C2), and
   additional CI/Fast profiles remain lower-priority work; they are not prerequisites for the shipped
   routing/planning tranche.
 
@@ -206,7 +206,7 @@ Implemented in `argo/chat.py` + `server/` (`GET/POST /runs/{id}/chat`, `GET .../
       read-only (verified: generated files never land in `repo/`). Served via `GET .../generated`.
 - [x] **"why-not-found" → candidate → re-validate** (backlog **B1**) — `chat.ask` re-validates a
       model-proposed `CANDIDATE_FINDING.json` via `validate._validate_one`; verdict in the UI.
-- [~] Streaming replies (backlog **B2**): live activity shipped (Codex, Mistral API); Claude/Gemini pending.
+- [~] Streaming replies (backlog **B2**): live activity shipped (Claude, Codex, Mistral API); Gemini/Vibe pending.
 
 ### Phase 4 — Context enrichment — ◑ PARTIAL (vuln index done; AST metadata deferred)
 Goal: raise recall/quality with cheap, structured context; surface it in the UI.
@@ -578,11 +578,11 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 - **Shipped:** live *activity* rather than tokens. Runners take an optional `on_activity` sink (set like
   `cancel_event`, propagated by `FallbackRunner`) and report one-line progress while a session runs:
   Codex from its `--json` events through the existing streaming `_exec(on_stdout_line=...)` tee (the
-  session guard still sees every line), Mistral API from its native loop. `chat.ask(on_activity=)`,
+  session guard still sees every line), Mistral API from its native loop, and Claude by switching to
+  `--output-format stream-json --verbose` ONLY when a sink is attached (its final `result` event is
+  the same envelope as `--output-format json`, verified against claude 2.1.319). `chat.ask(on_activity=)`,
   `POST /runs/{id}/chat/stream` (NDJSON over POST; ends with the plain call's payload), and the chat
-  panel shows the step count and last actions. Results, ledger and guardrails are unchanged. **Pending:**
-  Claude (`--output-format stream-json`, used only when a sink is attached; needs one verification
-  against the real CLI before relying on its final `result` event) and Gemini/Vibe.
+  panel shows the step count and last actions. Results, ledger and guardrails are unchanged. **Pending:** Gemini/Vibe.
 - **Original analysis (2026-06; the blocking-subprocess premise is outdated since `_exec` streams):**
   **Feasibility: low-to-medium; a real architectural blocker.** Every backend uses a single **blocking**
   `subprocess.run()` and returns one complete `LLMResult`; there is **no token-callback or streaming path**

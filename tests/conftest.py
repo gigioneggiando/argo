@@ -14,6 +14,15 @@ import pytest
 from argo.config import PipelineConfig
 from argo.orchestrator import build_context
 
+
+@pytest.fixture(autouse=True)
+def _no_real_cli_version_probes(monkeypatch):
+    """Ingest records backend CLI versions; never spawn the developer's real claude/codex/gemini/vibe
+    from mock tests (slow: seconds per CLI per pipeline run). Provenance tests call the real
+    ``argo.provenance.cli_versions`` directly."""
+    import argo.stages.ingest as ingest
+    monkeypatch.setattr(ingest, "cli_versions", lambda: {})
+
 FIXTURES = Path(__file__).parent / "fixtures"
 HAPPY = FIXTURES / "happy"
 BRIEF = FIXTURES / "brief.txt"

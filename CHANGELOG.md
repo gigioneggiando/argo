@@ -16,6 +16,10 @@ particular while the version stays `0.y.z`.
   pre-validation by citation grounding. Validate now resolves such a citation to the unique repo
   file (`.../io/x/Foo.java:26-35`) before grounding; ambiguous or absent names stay unchanged and
   are still judged. Seen on 4 Mistral Medium findings in the 2026-11-06 moquette replay.
+- **Run provenance lost CLI versions on Windows.** `meta.cli_versions` recorded `None` for
+  claude/codex/gemini because npm installs them as `.cmd` shims and a bare argv[0] does not apply
+  `PATHEXT`. The command is now resolved with `shutil.which` first, as the runners already do.
+  Tests stub the probe so mock pipelines no longer spawn the developer's real CLIs.
 
 ## [0.12.2] - 2026-11-06
 

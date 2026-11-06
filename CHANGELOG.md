@@ -9,6 +9,10 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.12.1] - 2026-11-06
+
 ### Fixed
 
 - **`--runner mistral-api` failed to import after `pip install .`** without `requirements.txt`:

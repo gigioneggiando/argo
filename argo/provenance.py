@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -14,8 +15,11 @@ def cli_versions() -> dict[str, str | None]:
                 "vibe": ["vibe", "--version"]}       # runner=mistral-vibe (mistral-api has no CLI)
     out: dict[str, str | None] = {}
     for name, command in commands.items():
+        # Windows: npm installs ``claude.cmd``/``codex.cmd``; CreateProcess does not apply PATHEXT to
+        # a bare name, so resolve the full path first (as the runners do) or the version is lost.
+        command = [shutil.which(command[0]) or command[0], *command[1:]]
         try:
-            p = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            p = subprocess.run(command, capture_output=True, text=True, timeout=10)
             text = (p.stdout or p.stderr).strip()
             out[name] = text.splitlines()[0][:300] if p.returncode == 0 and text else None
         except (OSError, subprocess.SubprocessError):

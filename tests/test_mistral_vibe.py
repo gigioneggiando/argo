@@ -236,4 +236,5 @@ def test_provenance_records_vibe_version(monkeypatch):
     def fake_run(cmd, **kw):
         return subprocess.CompletedProcess(cmd, 0, stdout=f"{cmd[0]} 9.9.9\n", stderr="")
     monkeypatch.setattr(provenance.subprocess, "run", fake_run)
+    monkeypatch.setattr(provenance.shutil, "which", lambda name: None)
     assert provenance.cli_versions()["vibe"] == "vibe 9.9.9"

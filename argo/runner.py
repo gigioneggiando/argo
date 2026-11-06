@@ -793,11 +793,15 @@ class HeadlessClaudeRunner(AgentRunner):
         return self._resolved_bin
 
     def _build_cmd(self, *, model, repo_dir, allowed, disallowed,
-                   session_budget_usd=None, effort=None) -> list[str]:
+                   session_budget_usd=None, effort=None, stream=False) -> list[str]:
         cmd = [
             self._bin(),
             "-p",
-            "--output-format", "json",      # metadata only (session id, cost, stop reason)
+            # json = one metadata envelope at exit. stream-json (only when a live viewer is
+            # attached, e.g. chat) = one event per line; its final ``type: "result"`` event carries
+            # the SAME envelope fields (verified against claude 2.1.319), so parsing is unchanged.
+            *(("--output-format", "stream-json", "--verbose") if stream
+              else ("--output-format", "json")),
             "--model", model,
             # Default mode: in -p an action that would need approval is DENIED, not prompted,
             # so a headless run never hangs. Reads stay inside the cwd + --add-dir; writes are
@@ -821,9 +825,10 @@ class HeadlessClaudeRunner(AgentRunner):
 
     def _invoke(self, *, prompt, work_dir, model, repo_dir, allowed, disallowed, policy=None,
                 stage, run_id, label, session_budget_usd=None, timeout_s=None) -> dict:
+        stream = self.on_activity is not None
         cmd = self._build_cmd(model=model, repo_dir=repo_dir, allowed=allowed,
                               disallowed=disallowed, session_budget_usd=session_budget_usd,
-                              effort=self.config.stage_effort.get(stage))
+                              effort=self.config.stage_effort.get(stage), stream=stream)
         timeout = timeout_s or self.config.session_timeout_s
         # Multi-account: point this invocation at a specific Claude credential store so an
         # account-fallback can switch accounts (limits are per-account). See build_runner.
@@ -842,7 +847,9 @@ class HeadlessClaudeRunner(AgentRunner):
             if self.config.claude_api_key:
                 env["ANTHROPIC_API_KEY"] = self.config.claude_api_key
         try:
-            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env,
+                              on_stdout_line=(self._with_activity(None, _claude_activity)
+                                              if stream else None))
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
             raise RunnerError(
                 f"claude session timed out after {timeout}s "
@@ -854,7 +861,11 @@ class HeadlessClaudeRunner(AgentRunner):
         # A result envelope may arrive WITH a non-zero exit (e.g. is_error / budget-exceeded);
         # prefer parsing stdout, and only fall back to a hard error if there is no usable JSON.
         out = (proc.stdout or "").strip()
-        if out:
+        if out and stream:
+            envelope = _claude_stream_result(out)
+            if envelope is not None:
+                return envelope
+        elif out:
             try:
                 envelope = json.loads(out)
             except json.JSONDecodeError:
@@ -869,6 +880,47 @@ class HeadlessClaudeRunner(AgentRunner):
             f"label={label}, exit={proc.returncode}). This usually means an auth/startup "
             f"failure.\nstderr tail:\n{stderr[-1500:]}\n"
             f"stdout tail:\n{stdout[-500:]}")
+
+
+def _claude_stream_result(stdout: str) -> dict | None:
+    """The final ``{"type": "result", ...}`` event of a ``--output-format stream-json`` session:
+    the same envelope ``--output-format json`` prints, or None if the stream never finished."""
+    for line in reversed(stdout.splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "result":
+            return ev
+    return None
+
+
+def _claude_activity(line: str) -> str | None:
+    """One progress line from a Claude ``stream-json`` event: a tool call or interim text."""
+    line = line.strip()
+    if not line.startswith("{"):
+        return None
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if ev.get("type") != "assistant" or not isinstance(ev.get("message"), dict):
+        return None
+    parts = []
+    for c in ev["message"].get("content") or []:
+        if not isinstance(c, dict):
+            continue
+        if c.get("type") == "tool_use":
+            args = c.get("input") if isinstance(c.get("input"), dict) else {}
+            detail = next((str(args[k]) for k in ("command", "file_path", "pattern", "path", "url")
+                           if args.get(k)), "")
+            parts.append(f"{c.get('name', 'tool')} {detail}".strip())
+        elif c.get("type") == "text" and (c.get("text") or "").strip():
+            parts.append(c["text"])
+    return " · ".join(parts) or None
 
 
 # -------------------------------------------------------------------------------- codex

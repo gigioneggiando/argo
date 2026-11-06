@@ -24,6 +24,7 @@ dependencies = [
   "typer>=0.12",
   "fastapi>=0.110",
   "uvicorn>=0.27",
+  "httpx>=0.27",            # runner=mistral-api (argo/mistral_api.py)
     # 0.26 can access-violate on Windows while traversing larger parse trees.
     "tree-sitter>=0.25,<0.26",
   "tree-sitter-python>=0.25",

@@ -67,20 +67,26 @@ argo revalidate-context --run RUN_ID [--question rq:0123456789abcdef] [--budget 
 argo report   --run RUN_ID
 argo pr-draft --run RUN_ID --finding FINDING_ID [--test-command "CMD"]
 argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--commit SHA] [--dry-run] [--smoke]
-argo screen TARGET [--json] [--rescreen]
+argo screen TARGET [--json] [--rescreen] [--cache-dir DIR]
 argo plan TARGET [--objective fast|economy|balanced|deep|custom] [--max-cost USD] [--max-duration MIN] [--json]
 argo plan TARGET [--benchmark-report runs/benchmark_report.json]
 argo show-routing [--runner headless|codex|gemini|mistral-api|mistral-vibe|mock] [--mistral-api-model ID] [--mistral-vibe-model ALIAS] [--stage-runner STAGE=BACKEND] [--stage-model STAGE=MODEL]
 argo profiles list|show|export|validate|import|save [--name NAME] [--input FILE] [--config FILE] [--output FILE]
 argo catalog show|validate|diff [--provider openai|anthropic|gemini] [--against SNAPSHOT.json]
 argo bench-validate --suite DIR
+argo questions --run RUN_ID                       # (re)build the private review-question queue, no model call
+argo answer-question --run RUN_ID --question rq:0123456789abcdef --answer "TEXT" --provenance "SOURCE"
+argo freshness --run RUN_ID [--lookback-days 365]
+argo runtime  --run RUN_ID [--runtime-image IMG --runtime-run-cmd CMD] [--runtime-build-cmd CMD] [--runtime-port 8080] [--runtime-boot-timeout 180] [--mount-source|--no-mount-source]
+argo live     --run RUN_ID --i-have-authorization [--allow-writes [--max-writes 5]] [--max-requests 30] [--min-interval 1.0]
+argo serve    [--host 127.0.0.1] [--port 8000] [--open] [--runs-dir DIR]
 argo resume   --run RUN_ID [--wait] [--max-wait 12h] [--runs-dir DIR]
 argo verify   --run RUN_ID [--only ID,ID] [--max-findings N]
-argo asan-poc --run RUN_ID [--max-findings N] [--asan-poc-image IMAGE]
+argo asan-poc --run RUN_ID [--max-findings N] [--asan-poc-image IMAGE] [--asan-poc-compile-timeout S] [--asan-poc-run-timeout S]
 argo fix      --run RUN_ID [--no-verify] [--re-audit] [--docker IMAGE] [--build-cmd "CMD"] [--only ID,ID]
 argo bench    --suite DIR [--fixes] [--re-audit] [--parallel-cases N] [--repeats N] [--ab-audit-model MODEL]
 argo bench-cross    --suite DIR --backends headless,codex,gemini [--tier cheap|top] [--repeats N]
-argo refusal-probe  --backends headless,codex,gemini [--trials N] [--tier cheap|top]
+argo refusal-probe  --backends headless,codex,gemini [--trials N] [--tier cheap|top] [--prompts FILE]
 argo feedback [--program P --dedup K --accepted/--rejected [--run R] [--note ...]] | [--import FILE]
 argo quality  [--program P] [--runs-dir DIR]
 ```
@@ -123,7 +129,7 @@ argo quality  [--program P] [--runs-dir DIR]
 - `--links` — a curated reference-links file, one `http(s)` URL per line (`#` comments and blank
   lines ignored). **Additive** to links the model extracts from the brief; the `--repo` URL is
   never allowed into `reference_links`. See `--links` semantics in
-  [the root README](../README.md#inputs-how-to-set-up-a-program).
+  [the root README](../README.md#inputs-how-to-set-up-a-program-bug-bounty-mode).
 - `--run` — reuse an existing run id (generated automatically if omitted).
 
 Advanced pipeline routing flags are repeatable: `--stage-runner STAGE=BACKEND`,
@@ -188,8 +194,11 @@ The one hard boundary: a run that stopped **before ingest finished** (no usable
 | `--codex-context-window N` | none | (runner=codex) local server's real context window; Codex then auto-compacts at 80% |
 | `--gemini-model MODEL` | — | (runner=gemini) flat model override across every stage (e.g. `gemini-3.1-pro`); applied before `--calibration`/`--audit-model`. Omit to use the built-in per-stage tiering. |
 | `--gemini-api-key KEY` | — | (runner=gemini) sets `GEMINI_API_KEY` for this run; omit to use the ambient env var / an existing `gemini` CLI login. A real secret — redacted in `runs/<id>/config.json`; `argo resume` needs it re-supplied. |
-| `--claude-api-key KEY` / `--claude-api-keys K1,K2` | — | (runner=headless) `ANTHROPIC_API_KEY` for this run (a bare key needs no login step); coexists additively with `--claude-accounts`. The plural chains multiple keys (multi-account via key — `--claude-accounts` wins if both are set). A real secret — redacted; `argo resume` needs it re-supplied. See [backends.md](backends.md#api-keys----claude-api-key----codex-api-key). |
-| `--codex-api-key KEY` / `--codex-api-keys K1,K2` | — | (runner=codex) OpenAI API key; unlike Claude/Gemini this needs a real `codex login --with-api-key` bootstrap (Argo does it for you, cached under `~/.argo/codex_homes`). `--codex-home`/`--codex-accounts` win if both are set. A real secret — redacted; `argo resume` needs it re-supplied. See [backends.md](backends.md#api-keys----claude-api-key----codex-api-key). |
+| `--claude-api-key KEY` / `--claude-api-keys K1,K2` | — | (runner=headless) `ANTHROPIC_API_KEY` for this run (a bare key needs no login step); coexists additively with `--claude-accounts`. The plural chains multiple keys (multi-account via key — `--claude-accounts` wins if both are set). A real secret — redacted; `argo resume` needs it re-supplied. See [backends.md](backends.md#api-keys---claude-api-key----codex-api-key). |
+| `--codex-api-key KEY` / `--codex-api-keys K1,K2` | — | (runner=codex) OpenAI API key; unlike Claude/Gemini this needs a real `codex login --with-api-key` bootstrap (Argo does it for you, cached under `~/.argo/codex_homes`). `--codex-home`/`--codex-accounts` win if both are set. A real secret — redacted; `argo resume` needs it re-supplied. See [backends.md](backends.md#api-keys---claude-api-key----codex-api-key). |
+| `--gemini-accounts K1,K2` | — | (runner=gemini) chain several `GEMINI_API_KEY` values (limits are per key). Unlike `--claude-accounts`/`--codex-accounts` these are raw secrets, not directories; redacted like `--gemini-api-key`. |
+| `--fallback BACKEND[,BACKEND]` | — | backends to fall through to when the primary hits a session/rate limit or a transient failure, e.g. `--fallback codex` (Claude → Codex); see [backends.md](backends.md#fallback-and-partial-work-recovery) |
+| `--profile NAME` | — | credential-free routing profile: `balanced`, `maximum-quality`, `cost-saver`, `diverse-validation`, `smoke` (`argo profiles show --name NAME`). Profiles are `provisional` until benchmark evidence exists |
 | `--audit-model MODEL` | — | override only the Stage-3 audit model |
 | `--calibration` | off | run audit on Opus (effectively all-Opus) |
 | `--budget USD` | none | **HARD** per-run ceiling; aborts remaining sessions once hit |
@@ -204,7 +213,7 @@ The one hard boundary: a run that stopped **before ingest finished** (no usable
 
 | Flag | Meaning |
 |---|---|
-| `--research / --no-research` | Stage-1 **web OSINT/threat-intel** before recon (CVEs, advisories, project security history → injected into recon). **On by default.** One of two networked stages (with corroborate); never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)). `--no-research` → fully offline. |
+| `--research / --no-research` | Stage-1 **web OSINT/threat-intel** before recon (CVEs, advisories, project security history → injected into recon). **On by default.** One of two networked stages (with corroborate); never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-bounded-exception-the-osint-stages-research--corroborate)). `--no-research` → fully offline. |
 | `--vuln-index / --no-vuln-index` | include the curated archetype vulnerability-class index in recon (**on by default**). Disable only for a controlled ablation; the choice is persisted in `config.json` for resume. |
 | `--sca / --no-sca` | software-composition analysis of dependency manifests (known-vuln pins) between audit and validate. **On by default**; emits a `dependencies` focus. No-op when the repo has no manifests. |
 | `--second-opinion N` | run N additional, fully independent blind recon+audit passes over the same scope/repo before validate (each isolated in its own `run_dir`), then merge their findings in. **Off by default (`N=0`)** — encodes the manual blind-second-opinion methodology as a pipeline mode. A failed pass is skipped, never aborts the run. |
@@ -215,11 +224,15 @@ The one hard boundary: a run that stopped **before ingest finished** (no usable
 | `--verify / --no-verify` | after corroborate, independently re-derive each surviving finding from the actual source (full repo access, one full session per finding, no batching, no excerpt budget) and reason across the whole survivor set — catches splits/merges/corrections that per-finding-isolated stages cannot. **Off by default** (offline, but the most expensive annotation stage). |
 | `--verify-high / --no-verify-high` | severity-gated alternative to `--verify`: deep-verify only survivors whose validation verdict is `confirmed` and whose validated severity is `High` or `Critical`. **Off by default.** This still costs one full-repo session per selected finding; `--verify` takes precedence and verifies every survivor when both flags are supplied. |
 | `--verify-max-findings N` | (`--verify` / `--verify-high`) hard cap on how many survivors get a deep-verify session (cost control); omit to verify every survivor eligible for the selected mode. |
-| `--asan-poc` (+ `--asan-poc-max-findings` / `--asan-poc-image`) | **opt-in, default off, C/C++ only.** After verify: for each eligible memory-safety survivor, writes a minimal single-file harness that `#include`s the real vulnerable source and compiles it standalone with `clang -fsanitize=address,undefined` inside an egress-blocked Docker container — a real crash trace is the most credibility-boosting artifact a disclosure can carry. Needs Docker; gracefully skips (never refutes a finding) when Docker is absent, the finding isn't C/C++, or the function can't be isolated into one translation unit. |
+| `--asan-poc / --no-asan-poc` (+ `--asan-poc-max-findings` / `--asan-poc-image`) | **opt-in, default off, C/C++ only.** After verify: for each eligible memory-safety survivor, writes a minimal single-file harness that `#include`s the real vulnerable source and compiles it standalone with `clang -fsanitize=address,undefined` inside an egress-blocked Docker container — a real crash trace is the most credibility-boosting artifact a disclosure can carry. Needs Docker; gracefully skips (never refutes a finding) when Docker is absent, the finding isn't C/C++, or the function can't be isolated into one translation unit. |
 | `--accepted-risks FILE` | file of the vendor's **intended / accepted-by-design behaviors** (threat model / known-limitations). Injected into audit + validate + corroborate + verify so those behaviors are not reported as bugs. Additive, never inferred from the brief. Also available on `argo ingest`. |
-| `--runtime` (+ `--runtime-image` / `--runtime-run-cmd`) | **opt-in, default off.** Sandboxed runtime verification after validate: builds the target into an egress-blocked, loopback-only container and probes ONLY the local instance to confirm/refute findings. Needs Docker + a launcher recipe + a `runs/<id>/runtime_probe_plan.json`; gracefully skips otherwise. Never touches the program's live hosts. |
+| `--runtime / --no-runtime` (+ `--runtime-image` / `--runtime-run-cmd` / `--runtime-port`) | **opt-in, default off.** Sandboxed runtime verification after validate: builds the target into an egress-blocked, loopback-only container and probes ONLY the local instance to confirm/refute findings. Needs Docker + a launcher recipe + a `runs/<id>/runtime_probe_plan.json`; gracefully skips otherwise. Never touches the program's live hosts. |
 | `--critic-passes N` | completeness-critic re-passes per audit focus (the depth lever — re-audits each focus for missed variant-family members / unverified invariants, looping until dry). **Default 1**; `0` disables. |
 | `--max-focuses N` | cap the audit fan-out to the first **N** of the focus areas recon planned, in slug order — the choice is fixed before any focus runs, so it can never depend on what a focus found. Skipped focuses are named in the log, never dropped silently. Recon splits a repository into anywhere from 1 to 7 focuses depending on the repository, so a raw finding count is only comparable across targets when this is pinned. Also on `argo run` and `argo estimate`; `--smoke` pins it to 1 regardless. |
+| `--freshness-check / --no-freshness-check` (+ `--freshness-lookback-days N`, default 365) | **opt-in.** Before reporting, check the audited and sibling branches' git history for commits that touched a cited file after the pinned commit; flagged findings get a report appendix to verify manually before sending. Informational only, never changes a verdict. |
+| `--adaptive-escalation {off\|conservative\|balanced\|aggressive}` | **opt-in**, default `off`: evidence-driven escalation within the existing run/session budget guards; the choice is persisted in run provenance. Kept off in benchmark mode so trials stay comparable. |
+| `--attribution / --no-attribution` | append the "Produced by Argo" provenance footer to `REPORT.md`, drafts and the fix report (default on). Attribution only; never changes a licence. |
+| `--yes` | proceed past the pre-audit cost estimate without prompting (non-interactive use, e.g. CI). Not a substitute for approving the spend. |
 | `--dry-run` | run ingest + recon, then **stop before any audit**. The prompt-quality feedback loop: inspect the generated prompts (incl. the ground-truth sections) before paying to run them. |
 | `--smoke` | de-risked **real** end-to-end check: cheapest models, one audit focus, low budget + short timeout + tight caps. Defaults `--brief`/`--repo` to the bundled fixtures (and forces `--no-research`). See [headless-runner.md](headless-runner.md#the---smoke-run). |
 

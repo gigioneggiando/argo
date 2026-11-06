@@ -160,7 +160,8 @@ python -m argo.cli pipeline --repo "../your-project" --runner codex --budget 10 
 ```
 
 Replace the path and budget with the user's approved values. `headless` selects
-Claude Code; `gemini` selects Gemini CLI. Omitting `--brief` synthesizes conservative
+Claude Code; `gemini` selects Gemini CLI; `mistral-api` / `mistral-vibe` select Mistral (no web tools,
+so they need `--no-research --no-corroborate`, as above). Omitting `--brief` synthesizes conservative
 source-only scope and disables research/corroboration. It does **not** make cloud
 inference local. The explicit flags make the network-stage choice visible.
 

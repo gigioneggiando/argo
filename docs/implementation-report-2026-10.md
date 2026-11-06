@@ -47,5 +47,5 @@ Historical run directories retain their original model/catalog provenance. Unkno
 unknown rather than reported as zero. Screening does not execute target code, network access, or package
 managers by default. Existing read-only, no-auto-submit, live/write authorization gates remain intact.
 
-The worktree is intentionally uncommitted; no external push or paid provider call was performed as part
-of this implementation.
+At the time of this report the worktree was uncommitted; no external push or paid provider call was performed as
+part of this implementation. The work has since been merged and released (v0.8.0-v0.9.0).

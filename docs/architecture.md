@@ -88,7 +88,7 @@ consumes it and runs before **Stage 2 Recon**. Optional layers keep their functi
 | 0 Ingest | `stages/ingest.run` | brief (or **none** → source-only review), repo (folder or URL), optional `--links` / `--accepted-risks` / `--context-pack` | `scope.json` (incl. `accepted_risks` design context if given), `meta.json` (incl. pinned `repo_commit`), read-only `repo/`, and a strictly validated private `context_pack.json` when supplied. No brief ⇒ a source-only scope is **synthesized** from the supplied repository without assuming ownership (zero-token, no LLM call). |
 | MEMORY | `stages/target_memory.run` | `meta.json` (canonical target + pinned commit), local private store | `target_memory.json`: a reviewable, kind-balanced snapshot of at most 24 **same-commit** private fact summaries. `seed_facts` stays frozen at the pre-recon input; `captured_fact_ids` records what recon learned during this run. No source is copied; changed or unknown revisions make prior facts stale. Mock runs use an empty snapshot and never touch the persistent store. |
 | INCREMENTAL | `stages/incremental.run` | acquired Git repo, opt-in base ref, private target memory | `incremental_review.json`: base/head diff, bounded textual symbol neighbourhood (including C/C++ function definitions), and explicit retained-same-revision / invalidated / stale prior facts. It prioritizes recon with full-repository access; unchanged code is never considered safe. |
-| 1 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)) |
+| 1 Research | `stages/research.run` | `scope.json` (name, brief, links) | `research_brief.md`, `threat_intel.json` — **opt-out web OSINT**, one of two networked stages (with corroborate); no repo; never the live in-scope hosts (see [guardrails.md](guardrails.md#2a-the-bounded-exception-the-osint-stages-research--corroborate)) |
 | 2 Recon | `stages/recon.run` | `scope.json`, `repo/`, `research_brief.md` | `repo_profile.json`, `prompts/audit_*.md`, `synthesis_notes.md`, **`ground_truth.json`** (archetype + threat-intel driven), plus `recon_inputs.json` containing hashes/settings for later ablation comparability without storing the full private input prompt — see [prompt-synthesis.md](prompt-synthesis.md) |
 | 3 Audit | `stages/audit.run` | `prompts/`, `repo/` | `findings/<focus>.json`, **`variant_logs/<focus>.md`** (+ a completeness-critic re-pass per focus) |
 | SCA | `stages/sca.run` | `repo/` dependency manifests, `scope.json` | `findings/dependencies.json` — **opt-out** software-composition analysis (known-vuln pinned deps); a no-op if no manifests |
@@ -142,8 +142,8 @@ normalization. Legacy fields remain valid and are upgraded additively.
 
 This first branch implementation has explicit limits: it cannot authenticate provenance the first
 time it normalizes legacy evidence; generic redaction cannot guarantee removal of every arbitrary
-secret; and no fixed-budget evaluation yet shows that the contract improves report accuracy. F1 is
-therefore implemented on the feature branch pending review, not yet a shipped efficacy claim.
+secret; and no fixed-budget evaluation yet shows that the contract improves report accuracy. F1 has
+shipped since v0.8.0 as a contract and gate, not as a measured efficacy claim.
 
 ### Evidence-gated attack-path composition (F3)
 
@@ -189,6 +189,8 @@ Deep-verify can split a previously corroborated finding into more precise childr
 happens it prints the new IDs; run `argo corroborate --run <run_id> --only <id,id>` to corroborate
 just those children without re-spending on, or changing the verdicts of, the other survivors.
 
+### Cross-cutting design notes
+
 **Why an "unknown"/uncertain verdict happened, not just that it did.** Both validate and corroborate
 are best-effort against session/backend failure: a validate session that dies leaves its findings
 `needs_runtime_verification`, and a corroborate session that dies leaves its findings `unknown` —
@@ -231,7 +233,9 @@ is a backstop for when that instruction alone isn't enough — it corrects the v
 `corroboration.verdict_overridden_from` so nothing is silently substituted (surfaced in `REPORT.md`
 with an explicit "auto-corrected" note for human review).
 
-**Deep verify: why a separate stage from validate.** Validate is adversarial but structurally
+#### Deep verify: why a separate stage from validate
+
+Validate is adversarial but structurally
 *isolates* each finding — its prompt explicitly forbids one finding's verdict from influencing
 another's, so it can never notice that finding A and finding B are the same bug reached two ways,
 or that finding C is quietly bundling two independently-triggerable bugs under one description.
@@ -270,7 +274,9 @@ budget/cap cutoff — see `_is_infra_failure`) is treated as needing a session; 
 left completely untouched. `--only ID,ID` overrides this to force specific findings regardless of
 their state, mirroring `fix --only`.
 
-**ASan PoC generation: why V1 is deliberately narrow.** Across every C/C++ disclosure so far
+#### ASan PoC generation: why V1 is deliberately narrow
+
+Across every C/C++ disclosure so far
 (nanomq, open62541, coturn) the single most time-consuming manual step has been hand-writing a
 minimal AddressSanitizer harness to turn a static finding into a real crash trace — the most
 credibility-boosting artifact a report can carry. A fully general version of this (auto-detect and
@@ -301,7 +307,9 @@ above) — asking a model to write a harness that deliberately overflows a buffe
 the kind of request this stage exists to make routine, so it needed the same recovery path
 validate/deep_verify already have, not a new one.
 
-**Second opinion: an LLM audit is one noisy sample, not the answer.** A single recon+audit pass
+#### Second opinion: an LLM audit is one noisy sample, not the answer
+
+A single recon+audit pass
 depends on that session's own sampling — the SAME model over the SAME repo can genuinely find a
 different subset of real bugs on a different run, and a single pass has no way to tell "I looked and
 there's nothing here" from "I didn't happen to look there." The manual fix used on fastjson2 and

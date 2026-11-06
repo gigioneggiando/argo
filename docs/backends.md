@@ -18,18 +18,26 @@ then delegates two per-backend steps:
 ```
 AgentRunner (ABC)
 ├─ HeadlessClaudeRunner   # `claude -p` — Claude Code
-├─ CodexRunner            # `codex exec` — OpenAI, or local/OSS via --oss
+├─ CodexRunner            # `codex exec` — OpenAI, or local/OSS via --oss / a custom provider (vLLM)
 ├─ GeminiRunner           # `gemini` — Google, tiered per stage like Claude
-└─ MockClaudeRunner       # fixtures (zero tokens; the test suite)
+├─ MistralApiRunner       # Mistral Chat Completions + Argo's own sandboxed tool loop (argo/mistral_api.py)
+├─ MistralVibeRunner      # `vibe` CLI under an isolated, Argo-written config (argo/mistral_vibe.py)
+├─ MockClaudeRunner       # fixtures (zero tokens; the test suite)
+└─ FallbackRunner         # an ordered chain of the above (accounts and backends; see "Fallback")
 ```
 
-`build_runner(config)` dispatches on `config.runner ∈ {headless, codex, gemini, mock}`.
+`build_runner(config)` dispatches on `config.runner ∈ {headless, codex, gemini, mistral-api,
+mistral-vibe, mock}` and wraps a `FallbackRunner` when `--fallback` or multiple accounts are set.
 
 ## The guardrails are backend-neutral, enforced per backend
 
 The invariants are one **`SessionPolicy`** (`guardrails.session_policy(stage)`) — *"no network except
-the `research` stage; the repo is never writable"* — and each backend translates it into its own CLI
-dialect. This is the safety-critical part and is unit-tested for **both** backends.
+the OSINT stages `research` and `corroborate`; the repo is never writable"* — and each backend
+translates it into its own dialect. This is the safety-critical part and is unit-tested per backend.
+The two Mistral backends have no web tools at all, so they refuse the OSINT stages up front (run them
+with `--no-research --no-corroborate`, or route those stages to another backend); their read-only and
+scratch-only rules are in [Mistral API specifics](#mistral-api-specifics-runner--mistral-api) and
+[Mistral Vibe specifics](#mistral-vibe-specifics-runner--mistral-vibe).
 
 | Guarantee | Claude (`HeadlessClaudeRunner`) | Codex (`CodexRunner`) | Gemini (`GeminiRunner`) |
 |---|---|---|---|
@@ -55,7 +63,7 @@ equivalent re-validation for the Codex sandbox), and `tests/test_gemini.py`
 > enforcement, for Gemini the Policy Engine's tool removal is. A real network-blocked smoke is
 > recommended before high-stakes Codex/Gemini use.
 >
-> **Note on repo-write safety across ALL three backends.** The strongest guarantee — the audited
+> **Note on repo-write safety across ALL backends.** The strongest guarantee — the audited
 > repo is never mutated — does not actually come from any backend-specific mechanism above. It comes
 > from `argo/stages/ingest.py:_make_readonly`, which `os.chmod`'s every file in the acquired repo
 > copy to strip write bits **before any runner touches it**, identically regardless of which backend
@@ -83,20 +91,45 @@ equivalent re-validation for the Codex sandbox), and `tests/test_gemini.py`
 - `--codex-oss` + `--codex-local-provider <ollama|lmstudio>` — run a **local / open-source** model
   through Codex (`--oss`). With a local provider the cost is ~$0.
 
-### Local / open-source models (Ollama / LM Studio)
+### Local / open-source models (Ollama / LM Studio / vLLM)
 
-Any model that **Ollama** or **LM Studio** serves works — including **Qwen** (`qwen2.5-coder`,
-`qwen3`, …) and **DeepSeek** (`deepseek-coder`, `deepseek-v3`, `deepseek-r1`, …). Pull it, then point
-Argo at it:
+Any model that **Ollama** or **LM Studio** serves works, including Qwen and DeepSeek. Pull it, then
+point Argo at it:
 
 ```bash
-ollama pull qwen2.5-coder:32b      # (or a DeepSeek model)
+ollama pull qwen3.8:27b
 python -m argo.cli pipeline --runner codex --codex-oss --codex-local-provider ollama \
-  --codex-model qwen2.5-coder:32b --brief BRIEF.txt --repo PATH
+  --codex-model qwen3.8:27b --codex-context-window 131072 --brief BRIEF.txt --repo PATH
 ```
 
 Argo just adds `--oss --local-provider ollama -m <model>` to `codex exec` (unit-tested in
-`tests/test_codex.py::test_oss_and_model_flags`); cost is ~$0 (local models estimate to $0).
+`tests/test_codex.py::test_oss_and_model_flags`). A local model's cost is estimated at $0 but
+recorded as `cost_source = unknown`, never as proven free (GPU time is not in the ledger).
+
+**vLLM (or any OpenAI-compatible server).** Codex reaches it through a custom provider in its own
+`CODEX_HOME`; Argo needs no extra flag. This is the setup of the 2026-11 replay experiments
+(DeepSeek-V4.1-Flash, GLM-5.3 on B200 GPUs):
+
+```toml
+# $CODEX_HOME/config.toml
+model = "deepseek-ai/DeepSeek-V4.1-Flash-1017"   # the server's --served-model-name
+model_provider = "localvllm"
+
+[model_providers.localvllm]
+name = "local vLLM"
+base_url = "http://127.0.0.1:8000/v1"
+wire_api = "responses"
+```
+
+```bash
+CODEX_HOME=/path/to/that/dir python -m argo.cli pipeline --runner codex \
+  --codex-model deepseek-ai/DeepSeek-V4.1-Flash-1017 --codex-context-window 131072 \
+  --no-research --no-corroborate --brief BRIEF.txt --repo PATH
+```
+
+Serve the model with tool calling enabled (vLLM `--enable-auto-tool-choice` plus the model's
+`--tool-call-parser`), and run a one-file `codex exec` probe first: a model that cannot emit tool
+calls fails every stage.
 
 **Declare the server's context window.** Codex has no metadata for a local model ("Model metadata
 ... not found; defaulting to fallback metadata"), so it never auto-compacts and the server silently
@@ -131,11 +164,13 @@ every shell command then fails and a local model retries indefinitely. Verify wi
 **Caveat — model capability, not plumbing.** Some stages are format-strict: recon must emit audit
 prompts that carry the RoE / prohibited-techniques / "Do NOT patch" anchors *verbatim* (a
 well-formedness guardrail), and audit must emit schema-valid findings JSON. A **capable** coder model
-(e.g. `qwen2.5-coder:32b`, `deepseek-v3`/`-r1`) is recommended; very small models (≈7B) may fail the
-strict stages. Which local models clear the bar is exactly what the **benchmark** (`argo bench`)
-measures — that cross-model comparison is a study result, not an assumption. The OpenAI path
-(gpt-6.1-sol/Astra) is validated end-to-end; a local-model run depends on your having Ollama/LM Studio up with
-the model pulled.
+is recommended. Measured on a moquette replay (11 maintainer-validated vulnerabilities, 2026-11):
+DeepSeek-V4.1-Flash and Qwen3.8-27B reached 8/11 in their best run, GLM-5.3-Flash 5/11 with a recon
+format failure in one of two runs, Qwen3-Coder-Next 80B 1/11 and Qwen3.5-9B 0/11. Run-to-run
+variance is large, so compare means over several runs before choosing (`argo bench` on the frozen
+corpus). The OpenAI path depends on what the Codex login's plan allows: some current models are
+refused by a ChatGPT plan or a `daybreak` profile (see [Model catalog](#model-catalog)); Argo
+reports that as `model_unavailable` and moves to the next account or fallback backend.
 
 **Cost is estimated, not authoritative.** Claude Code returns `total_cost_usd` per call (and Argo
 hands it `--max-budget-usd` for a hard mid-session kill). Codex reports **tokens, not dollars**, so
@@ -246,7 +281,7 @@ Argo. Options:
   `--codex-accounts`, which are directory paths) — it is redacted to `<redacted>` in
   `runs/<id>/config.json`, so `argo resume --gemini-api-key <key>` needs the key re-supplied to use
   it again (`resume` accepts the equivalent `--claude-api-key`/`--codex-api-key` for those two
-  backends too — see [API keys](#api-keys----claude-api-key----codex-api-key) below). A narrow,
+  backends too — see [API keys](#api-keys---claude-api-key----codex-api-key) below). A narrow,
   deliberate deviation from `resume`'s normal zero-flags behavior.
 - `--gemini-accounts key-a,key-b` — chain multiple `GEMINI_API_KEY` **values** (multi-account,
   limits are per-key). Unlike Claude's `CLAUDE_CONFIG_DIR` dirs or Codex's `CODEX_HOME` dirs, Gemini's

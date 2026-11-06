@@ -162,6 +162,33 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `ledger_path` | `argo/ledger.sqlite` | the cost + findings ledger |
 | `fixtures_dir` / `fixtures_scenario` | `tests/fixtures` / `happy` | mock-runner fixtures |
 
+## Stage switches and backend settings
+
+| Field | CLI flag | Effect |
+|---|---|---|
+| `research_enabled` | `--research / --no-research` | Stage-1 web OSINT before recon (default on). Persisted so `resume` rebuilds the same stage set |
+| `corroborate_enabled` | `--corroborate / --no-corroborate` | networked docs + VCS-history cross-check after validate (default on) |
+| `corroborate_max_searches` | — | soft cap on web searches per finding (in-prompt guidance, default 8) |
+| `corroborate_only` | `corroborate --only ID,ID` | re-corroborate only these IDs; every other verdict is left untouched |
+| `doc_links` | `--docs-url URL` (repeatable) | curated documentation URLs for corroboration; empty = the stage searches for official docs |
+| `semantic_dedup_enabled` / `semantic_dedup_min_findings` | — | cross-focus semantic dedup before validation (default on, from 6 findings): merges the same root cause reported at different call sites |
+| `verify_high_enabled` | `--verify-high` | deep-verify only validation-confirmed High/Critical survivors (cheaper alternative to `--verify`) |
+| `verify_only` | `verify --only ID,ID` | explicit deep-verify scope for one invocation; already-verified findings are otherwise left untouched |
+| `asan_poc_enabled` | `--asan-poc` | opt-in ASan crash harness for C/C++ memory-safety survivors (Docker); see [architecture.md](architecture.md#asan-poc-generation-why-v1-is-deliberately-narrow) |
+| `asan_poc_image` / `asan_poc_max_findings` | `--asan-poc-image` / `--asan-poc-max-findings` | clang image (default `silkeh/clang`) and cost cap |
+| `asan_poc_compile_timeout_s` / `asan_poc_run_timeout_s` | — | harness compile (60 s) and run (30 s) limits |
+| `runtime_build_cmd` / `runtime_mount_source` | — | optional in-container build step; mount the isolated source copy read-only at `/src` (default on) |
+| `runtime_boot_timeout_s` / `runtime_request_timeout_s` | — | wait for the app on loopback (180 s); per-probe HTTP timeout (10 s) |
+| `runtime_credentials` | — | optional login credentials the runtime probe may use so authorization findings can be confirmed |
+| `freshness_check_enabled` / `freshness_lookback_days` | `--freshness-check` / `--freshness-lookback-days` | opt-in git-history freshness appendix before reporting (365 days) |
+| `adaptive_escalation` | `--adaptive-escalation` | `off` (default) / `conservative` / `balanced` / `aggressive`; bounded by the budget guards and recorded in provenance |
+| `benchmark_mode` | set by `argo bench` | keeps comparability: disables adaptive escalation for repeated trials |
+| `codex_local_provider` | `--codex-local-provider` | `ollama` or `lmstudio` (with `--codex-oss`) |
+| `mistral_api_model` / `mistral_api_stage_models` | `--mistral-api-model` / `--stage-model` | Mistral API model, flat and per stage (default `mistral-large-4`) |
+| `mistral_api_key` / `mistral_api_base_url` / `mistral_api_context_window` | — (env vars; HTTP API `RunConfig`) | secret (redacted; else `ARGO_MISTRAL_API_KEY`, then `MISTRAL_API_KEY`), API base URL, context window for tool-output elision (default 128k) |
+| `mistral_vibe_model` / `mistral_vibe_stage_models` / `mistral_vibe_api_key` | `--mistral-vibe-model` | Vibe model aliases (default `mistral-medium-3.5`) and key (else `ARGO_MISTRAL_VIBE_API_KEY`, then the API key) |
+| `model_catalog_snapshot` | — | frozen, credential-free model metadata stored with the run so requested/served IDs stay interpretable later |
+
 ## Programmatic example
 
 ```python

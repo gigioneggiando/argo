@@ -144,6 +144,9 @@ Two Opus recon runs on the same repo differ (model nondeterminism), so judge by 
 3. Open a PR that says **what** changed and **why** (link any related issue/Discussion). If it changes
    findings quality, include before/after from a `--dry-run` or benchmark diff.
 4. For anything touching backends, the runner, or flags, mention whether you ran `--smoke`.
+5. Update the docs the change touches (`docs/cli-reference.md`, `docs/configuration.md`, the
+   CHANGELOG). If you add, remove or reorder a pipeline stage, edit `STAGES` in
+   `docs/diagrams/pipeline_flow.py` and run it to regenerate `pipeline_flow.svg`.
 
 Small, well-scoped PRs get reviewed faster than large ones.
 

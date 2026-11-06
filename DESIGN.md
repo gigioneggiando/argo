@@ -11,6 +11,14 @@ primary upstream link (`/pull/` or `/merge_requests/`, `/security/advisories/` o
 source record changed; options appear only for types present. The filter grid is five columns
 plus Reset on desktop and stays two columns on phones.
 
+**Status now means outcome only** (follow-up the same day: Luigi found Issue/PR inside Status
+illogical). Each record gets one outcome from its type and row class (advisories: their
+fixed/unpatched label). Status options depend on Type: All types → Fixed · Not fixed yet; Pull
+requests → Merged · Fixed upstream · Open; Advisories → Fixed · Unpatched; Issues → Fixed · Open
+(Closed appears only if such records exist). Changing Type rebuilds the Status list and falls back
+to "All statuses" when the old choice no longer applies; `controls.js` re-renders a popup whenever
+its native options change.
+
 ## Research surface prepared, 27 October 2026
 
 The future editorial section is named **Research** and lives inside Argo at

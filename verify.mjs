@@ -47,8 +47,12 @@ try{
  ensure(await p.eval(()=>[...document.querySelectorAll('.rows li:not([hidden]) .row')].every(r=>r.dataset.sev==='Critical')),'Severity filter failed');
  await p.eval(()=>document.getElementById('filters').reset());
  await wait(()=>p.eval(n=>document.getElementById('severityFilter').value===''&&document.getElementById('filterCount').textContent.startsWith(`${n} records`),expected),'Native reset failed');
- await p.eval(()=>{const s=document.getElementById('statusFilter');s.value='open';s.dispatchEvent(new Event('change',{bubbles:true}));});
- ensure(await p.eval(()=>document.getElementById('filterCount').textContent.startsWith('5 records')),'Open status filter failed');
+ // Status is outcome-only and depends on Type: open pull requests, then a Type switch must drop it.
+ await p.eval(()=>{const t=document.getElementById('typeFilter');t.value='pr';t.dispatchEvent(new Event('change',{bubbles:true}));const s=document.getElementById('statusFilter');s.value='open';s.dispatchEvent(new Event('change',{bubbles:true}));});
+ ensure(await p.eval(()=>document.getElementById('filterCount').textContent.startsWith('5 records')),'Open pull request filter failed');
+ ensure(await p.eval(()=>[...document.querySelectorAll('#statusFilter option')].map(o=>o.value).join()===',merged,fixed-other,open'),'Pull request status choices wrong');
+ await p.eval(()=>{const t=document.getElementById('typeFilter');t.value='advisory';t.dispatchEvent(new Event('change',{bubbles:true}));});
+ ensure(await p.eval(()=>document.getElementById('statusFilter').value===''&&document.querySelector('#statusFilter-trigger .select-value').textContent==='All statuses'),'Type switch did not reset an inapplicable status');
  await p.eval(()=>document.getElementById('filters').reset());
  await wait(()=>p.eval(n=>document.getElementById('filterCount').textContent.startsWith(`${n} records`),expected),'Status reset failed');
  await p.eval(()=>{const s=document.getElementById('languageFilter');s.value='Go';s.dispatchEvent(new Event('change',{bubbles:true}));const stars=document.getElementById('starsFilter');stars.value='20000';stars.dispatchEvent(new Event('change',{bubbles:true}));});

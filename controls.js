@@ -32,7 +32,13 @@ window.ArgoControls = {
       list.setAttribute('role', 'listbox');
       list.setAttribute('aria-label', caption);
       let active = select.selectedIndex;
-      const items = [...select.options].map((option, index) => {
+      let items = [], signature = '';
+      // Options can change at runtime (Status depends on Type): rebuild the listbox from the
+      // native select whenever its options differ from what was rendered.
+      const optionsSignature = () => [...select.options].map(o => `${o.value}\u0000${o.text}`).join('\u0001');
+      function build() {
+      list.replaceChildren();
+      items = [...select.options].map((option, index) => {
         const item = document.createElement('li');
         item.id = `${select.id}-option-${index}`;
         item.setAttribute('role', 'option');
@@ -50,6 +56,9 @@ window.ArgoControls = {
         list.append(item);
         return item;
       });
+      signature = optionsSignature();
+      }
+      build();
       function highlight(index) {
         active = (index + items.length) % items.length;
         items.forEach((item, i) => item.classList.toggle('active-option', i === active));
@@ -70,6 +79,7 @@ window.ArgoControls = {
         highlight(select.selectedIndex);
       }
       function sync() {
+        if (optionsSignature() !== signature) build();
         value.textContent = select.selectedOptions[0].text;
         trigger.title = `${caption}: ${value.textContent}`;
         if (select.id === 'severityFilter') trigger.dataset.severity = select.value;

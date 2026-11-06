@@ -286,13 +286,14 @@ def _ground_citations(ctx: RunContext, findings: list[Finding]) -> tuple[list[Fi
     dropped: list[dict] = []
     n_downgraded = 0
     for f in findings:
-        # Qualified-name citations (``io.x.Foo.bar():26``) -> real ``path:line`` first, so a real
-        # class cited Java-style is not dropped as "not in repo" and the validator gets excerpts.
+        # Qualified names (``io.x.Foo.bar():26``) and prefix-truncated paths (``api/orders.py:7``)
+        # -> the ONE real ``path:line`` first, so the excerpts/static context read the same file
+        # grounding matched, and a real class cited Java-style is not dropped as "not in repo".
         try:
             normalized = [index.normalize_ref(ref) for ref in (f.affected or [])]
             if normalized != list(f.affected or []):
-                _log(f"{f.id}: resolved qualified-name citation(s) to file paths: "
-                     f"{[n for n, o in zip(normalized, f.affected) if n != o]}")
+                _log(f"{f.id}: resolved citation(s) to repo paths: "
+                     f"{[f'{o} -> {n}' for n, o in zip(normalized, f.affected) if n != o]}")
                 f.affected = normalized
         except Exception:  # noqa: BLE001 — normalization is best-effort, never fatal
             pass
@@ -304,8 +305,9 @@ def _ground_citations(ctx: RunContext, findings: list[Finding]) -> tuple[list[Fi
             continue
         missing_files, missing_symbols = res["missing_files"], res["missing_symbols"]
         out_of_range_lines = res["out_of_range_lines"]
+        unresolved_refs = res.get("unresolved_refs", [])
         grounding_kwargs = dict(missing_files=missing_files, missing_symbols=missing_symbols,
-                                out_of_range_lines=out_of_range_lines,
+                                out_of_range_lines=out_of_range_lines, unresolved_refs=unresolved_refs,
                                 composite_suspect=res["composite_suspect"],
                                 composite_reason=res["composite_reason"])
         if res["composite_suspect"]:
@@ -320,11 +322,17 @@ def _ground_citations(ctx: RunContext, findings: list[Finding]) -> tuple[list[Fi
             dropped.append(_drop_record(f, "ungrounded_citation (primary file not in repo)"))
             _log(f"{f.id}: dropped pre-validation (ungrounded citation: {primary} not in repo)")
             continue
-        if missing_files or missing_symbols or out_of_range_lines:
+        # A primary citation that maps to no unique file (symbol-style, ambiguous) is NOT dropped:
+        # the code may well exist. It gets no source support either, so it is treated like a
+        # missing symbol: one confidence notch down and an honest note for the validator.
+        primary_unresolved = bool(primary) and primary in unresolved_refs
+        if missing_files or missing_symbols or out_of_range_lines or primary_unresolved:
             f.grounding = Grounding(status="ungrounded", **grounding_kwargs)
             f.confidence = _downgrade_confidence(f.confidence)
             n_downgraded += 1
-            _log(f"{f.id}: ungrounded citation {missing_symbols or missing_files or out_of_range_lines}; confidence "
+            reason = (missing_symbols or missing_files or out_of_range_lines
+                      or [f"unresolved primary citation {primary!r}"])
+            _log(f"{f.id}: ungrounded citation {reason}; confidence "
                  f"downgraded to {f.confidence}, flagged for the validator")
         else:
             f.grounding = Grounding(status="grounded", **grounding_kwargs)
@@ -338,8 +346,16 @@ def _grounding_note(f: Finding) -> str:
     """A prominent warning block, prepended to a finding's validation excerpts, when the
     deterministic grounding pass found cited files/symbols that do not exist in this repo."""
     g = f.grounding
-    if not g or g.status == "grounded":
+    if not g:
         return ""
+    unresolved = ""
+    if g.unresolved_refs:
+        unresolved = ("NOTE (deterministic pre-check): citation(s) not mapped to a unique file in "
+                      "this repo (symbol-style or ambiguous): " + ", ".join(g.unresolved_refs)
+                      + ". This is NOT evidence the code is absent: locate it yourself before "
+                        "judging (the excerpt for these may be missing).\n\n")
+    if g.status == "grounded":
+        return unresolved
     parts: list[str] = []
     if g.missing_symbols:
         parts.append("code symbol(s) cited but NOT FOUND anywhere in this repo: "
@@ -350,8 +366,8 @@ def _grounding_note(f: Finding) -> str:
         parts.append("line citation(s) exceed the actual file length: "
                      + ", ".join(g.out_of_range_lines))
     if not parts:
-        return ""
-    return ("!!! CITATION GROUNDING WARNING (deterministic pre-check) !!!\n"
+        return unresolved
+    return unresolved + ("!!! CITATION GROUNDING WARNING (deterministic pre-check) !!!\n"
             + "\n".join(f"- {p}" for p in parts)
             + "\nA citation that does not exist in THIS repo is strong evidence the finding was "
               "mis-attributed (e.g. carried over from a different project). Weigh this heavily: "

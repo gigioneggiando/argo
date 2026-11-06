@@ -401,9 +401,18 @@ nowhere in the repo (a hallucinated location), it is **dropped** pre-validation 
 "ungrounded_citation ..."`) — the one unambiguous auto-drop; if a cited **symbol** is absent, the
 finding is **kept** but its confidence is downgraded one notch and a `grounding` block + a prominent
 `!!! CITATION GROUNDING WARNING !!!` are surfaced in the validator's excerpts, so the adversarial pass
-makes the final call with the evidence in hand. Before the check, a dotted qualified-name citation
-(`io.x.Foo.bar():26`) is rewritten to the unique repo path it names (`.../io/x/Foo.java:26`), so
-a real class cited Java-style is not mistaken for a missing file. Conservative throughout: a symbol the index was not
+makes the final call with the evidence in hand. Before the check, a citation that names ONE repo file is
+rewritten to its canonical path: a dotted qualified name (`io.x.Foo.bar():26` ->
+`.../io/x/Foo.java:26`, `pkg.login()` -> `pkg/__init__.py`) or a prefix-truncated path
+(`api/orders.py:7` -> `src/main/api/orders.py:7`), so excerpts and static context read the file
+grounding matched. A name match needs proof (the file must contain the cited member) and
+candidates are compared across all extensions, so `Foo.java` + `Foo.kt` stays ambiguous. Only an
+**explicit** file path (a `/`, `\` or a known source extension) that exists nowhere is a drop; a
+symbol-style citation (`auth.Session.Check()`, `crate::x::y`, `App\Svc::run`, `Auth#ok?`) or an
+ambiguous path is recorded in `grounding.unresolved_refs`. If it is the primary citation, the
+finding is kept as `ungrounded` (confidence one notch down, no source support) with a note telling
+the validator this is not evidence the code is absent. Symlinked files are never indexed, and
+direct path checks are confined to the repo root. Conservative throughout: a symbol the index was not
 built to search is given the benefit of the doubt, and the whole pass fails open (every finding kept)
 on any error. Stats land in `validated_findings.json` (`grounding_dropped`, `after_grounding`).
 

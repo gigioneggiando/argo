@@ -9,9 +9,12 @@ exists in *this* repo before spending a validation session on it.
 
 This module closes that gap cheaply and deterministically:
 
-* **Hallucinated file** — the primary ``affected`` path's basename appears nowhere in the
-  repo -> the finding is dropped pre-validation (``ungrounded_citation``). This is the one
-  unambiguous "the location does not exist" signal, so it is the only auto-drop here.
+* **Hallucinated file** — the primary ``affected`` citation is an EXPLICIT file path whose
+  basename appears nowhere in the repo -> the finding is dropped pre-validation
+  (``ungrounded_citation``). This is the one unambiguous "the location does not exist" signal,
+  so it is the only auto-drop here. A symbol-style citation (``auth.Session.Check()``,
+  ``crate::x::y``) or an ambiguous path that maps to no unique file is only *unresolved*: it is
+  kept (``unresolved_refs``; as the primary citation, confidence -1), never dropped.
 * **Hallucinated symbol** — a project-specific identifier the finding presents as code (a
   call ``foo_bar(`` or a backticked ``\\`foo_bar\\```) appears nowhere in the repo. This is
   strong-but-not-certain (it could be a macro, a generated name, or a typo), so we never
@@ -40,7 +43,7 @@ _SOURCE_EXTS = frozenset({
     ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".m", ".mm", ".inc", ".zig", ".s", ".asm",
     ".py", ".pyi", ".go", ".rs", ".java", ".kt", ".scala", ".js", ".jsx", ".ts", ".tsx", ".mjs",
     ".rb", ".php", ".cs", ".swift", ".lua", ".pl", ".sh", ".sql", ".proto", ".txt", ".md",
-    ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".gradle", ".xml",
+    ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".gradle", ".xml", ".groovy", ".kts",
 })
 
 #: Cap the repo walk so grounding stays cheap on large trees (mirrors checklists._SCAN_FILE_CAP).
@@ -96,6 +99,8 @@ def _iter_source_files(repo_dir: Path):
     for p in repo_dir.rglob("*"):
         if ".git" in p.parts:
             continue
+        if p.is_symlink():
+            continue                                  # never read through a link (may leave the root)
         if p.is_file() and p.suffix.lower() in _SOURCE_EXTS:
             try:
                 if p.stat().st_size > _FILE_BYTE_CAP:
@@ -113,8 +118,37 @@ def _iter_source_files(repo_dir: Path):
 _QUALIFIED_RE = re.compile(r"^\s*((?:[A-Za-z_$][\w$]*\.)+[A-Za-z_$][\w$]*)\s*(?:\([^)]*\))?\s*$")
 #: Languages whose files are named after a dotted package/module path.
 _QUALIFIED_EXTS = (".java", ".kt", ".kts", ".scala", ".groovy", ".cs", ".py")
-#: The line part of a citation tail: ``:26-35`` / ``:26``.
-_LINE_TAIL_RE = re.compile(r":\s*(\d+(?:\s*-\s*\d+)?)")
+#: The line part of a citation tail: ``:26-35``, ``:26``, ``:L30``, ``#L30``, ``:L68-L73``.
+_LINE_TAIL_RE = re.compile(r"[:#]\s*L?(\d+)(?:\s*-\s*L?(\d+))?")
+#: Extensions that make a citation an EXPLICIT file reference (beyond the scanned source set).
+_EXPLICIT_EXTS = _SOURCE_EXTS | frozenset({
+    ".vue", ".svelte", ".html", ".htm", ".erb", ".ex", ".exs", ".erl", ".dart", ".r", ".jl",
+    ".hs", ".ml", ".fs", ".vb", ".cshtml", ".razor", ".tf", ".hcl", ".bat", ".ps1", ".cmake",
+})
+
+
+def _line_tail(text: str) -> str:
+    m = _LINE_TAIL_RE.search(text or "")
+    if not m:
+        return ""
+    return f"{m.group(1)}-{m.group(2)}" if m.group(2) else m.group(1)
+
+
+def is_explicit_path(ref: str) -> bool:
+    """True when a citation names a FILE (``a/b.py:7``, ``Foo.java``, ``src\\x.c``), False when it
+    names a SYMBOL (``io.x.Foo.bar()``, ``crate::auth::check``, ``App\\Svc::run``, ``Auth#ok?``).
+
+    Only an explicit file that exists nowhere is evidence of a hallucinated location; a symbol that
+    does not map to a file is merely unresolved (many languages do not name files after symbols)."""
+    text = (ref or "").strip()
+    file = split_ref(text)[0].strip()
+    if not file or "::" in file:
+        return False
+    if text.startswith(file) and text[len(file):].startswith("("):
+        return False                                  # ``res.json()``: a call, not ``res.json``
+    if "/" in file or "\\" in file:
+        return True
+    return Path(file).suffix.lower() in _EXPLICIT_EXTS
 
 
 class RepoIndex:
@@ -123,12 +157,14 @@ class RepoIndex:
 
     def __init__(self, repo_dir: Path, symbols: set[str]):
         self.repo_dir = Path(repo_dir)
+        self._root = self.repo_dir.resolve()
         self._basenames: set[str] = set()
         self._present: set[str] = set()
         self._wanted = {s for s in symbols if s}
         self._paths: dict[str, Path] = {}
         self._basename_paths: dict[str, list[Path]] = {}
         self._line_counts: dict[Path, int] = {}
+        self._mention_cache: dict[tuple[str, str], bool] = {}
         combined = (re.compile(r"\b(?:%s)\b" % "|".join(re.escape(s) for s in sorted(self._wanted)))
                     if self._wanted else None)
         try:
@@ -146,59 +182,129 @@ class RepoIndex:
         except OSError:
             pass
 
+    def _direct_file(self, file: str) -> str | None:
+        """The repo-relative POSIX path when ``file`` exists as given INSIDE the repo root."""
+        try:
+            path = (self.repo_dir / file.replace("\\", "/")).resolve()
+            if path.is_relative_to(self._root) and path.is_file():
+                return path.relative_to(self._root).as_posix()
+        except (OSError, ValueError):
+            pass
+        return None
+
+    def _rel(self, p: Path) -> str:
+        return p.relative_to(self.repo_dir).as_posix()
+
     def file_grounded(self, ref: str) -> bool:
         """Grounded if the exact path exists, or (tolerating a path-prefix mismatch, e.g. the repo
-        copy is rooted at a subdir) any file with the same basename exists in the tree."""
+        copy is rooted at a subdir) any file with the same basename exists in the tree. Ambiguous
+        basenames count as grounded here (they exist); :meth:`canonical_file` decides uniqueness."""
         file, _line = split_ref(ref)
         if not file:
             return True                                   # nothing to ground
-        if (self.repo_dir / file).is_file():
+        if self._direct_file(file):
             return True
-        return Path(file).name in self._basenames
+        return Path(file.replace("\\", "/")).name in self._basenames
+
+    def resolve_path(self, file: str) -> str | None:
+        """An explicit (possibly prefix-truncated) path -> the ONE repo file it names, or None.
+        ``api/orders.py`` matches ``src/main/api/orders.py`` only if no other file ends that way."""
+        direct = self._direct_file(file)
+        if direct:
+            return direct
+        posix = file.replace("\\", "/")
+        while posix.startswith("./"):
+            posix = posix[2:]
+        if not posix or posix.startswith("../") or posix.startswith("/"):
+            return None
+        if "/" in posix:
+            hits = {rel for rel in self._paths if rel.endswith("/" + posix)}
+        else:
+            hits = {self._rel(p) for p in self._basename_paths.get(posix, [])}
+        return hits.pop() if len(hits) == 1 else None
 
     def resolve_qualified(self, head: str) -> str | None:
         """Map a dotted qualified name to the ONE repo file that defines it, or None.
 
         ``io.moquette.persistence.SerdesUtils.readProperties()`` -> the file whose path ends in
-        ``io/moquette/persistence/SerdesUtils.java``; a bare ``SerdesUtils.readProperties`` falls
-        back to a UNIQUE ``SerdesUtils.<ext>`` basename. Longest package path wins; anything
-        ambiguous or unmatched stays unresolved (the caller keeps the original citation)."""
+        ``io/moquette/persistence/SerdesUtils.java``; ``pkg.login()`` -> ``pkg/__init__.py``; a bare
+        ``Outer.Inner.work`` falls back to a UNIQUE ``Inner.<ext>`` then ``Outer.<ext>`` basename.
+        Candidates are collected across ALL extensions before uniqueness is decided, so a
+        ``Foo.java`` + ``Foo.kt`` pair is ambiguous, never resolved by extension order."""
         m = _QUALIFIED_RE.match(head or "")
         if not m:
             return None
         parts = m.group(1).split(".")
-        # 1) package path: drop trailing member names until ``a/b/Class.ext`` is a unique suffix.
-        for i in range(len(parts), 1, -1):
+        # 1) package path, most specific first: ``a/b/Class.<ext>`` or an ``a/b/__init__.py`` package.
+        #    A single segment is tried only as a lowercase module/package (``pkg.login()`` ->
+        #    ``pkg/__init__.py`` / ``pkg.py``); a bare Class is matched as a basename below.
+        for i in range(len(parts), 0, -1):
             stem = "/".join(parts[:i])
-            for ext in _QUALIFIED_EXTS:
-                hits = [rel for rel in self._paths
-                        if rel == stem + ext or rel.endswith("/" + stem + ext)]
-                if len(hits) == 1:
-                    return hits[0]
-        # 2) bare ``Class.member``: the right-most Capitalized segment as a UNIQUE basename.
-        for name in reversed(parts):
+            if i == 1 and not stem[:1].islower():
+                break
+            suffixes = [stem + ext for ext in _QUALIFIED_EXTS] + [stem + "/__init__.py"]
+            hits = {rel for rel in self._paths for s in suffixes if rel == s or rel.endswith("/" + s)}
+            if len(hits) > 1:
+                return None                               # ambiguous at the most specific level
+            if hits:
+                hit = hits.pop()
+                return hit if i == len(parts) or self._mentions(hit, parts[i]) else None
+        # 2) bare ``Class.member``: Capitalized segments right to left as a UNIQUE basename.
+        for idx in range(len(parts) - 1, -1, -1):
+            name = parts[idx]
             if not name[:1].isupper():
                 continue
-            hits = [p for ext in _QUALIFIED_EXTS for p in self._basename_paths.get(name + ext, [])]
-            if len(hits) == 1:
-                try:
-                    return hits[0].relative_to(self.repo_dir).as_posix()
-                except ValueError:
-                    return None
-            return None                                   # nearest class is ambiguous/absent
+            hits = {self._rel(p) for ext in _QUALIFIED_EXTS
+                    for p in self._basename_paths.get(name + ext, [])}
+            if len(hits) > 1:
+                return None
+            if hits:
+                hit = hits.pop()
+                return hit if idx == len(parts) - 1 or self._mentions(hit, parts[idx + 1]) else None
         return None
 
+    def _mentions(self, rel: str, name: str) -> bool:
+        """Proof for a name-based match: the candidate file must contain the next cited member
+        (``Foo.java`` for ``pkg.Foo.bar()`` must mention ``bar``). Stops ``auth.Session.Check()``
+        from resolving to an unrelated ``auth.py``. Indexed files are already size-capped."""
+        key = (rel, name)
+        if key not in self._mention_cache:
+            try:
+                text = self._paths[rel].read_text(encoding="utf-8", errors="replace")
+                self._mention_cache[key] = re.search(rf"(?<![\w$]){re.escape(name)}(?![\w$])",
+                                                     text) is not None
+            except (KeyError, OSError):
+                self._mention_cache[key] = False
+        return self._mention_cache[key]
+
+    def canonical_file(self, ref: str) -> str | None:
+        """The ONE repo-relative file a citation points at, or None (unresolved or ambiguous)."""
+        if not ref:
+            return None
+        if is_explicit_path(ref):
+            return self.resolve_path(split_ref(ref)[0])
+        return self.resolve_qualified(re.split(r"[:#]", ref, maxsplit=1)[0])
+
     def normalize_ref(self, ref: str) -> str:
-        """Rewrite a qualified-name citation into ``path:lines`` when it resolves unambiguously;
-        every other citation (real paths, unresolvable names) is returned unchanged."""
-        if not ref or self.file_grounded(ref):
+        """Rewrite a citation into canonical ``path:lines`` when it names ONE repo file that differs
+        from what was written (qualified name, prefix-truncated path); otherwise return it unchanged.
+        Downstream readers (excerpts, static context) then open exactly the file grounding used."""
+        if not ref:
             return ref
-        head = ref.split(":", 1)[0]
-        resolved = self.resolve_qualified(head)
+        explicit = is_explicit_path(ref)
+        file = split_ref(ref)[0]
+        if explicit and self._direct_file(file) == file.replace("\\", "/"):
+            return ref                                    # already canonical: keep its description
+        resolved = self.canonical_file(ref)
         if not resolved:
             return ref
-        tail = _LINE_TAIL_RE.search(ref[len(head):])
-        return f"{resolved}:{tail.group(1).replace(' ', '')}" if tail else resolved
+        if explicit:
+            idx = ref.find(file)
+            tail = _line_tail(ref[idx + len(file):] if idx >= 0 else ref)
+        else:
+            head = re.split(r"[:#]", ref, maxsplit=1)[0]
+            tail = _line_tail(ref[len(head):])
+        return f"{resolved}:{tail}" if tail else resolved
 
     def symbol_present(self, sym: str) -> bool:
         # A symbol the index was not built to search for is given the benefit of the doubt (never
@@ -248,15 +354,21 @@ def composite_signal(finding) -> tuple[bool, str | None]:
 
 def ground_finding(index: RepoIndex, finding) -> dict:
     """Return deterministic citation and composite signals for one finding against an index."""
-    missing_files = [ref for ref in (finding.affected or []) if not index.file_grounded(ref)]
+    refs = list(finding.affected or [])
+    # Only an EXPLICIT file that exists nowhere is "missing" (hallucinated location). A symbol-style
+    # citation, or a path that matches several files, is "unresolved": not proof of absence.
+    missing_files = [ref for ref in refs if is_explicit_path(ref) and not index.file_grounded(ref)]
+    unresolved_refs = [ref for ref in refs
+                       if ref and ref not in missing_files and index.canonical_file(ref) is None]
     symbols = extract_cited_symbols(
         finding.title, finding.why_vulnerable, finding.vulnerable_flow, finding.recommended_fix,
     )
     missing_symbols = sorted(s for s in symbols if not index.symbol_present(s))
-    out_of_range_lines = [ref for ref in (finding.affected or [])
+    out_of_range_lines = [ref for ref in refs
                           if index.file_grounded(ref) and not index.line_in_range(ref)]
     composite_suspect, composite_reason = composite_signal(finding)
     return {"missing_files": missing_files, "missing_symbols": missing_symbols,
+            "unresolved_refs": unresolved_refs,
             "out_of_range_lines": out_of_range_lines,
             "composite_suspect": composite_suspect, "composite_reason": composite_reason}
 

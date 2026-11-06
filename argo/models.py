@@ -179,6 +179,9 @@ class Grounding(BaseModel):
     missing_files: list[str] = Field(default_factory=list)
     missing_symbols: list[str] = Field(default_factory=list)
     out_of_range_lines: list[str] = Field(default_factory=list)
+    #: Citations that could not be mapped to ONE repo file (symbol-style such as ``auth.Check()`` /
+    #: ``crate::x::y``, or an ambiguous path). Not evidence of absence; never a drop reason.
+    unresolved_refs: list[str] = Field(default_factory=list)
     composite_suspect: bool = False
     composite_reason: Optional[str] = None
 

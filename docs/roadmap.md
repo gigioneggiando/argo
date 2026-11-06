@@ -21,9 +21,9 @@ defaults.
 
 These are deliberately recorded as follow-ups rather than silently inferred as complete:
 
-- **Corpus expansion:** grow `benchmarks/corpora/` from the current five independently verified cases
-  to the planned 10–20+ positive/negative cases, with exact revisions, reviewed labels, and
-  permission/licensing checks.
+- **Corpus expansion — dropped (owner decision, 2026-11-06).** The paper that needed it is done; the
+  five verified cases stay as a regression/smoke suite. Consequence: the matrix below, if ever run,
+  uses those five cases, and profile defaults stay `provisional`.
 - **Repeated cross-provider matrix:** run documented N≥3 comparisons on the same pinned corpus and
   settings across Claude, Codex, Gemini, and selected local/open-weight models (start with Qwen and
   DeepSeek), including effort variants and mixed-provider validation. First confirm `bench-cross`
@@ -33,7 +33,8 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
   resource costs. Run only with approved budget and comparable access.
 - **Measured defaults:** use those results to decide whether built-in profiles should change. Until then
   profile routing remains marked `provisional` and no quality claim is made from one run.
-- **Optional product backlog:** streaming chat replies (B2), per-run subprocess isolation (C2), and
+- **Optional product backlog:** streaming chat replies (B2: live activity shipped 2026-11-06, Claude/
+  Gemini pending), per-run subprocess isolation (C2), and
   additional CI/Fast profiles remain lower-priority work; they are not prerequisites for the shipped
   routing/planning tranche.
 
@@ -205,7 +206,7 @@ Implemented in `argo/chat.py` + `server/` (`GET/POST /runs/{id}/chat`, `GET .../
       read-only (verified: generated files never land in `repo/`). Served via `GET .../generated`.
 - [x] **"why-not-found" → candidate → re-validate** (backlog **B1**) — `chat.ask` re-validates a
       model-proposed `CANDIDATE_FINDING.json` via `validate._validate_one`; verdict in the UI.
-- [ ] _Later:_ token-streaming replies (backlog **B2**).
+- [~] Streaming replies (backlog **B2**): live activity shipped (Codex, Mistral API); Claude/Gemini pending.
 
 ### Phase 4 — Context enrichment — ◑ PARTIAL (vuln index done; AST metadata deferred)
 Goal: raise recall/quality with cheap, structured context; surface it in the UI.
@@ -573,8 +574,17 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
 - **Risk:** a user-led candidate can coax a false "confirmed" — keep the adversarial validator's
   refute-first framing (unchanged) and label these as **interactive probes**, not pipeline findings.
 
-#### B2 — Streaming chat replies — effort **L** · paper value **Low (UX only)**
-- **Feasibility: low-to-medium; a real architectural blocker.** Every backend uses a single **blocking**
+#### B2 — Streaming chat replies — effort **L** · paper value **Low (UX only)** — ◑ LIVE ACTIVITY SHIPPED (2026-11-06)
+- **Shipped:** live *activity* rather than tokens. Runners take an optional `on_activity` sink (set like
+  `cancel_event`, propagated by `FallbackRunner`) and report one-line progress while a session runs:
+  Codex from its `--json` events through the existing streaming `_exec(on_stdout_line=...)` tee (the
+  session guard still sees every line), Mistral API from its native loop. `chat.ask(on_activity=)`,
+  `POST /runs/{id}/chat/stream` (NDJSON over POST; ends with the plain call's payload), and the chat
+  panel shows the step count and last actions. Results, ledger and guardrails are unchanged. **Pending:**
+  Claude (`--output-format stream-json`, used only when a sink is attached; needs one verification
+  against the real CLI before relying on its final `result` event) and Gemini/Vibe.
+- **Original analysis (2026-06; the blocking-subprocess premise is outdated since `_exec` streams):**
+  **Feasibility: low-to-medium; a real architectural blocker.** Every backend uses a single **blocking**
   `subprocess.run()` and returns one complete `LLMResult`; there is **no token-callback or streaming path**
   anywhere (`runner.py` `_invoke` for Headless/Codex; `chat.ask` is one call; `POST /chat` returns a dict;
   the webapp `await api.sendChat`). The SSE machinery exists only for run status (`/runs/{id}/events`).

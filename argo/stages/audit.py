@@ -18,7 +18,7 @@ from ..config import ARTIFACT_TOOLS
 from ..context import BudgetExceeded, RunContext, atomic_write_json, collect_output_files
 from ..guardrails import PromptGuardrailError, assert_prohibited_present
 from ..rendering import ensure_context_pack_present, neutralize_audit_prompt, with_artifact_contract
-from ..runner import RunnerError
+from ..runner import TERMINAL_FAILURE_KINDS, RunnerError
 from ..schemas import SchemaValidationError, validate_findings
 from ..progress import read_status
 
@@ -347,6 +347,9 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
     scratch_findings = work / findings_filename
     atomic_write_json(scratch_findings, _streaming_seed(ctx, scope, slug))
     partial = False
+    # Exhausted credits / a rejected key fail identically on the second pass: such a session
+    # failure is final for this backend (FallbackRunner may still have tried another one).
+    session_retry = True
     try:
         result = ctx.runner_for("audit").run(
             prompt=prompt,
@@ -366,9 +369,10 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
         # Hard session failure (timeout / no-envelope / cap). Don't crash the whole audit —
         # still try to recover any partial findings file from the scratch dir.
         partial = True
+        session_retry = getattr(exc, "failure_kind", None) not in TERMINAL_FAILURE_KINDS
         files = sorted(work.glob("SECURITY_FINDINGS__*.json"))
         if not files:
-            return slug, None, f"session failed, no partial artifact ({exc})", True
+            return slug, None, f"session failed, no partial artifact ({exc})", session_retry
         _log(f"{slug}: session failed ({exc}); recovered partial artifact from scratch dir")
     if not files:
         return slug, None, "no findings JSON produced", True
@@ -380,7 +384,7 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
     if raw_doc.get(_STREAMING_SEED_KEY) and not raw_doc.get("findings"):
         # The backend failed before checkpointing even one finding.  Preserve the existing retry
         # semantics: an untouched seed is not an answer and must not suppress the bounded retry.
-        return slug, None, "session produced no checkpointed findings", True
+        return slug, None, "session produced no checkpointed findings", session_retry
 
     doc, repaired_ids, unrecoverable, coerced = _normalize_findings_doc(raw_doc, ctx, scope, slug)
     if repaired_ids:

@@ -31,6 +31,7 @@ _RESEARCH_BRIEF_CAP = 9000   # cap the injected Stage-1 brief so it can't domina
 # can write ground_truth.json + repo_profile.json but NOT the per-focus audit_*.md prompts, which aborts
 # the whole run with "no audit prompts". The synthesis is read-only and idempotent, so retry it.
 _RECON_MAX_ATTEMPTS = 2
+
 from ..rendering import ensure_design_context_present, fill_placeholders, with_artifact_contract
 from ..census import ensure_variant_census_present
 from ..checklists import (
@@ -39,7 +40,7 @@ from ..checklists import (
     detect_native,
     ensure_coverage_checklist_present,
 )
-from ..runner import RunnerError
+from ..runner import TERMINAL_FAILURE_KINDS, RunnerError
 from . import incremental, target_memory
 
 
@@ -199,6 +200,11 @@ def run(ctx: RunContext) -> list[Path]:
             files = sorted(p for p in work.glob("*") if p.is_file())
             print(f"[recon] session failed ({exc}); recovered {len(files)} partial artifact(s) "
                   "from the scratch dir", file=sys.stderr)
+            if getattr(exc, "failure_kind", None) in TERMINAL_FAILURE_KINDS:
+                # Exhausted credits, a rejected key, a repo mutation...: the same call on the same
+                # backend fails the same way, so a second attempt only adds noise (observed: a 402
+                # "API budget exhausted" retried as recon-synthesis-retry-2).
+                break
 
         # A transient cutoff can write ground_truth.json + repo_profile.json but NOT the audit_*.md
         # prompts, which would abort the whole run. If no audit prompt was produced, retry the

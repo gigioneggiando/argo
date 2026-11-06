@@ -120,3 +120,23 @@ def test_successful_focuses_are_untouched_by_the_retry_path(env, monkeypatch):
 
     for slug in others:
         assert calls.count(slug) == 1, f"{slug} succeeded and must not be re-run"
+
+
+class _RaisingRunner:
+    def __init__(self, exc):
+        self.exc = exc
+
+    def run(self, **kw):
+        raise self.exc
+
+
+def test_terminal_session_failures_are_not_retried(env):
+    """Exhausted credits or a rejected key fail identically on the second pass, so the focus is
+    reported as not retryable instead of waiting audit_retry_delay_s for the same error."""
+    from argo.runner import RunnerError
+    ctx = _prepare(env)
+    prompt = sorted(ctx.prompts_out_dir.glob("audit_*.md"))[0]
+    for kind, expected in (("credits_exhausted", False), ("auth_failed", False), ("timeout", True)):
+        ctx.runner = _RaisingRunner(RunnerError("x", retryable=True, failure_kind=kind))
+        _slug, path, err, retry = audit_stage._audit_one(ctx, ctx.load_scope(), prompt)
+        assert path is None and err and retry is expected, kind

@@ -9,6 +9,10 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.12.4] - 2026-11-06
+
 ### Fixed
 
 - **Symbol-style citations were dropped as "primary file not in repo".** Validate dropped any

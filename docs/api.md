@@ -120,8 +120,8 @@ cross-backend comparison (`GET /benchmark/cross`), and refusal rate (`GET /refus
   path**. **`brief` is optional**: omit it (or send empty) to audit a **local/personal** codebase as a
   source-only review — the scope is synthesized from `repo` and web research is auto-disabled.
 - `config.runner` defaults to **`mock`** — a request spends **zero tokens** unless the client
-  explicitly sets `"headless"` (Claude Code), `"codex"` (Codex CLI / OpenAI / OSS), or `"gemini"`
-  (Gemini CLI). This is the safety default; the UI adds an explicit confirm + cost preview before a
+  explicitly sets `"headless"` (Claude Code), `"codex"` (Codex CLI / OpenAI / OSS), `"gemini"`
+  (Gemini CLI), `"mistral-api"` (Mistral API, Argo tool loop) or `"mistral-vibe"` (Vibe CLI). This is the safety default; the UI adds an explicit confirm + cost preview before a
   real run.
 - For `"codex"`: `config.codex_model` (omit to use your Codex CLI default, e.g. `"gpt-6.1-sol"`), `config.codex_oss` (bool), and
   `config.codex_local_provider` (`"ollama"`/`"lmstudio"`) select the model / open-source provider;
@@ -135,6 +135,16 @@ cross-backend comparison (`GET /benchmark/cross`), and refusal rate (`GET /refus
   [ui.md](ui.md) (the web UI's runner selector offers Gemini too).
 - For `"headless"` (Claude): `config.claude_api_key` supplies `ANTHROPIC_API_KEY` for this run (else
   the server's ambient env var / existing Claude Code subscription login).
+- For `"mistral-api"`: `config.mistral_api_model` (default `mistral-large-4`) and
+  `config.mistral_api_key` (else `ARGO_MISTRAL_API_KEY` / `MISTRAL_API_KEY`). For `"mistral-vibe"`:
+  `config.mistral_vibe_model` (a Vibe alias, default `mistral-medium-3.5`) and
+  `config.mistral_vibe_api_key`; the server needs the `vibe` CLI (`GET /models` reports
+  `installed`). Both have no web tools: send `research: false` and
+  `config.corroborate_enabled: false` (or route those stages elsewhere via `config.stage_runners`),
+  otherwise `POST /runs` answers **400** before any model call. Keys are redacted like the others.
+  See [backends.md](backends.md#mistral-api-specifics-runner--mistral-api).
+- An invalid routing/config (unknown backend/model pairing, an OSINT stage on a Mistral backend,
+  bad `stage_effort`) is a **400** with the reason in `detail`.
 - `config.claude_api_key`/`config.codex_api_key` are never echoed back or persisted in the clear
   (see `PipelineConfig._SECRET_FIELDS`) — same redaction as `config.gemini_api_key`. Multi-account
   key chaining (`--claude-api-keys`/`--codex-api-keys`) is CLI-only, not exposed over this API

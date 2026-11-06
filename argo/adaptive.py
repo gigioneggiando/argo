@@ -41,7 +41,10 @@ def _strong_model(backend: str, config: PipelineConfig, stage: str) -> str | Non
         return CODEX_TOP
     if backend == "gemini":
         return GEMINI_ARGON
-    return None
+    if backend == "mistral-api":
+        from .config import MISTRAL_API_TOP
+        return MISTRAL_API_TOP
+    return None                     # mistral-vibe: Vibe aliases have no stronger verified tier
 
 
 def _set_stage_model(config: PipelineConfig, backend: str, stage: str, model: str) -> PipelineConfig:
@@ -53,6 +56,14 @@ def _set_stage_model(config: PipelineConfig, backend: str, stage: str, model: st
         values = dict(config.gemini_stage_models)
         values[stage] = model
         return config.with_overrides(gemini_stage_models=values)
+    if backend == "mistral-api":
+        values = dict(config.mistral_api_stage_models)
+        values[stage] = model
+        return config.with_overrides(mistral_api_stage_models=values)
+    if backend == "mistral-vibe":
+        values = dict(config.mistral_vibe_stage_models)
+        values[stage] = model
+        return config.with_overrides(mistral_vibe_stage_models=values)
     values = dict(config.stage_models)
     values[stage] = model
     return config.with_overrides(stage_models=values)
@@ -115,7 +126,8 @@ def maybe_escalate_after_audit(ctx: RunContext) -> list[dict]:
         # A configured fallback is an explicit user choice for a second provider.  Never invent a
         # credential or silently pick a backend that was not configured for this run.
         for candidate in ctx.config.runner_fallbacks:
-            if candidate != old_backend and candidate in {"headless", "codex", "gemini"}:
+            if candidate != old_backend and candidate in {"headless", "codex", "gemini",
+                                                          "mistral-api", "mistral-vibe"}:
                 new_backend = candidate
                 break
     new_model = _strong_model(new_backend, ctx.config, stage)

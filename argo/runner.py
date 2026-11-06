@@ -87,6 +87,62 @@ class RunnerError(RuntimeError):
         self.failure_kind = failure_kind
 
 
+def repo_fingerprint(repo_dir: Path | str | None) -> str | None:
+    """Metadata fingerprint of the audited repo copy: every entry's relative path, type, size,
+    mtime_ns and mode, symlinks not followed. Any write, create, delete, rename, chmod or symlink
+    swap changes it. Metadata-only (no content hashing) keeps it cheap enough to run around every
+    session; a same-size write that also restores mtime_ns would need deliberate timestamp forgery,
+    which the read-only copy's tool policy/sandbox already forbids. None when there is no repo."""
+    if repo_dir is None:
+        return None
+    root = Path(repo_dir)
+    if not root.is_dir():
+        return None
+    h = hashlib.sha256()
+    stack = [root]
+    while stack:
+        cur = stack.pop()
+        try:
+            entries = sorted(os.scandir(cur), key=lambda e: e.name)
+        except OSError as exc:            # unreadable dir: record it, so a later change still shows
+            h.update(f"!{cur.relative_to(root).as_posix()}:{exc.errno}\n".encode())
+            continue
+        for e in entries:
+            try:
+                st = e.stat(follow_symlinks=False)
+            except OSError:
+                continue
+            rel = Path(e.path).relative_to(root).as_posix()
+            kind = "l" if e.is_symlink() else ("d" if e.is_dir(follow_symlinks=False) else "f")
+            if kind == "d":
+                # Directory size/mtime are NOT hashed: NTFS updates them lazily after a child is
+                # written (flaky false positives), and any child create/delete/rename already shows
+                # up in the recursive entry listing itself.
+                h.update(f"d|{rel}|{st.st_mode}\n".encode())
+            else:
+                h.update(f"{kind}|{rel}|{st.st_size}|{st.st_mtime_ns}|{st.st_mode}\n".encode())
+            if kind == "l":
+                try:
+                    h.update(f"->{os.readlink(e.path)}\n".encode())
+                except OSError:
+                    pass
+            elif kind == "d":
+                stack.append(Path(e.path))
+    return h.hexdigest()
+
+
+def _assert_repo_unchanged(repo_dir, before: str | None, *, stage: str, label: str | None,
+                           cause: BaseException | None = None) -> None:
+    if before is None:
+        return
+    after = repo_fingerprint(repo_dir)
+    if after != before:
+        raise RunnerError(
+            f"audited repo copy was modified during the session (stage={stage}, label={label}); "
+            "the repo must stay read-only on every backend -- refusing to use this session's output",
+            retryable=False, failure_kind="repo_mutated") from cause
+
+
 def _redact_secrets(text: str | None, *secrets: str | None) -> str:
     """Remove configured credential values from untrusted child diagnostics."""
     scrubbed = text or ""
@@ -132,6 +188,10 @@ def _derived_account_label(config: PipelineConfig) -> str:
         return "claude:ambient"
     if backend == "gemini":
         return "gemini:api-key" if config.gemini_api_key else "gemini:ambient"
+    if backend == "mistral-api":
+        return "mistral-api:api-key" if config.mistral_api_key else "mistral-api:ambient"
+    if backend == "mistral-vibe":
+        return "mistral-vibe:api-key" if config.mistral_vibe_api_key else "mistral-vibe:ambient"
     return f"{backend}:default"
 
 
@@ -401,21 +461,36 @@ class AgentRunner(ABC):
         work_dir.mkdir(parents=True, exist_ok=True)
         prompt_sha = sha256_text(prompt)
 
+        # Backend-agnostic repo-integrity check: the audited copy must be byte-for-byte untouched by
+        # the session. Claude/Gemini rely on a tool allowlist/policy and ingest's best-effort chmod;
+        # Codex on its OS sandbox. This DETECTS a mutation on every backend (fail-closed) instead
+        # of trusting each enforcement mechanism.
+        repo_before = repo_fingerprint(repo_dir)
         started = time.monotonic()
-        raw = self._invoke(
-            prompt=prompt,
-            work_dir=work_dir,
-            model=model,
-            repo_dir=repo_dir,
-            allowed=allowed,
-            disallowed=disallowed,
-            policy=policy,
-            stage=stage,
-            run_id=run_id,
-            label=label,
-            session_budget_usd=self._session_budget(run_id),
-            timeout_s=self.config.timeout_for(stage),
-        )
+        try:
+            raw = self._invoke(
+                prompt=prompt,
+                work_dir=work_dir,
+                model=model,
+                repo_dir=repo_dir,
+                allowed=allowed,
+                disallowed=disallowed,
+                policy=policy,
+                stage=stage,
+                run_id=run_id,
+                label=label,
+                session_budget_usd=self._session_budget(run_id),
+                timeout_s=self.config.timeout_for(stage),
+            )
+        except RunnerError as exc:
+            _assert_repo_unchanged(repo_dir, repo_before, stage=stage, label=label, cause=exc)
+            raise
+        # checked now, raised only after the call is logged (its tokens/cost were still spent)
+        repo_mutation: RunnerError | None = None
+        try:
+            _assert_repo_unchanged(repo_dir, repo_before, stage=stage, label=label)
+        except RunnerError as exc:
+            repo_mutation = exc
         duration_ms = int((time.monotonic() - started) * 1000)
 
         # Per-backend parse into the common LLMResult (Claude-strict by default; Codex overrides).
@@ -436,6 +511,8 @@ class AgentRunner(ABC):
             if failure_kind is None and result.api_error_status and "429" in str(result.api_error_status):
                 failure_kind = "rate_limited"
         model_mismatch = bool(result.served_model and result.served_model != model)
+        if repo_mutation is not None:
+            failure_kind = "repo_mutated"
 
         # --- cost/latency/refusal logging (ledger + per-run JSONL) — ALWAYS, even on error -----
         self.ledger.log_call(
@@ -484,6 +561,9 @@ class AgentRunner(ABC):
             "duration_ms": duration_ms,
             "failure_kind": failure_kind,
         })
+
+        if repo_mutation is not None:
+            raise repo_mutation
 
         if model_mismatch and not self.config.allow_model_substitution:
             raise RunnerError(
@@ -1992,7 +2072,13 @@ def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner
         return CodexRunner(cfg, ledger)
     if name == "gemini":
         return GeminiRunner(cfg, ledger)
-    raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', 'gemini', or 'mock')")
+    if name == "mistral-api":
+        from .mistral_api import MistralApiRunner     # lazy: keeps httpx off the import path
+        return MistralApiRunner(cfg, ledger)
+    if name == "mistral-vibe":
+        from .mistral_vibe import MistralVibeRunner
+        return MistralVibeRunner(cfg, ledger)
+    raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', 'gemini', 'mistral-api', 'mistral-vibe', or 'mock')")
 
 
 def _label_runner(runner: AgentRunner, backend: str, account: str, index: int) -> AgentRunner:

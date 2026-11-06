@@ -124,7 +124,10 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
 
     @app.post("/runs", response_model=RunCreated, status_code=202)
     def create_run(req: RunRequest):
-        run_id = jobs.start(req)
+        try:
+            run_id = jobs.start(req)
+        except ValueError as exc:                # invalid routing/config: the client's fault
+            raise HTTPException(status_code=400, detail=str(exc))
         return RunCreated(run_id=run_id, state="running",
                           status_url=f"/runs/{run_id}", events_url=f"/runs/{run_id}/events")
 
@@ -187,8 +190,10 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
     def models():
         """Available backends, their selectable models, and the token-cost price table — so the UI
         can offer model pickers and show cost estimates instead of free-text guessing."""
+        import shutil
         from argo.config import (DEFAULT_CODEX_STAGE_MODELS, DEFAULT_GEMINI_STAGE_MODELS,
-                                 DEFAULT_STAGE_MODELS, MODEL_PRICING)
+                                 DEFAULT_STAGE_MODELS, MISTRAL_API_BALANCED, MISTRAL_VIBE_DEFAULT,
+                                 MODEL_PRICING)
         from argo.model_catalog import catalog_by_provider, catalog_snapshot
         return {
             "backends": [
@@ -201,6 +206,18 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
                  "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("openai")]},
                 {"id": "gemini", "label": "Gemini CLI", "cost": "estimated (token-based)",
                  "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("gemini")]},
+                {"id": "mistral-api", "label": "Mistral API",
+                 "cost": "estimated (token-based; unknown for unpriced models)",
+                 "default_model": MISTRAL_API_BALANCED, "offline_only": True,
+                 "key_env": ["ARGO_MISTRAL_API_KEY", "MISTRAL_API_KEY"],
+                 "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("mistral")]},
+                {"id": "mistral-vibe", "label": "Mistral Vibe CLI",
+                 "cost": "Vibe estimate (provider_estimated)",
+                 "default_model": MISTRAL_VIBE_DEFAULT, "offline_only": True,
+                 "installed": shutil.which("vibe") is not None,
+                 "key_env": ["ARGO_MISTRAL_VIBE_API_KEY", "ARGO_MISTRAL_API_KEY", "MISTRAL_API_KEY"],
+                 "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("mistral")
+                            if s.cli_available]},
             ],
             "default_stage_models": DEFAULT_STAGE_MODELS,
             "default_gemini_stage_models": DEFAULT_GEMINI_STAGE_MODELS,

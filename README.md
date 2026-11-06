@@ -234,6 +234,8 @@ Pick a backend (default `headless` = Claude Code):
 argo pipeline ... --runner codex                                  # Codex CLI / OpenAI
 argo pipeline ... --runner codex --codex-oss --codex-local-provider ollama --codex-model qwen2.5-coder:32b
 argo pipeline ... --runner gemini                                 # Gemini CLI / Google
+argo pipeline ... --runner mistral-api --no-research --no-corroborate   # Mistral API
+argo pipeline ... --runner mistral-vibe --no-research --no-corroborate  # Mistral Vibe CLI
 ```
 
 Low-cost modes:
@@ -295,7 +297,9 @@ the `AgentRunner` abstraction are in **[docs/architecture.md](docs/architecture.
 Same pipeline, swappable engine — pick what you have: `--runner headless` (Claude Code) ·
 `--runner codex` (Codex CLI → OpenAI, or `--codex-oss --codex-local-provider ollama|lmstudio` for
 **local open-source models** like Qwen/DeepSeek, fully free and on-device) · `--runner gemini`
-(Gemini CLI → Google, tiered pro/flash/flash-lite per stage like Claude) · `--runner mock` (free
+(Gemini CLI → Google, tiered pro/flash/flash-lite per stage like Claude) · `--runner mistral-api`
+(Mistral API, Argo's own sandboxed tool loop, any OS) · `--runner mistral-vibe` (Mistral Vibe
+CLI under an isolated, read-only config) · `--runner mock` (free
 fixtures). Backends and accounts chain transparently on a rate limit or transient failure, so a long
 run self-heals instead of stalling. Full model-per-stage defaults, the resilience/fallback design,
 and the cross-model study: **[docs/backends.md](docs/backends.md)**.

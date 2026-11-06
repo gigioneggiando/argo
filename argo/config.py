@@ -45,6 +45,34 @@ CODEX_TOP = "gpt-6-astra"
 CODEX_BALANCED = "gpt-6.1-sol"
 CODEX_CHEAP = "gpt-6-luna"
 
+# Mistral developer API (runner == "mistral-api"): Chat Completions + an Argo-owned tool loop
+# (argo/mistral_api.py), platform-independent. Verified 2026-11-06 against api.mistral.ai: the
+# exact, priced, recommended model is `mistral-large-4` (`mistral-large-latest` still points at the
+# deprecated Large 3 and Medium 3.5 is deprecated), so it is both the default and the top tier.
+MISTRAL_API_BALANCED = "mistral-large-4"
+MISTRAL_API_TOP = "mistral-large-4"
+MISTRAL_API_CHEAP = "mistral-small-2603"
+MISTRAL_API_BASE_URL = "https://api.mistral.ai/v1"
+# Mistral Vibe CLI (runner == "mistral-vibe"; argo/mistral_vibe.py). Vibe takes its own model
+# ALIASES, not API ids; this is mistral-vibe 3.1.0's default (-> mistral-vibe-cli-latest).
+MISTRAL_VIBE_DEFAULT = "mistral-medium-3.5"
+#: Backends that expose no web tools: the networked OSINT stages cannot run on them.
+NO_WEB_BACKENDS: frozenset[str] = frozenset({"mistral-api", "mistral-vibe"})
+
+
+def networked_stage_conflicts(cfg: "PipelineConfig") -> list[str]:
+    """Enabled research/corroborate stages routed to a backend without web tools (empty = OK).
+    Used by the CLI and the HTTP API before any model call: an explicit choice beats a silently
+    degraded, web-less OSINT stage."""
+    out = []
+    for stage, on in (("research", cfg.research_enabled), ("corroborate", cfg.corroborate_enabled)):
+        backend = cfg.stage_runners.get(stage, cfg.runner)
+        if on and backend in NO_WEB_BACKENDS:
+            out.append(f"stage {stage!r} needs web tools, which runner={backend} does not have: "
+                       f"disable it (--no-{stage} / {stage}_enabled=false) or route it to "
+                       f"headless|codex|gemini (--stage-runner {stage}=...)")
+    return out
+
 # Codex's model selection is stage-aware.  The map is intentionally separate from the user
 # override field so an explicit --codex-model can still flatten every stage, while a per-stage
 # override wins over that global convenience flag.
@@ -303,6 +331,19 @@ class PipelineConfig:
     # never auto-compacts; set this to the server's window (e.g. Ollama OLLAMA_CONTEXT_LENGTH) so
     # Codex compacts at 80% instead of the server discarding half the conversation.
     codex_context_window: int | None = None
+    # Mistral API backend (runner == "mistral-api"). Flat override + per-stage map, like Codex.
+    # The key is a SECRET (redacted from config.json); when unset, ARGO_MISTRAL_API_KEY then
+    # MISTRAL_API_KEY from the environment are used. Never read from Vibe's own credential store.
+    mistral_api_model: str | None = None
+    mistral_api_stage_models: dict[str, str] = field(default_factory=dict)
+    mistral_api_key: str | None = None
+    mistral_api_base_url: str | None = None      # default MISTRAL_API_BASE_URL
+    mistral_api_context_window: int | None = None  # tokens; default 128k (tool-output elision)
+    # Mistral Vibe CLI backend (runner == "mistral-vibe"): model ALIASES (vibe --model), flat + per
+    # stage. Key: mistral_vibe_api_key / ARGO_MISTRAL_VIBE_API_KEY, else the mistral-api key.
+    mistral_vibe_model: str | None = None
+    mistral_vibe_stage_models: dict[str, str] = field(default_factory=dict)
+    mistral_vibe_api_key: str | None = None
     session_timeout_s: int = 1800       # default per-session wall-clock cap (seconds)
     # per-stage wall-clock overrides; seeded with DEFAULT_STAGE_TIMEOUTS (deep recon + audit).
     stage_timeouts: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_STAGE_TIMEOUTS))
@@ -520,6 +561,14 @@ class PipelineConfig:
             if self.codex_model:
                 return self.codex_model
             return DEFAULT_CODEX_STAGE_MODELS.get(stage, CODEX_BALANCED)
+        if backend == "mistral-api":
+            if stage in self.mistral_api_stage_models:
+                return self.mistral_api_stage_models[stage]
+            return self.mistral_api_model or MISTRAL_API_BALANCED
+        if backend == "mistral-vibe":
+            if stage in self.mistral_vibe_stage_models:
+                return self.mistral_vibe_stage_models[stage]
+            return self.mistral_vibe_model or MISTRAL_VIBE_DEFAULT
         # Gemini is tiered per stage like Claude, via its own dict (see DEFAULT_GEMINI_STAGE_MODELS).
         if backend == "gemini":
             try:
@@ -543,6 +592,14 @@ class PipelineConfig:
             models = dict(self.codex_stage_models)
             models[stage] = model
             return replace(self, codex_stage_models=models)
+        if self.runner == "mistral-api":
+            models = dict(self.mistral_api_stage_models)
+            models[stage] = model
+            return replace(self, mistral_api_stage_models=models)
+        if self.runner == "mistral-vibe":
+            models = dict(self.mistral_vibe_stage_models)
+            models[stage] = model
+            return replace(self, mistral_vibe_stage_models=models)
         if self.runner == "gemini":
             models = dict(self.gemini_stage_models)
             models[stage] = model
@@ -565,6 +622,8 @@ class PipelineConfig:
             return self.with_stage_model("audit", GEMINI_ARGON)
         if self.runner == "codex":
             return self.with_overrides(codex_model=CODEX_TOP)
+        if self.runner == "mistral-api":
+            return self.with_stage_model("audit", MISTRAL_API_TOP)
         return self.with_stage_model("audit", OPUS)
 
     def for_smoke(self) -> "PipelineConfig":
@@ -614,7 +673,8 @@ _PATH_FIELDS = {"runs_dir", "prompts_dir", "ledger_path", "target_memory_dir", "
 # so a run directory never leaks live API keys or runtime login credentials.
 _SECRET_FIELDS = {"gemini_api_key", "gemini_accounts",
                   "claude_api_key", "claude_api_keys",
-                  "codex_api_key", "codex_api_keys", "runtime_credentials"}
+                  "codex_api_key", "codex_api_keys", "mistral_api_key", "mistral_vibe_api_key",
+                  "runtime_credentials"}
 _REDACTED = "<redacted>"
 
 

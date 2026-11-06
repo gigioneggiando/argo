@@ -60,6 +60,8 @@ def _build_config(
     gemini_model: Optional[str] = None,
     gemini_api_key: Optional[str] = None,
     gemini_accounts: Optional[str] = None,
+    mistral_api_model: Optional[str] = None,
+    mistral_vibe_model: Optional[str] = None,
     claude_api_key: Optional[str] = None,
     claude_api_keys: Optional[str] = None,
     codex_api_key: Optional[str] = None,
@@ -88,6 +90,8 @@ def _build_config(
         gemini_api_key=gemini_api_key,
         claude_api_key=claude_api_key,
         codex_api_key=codex_api_key,
+        mistral_api_model=mistral_api_model,
+        mistral_vibe_model=mistral_vibe_model,
         allow_model_substitution=allow_model_substitution,
         adaptive_escalation=adaptive_escalation,
     )
@@ -157,13 +161,22 @@ def _parse_assignments(values: Optional[list[str]], option: str) -> dict[str, st
     return result
 
 
+def _preflight_networked_stages(cfg: PipelineConfig) -> None:
+    """Fail before any model call if an enabled research/corroborate stage would land on a backend
+    without web tools (see config.networked_stage_conflicts)."""
+    from .config import networked_stage_conflicts
+    problems = networked_stage_conflicts(cfg)
+    if problems:
+        raise typer.BadParameter("; ".join(problems))
+
+
 def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[str]],
                              stage_runners: Optional[list[str]],
                              stage_efforts: Optional[list[str]] = None) -> PipelineConfig:
     runner_map = _parse_assignments(stage_runners, "--stage-runner")
     model_map = _parse_assignments(stage_models, "--stage-model")
     effort_map = _parse_assignments(stage_efforts, "--stage-effort")
-    valid_backends = {"headless", "codex", "gemini", "mock"}
+    valid_backends = {"headless", "codex", "gemini", "mistral-api", "mistral-vibe", "mock"}
     unknown = sorted(set(runner_map.values()) - valid_backends)
     if unknown:
         raise typer.BadParameter(f"--stage-runner unknown backend(s): {', '.join(unknown)}")
@@ -172,6 +185,8 @@ def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[st
     if model_map:
         codex = dict(cfg.codex_stage_models)
         gemini = dict(cfg.gemini_stage_models)
+        mistral = dict(cfg.mistral_api_stage_models)
+        vibe = dict(cfg.mistral_vibe_stage_models)
         claude = dict(cfg.stage_models)
         for stage, model in model_map.items():
             backend = runner_map.get(stage, cfg.stage_runners.get(stage, cfg.runner))
@@ -185,10 +200,15 @@ def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[st
                 codex[stage] = model
             elif backend == "gemini":
                 gemini[stage] = model
+            elif backend == "mistral-api":
+                mistral[stage] = model
+            elif backend == "mistral-vibe":
+                vibe[stage] = model
             else:
                 claude[stage] = model
         cfg = cfg.with_overrides(codex_stage_models=codex, gemini_stage_models=gemini,
-                                 stage_models=claude)
+                                 mistral_api_stage_models=mistral,
+                                 mistral_vibe_stage_models=vibe, stage_models=claude)
     if effort_map:
         allowed = {"low", "medium", "high", "xhigh", "max"}
         invalid = sorted(set(effort_map.values()) - allowed)
@@ -205,7 +225,9 @@ def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[st
 
 RunnerOpt = typer.Option("headless", "--runner",
                          help="headless (Claude Code CLI) · codex (Codex CLI / OpenAI / OSS) · "
-                              "gemini (Gemini CLI) · mock")
+                              "gemini (Gemini CLI) · mistral-api (Mistral API, Argo tool loop; key "
+                              "from ARGO_MISTRAL_API_KEY/MISTRAL_API_KEY) · mistral-vibe (Mistral "
+                              "Vibe CLI, isolated config) · mock")
 CodexModelOpt = typer.Option(None, "--codex-model",
                              help="(runner=codex) model id, e.g. gpt-6.1-sol; omit to use the "
                                   "Codex CLI's own default")
@@ -217,6 +239,14 @@ CodexContextWindowOpt = typer.Option(
     help="(runner=codex) the local model server's real context window in tokens (e.g. Ollama's "
          "OLLAMA_CONTEXT_LENGTH). Codex has no metadata for local models; with this it "
          "auto-compacts at 80%% instead of the server silently discarding context.")
+MistralVibeModelOpt = typer.Option(
+    None, "--mistral-vibe-model",
+    help="(runner=mistral-vibe) Vibe model ALIAS for every stage (default mistral-medium-3.5); "
+         "--stage-model STAGE=ALIAS overrides one stage")
+MistralApiModelOpt = typer.Option(
+    None, "--mistral-api-model",
+    help="(runner=mistral-api) model id for every stage, default mistral-large-4 (priced, exact); "
+         "e.g. mistral-small-2603 for a cheap run; --stage-model STAGE=ID overrides one stage")
 GeminiModelOpt = typer.Option(
     None, "--gemini-model",
     help="(runner=gemini) flat override across every stage, e.g. gemini-3.1-pro; applied before "
@@ -512,6 +542,8 @@ def plan_target(
 def show_routing(
     runner: str = RunnerOpt, codex_model: Optional[str] = CodexModelOpt,
     gemini_model: Optional[str] = GeminiModelOpt,
+    mistral_api_model: Optional[str] = MistralApiModelOpt,
+    mistral_vibe_model: Optional[str] = MistralVibeModelOpt,
     stage_model: Optional[list[str]] = StageModelOpt,
     stage_runner: Optional[list[str]] = StageRunnerOpt,
     stage_effort: Optional[list[str]] = StageEffortOpt,
@@ -520,10 +552,13 @@ def show_routing(
     from .model_catalog import get_model_spec
     cfg = _build_config(runner, None, False, None, 3, Path("runs"), "happy",
                         codex_model=codex_model, gemini_model=gemini_model,
+                        mistral_api_model=mistral_api_model,
+                        mistral_vibe_model=mistral_vibe_model,
                         stage_models=stage_model, stage_runners=stage_runner,
                         stage_efforts=stage_effort)
     stages = sorted(set(cfg.stage_models) | set(cfg.gemini_stage_models) |
-                    set(cfg.codex_stage_models) | set(cfg.stage_runners))
+                    set(cfg.codex_stage_models) | set(cfg.mistral_api_stage_models) |
+                    set(cfg.mistral_vibe_stage_models) | set(cfg.stage_runners))
     out = {}
     for s in stages:
         model = cfg.model_for(s)
@@ -1348,6 +1383,8 @@ def pipeline(
     codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
     gemini_accounts: Optional[str] = GeminiAccountsOpt,
+    mistral_api_model: Optional[str] = MistralApiModelOpt,
+    mistral_vibe_model: Optional[str] = MistralVibeModelOpt,
     claude_api_key: Optional[str] = ClaudeApiKeyOpt,
     claude_api_keys: Optional[str] = ClaudeApiKeysOpt,
     codex_api_key: Optional[str] = CodexApiKeyOpt,
@@ -1369,7 +1406,8 @@ def pipeline(
                         codex_context_window=codex_context_window,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
-                        gemini_accounts=gemini_accounts,
+                        gemini_accounts=gemini_accounts, mistral_api_model=mistral_api_model,
+                        mistral_vibe_model=mistral_vibe_model,
                         claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
                         codex_api_key=codex_api_key, codex_api_keys=codex_api_keys,
                         stage_models=stage_model, stage_runners=stage_runner,
@@ -1418,6 +1456,7 @@ def pipeline(
         research = False     # local/personal review: no program context to web-research, stay offline
         cfg = cfg.with_overrides(research_enabled=False,
                                  corroborate_enabled=False)  # ...and no networked corroboration
+    _preflight_networked_stages(cfg)
     ctx = build_context(cfg, run or new_run_id())
 
     def _print_estimate(text: str) -> None:
@@ -1503,7 +1542,8 @@ def bench_cross(
                                help="suite dir (each <case>/case.json + expected_findings.json)"),
     backends: str = typer.Option(
         "headless,codex,gemini", "--backends",
-        help="comma-separated backend names to compare, e.g. headless,codex,gemini"),
+        help="comma-separated backend names to compare, e.g. headless,codex,gemini "
+             "(opt-in: mistral-api, mistral-vibe -- offline suites only)"),
     tier: str = typer.Option(
         "cheap", "--tier",
         help="cheap (default) = Haiku 5.5 / gpt-6-luna / Flash-Lite per backend, keeps a full sweep "
@@ -1546,7 +1586,8 @@ def bench_cross(
 def refusal_probe(
     backends: str = typer.Option(
         "headless,codex,gemini", "--backends",
-        help="comma-separated backend names to probe, e.g. headless,codex,gemini"),
+        help="comma-separated backend names to probe, e.g. headless,codex,gemini "
+             "(opt-in: mistral-api, mistral-vibe)"),
     prompts_file: Path = typer.Option(
         Path("tests/fixtures/refusal_prompts.json"), "--prompts", exists=True,
         help="curated, non-adversarial prompt set (id/prompt/neutral_variant per entry)"),

@@ -36,6 +36,10 @@ class JobManager:
             gemini_api_key=req.config.gemini_api_key,
             claude_api_key=req.config.claude_api_key,
             codex_api_key=req.config.codex_api_key,
+            mistral_api_model=req.config.mistral_api_model,
+            mistral_vibe_model=req.config.mistral_vibe_model,
+            mistral_api_key=req.config.mistral_api_key,
+            mistral_vibe_api_key=req.config.mistral_vibe_api_key,
             stage_runners=dict(req.config.stage_runners),
             allow_model_substitution=req.config.allow_model_substitution,
         )
@@ -48,6 +52,10 @@ class JobManager:
             # those can still bump individual stages on top -- mirrors the CLI's _build_config.
             cfg = cfg.with_overrides(
                 gemini_stage_models={k: req.config.gemini_model for k in cfg.gemini_stage_models})
+        if req.config.research_enabled is not None:
+            cfg = cfg.with_overrides(research_enabled=req.config.research_enabled)
+        if req.config.corroborate_enabled is not None:
+            cfg = cfg.with_overrides(corroborate_enabled=req.config.corroborate_enabled)
         if req.config.calibration:
             cfg = cfg.calibrated()
         if req.config.audit_model:
@@ -67,12 +75,18 @@ class JobManager:
                 effort[stage] = value
             cfg = cfg.with_overrides(stage_effort=effort)
         from argo.model_catalog import validate_selection
-        stages = set(cfg.stage_models) | set(cfg.codex_stage_models) | set(cfg.gemini_stage_models) | set(cfg.stage_runners)
+        stages = (set(cfg.stage_models) | set(cfg.codex_stage_models) | set(cfg.gemini_stage_models)
+                  | set(cfg.mistral_api_stage_models) | set(cfg.mistral_vibe_stage_models)
+                  | set(cfg.stage_runners))
         for stage in stages:
             backend = cfg.stage_runners.get(stage, cfg.runner)
             check = validate_selection(cfg.model_for(stage), backend)
             if check.get("selectable") is False:
                 raise ValueError(f"invalid effective routing for {stage}: {check.get('reason')}")
+        from argo.config import networked_stage_conflicts
+        problems = networked_stage_conflicts(cfg)
+        if problems:
+            raise ValueError("; ".join(problems))
         return cfg
 
     def start(self, req: RunRequest) -> str:

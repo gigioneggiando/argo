@@ -43,8 +43,8 @@ particular while the version stays `0.y.z`.
   `POST /runs/{id}/chat/stream` (NDJSON: `activity` lines, then the same payload as
   `POST /runs/{id}/chat`) and `chat.ask(on_activity=)`. Runners expose an optional `on_activity`
   sink: Claude (switching to `--output-format stream-json` only while a viewer is attached; the final
-  `result` event is the same envelope), Codex (from its `--json` events) and Mistral API report;
-  Gemini and Vibe show the spinner only for now. Results, ledger and guardrails are unchanged.
+  `result` event is the same envelope), Gemini (also `stream-json`, rebuilt into the json envelope),
+  Codex (from its `--json` events) and Mistral API report; Vibe shows the spinner only for now. Results, ledger and guardrails are unchanged.
 
 ### Changed
 

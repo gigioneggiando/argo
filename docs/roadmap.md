@@ -37,7 +37,7 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
 - **Measured defaults:** use those results to decide whether built-in profiles should change. Until then
   profile routing remains marked `provisional` and no quality claim is made from one run.
 - **Optional product backlog:** streaming chat replies (B2: live activity shipped 2026-11-06 for Claude/
-  Codex/Mistral API; Gemini/Vibe pending), per-run subprocess isolation (C2), and additional CI/Fast
+  Codex/Gemini/Mistral API; Vibe pending), per-run subprocess isolation (C2), and additional CI/Fast
   profiles remain lower-priority work (CI integration shipped 2026-11-06 as `argo sarif` + `argo gate`,
   see `docs/ci.md`; `cost-saver` serves as the CI profile, so no duplicate profile was added); they
   are not prerequisites for the shipped routing/planning tranche.
@@ -210,7 +210,7 @@ Implemented in `argo/chat.py` + `server/` (`GET/POST /runs/{id}/chat`, `GET .../
       read-only (verified: generated files never land in `repo/`). Served via `GET .../generated`.
 - [x] **"why-not-found" → candidate → re-validate** (backlog **B1**) — `chat.ask` re-validates a
       model-proposed `CANDIDATE_FINDING.json` via `validate._validate_one`; verdict in the UI.
-- [~] Streaming replies (backlog **B2**): live activity shipped (Claude, Codex, Mistral API); Gemini/Vibe pending.
+- [~] Streaming replies (backlog **B2**): live activity shipped (Claude, Codex, Gemini, Mistral API); Vibe pending.
 
 ### Phase 4 — Context enrichment — ◑ PARTIAL (vuln index done; AST metadata deferred)
 Goal: raise recall/quality with cheap, structured context; surface it in the UI.
@@ -584,9 +584,12 @@ the chat depth block (B) next; the run-infra block (C) is low-value for a local 
   Codex from its `--json` events through the existing streaming `_exec(on_stdout_line=...)` tee (the
   session guard still sees every line), Mistral API from its native loop, and Claude by switching to
   `--output-format stream-json --verbose` ONLY when a sink is attached (its final `result` event is
-  the same envelope as `--output-format json`, verified against claude 2.1.319). `chat.ask(on_activity=)`,
+  the same envelope as `--output-format json`, verified against claude 2.1.319). Gemini likewise
+  switches to `stream-json`; its result event lacks the text and uses flat token stats, so
+  `_gemini_stream_envelope` rebuilds the json envelope (verified end to end against gemini CLI 0.66). `chat.ask(on_activity=)`,
   `POST /runs/{id}/chat/stream` (NDJSON over POST; ends with the plain call's payload), and the chat
-  panel shows the step count and last actions. Results, ledger and guardrails are unchanged. **Pending:** Gemini/Vibe.
+  panel shows the step count and last actions. Results, ledger and guardrails are unchanged. **Pending:** Vibe (`--output streaming`; needs a
+  Mistral key to capture its event format).
 - **Original analysis (2026-06; the blocking-subprocess premise is outdated since `_exec` streams):**
   **Feasibility: low-to-medium; a real architectural blocker.** Every backend uses a single **blocking**
   `subprocess.run()` and returns one complete `LLMResult`; there is **no token-callback or streaming path**

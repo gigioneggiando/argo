@@ -169,3 +169,82 @@ def test_headless_streams_only_with_a_viewer_and_parses_the_same_envelope(tmp_pa
                (parsed[1].text, parsed[1].cost_usd, parsed[1].num_turns) == ("It is SQLi.", 0.0047, 2)
     finally:
         runner.ledger.close()
+
+
+# ---------------------------------------------------------------- Gemini stream-json (B2)
+# Event shapes as emitted by gemini CLI 0.66 `--output-format stream-json` (captured 2026-11-06,
+# synthetic ids). Unlike Claude, the final "result" event has no response text: the answer is the
+# assistant deltas after the last tool result, and stats.models uses flat input/output tokens.
+_GEMINI_STREAM = [
+    {"type": "init", "session_id": "g-1", "model": "gemini-2.5-flash"},
+    {"type": "message", "role": "user", "content": "Read probe.txt"},
+    {"type": "message", "role": "assistant", "content": "Let me read it.", "delta": True},
+    {"type": "tool_use", "tool_name": "read_file", "tool_id": "t1", "parameters": {"file_path": "probe.txt"}},
+    {"type": "tool_result", "tool_id": "t1", "status": "success", "output": ""},
+    {"type": "message", "role": "assistant", "content": "PROBE-4", "delta": True},
+    {"type": "message", "role": "assistant", "content": "2\n", "delta": True},
+    {"type": "result", "status": "success", "stats": {
+        "total_tokens": 13965, "input_tokens": 13907, "output_tokens": 23, "cached": 6739,
+        "input": 7168, "tool_calls": 1, "models": {"gemini-2.5-flash": {
+            "total_tokens": 13965, "input_tokens": 13907, "output_tokens": 23,
+            "cached": 6739, "input": 7168}}}},
+]
+
+
+def test_gemini_stream_rebuilds_the_json_envelope(tmp_path):
+    from argo.config import PipelineConfig
+    from argo.ledger import Ledger
+    from argo.runner import GeminiRunner, _gemini_activity, _gemini_stream_envelope
+    lines = [json.dumps(e) for e in _GEMINI_STREAM]
+    assert [a for a in map(_gemini_activity, lines) if a] == ["read_file probe.txt"]
+    env = _gemini_stream_envelope("\n".join(lines))
+    assert env == {"session_id": "g-1", "response": "PROBE-42\n", "stats": {"models": {
+        "gemini-2.5-flash": {"tokens": {"prompt": 13907, "candidates": 23}}}}}
+    assert _gemini_stream_envelope("\n".join(lines[:-1])) is None       # never finished
+    failed = dict(_GEMINI_STREAM[-1], status="error", error={"message": "quota exceeded"})
+    assert _gemini_stream_envelope(json.dumps(failed))["error"] == {"message": "quota exceeded"}
+
+    # The rebuilt envelope parses exactly like the json-mode one with the same numbers.
+    r = GeminiRunner(PipelineConfig(runner="gemini"), Ledger(tmp_path / "l.sqlite"))
+    try:
+        json_env = {"session_id": "g-1", "response": "PROBE-42\n", "stats": {"models": {
+            "gemini-2.5-flash": {"tokens": {"prompt": 13907, "candidates": 23, "cached": 6739}}}}}
+        a, b = (r.parse_envelope({**e, "_exit_code": 0}, model="gemini-2.5-flash",
+                                 prompt_sha256="h", work_dir=tmp_path) for e in (env, json_env))
+        assert (a.text, a.input_tokens, a.output_tokens, a.cost_usd, a.served_model, a.is_error) == \
+               (b.text, b.input_tokens, b.output_tokens, b.cost_usd, b.served_model, b.is_error)
+    finally:
+        r.ledger.close()
+
+
+def test_gemini_uses_stream_json_only_with_a_viewer(tmp_path, monkeypatch):
+    from argo.config import PipelineConfig
+    from argo.ledger import Ledger
+    from argo.runner import GeminiRunner
+    r = GeminiRunner(PipelineConfig(runner="gemini"), Ledger(tmp_path / "l.sqlite"))
+    r._resolved_bin = "gemini"
+    stream = "\n".join(json.dumps(e) for e in _GEMINI_STREAM) + "\n"
+    cmds = []
+
+    def fake_exec(cmd, prompt, cwd, timeout, env=None, on_stdout_line=None):
+        cmds.append(cmd)
+        if "stream-json" in cmd:
+            for line in stream.splitlines(keepends=True):
+                if on_stdout_line:
+                    on_stdout_line(line)
+            return _Proc(stream)
+        return _Proc(json.dumps({"session_id": "g-1", "response": "PROBE-42\n", "stats": {}}))
+
+    monkeypatch.setattr(r, "_exec", fake_exec)
+    kw = dict(prompt="p", work_dir=tmp_path, model="gemini-2.5-flash", repo_dir=None, allowed=[],
+              disallowed=[], stage="chat", run_id="R", label="chat")
+    try:
+        assert r._invoke(**kw)["response"] == "PROBE-42\n"
+        assert cmds[0][cmds[0].index("--output-format") + 1] == "json"
+        seen = []
+        r.on_activity = seen.append
+        assert r._invoke(**kw)["response"] == "PROBE-42\n"
+        assert cmds[1][cmds[1].index("--output-format") + 1] == "stream-json"
+        assert seen == ["read_file probe.txt"]
+    finally:
+        r.ledger.close()

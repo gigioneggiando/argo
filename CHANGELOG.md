@@ -9,7 +9,24 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **Symbol-style citations were dropped as "primary file not in repo".** Validate dropped any
+  finding whose primary citation was not a resolvable path: Go/TS/Rust/PHP/Ruby/C++/Swift symbols
+  (`auth.Session.Check():7`, `crate::auth::check()`), Kotlin top-level functions, Java inner
+  classes and Python packages. Only an explicit file path that exists nowhere is dropped now. An
+  unresolved or ambiguous citation is kept in `grounding.unresolved_refs` (new optional field). As
+  the primary citation it marks the finding `ungrounded` (confidence -1), with a validator note
+  that this is not proof of absence.
+- **Citation resolution picked a file by extension order or without proof.** `Foo.java` +
+  `Foo.kt` is now ambiguous, and a name-based match needs the cited member in the file (an
+  unrelated `auth.py` no longer absorbs `auth.Session.Check()`). `.groovy`/`.kts` are indexed.
+  `pkg.login()` resolves to `pkg/__init__.py`, `Outer.Inner.work()` to `Outer.java`, and `:L30` /
+  `#L68-L73` line tails are kept.
+- **Prefix-truncated paths had no excerpt.** `api/orders.py:7` counted as grounded through its
+  basename, but the validator got "source not found". A unique suffix match is now rewritten to the
+  real path, so excerpts and static context read that file. Symlinked files are no longer indexed,
+  and direct path checks stay inside the repo root.
 
 ## [0.12.3] - 2026-11-06
 

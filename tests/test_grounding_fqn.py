@@ -18,7 +18,7 @@ def repo(tmp_path):
                 "a/Dup.java", "b/Dup.java", "pkg/util.py"):
         p = tmp_path / rel
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("class X {}\n" * 60, encoding="utf-8")
+        p.write_text("class X { readProperties(); load_config(); run(); }\n" * 60, encoding="utf-8")
     return RepoIndex(tmp_path, set())
 
 

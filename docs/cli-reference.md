@@ -51,6 +51,8 @@ used by the pipeline; they do not start a model session.
 | `profiles` | — | list/show/export/validate/import/save credential-free routing profiles |
 | `catalog` | — | show/validate the pinned static model catalog and snapshot hash; never refreshes implicitly |
 | `bench-validate` | — | validate benchmark commits/labels without cloning or model calls |
+| `sarif` | — | export a finished run's reportable findings as SARIF 2.1.0 for GitHub code scanning ([ci.md](ci.md)) |
+| `gate` | — | CI gate: exit 1 if reportable findings reach `--fail-on` (default High) ([ci.md](ci.md)) |
 
 There is intentionally **no `submit` command** — submission is a manual human action.
 
@@ -74,6 +76,8 @@ argo show-routing [--runner headless|codex|gemini|mistral-api|mistral-vibe|mock]
 argo profiles list|show|export|validate|import|save [--name NAME] [--input FILE] [--config FILE] [--output FILE]
 argo catalog show|validate|diff [--provider openai|anthropic|gemini] [--against SNAPSHOT.json]
 argo bench-validate --suite DIR
+argo sarif    --run RUN_ID [--out FILE] [--include-unverified]
+argo gate     --run RUN_ID [--fail-on Critical|High|Medium|Low] [--include-unverified]
 argo resume   --run RUN_ID [--wait] [--max-wait 12h] [--runs-dir DIR]
 argo verify   --run RUN_ID [--only ID,ID] [--max-findings N]
 argo asan-poc --run RUN_ID [--max-findings N] [--asan-poc-image IMAGE]

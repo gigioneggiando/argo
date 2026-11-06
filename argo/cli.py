@@ -1525,6 +1525,56 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
                         repeats=repeats))
 
 
+@app.command(name="sarif")
+def sarif_cmd(
+    run: str = RunIdArg,
+    out: Optional[Path] = typer.Option(None, "--out", help="output path (default runs/<id>/argo.sarif)"),
+    include_unverified: bool = typer.Option(
+        False, "--include-unverified", help="also export needs_runtime_verification findings"),
+    runs_dir: Path = RunsDirOpt,
+):
+    """Export a finished run's reportable findings as SARIF 2.1.0 (GitHub code scanning). No model calls."""
+    from .ci import load_findings, to_sarif
+    run_dir = Path(runs_dir) / run
+    try:
+        findings = load_findings(run_dir)
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(f"cannot read {run_dir / 'validated_findings.json'}: {exc}") from exc
+    doc = to_sarif(findings, run_id=run, include_unverified=include_unverified)
+    path = Path(out) if out else run_dir / "argo.sarif"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    _emit({"run_id": run, "sarif": str(path), "results": len(doc["runs"][0]["results"])})
+
+
+@app.command(name="gate")
+def gate_cmd(
+    run: str = RunIdArg,
+    fail_on: str = typer.Option("High", "--fail-on",
+                                help="lowest severity that fails: Critical | High | Medium | Low"),
+    include_unverified: bool = typer.Option(
+        False, "--include-unverified", help="also count needs_runtime_verification findings"),
+    runs_dir: Path = RunsDirOpt,
+):
+    """CI gate: exit 1 if the run has reportable findings at or above --fail-on. No model calls."""
+    from .ci import gate, load_findings, normalize_threshold
+    from .stages.report import _eff_sev
+    run_dir = Path(runs_dir) / run
+    try:
+        threshold = normalize_threshold(fail_on)
+        findings = load_findings(run_dir)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except OSError as exc:
+        raise typer.BadParameter(f"cannot read {run_dir / 'validated_findings.json'}: {exc}") from exc
+    hits = gate(findings, threshold, include_unverified=include_unverified)
+    _emit({"run_id": run, "fail_on": threshold, "passed": not hits,
+           "blocking": [{"id": f.get("id"), "severity": _eff_sev(f), "title": f.get("title")}
+                        for f in hits]})
+    if hits:
+        raise typer.Exit(code=1)
+
+
 @app.command("bench-validate")
 def bench_validate(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=False,
                                                help="suite directory to validate without cloning")):

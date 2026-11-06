@@ -9,7 +9,16 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Added
+
+- **CI integration: `argo sarif` and `argo gate`.** `sarif` exports a finished run's reportable
+  findings as SARIF 2.1.0 for GitHub code scanning: one rule per CWE, level and `security-severity`
+  from the effective severity, a stable dedup-key fingerprint, and file locations only for explicit
+  path citations. It validates against the official OASIS schema. `gate --fail-on High` exits 1
+  when reportable findings reach the threshold. Both reuse the report's rules (confirmed only unless
+  `--include-unverified`; never design-accepted, fixed-upstream, refuted or stale) and make no model
+  calls. New `docs/ci.md` with a GitHub Actions example (`--profile cost-saver`,
+  `--incremental-base`, explicit budget).
 
 ## [0.12.4] - 2026-11-06
 

@@ -83,7 +83,27 @@ FailureKind = str  # Literal["moderation_flagged", "credits_exhausted", "rate_li
 #: mismatch). Stage-internal retry loops stop on these; FallbackRunner may still try ANOTHER backend.
 TERMINAL_FAILURE_KINDS = frozenset({"credits_exhausted", "auth_failed", "credential_bootstrap",
                                     "invalid_request", "unsupported_stage_tool", "repo_mutated",
-                                    "model_mismatch"})
+                                    "model_mismatch", "model_unavailable"})
+
+#: Codex CLI refusals that mean "this model is not usable with THIS login/profile" (observed with
+#: codex-cli 0.166, 2026-11-06). Same-account retries cannot help; another account in a
+#: --codex-accounts chain (different plan, or daybreak off) can.
+_CODEX_MODEL_UNAVAILABLE = (
+    (re.compile(r"Daybreak is unavailable for model", re.I),
+     "the Codex profile has `daybreak = true`, which only allows Daybreak-compatible models "
+     "(e.g. gpt-6-sol, gpt-5.6-sol): turn daybreak off in that CODEX_HOME's config.toml or pick "
+     "a compatible --codex-model"),
+    (re.compile(r"model is not supported when using Codex with a ChatGPT account", re.I),
+     "this ChatGPT plan does not include the model in Codex: use another --codex-model, another "
+     "account (--codex-accounts), or an API key (--codex-api-key)"),
+)
+
+
+def _codex_model_unavailable(text: str) -> str | None:
+    for rx, advice in _CODEX_MODEL_UNAVAILABLE:
+        if rx.search(text or ""):
+            return advice
+    return None
 
 
 class RunnerError(RuntimeError):
@@ -1068,6 +1088,9 @@ class CodexRunner(AgentRunner):
             return str(self._resolved_api_key_home)
         return None
 
+    def _effective_model_label(self) -> str:
+        return repr(self.config.codex_model) if self.config.codex_model else "(CLI default)"
+
     def _build_codex_cmd(self, *, model, policy, last_msg_file: Path) -> list[str]:
         cmd = [self._bin(), "exec",            # `exec` is non-interactive (never prompts for approval)
                "-s", "workspace-write",        # write only the scratch cwd; network off by default
@@ -1155,6 +1178,12 @@ class CodexRunner(AgentRunner):
             # backend on exactly the failure shape fallback exists for -- fixed: always retryable,
             # a wasted retry here costs ~0 tokens and sub-second wall clock either way.
             stderr = _redact_secrets(proc.stderr, self.config.codex_api_key)
+            advice = _codex_model_unavailable(stderr)
+            if advice:
+                raise RunnerError(
+                    f"codex model {self._effective_model_label()} unavailable for this account "
+                    f"(stage={stage}, label={label}): {advice}",
+                    retryable=True, failure_kind="model_unavailable")
             kind = _classify_failure_text(stderr) or "unknown_retryable"
             raise RunnerError(
                 f"codex produced no output (stage={stage}, run_id={run_id}, label={label}, "
@@ -1163,6 +1192,15 @@ class CodexRunner(AgentRunner):
                 retryable=True, failure_kind=kind)
         stdout = _redact_secrets(proc.stdout, self.config.codex_api_key)
         stderr = _redact_secrets(proc.stderr, self.config.codex_api_key)
+        if proc.returncode != 0:
+            advice = _codex_model_unavailable(f"{stdout} {stderr}")
+            if advice:
+                # retryable=True so FallbackRunner can try the next account/backend; the failure
+                # kind is terminal, so recon/audit do not re-run it on this same account.
+                raise RunnerError(
+                    f"codex model {self._effective_model_label()} unavailable for this account "
+                    f"(stage={stage}, label={label}): {advice}",
+                    retryable=True, failure_kind="model_unavailable")
         return {"_backend": "codex", "returncode": proc.returncode, "text": text,
                 "stdout": stdout, "stderr": stderr[-2000:]}
 

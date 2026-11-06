@@ -36,7 +36,7 @@ class ModelSpec:
     # ``resolve_pricing(..., as_of=...)`` and is never fetched at runtime.
     pricing_periods: tuple[dict, ...] = ()
     source_url: str = ""
-    verified_at: str = "2026-10-21"
+    verified_at: str = "2026-11-06"
     product_surface: str = "api"
     api_available: bool = True
     cli_available: bool = False
@@ -50,76 +50,145 @@ class ModelSpec:
 
 
 MODEL_CATALOG: tuple[ModelSpec, ...] = (
-    # OpenAI / Codex.  GPT-5.6 entries remain readable for old run directories, but are never
-    # selected by a new built-in profile.
+    # Refreshed 2026-11-06 from the providers' model, pricing and deprecation pages, and each
+    # current model probed with a one-line call through its CLI (see docs/backends.md "Model
+    # catalog"). "verified" in a note = answered that probe; access caveats are per account/plan.
+    #
+    # OpenAI / Codex.  Docs: developers.openai.com/api/docs/{models,pricing,deprecations},
+    # learn.chatgpt.com/docs/models.  With a ChatGPT sign-in, Codex rejects models the plan does
+    # not include, and a profile with `daybreak = true` accepts only Daybreak-compatible models
+    # (gpt-6-sol, gpt-5.6-sol were; gpt-6-astra / gpt-6.1-* were not).
     ModelSpec("openai", "gpt-6-astra", 10.0, 50.0, supports_reasoning=True,
-              cli_product="codex", cli_available=True),
+              cli_product="codex", cli_available=True,
+              notes="Flagship. Verified via Codex (needs daybreak off; not on every ChatGPT plan)."),
     ModelSpec("openai", "gpt-6.1-sol", 2.0, 10.0, supports_reasoning=True,
-              cli_product="codex", cli_available=True),
+              cli_product="codex", cli_available=True,
+              notes="Verified via Codex (needs daybreak off; not on every ChatGPT plan)."),
+    ModelSpec("openai", "gpt-6.1-terra", 1.0, 5.0, supports_reasoning=True,
+              cli_product="codex", cli_available=True, minimum_cli_version="0.159.0",
+              notes="Mid tier, new 2026-11. Verified via Codex (needs daybreak off)."),
     ModelSpec("openai", "gpt-6-luna", 0.1, 0.5, supports_reasoning=True,
-              cli_product="codex", cli_available=True),
-    ModelSpec("openai", "gpt-6-sol", 2.0, 10.0, lifecycle="legacy",
-              notes="Compatibility alias; exact benchmarks should use gpt-6.1-sol."),
+              cli_product="codex", cli_available=True, notes="Verified via Codex."),
+    ModelSpec("openai", "gpt-6-sol", 2.0, 10.0, supports_reasoning=True,
+              cli_product="codex", cli_available=True,
+              notes="Current; superseded by gpt-6.1-sol for new work. Verified via Codex, also "
+                    "with daybreak on."),
+    ModelSpec("openai", "gpt-6-cyber", 20.0, 100.0, availability="trusted_access",
+              notes="Daybreak cyber model; API with approved access only (not ChatGPT sign-in).",
+              cli_product="codex", cli_available=False, approval_required=True),
     ModelSpec("openai", "gpt-5.6-cyber", 12.5, 75.0, availability="trusted_access",
-              notes="Daybreak Red; authorized security research only.", cli_product="codex",
+              notes="Daybreak Red; authorized security research only; API with Daybreak Red "
+                    "enabled (not ChatGPT sign-in).", cli_product="codex",
               cli_available=False, approval_required=True),
-    ModelSpec("openai", "gpt-5.6-sol", 4.0, 20.0, availability="legacy", lifecycle="legacy"),
-    ModelSpec("openai", "gpt-5.6-terra", 2.5, 15.0, availability="legacy", lifecycle="legacy"),
-    ModelSpec("openai", "gpt-5.6-luna", 1.0, 6.0, availability="legacy", lifecycle="legacy"),
-    ModelSpec("openai", "gpt-5-codex", 1.25, 10.0, availability="legacy", lifecycle="legacy"),
-    ModelSpec("openai", "gpt-5.5", 1.25, 10.0, availability="legacy", lifecycle="legacy"),
-    ModelSpec("openai", "gpt-5", 1.25, 10.0, availability="legacy", lifecycle="legacy"),
-    ModelSpec("openai", "o4-mini", 1.1, 4.4, availability="legacy", lifecycle="legacy"),
-    ModelSpec("openai", "o3", 2.0, 8.0, availability="legacy", lifecycle="legacy"),
-    ModelSpec("openai", "gpt-4o", 2.5, 10.0, availability="legacy", lifecycle="legacy"),
-    ModelSpec("openai", "gpt-4.1", 2.0, 8.0, availability="legacy", lifecycle="legacy"),
-    # Gemini.  Prices are standard API rates; promotional windows are represented in notes and
-    # should be modeled as separate effective-dated records when the budget planner needs them.
+    ModelSpec("openai", "gpt-5.6-sol", 4.0, 20.0, availability="legacy", lifecycle="legacy",
+              cli_product="codex", cli_available=True,
+              notes="Promotional price until 2026-11-30. Verified via Codex with daybreak on."),
+    ModelSpec("openai", "gpt-5.6-terra", 2.0, 12.0, availability="legacy", lifecycle="legacy",
+              cli_product="codex", cli_available=True, notes="Verified via Codex."),
+    ModelSpec("openai", "gpt-5.6-luna", 0.2, 1.2, availability="legacy", lifecycle="legacy",
+              cli_product="codex", cli_available=True, notes="Verified via Codex."),
+    ModelSpec("openai", "gpt-5.5", 5.0, 30.0, availability="legacy", lifecycle="legacy",
+              notes="API only: retired from Codex with ChatGPT sign-in on 2026-10-14."),
+    ModelSpec("openai", "gpt-5.4", 2.5, 15.0, availability="legacy", lifecycle="legacy",
+              notes="Retired from Codex with ChatGPT sign-in on 2026-08-31; API current."),
+    ModelSpec("openai", "gpt-5.4-mini", 0.75, 4.5, availability="legacy", lifecycle="legacy",
+              notes="Retired from Codex with ChatGPT sign-in on 2026-08-31; API current."),
+    ModelSpec("openai", "gpt-5.3-codex", 1.75, 14.0, availability="legacy", lifecycle="deprecated",
+              notes="Shutdown 2027-04-01; replacement gpt-6-sol."),
+    ModelSpec("openai", "gpt-5-codex", 1.25, 10.0, availability="legacy", lifecycle="retired",
+              notes="Shut down 2026-07-23; replacement gpt-5.6-sol."),
+    ModelSpec("openai", "gpt-5", 1.25, 10.0, availability="legacy", lifecycle="deprecated",
+              notes="Shutdown 2026-12-11; replacement gpt-5.6-sol."),
+    ModelSpec("openai", "o4-mini", 1.1, 4.4, availability="legacy", lifecycle="retired",
+              notes="Shut down 2026-10-23; replacement gpt-5.6-terra. Historical price."),
+    ModelSpec("openai", "o3", 2.0, 8.0, availability="legacy", lifecycle="deprecated",
+              notes="Shutdown 2026-12-11; replacement gpt-5.6-sol."),
+    ModelSpec("openai", "gpt-4o", 2.5, 10.0, availability="legacy", lifecycle="deprecated",
+              notes="2024 snapshots shut down 2027-01-14; replacement gpt-6-luna."),
+    ModelSpec("openai", "gpt-4.1", 2.0, 8.0, availability="legacy", lifecycle="deprecated",
+              notes="gpt-4.1-2025-04-14 shuts down 2027-01-14; replacement gpt-6-luna."),
+    # Gemini.  Docs: aistudio.google.com/docs/{models,pricing,deprecations}.  Effective-dated
+    # rates are modeled in pricing_periods; budgets pass the run date to resolve_pricing().
     ModelSpec("gemini", "gemini-4-argon", 2.0, 10.0, supports_thinking=True,
               pricing_periods=({"until": "2026-11-30", "input": 2.0, "output": 10.0},
                                {"from": "2026-12-01", "input": 4.0, "output": 20.0}),
-              notes="Introductory rate through 2026-11-30; $4/$20 thereafter.",
+              notes="Introductory rate through 2026-11-30; $4/$20 thereafter. Exists (probe: 429 "
+                    "daily quota on the test account).",
               cli_product="gemini", cli_available=True),
     ModelSpec("gemini", "gemini-3.8-flash", 0.75, 3.75, supports_thinking=True,
               pricing_periods=({"until": "2026-12-31", "input": 0.75, "output": 3.75},
                                {"from": "2027-01-01", "input": 1.5, "output": 7.5}),
-              notes="Introductory $0.75/$3.75 through 2026-12-31.",
+              notes="$0.75/$3.75 through 2026-12-31, $1.50/$7.50 from 2027-01-01. Exists (probe: "
+                    "503 overloaded).",
               cli_product="gemini", cli_available=True),
     ModelSpec("gemini", "gemini-3.6-flash", 0.75, 3.75, supports_thinking=True,
               pricing_periods=({"until": "2026-12-31", "input": 0.75, "output": 3.75},
                                {"from": "2027-01-01", "input": 1.5, "output": 7.5}),
-              notes="Introductory $0.75/$3.75 through 2026-12-31.",
+              notes="$0.75/$3.75 through 2026-12-31, $1.50/$7.50 from 2027-01-01. Verified.",
               cli_product="gemini", cli_available=True),
     ModelSpec("gemini", "gemini-3.5-flash-lite", 0.3, 2.5, supports_thinking=True,
-              cli_product="gemini", cli_available=True),
+              cli_product="gemini", cli_available=True, notes="Verified."),
     ModelSpec("gemini", "gemini-3.1-flash-lite", 0.25, 1.5, supports_thinking=True,
-              cli_product="gemini", cli_available=True),
+              cli_product="gemini", cli_available=True,
+              notes="Shutdown 2027-05-07. Verified."),
     ModelSpec("gemini", "gemini-3.1-pro-preview", 2.0, 12.0, availability="preview",
               lifecycle="preview", supports_thinking=True, cli_product="gemini",
-              cli_available=True, exact_pinning=False),
+              cli_available=True, exact_pinning=False,
+              notes="$4/$18 above 200k prompt tokens. Exists (probe: 429 daily quota)."),
     ModelSpec("gemini", "gemini-3-flash-preview", 0.5, 3.0, availability="preview",
               lifecycle="preview", supports_thinking=True, cli_product="gemini",
-              cli_available=True, exact_pinning=False),
+              cli_available=True, exact_pinning=False,
+              notes="Recommended replacement: gemini-3.6-flash. Verified."),
     ModelSpec("gemini", "gemini-3.7-flash", 1.5, 7.5, availability="legacy", lifecycle="deprecated",
               notes="Provider automatically routes to 3.8; exact trials must use 3.8."),
     ModelSpec("gemini", "gemini-3.5-flash", 1.5, 9.0, availability="legacy", lifecycle="deprecated",
               notes="Provider automatically routes to 3.6; exact trials must use 3.6."),
-    # Anthropic.  New exact IDs have no date suffix; Haiku 4.5 remains a compatibility model.
+    ModelSpec("gemini", "gemini-2.5-flash", 0.3, 2.5, availability="legacy", lifecycle="deprecated",
+              notes="Shutdown 2026-12-01 (routes to gemini-3.5-flash-lite). Verified."),
+    ModelSpec("gemini", "gemini-2.5-pro", 1.25, 10.0, availability="legacy", lifecycle="deprecated",
+              notes="Shutdown 2026-12-01 (routes to gemini-3.8-flash); probe: 404 on the test "
+                    "account."),
+    # Anthropic.  Docs: platform.claude.com/docs/en/about-claude/{models/overview,
+    # model-deprecations,pricing}.  Fable/Mythos need usage credits or verified access on a
+    # Claude subscription (probe: "requires usage credits" / no access).
     ModelSpec("anthropic", "claude-fable-5-1", 10.0, 50.0, supports_thinking=True,
-              cli_product="claude", cli_available=True),
+              cli_product="claude", cli_available=True,
+              notes="Exists; on a Claude subscription it requires usage credits."),
     ModelSpec("anthropic", "claude-mythos-5-1", 10.0, 50.0, availability="trusted_access",
               supports_thinking=True, cli_product="claude", cli_available=True,
-              approval_required=True),
+              approval_required=True,
+              notes="Limited availability: Anthropic verification programs (e.g. Cyber "
+                    "Verification Program)."),
     ModelSpec("anthropic", "claude-opus-5-5", 4.0, 20.0, supports_thinking=True,
-              cli_product="claude", cli_available=True),
+              cli_product="claude", cli_available=True, notes="Verified."),
     ModelSpec("anthropic", "claude-sonnet-5-5", 2.0, 10.0, supports_thinking=True,
-              cli_product="claude", cli_available=True),
+              cli_product="claude", cli_available=True, notes="Verified."),
     ModelSpec("anthropic", "claude-haiku-5-5", 0.1, 0.5, supports_thinking=True,
-              cli_product="claude", cli_available=True),
+              cli_product="claude", cli_available=True,
+              notes="$0.50/$2.50 for prompts over 100K tokens. Verified."),
+    ModelSpec("anthropic", "claude-fable-5", 10.0, 50.0, availability="legacy", lifecycle="legacy",
+              supports_thinking=True, notes="Exists; requires usage credits on a subscription."),
+    ModelSpec("anthropic", "claude-mythos-5", 10.0, 50.0, availability="trusted_access",
+              lifecycle="legacy", approval_required=True, notes="Limited availability."),
+    ModelSpec("anthropic", "claude-opus-5", 5.0, 25.0, availability="legacy", lifecycle="legacy",
+              notes="Verified."),
+    ModelSpec("anthropic", "claude-sonnet-5", 2.0, 10.0, availability="legacy", lifecycle="legacy",
+              notes="Verified."),
+    ModelSpec("anthropic", "claude-opus-4-8", 5.0, 25.0, availability="legacy", lifecycle="legacy",
+              notes="Verified."),
+    ModelSpec("anthropic", "claude-opus-4-7", 5.0, 25.0, availability="legacy", lifecycle="legacy",
+              notes="Verified."),
+    ModelSpec("anthropic", "claude-opus-4-6", 5.0, 25.0, availability="legacy", lifecycle="legacy",
+              notes="Verified."),
+    ModelSpec("anthropic", "claude-sonnet-4-6", 3.0, 15.0, availability="legacy", lifecycle="legacy",
+              notes="Verified."),
+    ModelSpec("anthropic", "claude-opus-4-5-20251101", 5.0, 25.0, availability="legacy",
+              lifecycle="legacy", notes="Not before 2026-11-24 retirement window. Verified."),
     ModelSpec("anthropic", "claude-haiku-4-5-20251001", 1.0, 5.0, availability="legacy",
-              lifecycle="legacy"),
-    ModelSpec("anthropic", "claude-opus-5", 5.0, 25.0, availability="legacy", lifecycle="legacy"),
-    ModelSpec("anthropic", "claude-sonnet-5", 2.0, 10.0, availability="legacy", lifecycle="legacy"),
+              lifecycle="legacy", notes="Verified."),
+    ModelSpec("anthropic", "claude-sonnet-4-5-20250929", 3.0, 15.0, availability="legacy",
+              lifecycle="deprecated",
+              notes="Retires 2026-11-30; replacement claude-sonnet-5-5. Verified."),
     # Mistral (runner mistral-api; Vibe aliases map onto these). Prices: Standard tier, USD/1M,
     # from the docs pricing table; IDs/aliases/context from GET /v1/models; both 2026-11-06.
     # `mistral-large-latest` still resolves to mistral-large-2512 (Large 3, deprecated), NOT
@@ -187,7 +256,7 @@ def resolve_pricing(model_id: str | None, *, as_of: str | None = None) -> tuple[
 def catalog_snapshot() -> dict:
     """JSON-safe catalog metadata persisted in run provenance."""
     payload = {
-        "version": "2026-10-21",
+        "version": "2026-11-06",
         "models": [
             {
                 "provider": s.provider,

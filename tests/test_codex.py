@@ -358,3 +358,21 @@ def test_codex_runner_memoizes_bootstrap_across_invokes(tmp_path, monkeypatch):
         _invoke(r, tmp_path)
     assert calls["n"] == 1   # bootstrapped once, memoized on the instance across both _invoke calls
     r.ledger.close()
+
+
+def test_model_unavailable_for_account_is_terminal_but_fallback_eligible(tmp_path, monkeypatch):
+    """codex-cli 0.166 refuses a model the login cannot use (daybreak profile / ChatGPT plan).
+    Same-account stage retries are pointless (terminal kind) but another account may work, so the
+    error stays retryable for FallbackRunner."""
+    from argo.runner import TERMINAL_FAILURE_KINDS
+    for out, err in (("", "Error: Daybreak is unavailable for model gpt-6.1-sol; turn it off or "
+                          "choose a compatible model"),
+                     ("x", "ERROR: The 'gpt-6-astra' model is not supported when using Codex "
+                           "with a ChatGPT account.")):
+        r = _runner(tmp_path, codex_model="gpt-6.1-sol")
+        monkeypatch.setattr(r, "_exec", lambda *a, _o=out, _e=err, **k: _FakeProc(_o, _e, 1))
+        with pytest.raises(RunnerError) as ei:
+            _invoke(r, tmp_path)
+        assert ei.value.failure_kind == "model_unavailable" and ei.value.retryable is True
+        assert ei.value.failure_kind in TERMINAL_FAILURE_KINDS
+        r.ledger.close()

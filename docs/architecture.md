@@ -401,7 +401,9 @@ nowhere in the repo (a hallucinated location), it is **dropped** pre-validation 
 "ungrounded_citation ..."`) — the one unambiguous auto-drop; if a cited **symbol** is absent, the
 finding is **kept** but its confidence is downgraded one notch and a `grounding` block + a prominent
 `!!! CITATION GROUNDING WARNING !!!` are surfaced in the validator's excerpts, so the adversarial pass
-makes the final call with the evidence in hand. Conservative throughout: a symbol the index was not
+makes the final call with the evidence in hand. Before the check, a dotted qualified-name citation
+(`io.x.Foo.bar():26`) is rewritten to the unique repo path it names (`.../io/x/Foo.java:26`), so
+a real class cited Java-style is not mistaken for a missing file. Conservative throughout: a symbol the index was not
 built to search is given the benefit of the doubt, and the whole pass fails open (every finding kept)
 on any error. Stats land in `validated_findings.json` (`grounding_dropped`, `after_grounding`).
 

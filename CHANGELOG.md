@@ -9,6 +9,10 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.12.2] - 2026-11-06
+
 ### Changed
 
 - **Model catalog refreshed (2026-11-06)** from the providers' model, pricing and deprecation pages,

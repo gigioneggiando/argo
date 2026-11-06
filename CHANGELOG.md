@@ -9,6 +9,10 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.12.3] - 2026-11-06
+
 ### Fixed
 
 - **Qualified-name citations were dropped as "not in repo".** A finding citing

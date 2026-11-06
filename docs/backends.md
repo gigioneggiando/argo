@@ -314,6 +314,52 @@ the same `moderation_flagged` handling Claude/Codex get. A refusal phrased unusu
 the heuristic will instead surface as a downstream "no artifact produced" failure — worth knowing if
 a Gemini run behaves oddly on a sensitive-sounding brief.
 
+## Model catalog
+
+`argo/model_catalog.py` is the single source for model IDs, prices (USD per 1M tokens, with
+effective-dated `pricing_periods` for announced price changes), lifecycle and access. Selection
+checks, cost estimates and budgets all read it. `argo catalog validate` checks it for duplicates.
+
+**Refreshed 2026-11-06** from the providers' model, pricing and deprecation pages (Anthropic
+`platform.claude.com/docs`, OpenAI `developers.openai.com/api/docs` + `learn.chatgpt.com/docs/models`,
+Google `aistudio.google.com/docs`, Mistral `docs.mistral.ai` + `GET /v1/models`), then every current
+model was probed with a one-line "reply OK" call through its CLI:
+
+| Provider | Answered | Exists, but the test account could not use it | Gone / unavailable |
+|---|---|---|---|
+| Anthropic (Claude Code) | opus/sonnet/haiku-5-5, opus-5, sonnet-5, opus-4-8/4-7/4-6, sonnet-4-6, opus-4-5, haiku-4-5, sonnet-4-5 | fable-5-1, fable-5 (need usage credits on a subscription); mythos-5-1, mythos-5 (limited access) | — |
+| OpenAI (Codex, ChatGPT login) | gpt-6-astra, gpt-6.1-sol, gpt-6.1-terra (daybreak off), gpt-6-sol, gpt-6-luna, gpt-5.6-sol/terra/luna | gpt-6-cyber, gpt-5.6-cyber (API with approved Daybreak access only) | gpt-5.5, gpt-5, o3, gpt-5-codex, o4-mini (not on Codex with ChatGPT login; several shut down) |
+| Gemini (Gemini CLI) | 3.6-flash, 3.5-flash-lite, 3.1-flash-lite, 3-flash-preview, 2.5-flash | 4-argon, 3.1-pro-preview (429 daily quota), 3.8-flash (503 overloaded) | 2.5-pro (404) |
+| Mistral (API) | mistral-large-4, mistral-small-2603 (calls, same day) | — | `-latest` aliases point at deprecated Large 3 / Medium 3.5 |
+
+Changes in this refresh: added `gpt-6.1-terra` ($1/$5, Codex ≥ 0.159), `gpt-6-cyber`, `gpt-5.4`,
+`gpt-5.4-mini`, `gpt-5.3-codex`, `gemini-2.5-flash`/`-pro` (shut down 2026-12-01),
+`claude-fable-5`, `claude-mythos-5`, `claude-opus-4-8/4-7/4-6`, `claude-sonnet-4-6`,
+`claude-opus-4-5-20251101`, `claude-sonnet-4-5-20250929` (retires 2026-11-30). Corrected prices:
+`gpt-5.5` $5/$30 (was $1.25/$10), `gpt-5.6-terra` $2/$12 (was $2.50/$15), `gpt-5.6-luna`
+$0.20/$1.20 (was $1/$6). Marked `gpt-5-codex`, `o4-mini` retired and `gpt-5`, `o3`, `gpt-4o`,
+`gpt-4.1` deprecated with their shutdown dates. Defaults (`OPUS`/`SONNET`/`HAIKU`, `CODEX_*`,
+`GEMINI_*`, `MISTRAL_*`) are unchanged: every default model still exists.
+
+**Codex account caveats found by the probe.** With a ChatGPT login, Codex refuses models the plan
+does not include ("not supported when using Codex with a ChatGPT account"), and a profile with
+`daybreak = true` accepts only Daybreak-compatible models ("Daybreak is unavailable for model
+…": `gpt-6-sol` and `gpt-5.6-sol` work, `gpt-6-astra`/`gpt-6.1-*` do not). Argo reports both as
+`failure_kind = model_unavailable`: no same-account stage retry, but still eligible for the next
+account in `--codex-accounts` or another `--fallback` backend.
+
+**Re-running the check** (spends a few cents of real calls; run from an empty directory):
+
+```
+claude -p "Reply with exactly the word OK" --model <id> --max-turns 1 --output-format json
+codex exec -s read-only --skip-git-repo-check --ephemeral -m <id> "Reply with exactly the word OK"
+GEMINI_CLI_TRUST_WORKSPACE=true gemini -m <id> -p "Reply with exactly the word OK"
+curl -s https://api.mistral.ai/v1/models -H "Authorization: Bearer $MISTRAL_API_KEY"   # free
+```
+
+Update prices only from the providers' own pricing pages, set `verified_at`, and keep an announced
+future price as a `pricing_periods` entry instead of overwriting the current one.
+
 ## API keys (`--claude-api-key` / `--codex-api-key`)
 
 Gemini has always supported an explicit per-run API key (above); Claude and Codex now do too,

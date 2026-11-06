@@ -9,7 +9,22 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Changed
+
+- **Model catalog refreshed (2026-11-06)** from the providers' model, pricing and deprecation pages,
+  with every current model probed through its CLI. Added `gpt-6.1-terra`, `gpt-6-cyber`, `gpt-5.4`,
+  `gpt-5.4-mini`, `gpt-5.3-codex`, `gemini-2.5-flash`/`-pro`, `claude-fable-5`, `claude-mythos-5`,
+  `claude-opus-4-8`/`4-7`/`4-6`, `claude-sonnet-4-6`, `claude-opus-4-5-20251101`,
+  `claude-sonnet-4-5-20250929`. Corrected prices for `gpt-5.5` ($5/$30), `gpt-5.6-terra` ($2/$12)
+  and `gpt-5.6-luna` ($0.20/$1.20). Shut-down models marked `retired`, scheduled ones `deprecated`
+  with dates. Defaults unchanged. See `docs/backends.md` "Model catalog".
+
+### Fixed
+
+- **Codex "model unavailable for this login" was retried as transient.** codex-cli refuses a model
+  that a ChatGPT plan does not include, or that a `daybreak = true` profile does not allow. These
+  are now `failure_kind = model_unavailable`, with the fix in the message: no same-account stage
+  retry, but the next `--codex-accounts` entry or `--fallback` backend is still tried.
 
 ## [0.12.1] - 2026-11-06
 

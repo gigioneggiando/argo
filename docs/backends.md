@@ -61,6 +61,14 @@ equivalent re-validation for the Codex sandbox), and `tests/test_gemini.py`
 > copy to strip write bits **before any runner touches it**, identically regardless of which backend
 > the run uses. A `Write`/`write_file` call targeting a path inside the repo fails at the OS level no
 > matter what a backend's own sandbox/policy would otherwise allow.
+>
+> chmod is prevention, and best effort (a process can chmod a file back). **Detection** sits on top of
+> it, also backend-agnostic: `AgentRunner._run_attempt` fingerprints the repo copy
+> (`runner.repo_fingerprint`: every entry's path, type, size, mtime and mode, symlinks not followed)
+> before and after every session. Any change fails the session closed with
+> `failure_kind="repo_mutated"` (not retryable), after the call has been logged, so its output is
+> never used. Directory timestamps are excluded (NTFS updates them lazily); child
+> creates/deletes/renames still show in the entry listing.
 
 ## Codex specifics (`runner = codex`)
 
@@ -137,6 +145,88 @@ as free (tokens are still logged). The
 consequence: with Codex the hard *mid-session* budget kill is unavailable; the per-run budget abort
 between stages still applies, on the estimated cost. This is a deliberate, documented degradation —
 see [design-decisions.md](design-decisions.md).
+
+## Mistral API specifics (`runner = mistral-api`)
+
+`mistral-api` calls the Mistral developer API (Chat Completions with function calling) and runs
+the agent loop **inside Argo** (`argo/mistral_api.py`). There is no external agent CLI, so it works
+the same on Windows, Linux and macOS. The API only *proposes* tool calls; nothing touches the host
+unless Argo's dispatcher executes it, so the dispatcher is this backend's enforcement:
+
+| Tool | Scope |
+|---|---|
+| `read_file`, `list_dir`, `glob`, `grep` | read-only, inside the audited repo copy or the session scratch dir; paths resolved with `realpath`, so `..` and symlinks pointing outside are refused |
+| `write_file` | only when the stage grants `Write`; only inside the scratch dir; never through a symlink; 4 MB cap |
+| shell, process, network | **not offered** |
+
+- **Offline stages only.** `research` and `corroborate` need web tools, which this backend does not
+  have: the CLI refuses the run before any model call unless you pass `--no-research
+  --no-corroborate` or route them elsewhere (`--stage-runner research=headless`). Without a brief
+  both are off anyway.
+- **Repo safety** is the dispatcher, ingest's chmod, and the per-session repo-integrity
+  fingerprint (see the note above), the same layers as every other backend.
+- **Key.** `ARGO_MISTRAL_API_KEY`, else `MISTRAL_API_KEY`; sent only as the `Authorization` header,
+  redacted from `config.json`, errors and the event log. No key → `credential_bootstrap` before any
+  request.
+- **Errors.** 401/403 → `auth_failed` (not retried); 402 → `credits_exhausted`; 429 → waits for
+  `Retry-After` (up to 8 times); 5xx/network → bounded backoff; other 4xx → `invalid_request`.
+  Tool mistakes (bad path, bad regex) go back to the model as tool results, not as failures.
+- **Bounds.** `--max-turns` caps tool calls per session; identical consecutive tool calls (4x) stop
+  the session as `tool_loop`; tool results are size-capped; once the conversation nears the context
+  window (`mistral_api_context_window`, default 128k tokens) the oldest tool outputs are elided,
+  keeping the 8 most recent. The per-session event log is written next to (not inside) the scratch
+  dir: `work/.argo_sessions/<stage>.mistral.<label>.jsonl`.
+- **Models.** `--mistral-api-model` for every stage, `--stage-model STAGE=ID` per stage; default
+  **`mistral-large-4`** (exact ID, priced $0.70/$2.10 per 1M tokens in/out, 1M context). Checked
+  2026-11-06: `mistral-large-latest` still points at the deprecated Large 3 (`mistral-large-2512`)
+  and `mistral-medium-latest` at the deprecated Medium 3.5, both without a published price, so they
+  stay selectable but cost is `unknown` and budgets cannot be enforced on them. Cheap tier:
+  `mistral-small-2603` ($0.15/$0.60). An alias resolving to a dated model is recorded in
+  `served_models`, not treated as a substitution.
+
+```
+export ARGO_MISTRAL_API_KEY=...            # or MISTRAL_API_KEY
+argo pipeline --repo ./target --brief brief.txt --runner mistral-api --no-research --no-corroborate
+argo show-routing --runner mistral-api --stage-model audit=mistral-large-latest
+```
+
+## Mistral Vibe specifics (`runner = mistral-vibe`)
+
+`mistral-vibe` runs the Mistral **Vibe** coding-agent CLI headless (`vibe -p --output json`),
+verified with mistral-vibe 3.1.0 on Windows. Install it with `uv tool install mistral-vibe`. Vibe is
+an agent with its own shell and web tools, so Argo never uses your Vibe setup: every session gets
+an **isolated `VIBE_HOME`** (next to, not inside, the scratch dir) with an Argo-written
+`config.toml`:
+
+- **Tools:** `read_file`, plus `write_file` when the stage grants `Write`. Every shell
+  (`bash`/`powershell`/`git_bash`), `web_fetch`/`web_search`, `task`, `skill` and `edit` are
+  disabled, and the shells are additionally `permission = "never"` (Vibe 3.1 may still *offer*
+  `file_system.bash` to the model; a call is refused, never run).
+- **Paths:** `--workdir` is the scratch dir and `outside_workdir = "deny"`, so writes stay in
+  scratch. The repo is readable through a single encoded grant on `read_file` only
+  (`vibe-path:directory_recursive:<repo>`). `--add-dir` is never used: it would make the repo
+  writable. Observed: a write into the repo is refused (`tool_denied`).
+- **Off:** MCP, subagents, connectors, background processes, project context (`AGENTS.md`),
+  telemetry, update checks. Never `--auto-approve`, `--trust`, `--add-dir`.
+- **Limits:** `--max-turns`, `--time-limit` (session timeout − 15 s), the process tree is killed on
+  cancel/timeout. Exit 1 (config) → `invalid_request`; 2 (runtime) and 3 (a limit) → recoverable,
+  partial scratch artifacts salvaged; a 401/403 → `auth_failed`, not retried.
+- **Key:** `ARGO_MISTRAL_VIBE_API_KEY`, else `ARGO_MISTRAL_API_KEY`, else `MISTRAL_API_KEY`,
+  passed only as the child's `MISTRAL_API_KEY`. A browser/subscription login is not used (the
+  isolated home has none).
+- **Models:** Vibe **aliases** (`--mistral-vibe-model`, default `mistral-medium-3.5` →
+  `mistral-vibe-cli-latest`, i.e. Medium 3.5, which Mistral has deprecated for the API but still
+  ships as Vibe's default); the served API name is recorded in `served_models`. Tokens and Vibe's
+  own cost estimate come from `export.json` (`cost_source = provider_estimated`).
+- **Trade-off:** Vibe 3.1 has no `grep` tool (search goes through the shell, which stays off), so
+  this backend reads code with `read_file` only. Prefer `mistral-api` for large repos.
+- Like `mistral-api`, `research`/`corroborate` are refused in preflight (no web tools).
+
+```
+uv tool install mistral-vibe
+export ARGO_MISTRAL_VIBE_API_KEY=...
+argo pipeline --repo ./target --brief brief.txt --runner mistral-vibe --no-research --no-corroborate
+```
 
 ## Gemini specifics (`runner = gemini`)
 

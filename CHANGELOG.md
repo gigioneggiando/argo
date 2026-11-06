@@ -9,6 +9,41 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- **`--runner mistral-api`: Mistral models on any OS.** Argo runs the agent loop itself over the
+  Mistral Chat Completions API (`argo/mistral_api.py`): the model gets only `read_file`, `list_dir`,
+  `glob`, `grep` (repo copy + scratch dir, `realpath`-confined) and `write_file` (scratch dir only,
+  when the stage grants it); no shell, no network. Key from `ARGO_MISTRAL_API_KEY` /
+  `MISTRAL_API_KEY`, only as the `Authorization` header. 401/403 fail fast (`auth_failed`), 429
+  honours `Retry-After`, tool loops and the tool-call cap stop the session, old tool outputs are
+  elided near the context window. `research`/`corroborate` (web) are refused in preflight unless
+  disabled or rerouted. `.json` writes are validated in the tool (the model gets the exact error
+  back and fixes it, instead of the stage failing on an unparseable findings file). New
+  `--mistral-api-model`; `--stage-runner`/`--stage-model` accept `mistral-api`.
+- **`--runner mistral-vibe`: the Mistral Vibe CLI, headless.** Each session runs `vibe -p` with an
+  isolated, Argo-written `VIBE_HOME`: only `read_file` (+ `write_file` when the stage grants it),
+  shells/web/MCP/subagents off, `outside_workdir = "deny"`, the repo readable through one encoded
+  path grant (never `--add-dir`). Tokens and Vibe's cost estimate from `export.json`; exit codes
+  mapped (1 config, 2 runtime, 3 limit); 401/403 fail fast. Verified with mistral-vibe 3.1.0.
+  New `--mistral-vibe-model`.
+- **Mistral models in the catalog, with verified prices** (docs pricing table + `GET /v1/models`,
+  2026-11-06): `mistral-large-4` ($0.70/$2.10 per 1M, the `mistral-api` default),
+  `mistral-small-2603` ($0.15/$0.60), `codestral-2508` ($0.30/$0.90). `mistral-large-latest`
+  (still Large 3) and `mistral-medium-latest` (Medium 3.5) are listed as deprecated with no price,
+  so their cost stays `unknown` instead of `$0`. Run provenance now records the `vibe` CLI version.
+- **Mistral in the HTTP API and web UI.** `RunConfig` takes `mistral_api_model` /
+  `mistral_vibe_model` / keys (redacted) and `research_enabled` / `corroborate_enabled`; `GET /models`
+  lists both Mistral backends (catalog prices, Vibe `installed`); the New Run and Settings runner
+  selectors offer them and switch web research/corroboration off for them. `POST /runs` now answers
+  400 (not 500) for an invalid routing/config. `bench-cross` cheap tier uses `mistral-small-2603`;
+  adaptive validation escalation may pick a configured Mistral fallback.
+- **Repo-integrity check on every backend.** Each LLM session is bracketed by a metadata
+  fingerprint of the audited repo copy (path, type, size, mtime, mode; symlinks not followed). A
+  session that modifies the copy fails closed with `failure_kind="repo_mutated"` (not retryable)
+  after its call is logged. Until now repo safety rested on ingest's best-effort chmod plus each
+  backend's own policy; this detects a breach regardless of backend.
+
 ### Fixed
 
 - **Parallel runs crashed on a fresh ledger.** Two `argo` processes opening a new shared ledger

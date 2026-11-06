@@ -10,7 +10,8 @@ from pathlib import Path
 def cli_versions() -> dict[str, str | None]:
     """Capture installed backend CLI versions once; missing tools are non-fatal."""
     commands = {"claude": ["claude", "--version"], "codex": ["codex", "--version"],
-                "gemini": ["gemini", "--version"]}
+                "gemini": ["gemini", "--version"],
+                "vibe": ["vibe", "--version"]}       # runner=mistral-vibe (mistral-api has no CLI)
     out: dict[str, str | None] = {}
     for name, command in commands.items():
         try:

@@ -188,6 +188,9 @@ target is the in-scope host instead of loopback — so the validators are **inve
   depth on top of the tool restriction).
 - `config.MUTATION_TOOLS` (`Edit`, `MultiEdit`, `NotebookEdit`) are always disallowed.
 - There is no code path that writes into `repo/`.
+- **Detected, not just prevented:** every session is bracketed by `runner.repo_fingerprint(repo)`;
+  a mismatch raises `RunnerError(failure_kind="repo_mutated", retryable=False)` on every backend
+  (`tests/test_repo_integrity.py`).
 
 ## 4. `prohibited_techniques` propagated into every rendered prompt; render fails if missing
 

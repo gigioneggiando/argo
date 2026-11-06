@@ -80,7 +80,9 @@ Mono remain self-hosted so the local application stays offline-safe.
   Claude is picked — blank uses the server's ambient login) · **Codex** (with a Codex model +
   local/OSS provider field, plus an API-key field that makes Argo bootstrap a dedicated Codex
   profile for it) · **Gemini** (with a Gemini model + API-key field, shown when Gemini is picked —
-  see [backends.md](backends.md)). All three key fields are `type="password"`, never echoed back or
+  see [backends.md](backends.md)) · **Mistral API** / **Mistral Vibe** (one model + key row; picking
+  either switches web research and corroboration off for the run, since these backends have no
+  web tools). All key fields are `type="password"`, never echoed back or
   persisted in the clear. The model inputs are
   **pickers** populated from `GET /models` (Claude opus/sonnet/haiku; Codex examples + the
   **detected Codex default**, shown in the placeholder; Gemini pro/flash/flash-lite). The **Costs**
@@ -90,8 +92,8 @@ Mono remain self-hosted so the local application stays offline-safe.
   (Quick / Standard / Thorough) calls `POST /recommend` and fills the config for you (runner stays
   Demo until explicitly changed). Start → navigates to the live run.
 - **Settings** (`#/settings`) — persisted defaults for the New Run form: **default runner** (Demo /
-  Claude / Codex / Gemini), budget, parallelism, audit model, calibration, and **per-stage Claude
-  models**. Per-backend sub-fields (Codex provider/API key, Gemini model/API key, Claude API key)
+  Claude / Codex / Gemini / Mistral API / Mistral Vibe), budget, parallelism, audit model,
+  calibration, and **per-stage Claude models**. Per-backend sub-fields (Codex provider/API key, Gemini model/API key, Claude API key)
   are set per-run in New Run, not persisted here — `Settings` (`server/schemas.py`) is deliberately
   a narrower shape than `RunConfig`. Saved server-side via `GET/PUT /settings`.
 - **Vuln index** (`#/knowledge`) — the curated vulnerability-class index by archetype (the same

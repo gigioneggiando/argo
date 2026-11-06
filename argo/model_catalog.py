@@ -120,6 +120,34 @@ MODEL_CATALOG: tuple[ModelSpec, ...] = (
               lifecycle="legacy"),
     ModelSpec("anthropic", "claude-opus-5", 5.0, 25.0, availability="legacy", lifecycle="legacy"),
     ModelSpec("anthropic", "claude-sonnet-5", 2.0, 10.0, availability="legacy", lifecycle="legacy"),
+    # Mistral (runner mistral-api; Vibe aliases map onto these). Prices: Standard tier, USD/1M,
+    # from the docs pricing table; IDs/aliases/context from GET /v1/models; both 2026-11-06.
+    # `mistral-large-latest` still resolves to mistral-large-2512 (Large 3, deprecated), NOT
+    # Large 4 -- hence the exact `mistral-large-4` default. Medium 3.5 is deprecated (2026-10-31)
+    # and has no published price; it is also Vibe's default model (mistral-vibe-cli-latest).
+    ModelSpec("mistral", "mistral-large-4", 0.7, 2.1, aliases=("mistral-large-4-0",),
+              source_url="https://docs.mistral.ai/inference/pricing", verified_at="2026-11-06",
+              notes="Mistral Large 4 (v26.10), 1M context, function calling."),
+    ModelSpec("mistral", "mistral-small-2603", 0.15, 0.6,
+              aliases=("mistral-small-latest", "mistral-small-4", "mistral-vibe-cli-fast"),
+              source_url="https://docs.mistral.ai/inference/pricing", verified_at="2026-11-06", exact_pinning=False,
+              cli_product="vibe", cli_available=True,
+              notes="Mistral Small 4; aliases are rolling, pin mistral-small-2603 for benchmarks."),
+    ModelSpec("mistral", "codestral-2508", 0.3, 0.9,
+              aliases=("codestral-latest", "mistral-code-latest"),
+              source_url="https://docs.mistral.ai/inference/pricing", verified_at="2026-11-06"),
+    ModelSpec("mistral", "mistral-medium-2604",
+              aliases=("mistral-medium-latest", "mistral-medium", "mistral-medium-3.5",
+                       "mistral-medium-3-5", "mistral-medium-3", "mistral-vibe-cli-latest",
+                       "mistral-vibe-cli-with-tools"),
+              lifecycle="deprecated", exact_pinning=False, cli_product="vibe", cli_available=True,
+              source_url="https://docs.mistral.ai/models/mistral-medium-3-5-26-04",
+              verified_at="2026-11-06",
+              notes="Medium 3.5, deprecated 2026-10-31 (replacement: Large 4); no published price."),
+    ModelSpec("mistral", "mistral-large-2512", aliases=("mistral-large-latest",),
+              lifecycle="deprecated", exact_pinning=False, verified_at="2026-11-06",
+              notes="Large 3, deprecated (retires 2027-04-30); still the target of "
+                    "mistral-large-latest. No published price."),
 )
 
 
@@ -236,7 +264,8 @@ def validate_selection(model_id: str | None, backend: str, *, exact: bool = Fals
     if spec is None:
         result["warnings"] = ["custom/unverified model ID; pricing and served-model support are unknown"]
         return result
-    expected = {"headless": "anthropic", "gemini": "gemini", "codex": "openai"}.get(backend)
+    expected = {"headless": "anthropic", "gemini": "gemini", "codex": "openai",
+                "mistral-api": "mistral", "mistral-vibe": "mistral"}.get(backend)
     if expected and spec.provider != expected:
         result.update(selectable=False, reason=f"model belongs to {spec.provider}, not {backend}")
         return result

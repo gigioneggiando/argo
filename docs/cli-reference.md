@@ -70,7 +70,7 @@ argo pipeline --repo PATH_OR_URL [--brief BRIEF.txt] [--links LINKS.txt] [--comm
 argo screen TARGET [--json] [--rescreen]
 argo plan TARGET [--objective fast|economy|balanced|deep|custom] [--max-cost USD] [--max-duration MIN] [--json]
 argo plan TARGET [--benchmark-report runs/benchmark_report.json]
-argo show-routing [--runner headless|codex|gemini|mock] [--stage-runner STAGE=BACKEND] [--stage-model STAGE=MODEL]
+argo show-routing [--runner headless|codex|gemini|mistral-api|mistral-vibe|mock] [--mistral-api-model ID] [--mistral-vibe-model ALIAS] [--stage-runner STAGE=BACKEND] [--stage-model STAGE=MODEL]
 argo profiles list|show|export|validate|import|save [--name NAME] [--input FILE] [--config FILE] [--output FILE]
 argo catalog show|validate|diff [--provider openai|anthropic|gemini] [--against SNAPSHOT.json]
 argo bench-validate --suite DIR
@@ -179,7 +179,9 @@ The one hard boundary: a run that stopped **before ingest finished** (no usable
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--runner {headless\|codex\|gemini\|mock}` | `headless` | `headless` = Claude Code · `codex` = Codex CLI (OpenAI / OSS) · `gemini` = Gemini CLI (Google) · `mock` = zero-token fixtures. See [backends.md](backends.md). |
+| `--runner {headless\|codex\|gemini\|mistral-api\|mistral-vibe\|mock}` | `headless` | `headless` = Claude Code · `codex` = Codex CLI (OpenAI / OSS) · `gemini` = Gemini CLI (Google) · `mistral-api` = Mistral API with Argo's own tool loop (key from `ARGO_MISTRAL_API_KEY`/`MISTRAL_API_KEY`) · `mistral-vibe` = Mistral Vibe CLI under an isolated Argo config; both offline stages only, add `--no-research --no-corroborate` · `mock` = zero-token fixtures. See [backends.md](backends.md). |
+| `--mistral-api-model ID` | `mistral-large-4` | (`--runner mistral-api`) model for every stage; `--stage-model STAGE=ID` overrides one stage. |
+| `--mistral-vibe-model ALIAS` | `mistral-medium-3.5` | (`--runner mistral-vibe`) Vibe model alias for every stage; needs the `vibe` CLI (`uv tool install mistral-vibe`) and `ARGO_MISTRAL_VIBE_API_KEY`. |
 | `--codex-model MODEL` | — | (runner=codex) model id (e.g. `gpt-6.1-sol`); **omit to use the Codex CLI default** (recommended) |
 | `--codex-oss` | off | (runner=codex) use the open-source provider (`--oss`) |
 | `--codex-local-provider {ollama\|lmstudio}` | — | (runner=codex --codex-oss) which local provider |

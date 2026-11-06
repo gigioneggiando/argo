@@ -433,8 +433,9 @@ def _cheap_tier(cfg):
     stage_models["recon"] = SONNET
     gemini_stage_models = {k: GEMINI_FLASH_LITE for k in cfg.gemini_stage_models}
     gemini_stage_models["recon"] = GEMINI_FLASH
+    from .config import MISTRAL_API_CHEAP
     return cfg.with_overrides(stage_models=stage_models, gemini_stage_models=gemini_stage_models,
-                              codex_model=CODEX_CHEAP)
+                              codex_model=CODEX_CHEAP, mistral_api_model=MISTRAL_API_CHEAP)
 
 
 def _aggregate_cross_backend(backend_reports: dict[str, dict], *, suite: str, tier: str) -> dict:

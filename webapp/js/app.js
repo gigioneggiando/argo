@@ -250,22 +250,26 @@ function renderOverview(allRuns, notice, statRow, grid) {
 
 // --------------------------------------------------------------- NEW RUN view
 function newRunView() {
-  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "", gemini_model: "", gemini_api_key: "", claude_api_key: "", codex_api_key: "", profile: "", stage_runners: "", stage_models: "", stage_effort: "" };
+  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "", gemini_model: "", gemini_api_key: "", claude_api_key: "", codex_api_key: "", mistral_model: "", mistral_key: "", profile: "", stage_runners: "", stage_models: "", stage_effort: "" };
 
   let mode = "general";  // "general" = audit any code (no brief) · "bounty" = scoped program
   const briefEl = h("textarea", { placeholder: "Paste the bug-bounty program page: scope, rules, rewards, exclusions, “no DoS”…", oninput: (e) => form.brief = e.target.value });
   const linksEl = h("textarea", { placeholder: "https://project.example/docs\nhttps://project.example/security", style: { minHeight: "70px" }, oninput: (e) => form.links = e.target.value });
   const repoEl = h("input", { type: "text", placeholder: "/home/me/project   ·   C:\\dev\\app   ·   https://github.com/org/repo", oninput: (e) => form.repo = e.target.value });
 
-  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => {
+  const isMistral = (v) => v === "mistral-api" || v === "mistral-vibe";
+  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"], ["mistral-api", "Mistral API"], ["mistral-vibe", "Mistral Vibe"]], "mock", (v) => {
     form.runner = v; costBanner.classList.toggle("hidden", v === "mock");
+    mistralRow.classList.toggle("hidden", !isMistral(v));
+    mistralModelEl.placeholder = v === "mistral-vibe" ? `blank = Vibe default (${mistralDefaults["mistral-vibe"]})` : `blank = ${mistralDefaults["mistral-api"]}`;
+    mistralKeyEl.placeholder = v === "mistral-vibe" ? "blank = server's ARGO_MISTRAL_VIBE_API_KEY / MISTRAL_API_KEY" : "blank = server's ARGO_MISTRAL_API_KEY / MISTRAL_API_KEY";
     demoBanner.classList.toggle("hidden", v !== "mock");
     claudeRow.classList.toggle("hidden", v !== "headless");
     codexRow.classList.toggle("hidden", v !== "codex");
     codexKeyRow.classList.toggle("hidden", v !== "codex");
     geminiRow.classList.toggle("hidden", v !== "gemini");
     startBtn.lastChild.textContent = v === "mock" ? "Run synthetic demo" : "Start real audit";
-  }, ["headless", "codex", "gemini"]);
+  }, ["headless", "codex", "gemini", "mistral-api", "mistral-vibe"]);
   const claudeApiKeyEl = h("input", { type: "password", placeholder: "blank = server's Claude Code login / ANTHROPIC_API_KEY", oninput: (e) => form.claude_api_key = e.target.value.trim() });
   const claudeRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
     field("Claude API key", claudeApiKeyEl, "Blank uses the server's ambient ANTHROPIC_API_KEY / existing Claude Code subscription login. Never echoed back or persisted in the clear."));
@@ -282,6 +286,14 @@ function newRunView() {
   const geminiRow = h("div", { class: "grid-2 hidden", style: { marginTop: "14px" } },
     field("Gemini model", geminiModelEl, "Flat model override across every stage; blank = the built-in per-stage tiering (Pro for recon/validate, Flash for audit)."),
     field("Gemini API key", geminiKeyEl, "Blank uses the server's ambient GEMINI_API_KEY / existing gemini CLI login. Never echoed back or persisted in the clear."));
+  const mistralDefaults = { "mistral-api": "mistral-large-4", "mistral-vibe": "mistral-medium-3.5" };
+  const mistralModelEl = h("input", { type: "text", list: "dl-mistral-models", placeholder: "blank = mistral-large-4", oninput: (e) => form.mistral_model = e.target.value.trim() });
+  const mistralKeyEl = h("input", { type: "password", placeholder: "blank = server's ARGO_MISTRAL_API_KEY / MISTRAL_API_KEY", oninput: (e) => form.mistral_key = e.target.value.trim() });
+  const mistralRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
+    h("div", { class: "grid-2" },
+      field("Mistral model", mistralModelEl, "Mistral API: a model id (mistral-large-4 is priced and pinned). Mistral Vibe: a Vibe alias (needs the vibe CLI on the server)."),
+      field("Mistral key", mistralKeyEl, "Blank uses the server's environment. Never echoed back or persisted in the clear.")),
+    h("p", { class: "hint", style: { marginTop: "8px" } }, "Mistral backends have no web tools: web research and corroboration are switched off for this run. Argo runs the Mistral tools itself (read-only repository, writes only to the session scratch dir)."));
   const drySeg = seg([["false", "Full pipeline"], ["true", "Dry-run (stop after recon)"]], "false", (v) => form.dry_run = v === "true");
   const calSeg = seg([["false", "Off"], ["true", "Calibration (audit→Opus)"]], "false", (v) => form.calibration = v === "true");
   const researchSeg = seg([["true", "On · web OSINT"], ["false", "Off · offline"]], "true", (v) => form.research = v === "true");
@@ -290,7 +302,11 @@ function newRunView() {
   const claudeDL = h("datalist", { id: "dl-claude-models" });
   const codexDL = h("datalist", { id: "dl-codex-models" });
   const geminiDL = h("datalist", { id: "dl-gemini-models" });
+  const mistralDL = h("datalist", { id: "dl-mistral-models" });
   api.models().then((mm) => {
+    const ma = (mm.backends || []).find((b) => b.id === "mistral-api");
+    (ma ? ma.models : []).forEach((m) => mistralDL.append(h("option", { value: m.id }, m.notes || "")));
+    if (ma && ma.default_model) mistralDefaults["mistral-api"] = ma.default_model;
     const cl = (mm.backends || []).find((b) => b.id === "headless");
     const cx = (mm.backends || []).find((b) => b.id === "codex");
     const gm = (mm.backends || []).find((b) => b.id === "gemini");
@@ -309,7 +325,7 @@ function newRunView() {
 
   const adv = h("div", { class: "adv hidden" },
     h("div", { class: "grid-2" },
-      field("Runner", runnerSeg, "Demo replays synthetic fixtures and does not assess the selected repository. Claude, Codex, and Gemini perform real model-backed analysis."),
+      field("Runner", runnerSeg, "Demo replays synthetic fixtures and does not assess the selected repository. Claude, Codex, Gemini and Mistral perform real model-backed analysis."),
       field("Mode", drySeg, "Dry-run shows the generated prompts before paying for audits.")),
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Budget (USD)", budgetEl, "Hard per-run ceiling in USD. Leave blank for no limit — the default: the audit runs to completion regardless of cost. Set a number to abort once spending reaches it."),
@@ -325,13 +341,13 @@ function newRunView() {
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Stage models", stageModelEl, "Comma-separated STAGE=MODEL overrides."),
       field("Stage effort", stageEffortEl, "Claude-only native effort values.")),
-    codexRow, codexKeyRow, claudeRow, geminiRow);
+    codexRow, codexKeyRow, claudeRow, geminiRow, mistralRow);
   const advToggle = h("div", { class: "adv-toggle" }, h("span", { class: "chev" }, "▸"), "Advanced configuration");
   advToggle.addEventListener("click", () => { advToggle.classList.toggle("open"); adv.classList.toggle("hidden"); });
 
   const costBanner = h("div", { class: "banner warn hidden", style: { marginTop: "16px" } },
     icon("alert", 18),
-    h("span", {}, h("strong", {}, "Real run. "), "Spends real tokens on the selected backend (Claude / Codex / Gemini; a full audit can cost real money). Set a budget and confirm before starting."));
+    h("span", {}, h("strong", {}, "Real run. "), "Spends real tokens on the selected backend (Claude / Codex / Gemini / Mistral; a full audit can cost real money). Set a budget and confirm before starting."));
 
   const demoBanner = h("div", { class: "banner demo-banner", style: { marginTop: "16px" } },
     icon("info", 18),
@@ -384,9 +400,15 @@ function newRunView() {
         codex_model: form.codex_model || null, codex_oss: form.codex_oss, codex_local_provider: form.codex_local_provider || null,
         gemini_model: form.gemini_model || null, gemini_api_key: form.gemini_api_key || null,
         claude_api_key: form.claude_api_key || null, codex_api_key: form.codex_api_key || null,
+        mistral_api_model: form.runner === "mistral-api" ? (form.mistral_model || null) : null,
+        mistral_vibe_model: form.runner === "mistral-vibe" ? (form.mistral_model || null) : null,
+        mistral_api_key: form.runner === "mistral-api" ? (form.mistral_key || null) : null,
+        mistral_vibe_api_key: form.runner === "mistral-vibe" ? (form.mistral_key || null) : null,
+        corroborate_enabled: isMistral(form.runner) ? false : null,
         profile: form.profile || null, stage_runners: assignments(form.stage_runners),
         models: assignments(form.stage_models), stage_effort: assignments(form.stage_effort) };
-      const res = await api.startRun({ brief, repo: form.repo, links, dry_run: form.dry_run, research: form.research, config: cfg });
+      const research = isMistral(form.runner) ? false : form.research;   // no web tools on Mistral
+      const res = await api.startRun({ brief, repo: form.repo, links, dry_run: form.dry_run, research, config: cfg });
       location.hash = `#/run/${encodeURIComponent(res.run_id)}`;
     } catch (e) {
       toast(e.message, true); startBtn.disabled = false;
@@ -453,7 +475,7 @@ function newRunView() {
   setMode("general");
 
   return h("div", { class: "newrun" },
-    claudeDL, codexDL, geminiDL,
+    claudeDL, codexDL, geminiDL, mistralDL,
     h("div", { class: "page-head" },
       h("h1", {}, "Start an audit"),
       h("p", {}, "Choose the code. Argo profiles it, hunts for vulnerabilities, and challenges every candidate before it becomes a finding. Live targets remain untouched.")),
@@ -502,7 +524,7 @@ function settingsView() {
   const STAGES = ["ingest", "research", "recon", "audit", "validate", "evidence", "report"];
   const s = { runner: "mock", budget_usd: null, parallel: 3, audit_model: null, calibration: false, models: {} };
 
-  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"]], "mock", (v) => s.runner = v, ["headless", "codex", "gemini"]);
+  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"], ["mistral-api", "Mistral API"], ["mistral-vibe", "Mistral Vibe"]], "mock", (v) => s.runner = v, ["headless", "codex", "gemini", "mistral-api", "mistral-vibe"]);
   const calSeg = seg([["false", "Off"], ["true", "Calibration"]], "false", (v) => s.calibration = v === "true");
   const budgetEl = h("input", { type: "number", min: "0", placeholder: "none", oninput: (e) => s.budget_usd = e.target.value ? Number(e.target.value) : null });
   const parallelEl = h("input", { type: "number", min: "1", max: "16", value: "3", oninput: (e) => s.parallel = +e.target.value || 3 });
@@ -913,7 +935,7 @@ function chatPanel(id) {
 }
 
 // backend ids -> display labels (mirrors GET /models' backend list)
-const BACKEND_LABELS = { headless: "Claude", codex: "Codex", gemini: "Gemini", mock: "Demo" };
+const BACKEND_LABELS = { headless: "Claude", codex: "Codex", gemini: "Gemini", "mistral-api": "Mistral API", "mistral-vibe": "Mistral Vibe", mock: "Demo" };
 
 // ------------------------------------------------------------------ fixes panel (Phase 6)
 function fixesPanel(id) {
@@ -1055,7 +1077,7 @@ function costsView() {
         : h("div", { class: "help" }, "No price table.");
       pricingCard = cardOf("Model pricing & backends", h("div", {}, backends,
         h("div", { class: "help", style: { margin: "8px 0" } },
-          "Claude Code reports real USD per call. Codex (OpenAI / OSS) and Gemini report tokens, so their cost is ESTIMATED from this table (local/open-source models ≈ $0)."),
+          "Claude Code reports real USD per call. Codex (OpenAI / OSS), Gemini and the Mistral API report tokens, so their cost is ESTIMATED from this table (local/open-source models ≈ $0; Mistral models without a published price show as unknown). Mistral Vibe reports its own estimate."),
         priceTbl));
     }
     mount(host, head, costCharts, cheapest, cardOf("By model", models),

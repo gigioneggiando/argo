@@ -11,7 +11,7 @@ class RunConfig(BaseModel):
     """The subset of PipelineConfig a client may set per run. Defaults are deliberately safe:
     ``runner="mock"`` means a request spends **zero tokens** unless the client opts into
     ``headless``."""
-    runner: str = Field("mock", description='"mock" (free) · "headless" (Claude Code) · "codex" (Codex CLI / OpenAI / OSS) · "gemini" (Gemini CLI)')
+    runner: str = Field("mock", description='"mock" (free) · "headless" (Claude Code) · "codex" (Codex CLI / OpenAI / OSS) · "gemini" (Gemini CLI) · "mistral-api" (Mistral API, Argo tool loop) · "mistral-vibe" (Mistral Vibe CLI)')
     budget_usd: Optional[float] = Field(None, description="hard per-run USD ceiling")
     audit_model: Optional[str] = Field(None, description="override the Stage-3 audit model")
     calibration: bool = Field(False, description="run audit on Opus (all-Opus)")
@@ -45,6 +45,22 @@ class RunConfig(BaseModel):
                           "first use (a bare env var alone does not authenticate codex exec). "
                           "Never echoed back or persisted in the clear (see "
                           "PipelineConfig._SECRET_FIELDS redaction).")
+    mistral_api_model: Optional[str] = Field(
+        None, description="(runner=mistral-api) model id for every stage; default mistral-large-4")
+    mistral_vibe_model: Optional[str] = Field(
+        None, description="(runner=mistral-vibe) Vibe model alias; default mistral-medium-3.5")
+    mistral_api_key: Optional[str] = Field(
+        None, description="(runner=mistral-api) Mistral API key for this run; omit to use "
+                          "ARGO_MISTRAL_API_KEY / MISTRAL_API_KEY. Never echoed back or persisted "
+                          "in the clear (see PipelineConfig._SECRET_FIELDS redaction).")
+    mistral_vibe_api_key: Optional[str] = Field(
+        None, description="(runner=mistral-vibe) key for the Vibe CLI; omit to use "
+                          "ARGO_MISTRAL_VIBE_API_KEY / the mistral-api key. Never echoed back or "
+                          "persisted in the clear.")
+    research_enabled: Optional[bool] = Field(
+        None, description="override the Stage-1 web research default (Mistral runners need false)")
+    corroborate_enabled: Optional[bool] = Field(
+        None, description="override the networked corroboration default (Mistral runners need false)")
     # NOTE: no claude_api_keys/codex_api_keys here, deliberately -- mirrors gemini_accounts' own
     # absence from RunConfig. Multi-account fallback chains are a CLI concept (one process, many
     # accounts); one HTTP request = one run = one identity.

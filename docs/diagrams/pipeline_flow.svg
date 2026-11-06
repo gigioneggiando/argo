@@ -118,5 +118,5 @@
 <text x="340" y="1318" text-anchor="middle" font-size="11" font-style="italic" fill="#888">Two modes, one engine: omit the brief (dashed) for a general/local code audit; add it for bug-bounty triage.</text>
 </g>
 </g>
-<text x="340" y="17" text-anchor="middle" font-size="11" fill="#888">backends: Claude Code &#183; Codex (OpenAI / local-OSS) &#183; Gemini</text>
+<text x="340" y="17" text-anchor="middle" font-size="11" fill="#888">backends: Claude Code &#183; Codex (OpenAI / local-OSS) &#183; Gemini &#183; Mistral (API &#183; Vibe)</text>
 </svg>

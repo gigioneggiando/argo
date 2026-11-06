@@ -59,9 +59,12 @@
   const cases=[...document.querySelectorAll('#cases .case')];
   const count=document.getElementById('filterCount'),empty=document.getElementById('noResults'),toggle=document.getElementById('toggleCases'),search=document.getElementById('searchInput');
   const statuses=['merged','advisory','fixed','open','issue','closed'];
-  const state={sev:'',status:'',lang:'',stars:0,q:''};
+  // Record type from the row's primary upstream link (the record's own evidence), not its status.
+  const kinds=[['pr','Pull requests'],['advisory','Advisories (GHSA)'],['issue','Issues']];
+  const kindOf=href=>/\/pull\/\d+|\/merge_requests\/\d+/.test(href)?'pr':/\/security\/advisories\/|GHSA-/i.test(href)?'advisory':/\/issues\/\d+/.test(href)?'issue':'other';
+  const state={kind:'',sev:'',status:'',lang:'',stars:0,q:''};
   const severityGroup=label=>label==='Moderate'?'Medium':label;
-  const counts={severity:new Map(),status:new Map(),projects:new Map()},languages=new Set();
+  const counts={severity:new Map(),status:new Map(),projects:new Map(),kind:new Map()},languages=new Set();
   cases.forEach(sec=>{
     sec.dataset.lang=sec.querySelector('.chip-lang')?.textContent.trim()||'';
     languages.add(sec.dataset.lang);
@@ -69,16 +72,19 @@
     sec._rows=[...sec.querySelectorAll('.row')];
     sec._rows.forEach(row=>{
       row.dataset.status=statuses.find(s=>row.classList.contains(s))||'open';
+      row.dataset.kind=kindOf(row.getAttribute('href')||row.querySelector('a[href]')?.getAttribute('href')||'');
       row._search=(name+' '+sec.dataset.lang+' '+sec.querySelector('.blurb').textContent+' '+row.textContent).toLowerCase().replace(/\s+/g,' ');
-      for(const [key,value] of [['severity',severityGroup(row.dataset.sev||'Unspecified')],['status',row.dataset.status],['projects',name]])counts[key].set(value,(counts[key].get(value)||0)+1);
+      for(const [key,value] of [['severity',severityGroup(row.dataset.sev||'Unspecified')],['status',row.dataset.status],['projects',name],['kind',row.dataset.kind]])counts[key].set(value,(counts[key].get(value)||0)+1);
     });
   });
   const option=(parent,value,label)=>{const el=document.createElement('option');el.value=value;el.textContent=label;parent.append(el);};
+  kinds.filter(([k])=>counts.kind.has(k)).forEach(([k,label])=>option(document.getElementById('typeFilter'),k,label));
+  if(counts.kind.has('other'))option(document.getElementById('typeFilter'),'other','Other');
   statuses.filter(s=>counts.status.has(s)).forEach(s=>option(document.getElementById('statusFilter'),s,s==='advisory'?'Published advisory':s[0].toUpperCase()+s.slice(1)));
   [...languages].filter(Boolean).sort().forEach(lang=>option(document.getElementById('languageFilter'),lang,lang));
   for(const severity of counts.severity.keys())if(!['Critical','High','Medium','Low'].includes(severity))option(document.getElementById('severityFilter'),severity,severity);
   const controls=window.ArgoControls.enhance(form);
-  const active=()=>!!(state.sev||state.status||state.lang||state.stars||state.q);
+  const active=()=>!!(state.kind||state.sev||state.status||state.lang||state.stars||state.q);
   const visibleCases=()=>cases.filter(sec=>!sec.hidden);
   function sortProjects(){
     const container=document.getElementById('cases');
@@ -103,7 +109,7 @@
       const projectMatches=(+sec.dataset.stars>=state.stars)&&(!state.lang||sec.dataset.lang===state.lang);
       let matches=0;
       sec._rows.forEach(row=>{
-        const show=projectMatches&&(!state.sev||severityGroup(row.dataset.sev||'Unspecified')===state.sev)&&(!state.status||row.dataset.status===state.status)&&(!state.q||row._search.includes(state.q));
+        const show=projectMatches&&(!state.kind||row.dataset.kind===state.kind)&&(!state.sev||severityGroup(row.dataset.sev||'Unspecified')===state.sev)&&(!state.status||row.dataset.status===state.status)&&(!state.q||row._search.includes(state.q));
         row.closest('li').hidden=!show;
         if(show)matches++;
       });
@@ -122,9 +128,9 @@
   form.addEventListener('change',e=>{const key=e.target.dataset.filter;if(key){state[key]=key==='stars'?+e.target.value:e.target.value;apply();if(key==='stars'&&state.stars)starTracker.refreshAll();}});
   let timer;
   search.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(()=>{state.q=search.value.trim().toLowerCase();apply();},120);});
-  const reset=()=>{clearTimeout(timer);Object.assign(state,{sev:'',status:'',lang:'',stars:0,q:''});form.reset();apply();};
+  const reset=()=>{clearTimeout(timer);Object.assign(state,{kind:'',sev:'',status:'',lang:'',stars:0,q:''});form.reset();apply();};
   // Native reset event must not call reset() recursively.
-  form.addEventListener('reset',()=>{clearTimeout(timer);Object.assign(state,{sev:'',status:'',lang:'',stars:0,q:''});requestAnimationFrame(apply);});
+  form.addEventListener('reset',()=>{clearTimeout(timer);Object.assign(state,{kind:'',sev:'',status:'',lang:'',stars:0,q:''});requestAnimationFrame(apply);});
   document.getElementById('resetFilters').addEventListener('click',reset);
   toggle.addEventListener('click',()=>{const visible=visibleCases(),open=!visible.every(sec=>sec.open);visible.forEach(sec=>{sec.open=open;});toggle.textContent=open?'Collapse all projects':'Expand all projects';});
   const openFragment=()=>{const sec=cases.find(sec=>`#${sec.id}`===location.hash);if(sec){if(sec.hidden)reset();sec.open=true;requestAnimationFrame(()=>sec.scrollIntoView({block:'start'}));}};

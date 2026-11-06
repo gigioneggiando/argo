@@ -1,5 +1,16 @@
 # Argo site revision, 24 October 2026
 
+## Record type filter, 6 November 2026
+
+Luigi asked for a dropdown to pick the record category. The archive form now starts with a
+**Type** select (All types · Pull requests · Advisories (GHSA) · Issues), a fifth native select
+enhanced by `controls.js` exactly like Severity/Status/Language/Stars, so it keeps the rounded
+popup, keyboard model, reset and label sync. The type is derived in `script.js` from each record's
+primary upstream link (`/pull/` or `/merge_requests/`, `/security/advisories/` or `GHSA-`,
+`/issues/`), never from its status, so a merged PR and an open PR are both "Pull requests". No
+source record changed; options appear only for types present. The filter grid is five columns
+plus Reset on desktop and stays two columns on phones.
+
 ## Research surface prepared, 27 October 2026
 
 The future editorial section is named **Research** and lives inside Argo at

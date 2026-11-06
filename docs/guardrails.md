@@ -134,7 +134,7 @@ OWN already-audited source, isolated the same way `runtime` isolates a live inst
   definitive about whether the underlying bug is real. Full design:
   [architecture.md](architecture.md#asan-poc-generation-why-v1-is-deliberately-narrow).
 
-### 2c. ⚠️ The opt-in live exception: the `live` stage (in-scope hosts only)
+### 2c. The opt-in live exception: the `live` stage (in-scope hosts only)
 
 This is the **one** capability that, by design, contacts the program's **real, live in-scope host** —
 a deliberate, heavily-gated relaxation of §2 for **authorized** bug-bounty engagements whose rules of

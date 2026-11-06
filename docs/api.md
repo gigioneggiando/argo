@@ -87,7 +87,7 @@ invalidation/prioritization plan, not as a claim that unchanged code was reviewe
 
 `POST /runs` accepts `"research": true|false` (default **true**) — the Stage-1 web-OSINT step that
 runs before recon (one of two networked stages, with corroborate; never the live in-scope hosts; see
-[guardrails.md](guardrails.md#2a-the-one-bounded-exception-the-research-stage-osint-only)). When on,
+[guardrails.md](guardrails.md#2a-the-bounded-exception-the-osint-stages-research--corroborate)). When on,
 `research` appears in the run's `stages` timeline and produces the `research_brief` / `threat_intel`
 artifacts; `research: false` keeps the run fully offline.
 

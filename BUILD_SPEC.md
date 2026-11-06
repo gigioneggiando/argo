@@ -1,5 +1,10 @@
 # BUILD SPEC — Bug-Bounty Source-Audit Pipeline Orchestrator
 
+> **Historical document.** This is the original brief the orchestrator was first built against
+> (2026-06). It is kept for provenance and is not a description of current behaviour: Argo now has a
+> general (no-brief) audit mode, more stages and several backends. For the current design read
+> [docs/architecture.md](docs/architecture.md); for agent instructions read [AGENTS.md](AGENTS.md).
+
 You are building the orchestration layer for an authorized bug-bounty security-audit pipeline.
 The reusable prompt assets already exist (see "Provided assets"). Your job is the glue that
 ingests a program, runs the stages, and produces a reviewable report. **You implement the

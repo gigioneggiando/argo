@@ -9,6 +9,10 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.12.0] - 2026-11-06
+
 ### Added
 
 - **`--runner mistral-api`: Mistral models on any OS.** Argo runs the agent loop itself over the

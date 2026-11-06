@@ -18,6 +18,7 @@ targets/
 chatplugin/
 
 # Local scan drivers & their logs (per-target scratch, never published)
+/*.log
 /run_*.py
 /run_*.log
 /finish_*.py
@@ -38,6 +39,7 @@ chatplugin/
 
 # Python
 .venv/
+.venv/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -49,6 +51,7 @@ dist/
 .eggs/
 
 # Scratch output from manual audit runs — never part of the repo
+work/
 *_audit.log
 *_audit.err.log
 *_audit.out.log

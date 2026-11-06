@@ -1,0 +1,12 @@
+[
+  {
+    "label": "[FRSS-2026-0001] Authenticated session ID is not rotated on all authentication transitions",
+    "cwe": "CWE-384",
+    "aliases": [],
+    "file": "app/Models/Auth.php",
+    "line": 37,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Authentication & session"
+  }
+]

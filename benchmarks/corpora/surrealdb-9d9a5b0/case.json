@@ -1,0 +1,13 @@
+{
+  "name": "surrealdb-9d9a5b0",
+  "repo": "https://github.com/surrealdb/surrealdb",
+  "commit": "9d9a5b0693e499e0d030cac6b618062ec02cd2bc",
+  "archetype": "web_api_cms",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "surrealdb@9d9a5b0693e499e0d030cac6b618062ec02cd2bc",
+  "cve_ids": [
+    "CVE-2026-109338",
+    "CVE-2026-109339"
+  ],
+  "expected": "expected_findings.json"
+}

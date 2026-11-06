@@ -1,0 +1,62 @@
+[
+  {
+    "label": "[PXSQL-2026-0001] Pre-auth out-of-bounds read via unbounded length-encoded integer decoder in MySQL HandshakeResponse41 auth-length",
+    "cwe": "CWE-125",
+    "aliases": [],
+    "file": "lib/MySQL_encode.cpp",
+    "line": 233,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Memory safety"
+  },
+  {
+    "label": "[PXSQL-2026-0002] Out-of-bounds read via unbounded length-encoded integer decoder in COM_STMT_EXECUTE parameter binding (get_binds_from_pkt)",
+    "cwe": "CWE-125",
+    "aliases": [],
+    "file": "lib/MySQL_Protocol.cpp",
+    "line": 4511,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Memory safety"
+  },
+  {
+    "label": "[PXSQL-2026-0003] Out-of-bounds read in COM_STMT_EXECUTE statement-id parsing (missing packet-length check)",
+    "cwe": "CWE-125",
+    "aliases": [],
+    "file": "lib/MySQL_Session.cpp",
+    "line": 4220,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Memory safety"
+  },
+  {
+    "label": "[PXSQL-2026-0004] Unbounded memory allocation from attacker-controlled 32-bit length in PostgreSQL packet handling",
+    "cwe": "CWE-770",
+    "aliases": [],
+    "file": "lib/PgSQL_Data_Stream.cpp",
+    "line": 1342,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[PXSQL-2026-0005] Reachable assertion / out-of-bounds read on truncated compressed inner-packet tail",
+    "cwe": "CWE-617",
+    "aliases": [],
+    "file": "lib/mysql_data_stream.cpp",
+    "line": 1468,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[PXSQL-2026-0006] Out-of-bounds heap read in COM_STMT_EXECUTE parameter parsing: get_binds_from_pkt validates the value length against total packet size, not remaining bytes (bind forwarded to backend)",
+    "cwe": "CWE-125",
+    "aliases": [],
+    "file": "lib/MySQL_Protocol.cpp",
+    "line": 4516,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Memory safety"
+  }
+]

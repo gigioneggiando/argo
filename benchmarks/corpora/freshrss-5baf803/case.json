@@ -1,0 +1,10 @@
+{
+  "name": "freshrss-5baf803",
+  "repo": "https://github.com/FreshRSS/FreshRSS",
+  "commit": "5baf803a4b4d73e48d1a66ee493680527e6e5819",
+  "archetype": "web_api_cms",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "freshrss@5baf803a4b4d73e48d1a66ee493680527e6e5819",
+  "cve_ids": [],
+  "expected": "expected_findings.json"
+}

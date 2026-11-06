@@ -1,0 +1,22 @@
+[
+  {
+    "label": "[PB-2026-0001] Enabled batch requests can crash the server through an unrecovered internal-handler panic",
+    "cwe": "CWE-248",
+    "aliases": [],
+    "file": "apis/batch.go",
+    "line": 37,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[PB-2026-0002] Realtime subscription fields picker can crash broadcast workers through an unrecovered panic",
+    "cwe": "CWE-248",
+    "aliases": [],
+    "file": "apis/realtime.go",
+    "line": 173,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Denial of service"
+  }
+]

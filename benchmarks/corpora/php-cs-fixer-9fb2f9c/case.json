@@ -1,0 +1,10 @@
+{
+  "name": "php-cs-fixer-9fb2f9c",
+  "repo": "https://github.com/PHP-CS-Fixer/PHP-CS-Fixer",
+  "commit": "9fb2f9cc3116e9cbfc1614260dbf47f74e0b2856",
+  "archetype": "cli_desktop",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "php-cs-fixer@9fb2f9cc3116e9cbfc1614260dbf47f74e0b2856",
+  "cve_ids": [],
+  "expected": "expected_findings.json"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "pocketbase-089ca8a",
+  "repo": "https://github.com/pocketbase/pocketbase",
+  "commit": "089ca8ae412a",
+  "archetype": "web_api_cms",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "pocketbase@089ca8ae412a",
+  "cve_ids": [
+    "CVE-2026-82410"
+  ],
+  "expected": "expected_findings.json"
+}

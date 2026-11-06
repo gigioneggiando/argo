@@ -1,0 +1,10 @@
+{
+  "name": "navidrome-64430af",
+  "repo": "https://github.com/navidrome/navidrome",
+  "commit": "64430af9ce442c7266101204bcf53060f7e1443a",
+  "archetype": "web_api_cms",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "navidrome@64430af9ce442c7266101204bcf53060f7e1443a",
+  "cve_ids": [],
+  "expected": "expected_findings.json"
+}

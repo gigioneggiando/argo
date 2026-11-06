@@ -9,7 +9,10 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **`--runner mistral-api` failed to import after `pip install .`** without `requirements.txt`:
+  `httpx` was only a `dev` extra in `pyproject.toml`. It is now a runtime dependency.
 
 ## [0.12.0] - 2026-11-06
 

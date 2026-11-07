@@ -336,6 +336,32 @@ class AgentRunner(ABC):
         # Set by the orchestrator for the duration of a run; when it fires, an in-flight CLI
         # subprocess is killed (mid-stage cancellation). None => not cancellable (e.g. CLI runs).
         self.cancel_event = None
+        # Optional live-activity sink (chat UI): receives short one-line progress strings (a tool
+        # call, an interim agent message) WHILE a session runs. Purely informational: never part
+        # of the result, the ledger or the guardrails; a failing sink is ignored.
+        self.on_activity = None
+
+    def _activity(self, text) -> None:
+        sink = self.on_activity
+        if sink is None or not text:
+            return
+        try:
+            sink(" ".join(str(text).split())[:_ACTIVITY_MAX_CHARS])
+        except Exception:  # noqa: BLE001 -- a UI sink must never break a session
+            pass
+
+    def _with_activity(self, on_line, parse):
+        """Wrap an ``_exec`` stdout-line callback so each line also feeds ``parse`` -> activity."""
+        if self.on_activity is None:
+            return on_line
+
+        def line(raw: str):
+            try:
+                self._activity(parse(raw))
+            except Exception:  # noqa: BLE001
+                pass
+            return on_line(raw) if on_line is not None else None
+        return line
 
     # ---------------------------------------------------------------- cancellable subprocess
     def _exec(self, cmd: list[str], *, prompt: str, cwd, timeout: float,
@@ -767,11 +793,15 @@ class HeadlessClaudeRunner(AgentRunner):
         return self._resolved_bin
 
     def _build_cmd(self, *, model, repo_dir, allowed, disallowed,
-                   session_budget_usd=None, effort=None) -> list[str]:
+                   session_budget_usd=None, effort=None, stream=False) -> list[str]:
         cmd = [
             self._bin(),
             "-p",
-            "--output-format", "json",      # metadata only (session id, cost, stop reason)
+            # json = one metadata envelope at exit. stream-json (only when a live viewer is
+            # attached, e.g. chat) = one event per line; its final ``type: "result"`` event carries
+            # the SAME envelope fields (verified against claude 2.1.319), so parsing is unchanged.
+            *(("--output-format", "stream-json", "--verbose") if stream
+              else ("--output-format", "json")),
             "--model", model,
             # Default mode: in -p an action that would need approval is DENIED, not prompted,
             # so a headless run never hangs. Reads stay inside the cwd + --add-dir; writes are
@@ -795,9 +825,10 @@ class HeadlessClaudeRunner(AgentRunner):
 
     def _invoke(self, *, prompt, work_dir, model, repo_dir, allowed, disallowed, policy=None,
                 stage, run_id, label, session_budget_usd=None, timeout_s=None) -> dict:
+        stream = self.on_activity is not None
         cmd = self._build_cmd(model=model, repo_dir=repo_dir, allowed=allowed,
                               disallowed=disallowed, session_budget_usd=session_budget_usd,
-                              effort=self.config.stage_effort.get(stage))
+                              effort=self.config.stage_effort.get(stage), stream=stream)
         timeout = timeout_s or self.config.session_timeout_s
         # Multi-account: point this invocation at a specific Claude credential store so an
         # account-fallback can switch accounts (limits are per-account). See build_runner.
@@ -816,7 +847,9 @@ class HeadlessClaudeRunner(AgentRunner):
             if self.config.claude_api_key:
                 env["ANTHROPIC_API_KEY"] = self.config.claude_api_key
         try:
-            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env,
+                              on_stdout_line=(self._with_activity(None, _claude_activity)
+                                              if stream else None))
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
             raise RunnerError(
                 f"claude session timed out after {timeout}s "
@@ -828,7 +861,11 @@ class HeadlessClaudeRunner(AgentRunner):
         # A result envelope may arrive WITH a non-zero exit (e.g. is_error / budget-exceeded);
         # prefer parsing stdout, and only fall back to a hard error if there is no usable JSON.
         out = (proc.stdout or "").strip()
-        if out:
+        if out and stream:
+            envelope = _claude_stream_result(out)
+            if envelope is not None:
+                return envelope
+        elif out:
             try:
                 envelope = json.loads(out)
             except json.JSONDecodeError:
@@ -843,6 +880,110 @@ class HeadlessClaudeRunner(AgentRunner):
             f"label={label}, exit={proc.returncode}). This usually means an auth/startup "
             f"failure.\nstderr tail:\n{stderr[-1500:]}\n"
             f"stdout tail:\n{stdout[-500:]}")
+
+
+def _claude_stream_result(stdout: str) -> dict | None:
+    """The final ``{"type": "result", ...}`` event of a ``--output-format stream-json`` session:
+    the same envelope ``--output-format json`` prints, or None if the stream never finished."""
+    for line in reversed(stdout.splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "result":
+            return ev
+    return None
+
+
+def _claude_activity(line: str) -> str | None:
+    """One progress line from a Claude ``stream-json`` event: a tool call or interim text."""
+    line = line.strip()
+    if not line.startswith("{"):
+        return None
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if ev.get("type") != "assistant" or not isinstance(ev.get("message"), dict):
+        return None
+    parts = []
+    for c in ev["message"].get("content") or []:
+        if not isinstance(c, dict):
+            continue
+        if c.get("type") == "tool_use":
+            args = c.get("input") if isinstance(c.get("input"), dict) else {}
+            detail = next((str(args[k]) for k in ("command", "file_path", "pattern", "path", "url")
+                           if args.get(k)), "")
+            parts.append(f"{c.get('name', 'tool')} {detail}".strip())
+        elif c.get("type") == "text" and (c.get("text") or "").strip():
+            parts.append(c["text"])
+    return " · ".join(parts) or None
+
+
+def _gemini_events(stdout: str):
+    for line in stdout.splitlines():
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(ev, dict):
+                yield ev
+
+
+def _gemini_stream_envelope(stdout: str) -> dict | None:
+    """Rebuild the ``--output-format json`` envelope from a ``stream-json`` session (gemini CLI
+    0.66, verified 2026-11-06): ``response`` = the assistant deltas after the last tool result,
+    ``stats.models`` mapped to the json shape ({tokens: {prompt, candidates}}; stream
+    ``input_tokens`` already includes cached tokens, like json ``prompt``), and a non-success
+    result becomes ``error``. None when the stream never reached its ``result`` event."""
+    session_id, chunks, result = None, [], None
+    for ev in _gemini_events(stdout):
+        kind = ev.get("type")
+        if kind == "init":
+            session_id = ev.get("session_id")
+        elif kind == "tool_result":
+            chunks = []                               # only the answer after the last tool counts
+        elif kind == "message" and ev.get("role") == "assistant":
+            chunks.append(str(ev.get("content") or ""))
+        elif kind == "result":
+            result = ev
+    if result is None:
+        return None
+    stats = result.get("stats") if isinstance(result.get("stats"), dict) else {}
+    models = {
+        name: {"tokens": {"prompt": int((e or {}).get("input_tokens", 0) or 0),
+                          "candidates": int((e or {}).get("output_tokens", 0) or 0)}}
+        for name, e in (stats.get("models") or {}).items()
+    }
+    env: dict = {"session_id": session_id, "response": "".join(chunks),
+                 "stats": {"models": models} if models else {}}
+    if result.get("status") != "success":
+        err = result.get("error")
+        env["error"] = err if isinstance(err, dict) else {
+            "message": str(err or f"gemini stream ended with status {result.get('status')!r}")}
+    return env
+
+
+def _gemini_activity(line: str) -> str | None:
+    """One progress line from a Gemini ``stream-json`` event: a tool call (deltas are too fine)."""
+    line = line.strip()
+    if not line.startswith("{"):
+        return None
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if ev.get("type") != "tool_use":
+        return None
+    params = ev.get("parameters") if isinstance(ev.get("parameters"), dict) else {}
+    detail = next((str(params[k]) for k in ("command", "file_path", "pattern", "dir_path", "path",
+                                            "query", "url") if params.get(k)), "")
+    return f"{ev.get('tool_name', 'tool')} {detail}".strip()
 
 
 # -------------------------------------------------------------------------------- codex
@@ -930,6 +1071,38 @@ def _codex_completed_tool_item(line: str) -> dict | None:
         return None
     item = ev["item"]
     return None if item.get("type") in _CODEX_NON_TOOL_ITEMS else item
+
+
+#: Longest activity line shown to a live viewer (a command or an interim message, one line).
+_ACTIVITY_MAX_CHARS = 200
+
+
+def _codex_activity(line: str) -> str | None:
+    """One human-readable progress line from a Codex ``--json`` event, or None.
+
+    A started command / file change / tool call, or a completed interim agent message."""
+    line = line.strip()
+    if not line or line[0] != "{":
+        return None
+    try:
+        ev = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    item = ev.get("item") if isinstance(ev.get("item"), dict) else None
+    if item is None:
+        return None
+    kind = item.get("type")
+    if ev.get("type") == "item.started":
+        if kind == "command_execution":
+            return "$ " + str(item.get("command") or "")
+        if kind == "file_change":
+            paths = [c.get("path") for c in item.get("changes") or [] if isinstance(c, dict)]
+            return "edit " + ", ".join(p for p in paths if p) if paths else "edit"
+        if kind in {"mcp_tool_call", "web_search"}:
+            return str(item.get("tool") or item.get("query") or kind)
+    if ev.get("type") == "item.completed" and kind == "agent_message":
+        return str(item.get("text") or "") or None
+    return None
 
 
 def _codex_events_path(work_dir: Path, label: str) -> Path:
@@ -1233,7 +1406,7 @@ class CodexRunner(AgentRunner):
             events_path=_codex_events_path(Path(work_dir), events_name))
         try:
             proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env,
-                              on_stdout_line=guard)
+                              on_stdout_line=self._with_activity(guard, _codex_activity))
         except SessionGuardTripped as exc:
             # turn_cap keeps the historical non-retryable semantics of the post-hoc cap check;
             # a tool loop is stochastic for a local model, so one fresh attempt is reasonable.
@@ -1425,10 +1598,12 @@ class GeminiRunner(AgentRunner):
             self._resolved_bin = resolved
         return self._resolved_bin
 
-    def _build_gemini_cmd(self, *, model, repo_dir, policy_file: Path) -> list[str]:
+    def _build_gemini_cmd(self, *, model, repo_dir, policy_file: Path, stream=False) -> list[str]:
         cmd = [
             self._bin(),
-            "--output-format", "json",
+            # stream-json only while a live viewer is attached (chat); converted back to the json
+            # envelope by _gemini_stream_envelope, so parse_envelope is unchanged.
+            "--output-format", "stream-json" if stream else "json",
             "--skip-trust",              # see class docstring — required for a fresh scratch dir
             "--approval-mode", "yolo",   # non-interactive auto-approve for whatever isn't denied
             "-m", model,
@@ -1444,7 +1619,9 @@ class GeminiRunner(AgentRunner):
                       else _GEMINI_POLICY_OFFLINE)
         policy_file = Path(work_dir) / ".argo_gemini_policy.toml"
         policy_file.write_text(policy_toml, encoding="utf-8")
-        cmd = self._build_gemini_cmd(model=model, repo_dir=repo_dir, policy_file=policy_file)
+        stream = self.on_activity is not None
+        cmd = self._build_gemini_cmd(model=model, repo_dir=repo_dir, policy_file=policy_file,
+                                     stream=stream)
         timeout = timeout_s or self.config.session_timeout_s
         # Multi-account: point this invocation at a specific Gemini API key so an account-fallback
         # can switch keys (limits are per-key/project). See build_runner / _expand_backend. Unlike
@@ -1453,7 +1630,9 @@ class GeminiRunner(AgentRunner):
         if self.config.gemini_api_key:
             env = {**os.environ, "GEMINI_API_KEY": self.config.gemini_api_key}
         try:
-            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
+            proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env,
+                              on_stdout_line=(self._with_activity(None, _gemini_activity)
+                                              if stream else None))
         except subprocess.TimeoutExpired as exc:  # pragma: no cover - real-runner path
             raise RunnerError(
                 f"gemini session timed out after {timeout}s "
@@ -1482,10 +1661,13 @@ class GeminiRunner(AgentRunner):
         # Error startup-crash shape confirmed live: nothing on stdout, everything on stderr).
         out = (proc.stdout or "").strip()
         if out:
-            try:
-                envelope = json.loads(out)
-            except json.JSONDecodeError:
-                envelope = None
+            if stream:
+                envelope = _gemini_stream_envelope(out)
+            else:
+                try:
+                    envelope = json.loads(out)
+                except json.JSONDecodeError:
+                    envelope = None
             if isinstance(envelope, dict):
                 envelope["_exit_code"] = proc.returncode
                 return envelope  # parse_envelope validates shape + classifies is_error
@@ -1580,6 +1762,8 @@ class MockClaudeRunner(ClaudeRunner):
     def _invoke(self, *, prompt, work_dir, model, repo_dir, allowed, disallowed, policy=None,
                 stage, run_id, label, session_budget_usd=None, timeout_s=None) -> dict:
         if stage == "chat":
+            self._activity("$ rg -n 'get_order' src/")      # synthetic, like a real tool call
+            self._activity("Reading the run's validated findings")
             return self._chat(work_dir, label, prompt)
         if stage == "research":
             return self._research(work_dir, label)
@@ -2148,6 +2332,15 @@ class FallbackRunner(AgentRunner):
     def cancel_event(self, ev):
         for r in getattr(self, "_runners", []):
             r.cancel_event = ev
+
+    @property                                         # and the chat UI's live-activity sink
+    def on_activity(self):
+        return self._runners[0].on_activity if self._runners else None
+
+    @on_activity.setter
+    def on_activity(self, sink):
+        for r in getattr(self, "_runners", []):
+            r.on_activity = sink
 
     def run(self, **kwargs) -> LLMResult:
         last_exc: Exception | None = None

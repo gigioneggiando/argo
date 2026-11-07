@@ -66,6 +66,45 @@ export const api = {
   revalidateContext: (id, body) => req("POST", `/runs/${id}/revalidate-context`, body || {}),
 };
 
+// One chat turn streamed as NDJSON (POST, so not EventSource): onActivity(text) for each live
+// progress line, resolves with the same payload as sendChat. Falls back to reading the whole body
+// when the browser cannot stream it.
+export async function streamChat(id, message, onActivity) {
+  const res = await fetch(`/runs/${id}/chat/stream`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch (_) {}
+    throw new Error(`${res.status}: ${detail}`);
+  }
+  let done = null;
+  const handle = (line) => {
+    if (!line.trim()) return;
+    const ev = JSON.parse(line);
+    if (ev.type === "activity") { if (onActivity) onActivity(ev.text); }
+    else if (ev.type === "error") throw new Error(ev.detail || "chat failed");
+    else if (ev.type === "done") { const { type, ...rest } = ev; done = rest; }
+  };
+  if (res.body && res.body.getReader) {
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done: end } = await reader.read();
+      if (end) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) { handle(buf.slice(0, nl)); buf = buf.slice(nl + 1); }
+    }
+    handle(buf);
+  } else {
+    (await res.text()).split("\n").forEach(handle);
+  }
+  if (!done) throw new Error("chat stream ended without a reply");
+  return done;
+}
+
 // Live status via Server-Sent Events. onUpdate(status) is called on each event;
 // onDone(status) when a terminal state is reached. Returns a close() function.
 export function streamRun(id, onUpdate, onDone) {

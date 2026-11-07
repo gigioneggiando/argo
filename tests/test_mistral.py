@@ -431,4 +431,17 @@ def test_session_budget_stops_the_tool_loop(tmp_path, dirs):
                     timeout_s=60, session_budget_usd=0.01)
     assert raw["stop_reason"] == "budget_exceeded"
     assert len(seen) == 1
+
+
+def test_live_activity_reports_tool_calls_and_interim_text(tmp_path, dirs):
+    repo, work, _ = dirs
+    r, _seen, _ = _runner(tmp_path, [
+        _reply(content="Looking for secrets first", calls=[("grep", {"pattern": "SECRET"})]),
+        _reply(content="Done."),
+    ])
+    activity = []
+    r.on_activity = activity.append
+    raw = _invoke(r, repo, work)
+    assert raw["text"] == "Done."
+    assert activity == ["Looking for secrets first", 'grep {"pattern": "SECRET"}']
     r.ledger.close()

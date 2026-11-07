@@ -20,6 +20,23 @@ from . import compose, evidence
 SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Informational"]
 
 
+#: Keys whose values are identifiers or paths (rendered inside backticks, where HTML is inert).
+_RAW_KEYS = frozenset({"id", "dedup_key", "affected", "finding_id", "file", "path", "url",
+                       "evidence_urls", "fix_commit", "doc_url", "run_id", "branch", "commit"})
+
+
+def _escape_tree(value, key: str | None = None):
+    """Copy ``value`` with ``<`` escaped in every string except identifier/path fields (no tag can
+    open without it, while ``->`` arrows in prose stay readable)."""
+    if isinstance(value, dict):
+        return {k: _escape_tree(v, k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_escape_tree(v, key) for v in value]
+    if isinstance(value, str) and key not in _RAW_KEYS:
+        return value.replace("<", "&lt;")
+    return value
+
+
 def _eff_sev(f: dict) -> str:
     v = (f.get("validation") or {}).get("validated_severity")
     return v or f.get("severity", "")
@@ -144,9 +161,13 @@ def run(ctx: RunContext) -> Path:
             validated_severity=_eff_sev(f),
         )
 
-    report_md = _render_report(ctx, scope, survivors, dropped, resubmissions,
-                               total_cost, n_calls, fixed_upstream,
-                               split_originals, merged_findings, attack_paths, review_questions)
+    # Model- and repo-controlled text must not become live HTML wherever REPORT.md is rendered
+    # (the web UI, GitHub, editors): escape it here; identifiers and paths stay as they are.
+    report_md = _render_report(ctx, scope, _escape_tree(survivors), _escape_tree(dropped),
+                               [(_escape_tree(f), prior) for f, prior in resubmissions],
+                               total_cost, n_calls, _escape_tree(fixed_upstream),
+                               _escape_tree(split_originals), _escape_tree(merged_findings),
+                               _escape_tree(attack_paths), review_questions)
     sig = attribution_footer(ctx.run_id) if ctx.config.attribution else ""   # Argo provenance (default on)
     report_path = ctx.run_dir / "REPORT.md"
     report_path.write_text(report_md + sig, encoding="utf-8")

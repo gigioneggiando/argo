@@ -98,11 +98,11 @@ class ChatMessage(BaseModel):
 
 class FixRequest(BaseModel):
     """Phase 6 — propose + verify fixes for a run's confirmed findings."""
+    model_config = {"extra": "forbid"}
     verify: bool = Field(True, description="apply each patch to an isolated copy and check it "
                                            "compiles + introduces no new errors")
-    docker: Optional[str] = Field(None, description="run the build/compile check in this Docker "
-                                                    "image (offline)")
-    build_cmd: Optional[str] = Field(None, description="explicit build command for verification")
+    # docker / build_cmd are deliberately absent: choosing a shell command or image to run on the
+    # host is CLI-only (`argo fix --docker/--build-cmd`), never an HTTP parameter.
     only: Optional[list[str]] = Field(None, description="finding ids to fix (default: all confirmed)")
     re_audit: bool = Field(False, description="also re-audit each patched copy to check the vuln is "
                                               "gone (one extra model session per patch; needs verify)")

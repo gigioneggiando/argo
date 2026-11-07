@@ -7,16 +7,18 @@ endpoints documented in [api.md](api.md).
 ## Run it
 
 ```bash
-python -m argo.cli serve --open     # starts the API + UI and opens http://127.0.0.1:8000
-# without --open: open http://127.0.0.1:8000 yourself (redirects to /app/)
+python -m argo.cli serve --open     # starts the API + UI and opens the tokenized link it prints
+# without --open: open the printed http://127.0.0.1:8000/?token=... link yourself
 ```
 
 > Localhost only — it runs an agent over arbitrary repos. Do not expose it unauthenticated.
 
 ## Stack choice — no build step (deliberate)
 
-Vanilla ES modules + modern CSS, served as static files by FastAPI; a hash router; `marked`
-vendored locally (`webapp/vendor/`) so there is **no runtime CDN dependency**. No npm / Node /
+Vanilla ES modules + modern CSS, served as static files by FastAPI; a hash router; `marked` and
+`DOMPurify` vendored locally (`webapp/vendor/`) so there is **no runtime CDN dependency**. Every
+rendered markdown block is sanitized, and the UI runs under a `script-src 'self'` CSP (no inline
+scripts; the theme bootstrap lives in `js/theme-init.js`). No npm / Node /
 bundler. For a local single-user tool, reliability beats toolchain fashion — it always runs, and
 "modern" is delivered through the **design and UX** (live stage timeline, artifacts that reveal as
 they land, a ticking cost meter), not build complexity.

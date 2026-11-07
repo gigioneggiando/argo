@@ -15,6 +15,7 @@ from server.app import create_app
 from conftest import FIXTURES, BRIEF, REPO, _force_rmtree
 
 TERMINAL = {"completed", "failed", "cancelled"}
+TEST_TOKEN = "test-token"
 
 
 def _client(tmp_path):
@@ -27,8 +28,9 @@ def _client(tmp_path):
         sca_enabled=False,          # API-surface tests: keep the deterministic 2-focus survivor set
         audit_critic_passes=0,
     )
-    app = create_app(cfg)
-    return app, TestClient(app)
+    app = create_app(cfg, token=TEST_TOKEN)
+    return app, TestClient(app, base_url="http://127.0.0.1:8000",
+                           headers={"X-Argo-Token": TEST_TOKEN})
 
 
 def _start(client, **over):

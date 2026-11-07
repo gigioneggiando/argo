@@ -12,20 +12,26 @@ Endpoints (all JSON unless noted):
   GET  /runs/{id}/prompts|findings|drafts   the multi-file artifacts
 
 Security: only whitelisted artifact names are served — the repo copy and arbitrary paths are
-never exposed. Intended for localhost; do not expose unauthenticated (it runs an agent over
-arbitrary repos).
+never exposed. Intended for localhost. Every API route needs the per-process access token (the
+`argo_token` cookie set by opening the URL `argo serve` prints, or an `X-Argo-Token` header), the
+Host header must name a loopback address (DNS-rebinding guard), and there is no CORS: a web page
+on another origin can neither read responses nor send the cookie (SameSite=Strict).
 """
 
 from __future__ import annotations
 
 import asyncio
+import hmac
+import re
+import secrets
 import json
 import shutil
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, RedirectResponse, StreamingResponse
+from fastapi import Request
+from fastapi.responses import (JSONResponse, PlainTextResponse, RedirectResponse,
+                               StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 
 from argo import __version__
@@ -64,24 +70,82 @@ _SINGLE_ARTIFACTS = {
     "fixes_report": "fixes_report.json",
 }
 _TERMINAL = {"completed", "failed", "cancelled"}
+#: Same shape RunContext accepts: a single path component, never "." / ".." / a separator / drive.
+_RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")  # == RunContext.__post_init__
+#: Hostnames a browser may use to reach the local server (anything else = DNS rebinding / proxy).
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+#: Reachable without the token: the login redirect, liveness and the static SPA shell (no data).
+_PUBLIC_PREFIXES = ("/app", "/health")
+TOKEN_COOKIE = "argo_token"
+TOKEN_HEADER = "x-argo-token"
 
 
-def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
+def _host_name(host_header: str) -> str:
+    host = (host_header or "").strip().lower()
+    if host.startswith("["):                       # [::1]:8000
+        return host[1:].split("]", 1)[0]
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+
+
+def create_app(base_config: PipelineConfig | None = None, *, token: str | None = None,
+               allowed_hosts: set[str] | None = None) -> FastAPI:
+    """Build the app. ``token`` is the per-process secret every API call must present (a random
+    one is generated when omitted; ``argo serve`` prints it inside the URL it opens).
+    ``allowed_hosts`` extends the loopback names accepted in the Host header (e.g. a non-default
+    ``--host`` the operator chose deliberately)."""
     cfg = base_config or PipelineConfig()
+    access_token = token or secrets.token_urlsafe(32)
+    hosts = _LOOPBACK_HOSTS | {h.lower() for h in (allowed_hosts or set())}
     runs_dir = Path(cfg.runs_dir)
     jobs = JobManager(cfg)
     ledger = Ledger(cfg.ledger_path)  # read-side: live per-run cost
     settings = SettingsStore(Path(cfg.ledger_path).with_name("app_settings.json"))
 
     app = FastAPI(title="Argo — source-static bug-bounty audits", version=__version__)
-    app.add_middleware(
-        CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
-    )
+
+    @app.middleware("http")
+    async def _guard(request: Request, call_next):
+        # 1) DNS rebinding: a foreign hostname that resolves to 127.0.0.1 is still a foreign origin.
+        if _host_name(request.headers.get("host", "")) not in hosts:
+            return JSONResponse({"detail": "forbidden host"}, status_code=403)
+        path = request.url.path
+        # 2) Token login: GET /?token=... sets the cookie and lands on the UI.
+        if path == "/" and request.query_params.get("token"):
+            if not hmac.compare_digest(request.query_params["token"], access_token):
+                return JSONResponse({"detail": "invalid token"}, status_code=401)
+            resp = RedirectResponse("/app/", status_code=303)
+            resp.set_cookie(TOKEN_COOKIE, access_token, httponly=True, samesite="strict",
+                            path="/")
+            return resp
+        public = path == "/" or any(path == p or path.startswith(p + "/") for p in _PUBLIC_PREFIXES)
+        if not public:
+            presented = request.headers.get(TOKEN_HEADER) or request.cookies.get(TOKEN_COOKIE) or ""
+            if not hmac.compare_digest(presented, access_token):
+                return JSONResponse(
+                    {"detail": "missing or invalid access token: open the URL printed by "
+                               "`argo serve`, or send the X-Argo-Token header"},
+                    status_code=401)
+        response = await call_next(request)
+        if path.startswith("/app"):
+            # Defence in depth for model/repo-controlled text rendered in the UI: no inline or
+            # foreign scripts, no plugins, no framing.
+            response.headers["Content-Security-Policy"] = (
+                "script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+            response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
     # -- helpers -------------------------------------------------------------------
     def _run_dir(run_id: str) -> Path:
+        # run_id comes from the URL: accept only a single safe path component, then make sure the
+        # resolved directory really is a child of runs_dir (no "..", separators or drive letters).
+        if not _RUN_ID_RE.fullmatch(run_id or "") or run_id in {".", ".."}:
+            raise HTTPException(status_code=404, detail="run not found")
         rd = runs_dir / run_id
-        if not rd.exists():
+        try:
+            inside = rd.resolve().parent == runs_dir.resolve()
+        except OSError:
+            inside = False
+        if not inside or not rd.exists():
             raise HTTPException(status_code=404, detail=f"run {run_id} not found")
         return rd
 
@@ -429,8 +493,9 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
                                 detail="no validated findings yet — finish the audit pipeline first")
         ctx = _chat_ctx(run_id)   # same runner/model resolution as the original run
         try:
-            return generate_fixes(ctx, verify=body.verify, docker=body.docker,
-                                  build_cmd=body.build_cmd,
+            # build_cmd / docker are CLI-only (`argo fix`): an HTTP caller must never choose a
+            # shell command or image to run on the host.
+            return generate_fixes(ctx, verify=body.verify, docker=None, build_cmd=None,
                                   only=set(body.only) if body.only else None,
                                   re_audit=body.re_audit)
         finally:
@@ -448,6 +513,7 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
         app.mount("/app", StaticFiles(directory=str(webapp_dir), html=True), name="webapp")
 
     app.state.jobs = jobs
+    app.state.access_token = access_token
     app.state.ledger = ledger
     app.state.config = cfg
     return app

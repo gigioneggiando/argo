@@ -11,6 +11,11 @@ particular while the version stays `0.y.z`.
 
 ### Fixed
 
+- **Claude backend could not write its artifacts (0.13.0).** Claude Code checks every file write,
+  `Write` included, against `Edit(...)` permission rules, so the `Write(./**)` rule shipped in
+  0.13.0 authorized nothing and the first session (ingest) failed with "model did not produce
+  scope.json". The scoped rule is now `Edit(./**)`: writes inside the session's scratch directory
+  are allowed, writes elsewhere are still denied. Verified with a real `--smoke` run.
 - **Fallback backends start from a clean scratch directory.** When a backend fails and the chain
   moves on, the failed attempt's files are moved to `<dir>.failed-<n>` instead of being collected
   together with the next backend's output.

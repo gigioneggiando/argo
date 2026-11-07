@@ -188,7 +188,7 @@ target is the in-scope host instead of loopback — so the validators are **inve
 ## 3. Repo mounted read-only to every session; the pipeline never patches
 
 - The session **cwd is a separate writable scratch dir**, never the repo. The repo is exposed
-  only via `--add-dir`, and the only write rule (`Write(./**)`) is scoped to the cwd.
+  only via `--add-dir`, and the only write rule (`Edit(./**)`) is scoped to the cwd.
 - `stages/ingest._make_readonly()` strips write bits from every copied repo file (defense in
   depth on top of the tool restriction).
 - `config.MUTATION_TOOLS` (`Edit`, `MultiEdit`, `NotebookEdit`) are always disallowed.

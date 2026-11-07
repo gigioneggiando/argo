@@ -718,7 +718,10 @@ ClaudeRunner = AgentRunner
 #: elsewhere, so they are NOT passed to ``--allowedTools``: an unscoped ``Read`` rule would
 #: approve reads anywhere on disk.
 _CLAUDE_READ_TOOLS = frozenset({"Read", "Grep", "Glob", "LS"})
-#: Claude file tools that write: allowed only under the scratch cwd (``Write(./**)``).
+#: Claude file tools that write: allowed only under the scratch cwd. Claude Code checks every file
+#: write (Write included) against ``Edit(...)`` rules; a ``Write(...)`` path rule is not consulted
+#: (verified: ``Write(./**)`` denied an absolute path inside the cwd, ``Edit(./**)`` allowed it and
+#: still denied paths outside). The Edit/MultiEdit TOOLS stay in --disallowedTools.
 _CLAUDE_WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
 
 
@@ -736,7 +739,7 @@ def scope_claude_allowed(allowed) -> list[str]:
         elif tool in _CLAUDE_READ_TOOLS:
             continue
         elif tool in _CLAUDE_WRITE_TOOLS:
-            out.append(f"{tool}(./**)")
+            out.append("Edit(./**)")
         else:
             out.append(tool)
     return list(dict.fromkeys(out))
@@ -1398,7 +1401,7 @@ class GeminiRunner(AgentRunner):
         `_GEMINI_POLICY_OFFLINE`'s docstring for why (a hard, unreliable Docker/Podman dependency
         that failed outright in Phase 0 testing, confirmed live, vs. zero-dependency and confirmed
         working). ``--approval-mode yolo`` auto-approves whatever the policy doesn't deny — every
-        Argo stage's session needs to Write its artifact, as Claude's path-scoped ``Write(./**)``
+        Argo stage's session needs to Write its artifact, as Claude's path-scoped ``Edit(./**)``
         rule and Codex's non-interactive exec allow.
       * Cost is **estimated** from token usage (like Codex — Gemini reports tokens, not USD), but
         MUST be summed across every entry in ``stats.models``: omitting `-m` was found to trigger

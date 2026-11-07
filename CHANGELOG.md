@@ -9,6 +9,8 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-07
+
 ### Added
 
 - **Review questions in the API and web UI (F5).** `GET/POST /runs/{id}/questions` (list, or build

@@ -9,6 +9,10 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.13.1] - 2026-11-07
+
 ### Fixed
 
 - **Claude backend could not write its artifacts (0.13.0).** Claude Code checks every file write,

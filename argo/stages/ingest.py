@@ -72,7 +72,10 @@ PROGRAM BRIEF (raw):
 
 
 def _make_readonly(root: Path) -> None:
-    """Best-effort: strip write bits from the repo tree so sessions cannot patch it."""
+    """Best-effort: strip write bits from the repo tree so sessions cannot patch it.
+
+    Symlinks are skipped: ``chmod`` follows them, so a link in an untrusted repo (``x ->
+    ~/.ssh``) would otherwise change permissions on files outside the run directory."""
     for dirpath, dirnames, filenames in os.walk(root):
         # chmod cannot remove directory-create permission on Windows; doing so only sets the
         # directory's read-only attribute and interferes with later cleanup.
@@ -80,6 +83,8 @@ def _make_readonly(root: Path) -> None:
         for name in names:
             p = Path(dirpath) / name
             try:
+                if p.is_symlink():
+                    continue
                 mode = p.stat().st_mode
                 os.chmod(p, mode & ~0o222)
             except OSError:
@@ -236,6 +241,7 @@ def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = 
         if not src.is_dir():
             raise NotADirectoryError(f"local repo path is not a directory: {src}")
         shutil.copytree(src, dest, symlinks=True)
+        _sanitize_git_metadata(dest)              # before ANY git command runs in the copy
         if commit:
             if not (dest / ".git").exists():
                 shutil.rmtree(dest, ignore_errors=True)
@@ -245,6 +251,55 @@ def acquire_repo(source: str, dest: Path, *, is_url: bool, commit: str | None = 
                             commit],
                            check=True, capture_output=True, text=True)
     _make_readonly(dest)
+
+
+def _git_config_get(cfg: Path, *args: str) -> list[str]:
+    """Read a config FILE with ``git config --file`` (parsing only: no command is executed)."""
+    r = subprocess.run(["git", "config", "--file", str(cfg), *args],
+                       capture_output=True, text=True)
+    return [line for line in r.stdout.splitlines() if line.strip()] if r.returncode == 0 else []
+
+
+def _sanitize_git_metadata(repo: Path) -> None:
+    """Make a COPIED local ``.git`` safe to run git in.
+
+    A local source is untrusted: its ``.git/config`` can set commands git runs on ordinary
+    operations (``core.fsmonitor`` on checkout/status, ``core.sshCommand`` on fetch, smudge
+    filters, ``include.path`` to pull in more). The copy gets a minimal config rebuilt from a few
+    inert keys, hooks are removed, and a ``.git`` *file* (a gitdir pointer that can aim anywhere)
+    is dropped, leaving the copy without git metadata."""
+    dot_git = repo / ".git"
+    if dot_git.is_symlink() or dot_git.is_file():
+        dot_git.unlink()
+        return
+    if not dot_git.is_dir():
+        return
+    cfg = dot_git / "config"
+    lines = ["[core]", "\trepositoryformatversion = 0", "\tbare = false"]
+    if cfg.is_file():
+        version = _git_config_get(cfg, "--get", "core.repositoryformatversion")
+        if version and version[0].strip().isdigit():
+            lines[1] = f"\trepositoryformatversion = {version[0].strip()}"
+        extensions = _git_config_get(cfg, "--get-regexp", r"^extensions\.")
+        if extensions:
+            lines.append("[extensions]")
+            for line in extensions:
+                key, _, value = line.partition(" ")
+                name = key.split(".", 1)[1]
+                if name.lower() in {"objectformat", "compatobjectformat", "refstorage"}:
+                    lines.append(f"\t{name} = {value.strip()}")
+        url = _git_config_get(cfg, "--get", "remote.origin.url")
+        fetch = _git_config_get(cfg, "--get-all", "remote.origin.fetch")
+        if url:
+            lines += ['[remote "origin"]', f"\turl = {url[0].strip()}"]
+            lines += [f"\tfetch = {f.strip()}" for f in fetch]
+    for extra in ("config.worktree", "hooks"):
+        target = dot_git / extra
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target, ignore_errors=True)
+        elif target.exists() or target.is_symlink():
+            target.unlink()
+    cfg.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _clone_at_commit(url: str, dest: Path, commit: str) -> None:

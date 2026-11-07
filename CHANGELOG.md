@@ -19,6 +19,12 @@ particular while the version stays `0.y.z`.
   vendored DOMPurify, chart tooltips escape their labels, the UI is served with a `script-src 'self'`
   CSP (inline script moved to `js/theme-init.js`), and `REPORT.md` escapes `<` in model text
   (identifiers and paths unchanged).
+- **Ingest of an untrusted local source.** The copied `.git/config` of a local folder is replaced
+  by a minimal one before any git command runs (repository format, object-format extensions and
+  the `origin` URL only). Settings that execute commands (`core.fsmonitor`, `core.sshCommand`,
+  filters, `include.path`) are gone, hooks are removed, and a `.git` gitdir-pointer file is dropped.
+  `_make_readonly` no longer follows symlinks, so links in a target cannot change permissions of
+  files outside the run directory.
 
 ### Fixed
 - **`argo serve` failed on a package install.** `python-multipart`, needed by the zip-upload

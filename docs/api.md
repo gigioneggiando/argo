@@ -63,6 +63,10 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | POST | `/runs/{id}/fixes` | **Phase 6** — propose + verify a patch per confirmed finding: `{verify, only, re_audit}` → the fixes report (`build_cmd`/`docker` are CLI-only). Target repo stays read-only; verify runs on an isolated copy |
 | GET | `/runs/{id}/fixes` | the fixes report (`fixes_report.json`), or `null` if none generated |
 | GET | `/runs/{id}/patches` | the proposed patches (unified diffs) under `patches/` |
+| GET | `/runs/{id}/questions` | **F5** private review-question queue (`review_questions.json`), or `null` if none |
+| POST | `/runs/{id}/questions` | build/refresh the queue for a finished run (like `argo questions`); deterministic, no model call, keeps existing answers |
+| POST | `/runs/{id}/questions/{qid}/answer` | `{answer, provenance}` (both required; credential-like text rejected) → updated queue. No model call: affected verdicts are marked stale and their drafts withheld until re-validation; the answer never reaches `REPORT.md` |
+| POST | `/runs/{id}/revalidate-context` | `{question?, budget_usd?}` → re-validates only the findings made stale by answers (like `argo revalidate-context`; **spends model calls** on the run's backend, free on mock) → `{selected, revalidated, still_pending, …, questions}`. 409 while the run is active |
 
 Whitelisted artifact names: `scope`, `repo_profile`, `research_brief`, `threat_intel`,
 `synthesis_notes`, `validated_findings`, `incremental_review`, `attack_paths`, `report`, `meta`,

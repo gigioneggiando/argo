@@ -689,15 +689,19 @@ function renderResults(host, id, st) {
     return;
   }
 
-  const tabs = ["Report", "Findings", "Fixes", "Chat", "Drafts", "Artifacts"];
+  const tabs = ["Report", "Findings", "Questions", "Fixes", "Chat", "Drafts", "Artifacts"];
   const panel = h("div", {});
   const cache = {};
   const tabBar = h("div", { class: "tabs" });
   const simulated = isDemoRun(st);
+  let selection = 0;   // a slow tab must not overwrite one the user selected after it
   function select(name, btn) {
+    const mine = ++selection;
     [...tabBar.children].forEach((c) => c.classList.remove("on")); btn.classList.add("on");
     mount(panel, h("div", { class: "skeleton", style: { height: "120px" } }));
-    loadTab(name, id, cache, simulated).then((node) => mount(panel, node)).catch((e) => { mount(panel, h("div", { class: "empty" }, e.message)); });
+    loadTab(name, id, cache, simulated)
+      .then((node) => { if (mine === selection) mount(panel, node); })
+      .catch((e) => { if (mine === selection) mount(panel, h("div", { class: "empty" }, e.message)); });
   }
   tabs.forEach((name, i) => {
     const b = h("button", { class: i === 0 ? "on" : "", onclick: () => select(name, b) }, name);
@@ -710,6 +714,7 @@ function renderResults(host, id, st) {
 async function loadTab(name, id, cache, simulated = false) {
   if (name === "Chat") return chatPanel(id);
   if (name === "Fixes") return fixesPanel(id);
+  if (name === "Questions") return questionsPanel(id, simulated);
   if (name === "Report") {
     const md = cache.report || (cache.report = await api.report(id));
     const div = h("div", { class: "md" });
@@ -945,6 +950,85 @@ function chatPanel(id) {
 const BACKEND_LABELS = { headless: "Claude", codex: "Codex", gemini: "Gemini", "mistral-api": "Mistral API", "mistral-vibe": "Mistral Vibe", mock: "Demo" };
 
 // ------------------------------------------------------------------ fixes panel (Phase 6)
+// F5 private review questions: architecture/business facts the source cannot settle. Answering is
+// free (no model call) and marks affected verdicts stale; re-validation spends model calls.
+function questionsPanel(id, simulated = false) {
+  const root = h("div", {});
+  const body = h("div", {});
+  const STATUS = {
+    needs_context: ["chip warn", "alert", "needs an answer"],
+    answered_pending_revalidation: ["chip warn", "info", "answered — re-validation pending"],
+    resolved: ["chip ok", "check", "resolved"],
+  };
+  const statusChip = (s) => {
+    const [cls, ic, label] = STATUS[s] || ["pill", "alert", s || "unknown"];
+    return h("span", { class: cls }, icon(ic, 13), h("span", {}, label));
+  };
+
+  async function act(btn, busy, fn) {
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = busy;
+    try { render(await fn()); } catch (e) { toast(e.message, true); }
+    finally { btn.disabled = false; btn.textContent = label; }
+  }
+
+  function answerForm(q) {
+    const answerEl = h("textarea", { placeholder: "Concise architecture / business answer (max 2000 chars)", maxLength: 2000, style: { minHeight: "70px" } });
+    const provEl = h("input", { type: "text", placeholder: "Source: owner reply, design doc, ticket… (required)", maxLength: 500 });
+    const btn = h("button", { class: "btn btn-primary", onclick: () => {
+      if (!answerEl.value.trim() || !provEl.value.trim()) return toast("Answer and provenance are both required", true);
+      act(btn, "Saving…", () => api.answerQuestion(id, q.id, answerEl.value, provEl.value));
+    } }, "Save answer");
+    return h("div", { style: { marginTop: "10px" } },
+      field("Answer", answerEl), field("Provenance", provEl), btn);
+  }
+
+  function card(q) {
+    return h("div", { class: "detail" },
+      h("div", { class: "row", style: { justifyContent: "space-between", alignItems: "center", gap: "8px" } },
+        h("h3", { style: { fontSize: "14px", margin: 0 } }, q.question), statusChip(q.status)),
+      h("div", { class: "help" }, q.why_source_cannot_settle),
+      (q.affected_finding_ids || []).length
+        ? h("div", { class: "row", style: { gap: "6px", flexWrap: "wrap", marginTop: "6px" } },
+            ...q.affected_finding_ids.map((f) => h("span", { class: "pill mono" }, f)))
+        : null,
+      q.answer
+        ? h("div", { class: "banner info", style: { marginTop: "10px" } },
+            h("span", {}, h("strong", {}, "Answer: "), q.answer, h("br"), h("em", {}, "Source: " + (q.answer_provenance || "—"))))
+        : answerForm(q));
+  }
+
+  function render(doc) {
+    const qs = (doc && doc.questions) || [];
+    if (!doc) {
+      const build = h("button", { class: "btn btn-primary", onclick: () => act(build, "Building…", () => api.buildQuestions(id)) },
+        "Build review questions");
+      return mount(body, h("div", { class: "empty" },
+        h("div", { class: "big" }, "No review questions for this run"),
+        "Build the queue from this run's findings: deterministic, no model call. It lists architecture facts the source cannot settle.",
+        h("div", { style: { marginTop: "12px" } }, build)));
+    }
+    if (!qs.length)
+      return mount(body, h("div", { class: "empty" }, h("div", { class: "big" }, "No open architecture questions"),
+        "Nothing in this run's findings depends on context the source cannot settle."));
+    const pending = qs.filter((q) => q.status === "answered_pending_revalidation").length;
+    const reval = h("button", { class: "btn btn-primary", onclick: () => {
+      if (!simulated && !confirm("Re-validate the affected findings now? This spends model calls on the run's backend.")) return;
+      act(reval, "Re-validating…", async () => (await api.revalidateContext(id, {})).questions);
+    } }, `Re-validate ${pending} answered`);
+    const head = h("div", { class: "row", style: { justifyContent: "space-between", alignItems: "center", marginBottom: "10px", gap: "12px" } },
+      h("div", { class: "help", style: { margin: 0 } },
+        "Private queue: answers are context with provenance, never technical proof, and never appear in the report. An answer marks affected verdicts stale and withholds their drafts until re-validation."),
+      pending ? reval : null);
+    mount(body, head, ...qs.map(card));
+  }
+
+  mount(root, body);
+  mount(body, h("div", { class: "skeleton", style: { height: "100px" } }));
+  api.questions(id).then(render).catch((e) => mount(body, h("div", { class: "empty" }, e.message)));
+  return root;
+}
+
 function fixesPanel(id) {
   const root = h("div", {});
   const body = h("div", {});

@@ -41,16 +41,19 @@ from argo.chat import ChatStore
 from argo.costs import cost_report
 from argo.fixes import generate_fixes
 from argo.knowledge import load_vuln_index
-from argo.config import PipelineConfig
+from argo.config import PipelineConfig, load_pipeline_config
 from argo.ledger import Ledger
-from argo.orchestrator import build_context, new_run_id
+from argo.orchestrator import (build_context, do_context_revalidation, do_evidence, do_report,
+                               do_review_questions, new_run_id)
 from argo.progress import read_status
+from argo.stages import review_questions as review_questions_stage
 
 from .jobs import JobManager
 from .recommend import recommend
 from .uploads import UnsafeZip, extract_zip
-from .schemas import (ChatMessage, FixRequest, PlanRequest, RecommendRequest, RunCreated,
-                      RunRequest, ScreenRequest, Settings)
+from .schemas import (ChatMessage, ContextRevalidationRequest, FixRequest, PlanRequest,
+                      QuestionAnswer, RecommendRequest, RunCreated, RunRequest, ScreenRequest,
+                      Settings)
 from .settings import SettingsStore
 
 # Single-file artifacts a client may fetch by name (prevents path traversal — name is a key).
@@ -503,6 +506,92 @@ def create_app(base_config: PipelineConfig | None = None, *, token: str | None =
                 ctx.ledger.close()
             except Exception:
                 pass
+
+    # -- private review questions (F5) -----------------------------------------------
+    def _saved_ctx(run_id: str):
+        """RunContext from the run's persisted config.json (same as ``argo resume``), so answers
+        and re-validation use the backend/models the run was executed with."""
+        rd = _run_dir(run_id)
+        config_path = rd / "config.json"
+        if not config_path.is_file():
+            raise HTTPException(status_code=409, detail="run predates config persistence")
+        run_cfg = load_pipeline_config(config_path)
+        if Path(run_cfg.runs_dir).resolve() != runs_dir.resolve():
+            run_cfg = run_cfg.with_overrides(runs_dir=runs_dir)
+        return build_context(run_cfg, run_id)
+
+    def _require_finished(run_id: str) -> None:
+        if _status(run_id).get("state") not in _TERMINAL:
+            raise HTTPException(status_code=409, detail="run is still active; wait for it to finish")
+
+    def _close(ctx) -> None:
+        try:
+            ctx.ledger.close()
+        except Exception:
+            pass
+
+    @app.get("/runs/{run_id}/questions")
+    def get_questions(run_id: str):
+        """The private review-question queue (review_questions.json), or null if none."""
+        return _read_json(_run_dir(run_id) / "review_questions.json")
+
+    @app.post("/runs/{run_id}/questions")
+    def post_questions(run_id: str):
+        """(Re)build the question queue for a finished run, like ``argo questions``. Deterministic,
+        no model call; existing answers are preserved."""
+        _require_finished(run_id)
+        if not (_run_dir(run_id) / "validated_findings.json").is_file():
+            raise HTTPException(status_code=409, detail="no validated findings yet")
+        ctx = _saved_ctx(run_id)
+        _close(ctx)
+        ctx = build_context(ctx.config.with_overrides(review_questions_enabled=True), run_id)
+        try:
+            do_review_questions(ctx)
+            if (ctx.run_dir / "REPORT.md").is_file():
+                do_report(ctx)
+        finally:
+            _close(ctx)
+        return _read_json(ctx.review_questions_path)
+
+    @app.post("/runs/{run_id}/questions/{question_id}/answer")
+    def post_question_answer(run_id: str, question_id: str, body: QuestionAnswer):
+        """Record a provenance-bearing answer (no model call). Affected verdicts become stale and
+        their drafts are withheld until ``POST /runs/{id}/revalidate-context``."""
+        _require_finished(run_id)
+        if not (_run_dir(run_id) / "review_questions.json").is_file():
+            raise HTTPException(status_code=404, detail="this run has no review questions")
+        ctx = _saved_ctx(run_id)
+        try:
+            review_questions_stage.answer(ctx, question_id, body.answer, body.provenance)
+            if (ctx.run_dir / "REPORT.md").is_file():
+                do_report(ctx)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            _close(ctx)
+        return _read_json(ctx.review_questions_path)
+
+    @app.post("/runs/{run_id}/revalidate-context")
+    def post_revalidate_context(run_id: str, body: ContextRevalidationRequest):
+        """Re-validate only the findings made stale by answered questions (spends model calls on
+        the run's backend; a mock run is free). Unrelated findings are untouched."""
+        _require_finished(run_id)
+        ctx = _saved_ctx(run_id)
+        if body.budget_usd is not None:
+            _close(ctx)
+            ctx = build_context(ctx.config.with_overrides(budget_usd=body.budget_usd), run_id)
+        try:
+            summary = do_context_revalidation(ctx, question_id=body.question)
+            do_evidence(ctx)
+            if ctx.review_questions_path.is_file():
+                do_review_questions(ctx)
+            if (ctx.run_dir / "REPORT.md").is_file():
+                do_report(ctx)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            _close(ctx)
+        return {**summary, "questions": _read_json(ctx.review_questions_path)}
 
     # -- web UI (Phase 1): serve the no-build SPA from webapp/ -----------------------
     webapp_dir = Path(__file__).resolve().parent.parent / "webapp"

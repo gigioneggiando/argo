@@ -954,8 +954,9 @@ offline model calls and excluded from reports, drafts, saved audit prompts, onli
 artifact API. Opt-in deterministic question generation groups only architecture-shaped uncertainty
 already present in recon/findings and never pauses a run. Provenance-bearing answers enter the
 same-revision F2 memory and current private context as `claimed` facts, mark dependent verdicts for
-re-validation, and suppress their stale drafts. Deferred: a genuinely targeted validate-only path
-instead of rerunning validation, UI answer entry, and measured maintainer-rejection reduction.
+re-validation, and suppress their stale drafts. Targeted re-validation of only the affected
+findings shipped as `argo revalidate-context`; answer entry in the HTTP API and web UI (Questions tab)
+shipped 2026-11-06. Deferred: measured maintainer-rejection reduction.
 
 ### F6 — Public Argo research/editorial site — OWNER INTENT · priority **P2** · effort **M**
 

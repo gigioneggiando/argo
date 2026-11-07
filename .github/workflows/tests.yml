@@ -11,6 +11,8 @@ on:
 
 jobs:
   test:
+    # Linux jobs keep the names branch protection requires ("test (3.11)", "test (3.13)").
+    name: ${{ matrix.os == 'windows-latest' && format('test-windows ({0})', matrix.python-version) || format('test ({0})', matrix.python-version) }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

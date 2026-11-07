@@ -3,10 +3,10 @@
 The runner is the single chokepoint for every LLM invocation, so it is where tool guardrails
 and cost logging are enforced — a buggy stage cannot bypass them.
 
-  * :class:`HeadlessClaudeRunner` shells out to ``claude -p`` (Claude Code headless). The repo
-    is mounted READ-ONLY via ``--add-dir`` (a no-internet sandbox); the session cwd is a
-    separate WRITABLE scratch dir so stray writes never land in the repo; network/mutation
-    tools are hard-blocked via ``--disallowedTools``.
+  * :class:`HeadlessClaudeRunner` shells out to ``claude -p`` (Claude Code headless) in the
+    default permission mode: reads are confined to the scratch cwd and the repo (``--add-dir``),
+    writes to the scratch cwd (path-scoped allow rules), and anything else is denied rather than
+    prompted. Network/mutation tools are hard-blocked via ``--disallowedTools``.
   * :class:`MockClaudeRunner` writes fixture files into the scratch dir and returns a
     synthetic manifest — full-glue testing with zero token spend.
 
@@ -664,6 +664,35 @@ ClaudeRunner = AgentRunner
 
 
 # --------------------------------------------------------------------------- headless
+#: Claude file tools that read. In the default permission mode they need no allow rule inside the
+#: session's working directories (the scratch cwd and the ``--add-dir`` repo) and are denied
+#: elsewhere, so they are NOT passed to ``--allowedTools``: an unscoped ``Read`` rule would
+#: approve reads anywhere on disk.
+_CLAUDE_READ_TOOLS = frozenset({"Read", "Grep", "Glob", "LS"})
+#: Claude file tools that write: allowed only under the scratch cwd (``Write(./**)``).
+_CLAUDE_WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
+
+
+def scope_claude_allowed(allowed) -> list[str]:
+    """Translate an Argo tool allowlist into path-scoped Claude Code allow rules.
+
+    ``--add-dir`` is not a sandbox and ``bypassPermissions``/``acceptEdits`` approve file tools
+    on ANY path (verified with a canary session: writes and reads outside both the cwd and the
+    added dir succeeded). The default mode in ``-p`` denies whatever is not pre-approved, so the
+    allow rules themselves must carry the scope."""
+    out: list[str] = []
+    for tool in allowed or ():
+        if "(" in tool:                      # already a scoped rule: keep it as given
+            out.append(tool)
+        elif tool in _CLAUDE_READ_TOOLS:
+            continue
+        elif tool in _CLAUDE_WRITE_TOOLS:
+            out.append(f"{tool}(./**)")
+        else:
+            out.append(tool)
+    return list(dict.fromkeys(out))
+
+
 class HeadlessClaudeRunner(AgentRunner):
     """Runs ``claude -p`` non-interactively."""
 
@@ -692,10 +721,11 @@ class HeadlessClaudeRunner(AgentRunner):
             "-p",
             "--output-format", "json",      # metadata only (session id, cost, stop reason)
             "--model", model,
-            # bypassPermissions avoids interactive prompts that would hang a headless run;
-            # --disallowedTools still HARD-BLOCKS network/mutation tools, and --add-dir gives
-            # a no-internet sandbox, so the blast radius is the scratch dir only.
-            "--permission-mode", "bypassPermissions",
+            # Default mode: in -p an action that would need approval is DENIED, not prompted,
+            # so a headless run never hangs. Reads stay inside the cwd + --add-dir; writes are
+            # allowed only by the path-scoped rules from scope_claude_allowed(). Never
+            # bypassPermissions/acceptEdits: both approve file tools on any path.
+            "--permission-mode", "default",
         ]
         # Native mid-session cost kill (v2.1.178 has --max-budget-usd; it has NO --max-turns).
         if session_budget_usd is not None:
@@ -704,8 +734,9 @@ class HeadlessClaudeRunner(AgentRunner):
             cmd += ["--effort", effort]
         if repo_dir is not None:
             cmd += ["--add-dir", str(Path(repo_dir).resolve())]
-        if allowed:
-            cmd += ["--allowedTools", *allowed]
+        scoped = scope_claude_allowed(allowed)
+        if scoped:
+            cmd += ["--allowedTools", *scoped]
         if disallowed:
             cmd += ["--disallowedTools", *disallowed]
         return cmd
@@ -1306,8 +1337,8 @@ class GeminiRunner(AgentRunner):
         `_GEMINI_POLICY_OFFLINE`'s docstring for why (a hard, unreliable Docker/Podman dependency
         that failed outright in Phase 0 testing, confirmed live, vs. zero-dependency and confirmed
         working). ``--approval-mode yolo`` auto-approves whatever the policy doesn't deny — every
-        Argo stage's session needs to Write its artifact, mirroring Claude's bypassPermissions /
-        Codex's non-interactive exec.
+        Argo stage's session needs to Write its artifact, as Claude's path-scoped ``Write(./**)``
+        rule and Codex's non-interactive exec allow.
       * Cost is **estimated** from token usage (like Codex — Gemini reports tokens, not USD), but
         MUST be summed across every entry in ``stats.models``: omitting `-m` was found to trigger
         an extra internal "utility_router" model call that also lands in that dict; Argo always

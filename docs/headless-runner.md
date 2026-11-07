@@ -8,18 +8,22 @@ hardened against the real CLI (Claude Code **v2.1.178**) and a live smoke run.
 
 ```
 claude -p --output-format json --model <model> \
-       --permission-mode bypassPermissions \
+       --permission-mode default \
        [--max-budget-usd <cap>] \
-       --add-dir <repo>  --allowedTools Read Grep Glob Write \
+       --add-dir <repo>  --allowedTools "Write(./**)" \
        --disallowedTools Bash Edit MultiEdit NotebookEdit WebFetch WebSearch Task ...
 ```
 
 - `--output-format json` is used **only for metadata** (session id, cost, stop reason). Artifacts
   travel as files in the scratch cwd, never through stdout.
-- `--permission-mode bypassPermissions` avoids interactive prompts that would hang a headless
-  run. It does **not** widen the toolset: `--disallowedTools` still hard-blocks every
-  network/mutation tool, and `--add-dir` provides a no-internet sandbox, so the blast radius is
-  the writable scratch dir only.
+- `--permission-mode default`: in `-p` an action that would need approval is **denied**, not
+  prompted, so a run never hangs. Read tools need no rule inside the working directories (the
+  scratch cwd and the `--add-dir` repo) and are denied elsewhere, so they are not listed; file
+  writes are allowed only under the cwd (`Write(./**)`). `runner.scope_claude_allowed()` does this
+  translation. `--disallowedTools` still hard-blocks every network/mutation tool.
+- Not `bypassPermissions` or `acceptEdits`: with either, a canary session wrote and read files
+  outside both the cwd and the `--add-dir` directory. `--add-dir` grants access; it does not
+  confine it.
 - `--max-budget-usd` is the native per-session cost kill (see Caps).
 - There is **no `--max-turns`** in this CLI version — turn limiting is done orchestrator-side.
 

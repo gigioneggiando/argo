@@ -164,6 +164,17 @@ def test_symlink_escape_is_denied(dirs):
         tb.read_file("evil")
 
 
+def test_grep_and_glob_skip_symlinked_files(dirs):
+    repo, work, outside = dirs
+    try:
+        os.symlink(outside, repo / "evil.txt")
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks not permitted on this platform/user")
+    tb = Toolbox(repo, work, allow_write=False)
+    assert "do not read" not in tb.grep("do not read")
+    assert "evil.txt" not in tb.glob("*.txt")
+
+
 def test_writes_only_inside_scratch(dirs):
     repo, work, outside = dirs
     tb = Toolbox(repo, work, allow_write=True)

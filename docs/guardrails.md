@@ -31,8 +31,11 @@ With `live` disabled (the default), the absolute "never a live host" rule below 
   and adds them to `--disallowedTools`.
 - `runner.AgentRunner.run()` calls `guardrails.assert_no_network_tools()` immediately before a
   session launches — a hard stop.
-- The code-audit sessions (`recon`, `audit`, `validate`) pass the repo via `--add-dir` (a
-  no-internet sandbox) and never add a network tool to `--allowedTools`.
+- The code-audit sessions (`recon`, `audit`, `validate`) pass the repo via `--add-dir` and never
+  add a network tool to `--allowedTools`. `--add-dir` grants read access; it is not a sandbox. The
+  confinement comes from the default permission mode plus path-scoped allow rules (see
+  [headless runner](headless-runner.md)): reads only inside the cwd and the repo, writes only in
+  the cwd.
 - Tests: `test_guardrails.py` (`enforce_session_tools`, `assert_no_network_tools`),
   `test_runner.py::test_run_strips_network_and_mutation_tools`,
   `test_runner.py::test_headless_cmd_is_readonly_sandboxed`.
@@ -183,7 +186,7 @@ target is the in-scope host instead of loopback — so the validators are **inve
 ## 3. Repo mounted read-only to every session; the pipeline never patches
 
 - The session **cwd is a separate writable scratch dir**, never the repo. The repo is exposed
-  only via `--add-dir`.
+  only via `--add-dir`, and the only write rule (`Write(./**)`) is scoped to the cwd.
 - `stages/ingest._make_readonly()` strips write bits from every copied repo file (defense in
   depth on top of the tool restriction).
 - `config.MUTATION_TOOLS` (`Edit`, `MultiEdit`, `NotebookEdit`) are always disallowed.

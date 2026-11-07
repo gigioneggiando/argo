@@ -10,6 +10,10 @@ particular while the version stays `0.y.z`.
 ## [Unreleased]
 
 ### Security
+- **Claude sessions confined to their working directories.** The Claude backend now runs in the
+  default permission mode with path-scoped allow rules: reads only inside the scratch directory and
+  the audited repo, writes only in the scratch directory. The Mistral API backend's `glob`/`grep`
+  skip symlinked files.
 - **Local API hardened.** `argo serve` now prints a tokenized link: every API call needs that
   per-process token (an HttpOnly `SameSite=Strict` cookie set by the link, or an `X-Argo-Token`
   header). CORS is removed, the `Host` header must be a loopback address, and run ids in URLs must be

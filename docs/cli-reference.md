@@ -51,6 +51,8 @@ used by the pipeline; they do not start a model session.
 | `profiles` | — | list/show/export/validate/import/save credential-free routing profiles |
 | `catalog` | — | show/validate the pinned static model catalog and snapshot hash; never refreshes implicitly |
 | `bench-validate` | — | validate benchmark commits/labels without cloning or model calls |
+| `sarif` | — | export a finished run's reportable findings as SARIF 2.1.0 for GitHub code scanning ([ci.md](ci.md)) |
+| `gate` | — | CI gate: exit 1 if reportable findings reach `--fail-on` (default High) ([ci.md](ci.md)) |
 
 There is intentionally **no `submit` command** — submission is a manual human action.
 
@@ -80,6 +82,8 @@ argo freshness --run RUN_ID [--lookback-days 365]
 argo runtime  --run RUN_ID [--runtime-image IMG --runtime-run-cmd CMD] [--runtime-build-cmd CMD] [--runtime-port 8080] [--runtime-boot-timeout 180] [--mount-source|--no-mount-source]
 argo live     --run RUN_ID --i-have-authorization [--allow-writes [--max-writes 5]] [--max-requests 30] [--min-interval 1.0]
 argo serve    [--host 127.0.0.1] [--port 8000] [--open] [--runs-dir DIR]
+argo sarif    --run RUN_ID [--out FILE] [--include-unverified]
+argo gate     --run RUN_ID [--fail-on Critical|High|Medium|Low] [--include-unverified]
 argo resume   --run RUN_ID [--wait] [--max-wait 12h] [--runs-dir DIR]
 argo verify   --run RUN_ID [--only ID,ID] [--max-findings N]
 argo asan-poc --run RUN_ID [--max-findings N] [--asan-poc-image IMAGE] [--asan-poc-compile-timeout S] [--asan-poc-run-timeout S]

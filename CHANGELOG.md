@@ -9,6 +9,18 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [0.13.0] - 2026-11-07
+
+### Changed
+
+- **Breaking for API scripts.** `argo serve` requires its per-process token on every API call
+  (`X-Argo-Token` header, or the cookie set by the printed link), and `POST /runs/{id}/fixes` no
+  longer accepts `build_cmd`/`docker` (use `argo fix`). The Claude backend runs in the default
+  permission mode with path-scoped rules instead of `bypassPermissions`. `--budget` is documented
+  as a launch gate, not a hard ceiling.
+
 ### Security
 - **Claude sessions confined to their working directories.** The Claude backend now runs in the
   default permission mode with path-scoped allow rules: reads only inside the scratch directory and

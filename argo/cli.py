@@ -1688,16 +1688,25 @@ def serve(
     open_browser: bool = typer.Option(False, "--open", help="open the web UI in your browser"),
 ):
     """Start the HTTP API + web UI (FastAPI + uvicorn)."""
+    import secrets
+
     import uvicorn
     from server.app import create_app
     cfg = PipelineConfig(runs_dir=runs_dir)
-    url = f"http://{host}:{port}/"
-    typer.echo(f"Serving Argo on {url}  (runs dir: {runs_dir})")
+    token = secrets.token_urlsafe(32)          # per process: every API call must present it
+    shown = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    url = f"http://{shown}:{port}/?token={token}"
+    if host not in {"127.0.0.1", "localhost", "::1"}:
+        typer.echo(f"WARNING: binding to {host}: anyone who can reach this port and learns the token "
+                   "can run audits on this machine. Prefer 127.0.0.1.", err=True)
+    typer.echo(f"Serving Argo (runs dir: {runs_dir}). Open:\n  {url}\n"
+               "The token in this link is required for every API call; scripts can send it as the "
+               "X-Argo-Token header.")
     if open_browser:
         import threading
         import webbrowser
         threading.Timer(1.5, lambda: _safe_open(webbrowser, url)).start()
-    uvicorn.run(create_app(cfg), host=host, port=port)
+    uvicorn.run(create_app(cfg, token=token, allowed_hosts={host}), host=host, port=port)
 
 
 def _safe_open(webbrowser, url: str) -> None:

@@ -8,6 +8,13 @@ import { donut, barsH, statTile, chartCard, SEV_COLOR, STATE_COLOR } from "./cha
 import { icon } from "./icons.js";
 
 const app = () => document.getElementById("app");
+
+// Markdown from reports, drafts, artifacts and chat is model- or repo-controlled: render it, then
+// sanitize (no scripts, event handlers or javascript: URLs) before it touches the DOM.
+function renderMd(md) {
+  const html = window.marked ? window.marked.parse(String(md ?? "")) : `<pre>${escapeHtml(String(md ?? ""))}</pre>`;
+  return window.DOMPurify ? window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } }) : `<pre>${escapeHtml(String(md ?? ""))}</pre>`;
+}
 const STAGES = ["ingest", "recon", "audit", "validate", "evidence", "report"];
 const SCREEN_LABELS = {
   overview: "Overview", new: "New audit", history: "Run history",
@@ -706,7 +713,7 @@ async function loadTab(name, id, cache, simulated = false) {
   if (name === "Report") {
     const md = cache.report || (cache.report = await api.report(id));
     const div = h("div", { class: "md" });
-    div.innerHTML = window.marked ? window.marked.parse(md) : `<pre>${escapeHtml(md)}</pre>`;
+    div.innerHTML = renderMd(md);
     div.querySelectorAll("h1").forEach((heading) => {
       const replacement = document.createElement("h2");
       replacement.className = "report-title";
@@ -725,7 +732,7 @@ async function loadTab(name, id, cache, simulated = false) {
       simulated ? "Demo drafts are generated only for fixture-confirmed results." : "Drafts are produced only for confirmed findings.");
     return h("div", {}, ...ds.map((d) => {
       const body = h("div", { class: "md", style: { marginTop: "8px" } });
-      body.innerHTML = window.marked ? window.marked.parse(d.content) : `<pre>${escapeHtml(d.content)}</pre>`;
+      body.innerHTML = renderMd(d.content);
       return h("div", { class: "detail" }, h("h3", {}, d.name), body);
     }));
   }
@@ -738,7 +745,7 @@ async function loadTab(name, id, cache, simulated = false) {
       try {
         const data = await api.artifact(id, key);
         if (kind === "md" && typeof data === "string") {
-          const d = h("div", { class: "md" }); d.innerHTML = window.marked ? window.marked.parse(data) : `<pre>${escapeHtml(data)}</pre>`;
+          const d = h("div", { class: "md" }); d.innerHTML = renderMd(data);
           mount(out, h("div", { class: "detail" }, d));
         } else {
           mount(out, h("div", { class: "detail" }, h("pre", { class: "mono", style: { whiteSpace: "pre-wrap", fontSize: "12.5px", margin: 0 } }, JSON.stringify(data, null, 2))));
@@ -825,7 +832,7 @@ const statChip = (k, v) => h("div", { class: "acard", style: { minWidth: "120px"
 
 function promptBlock(p) {
   const body = h("div", { class: "md", style: { marginTop: "8px" } });
-  body.innerHTML = window.marked ? window.marked.parse(p.content) : `<pre>${escapeHtml(p.content)}</pre>`;
+  body.innerHTML = renderMd(p.content);
   return h("div", { class: "detail" }, h("h3", { class: "mono", style: { fontSize: "14px" } }, p.name), body);
 }
 
@@ -871,7 +878,7 @@ function chatPanel(id) {
     placeholder: "Ask about the analysis — “why didn't you find X?”, “explain SQLI-001”, “generate a test for CWE-89”…" });
   let busy = false;
 
-  const md = (t) => { const d = h("div", { class: "md" }); d.innerHTML = window.marked ? window.marked.parse(t) : escapeHtml(t); return d; };
+  const md = (t) => { const d = h("div", { class: "md" }); d.innerHTML = renderMd(t); return d; };
   const bubble = (role, body) => h("div", { class: `chat-msg ${role}` },
     h("div", { class: "chat-role" }, role === "user" ? "You" : "Analyst"), h("div", { class: "chat-body" }, body));
   const scroll = () => { list.scrollTop = list.scrollHeight; };

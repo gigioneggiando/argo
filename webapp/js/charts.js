@@ -27,6 +27,7 @@ function el(tag, cls, ...kids) {
 }
 
 // ---- shared hover tooltip (one node, reused) --------------------------------
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 let tip;
 function tooltip() {
   if (!tip) { tip = el("div", "chart-tip"); tip.hidden = true; document.body.append(tip); }
@@ -67,7 +68,7 @@ export function donut(data, opts = {}) {
   const svg = s("svg", { viewBox: `0 0 ${size} ${size}`, class: "donut-svg", role: "img" });
   const pt = (rad, a) => [cx + rad * Math.cos(a), cy + rad * Math.sin(a)];
   const segHover = (d) => ({
-    onmousemove: (ev) => showTip(`<b>${d.label}</b><br>${fmtInt(d.value)} · ${pct(d.value, total)}%`, ev),
+    onmousemove: (ev) => showTip(`<b>${esc(d.label)}</b><br>${fmtInt(d.value)} · ${pct(d.value, total)}%`, ev),
     onmouseenter: (ev) => { ev.target.classList.add("hot"); svg.classList.add("dim"); },
     onmouseleave: (ev) => { ev.target.classList.remove("hot"); svg.classList.remove("dim"); hideTip(); },
   });
@@ -129,7 +130,7 @@ export function barsH(data, opts = {}) {
       el("div", "bar-label", d.label),
       track,
       el("div", "bar-val", fmt(d.value) + (opts.unit || "")));
-    row.addEventListener("mousemove", (ev) => showTip(`<b>${d.label}</b><br>${fmt(d.value)}${opts.unit || ""}`, ev));
+    row.addEventListener("mousemove", (ev) => showTip(`<b>${esc(d.label)}</b><br>${fmt(d.value)}${opts.unit || ""}`, ev));
     row.addEventListener("mouseleave", hideTip);
     wrap.append(row);
   });

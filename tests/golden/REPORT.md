@@ -61,7 +61,7 @@
   - Trace the claimed source path. Reason: No current supported source trace.
   - Confirm precondition: caller must be authenticated Reason: An explicit assumption is not evidence that it holds.
 
-**Vulnerable flow.** GET /api/orders/<id> -> get_order() -> repo.find(id) with no owner check
+**Vulnerable flow.** GET /api/orders/&lt;id> -> get_order() -> repo.find(id) with no owner check
 
 **Why vulnerable.** The order is fetched purely by client-supplied id; no check binds the order to the caller.
 
@@ -69,7 +69,7 @@
 
 **Impact.** Cross-tenant data disclosure of all orders.
 
-**Validated data flow.** GET /api/orders/<id> -> get_order() -> repo.find(id) (src/api/orders.py:120)
+**Validated data flow.** GET /api/orders/&lt;id> -> get_order() -> repo.find(id) (src/api/orders.py:120)
 
 **Recommended fix (guidance only).** Enforce an ownership/authorization check binding order.owner to the caller.
 

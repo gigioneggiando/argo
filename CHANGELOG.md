@@ -9,7 +9,17 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Security
+
+- **Local API hardened.** `argo serve` now prints a tokenized link: every API call needs that
+  per-process token (an HttpOnly `SameSite=Strict` cookie set by the link, or an `X-Argo-Token`
+  header). CORS is removed, the `Host` header must be a loopback address, and run ids in URLs must be
+  a single path component inside the runs directory. `POST /runs/{id}/fixes` no longer accepts
+  `build_cmd` or `docker` (CLI-only). Scripts using the API must send the token.
+- **Web UI and report hardened against model-controlled HTML.** Rendered markdown is sanitized with
+  vendored DOMPurify, chart tooltips escape their labels, the UI is served with a `script-src 'self'`
+  CSP (inline script moved to `js/theme-init.js`), and `REPORT.md` escapes `<` in model text
+  (identifiers and paths unchanged).
 
 ## [0.12.4] - 2026-11-06
 

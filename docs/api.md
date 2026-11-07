@@ -5,8 +5,24 @@ can be started, watched live, and read back over HTTP. It **never weakens the en
 (read-only repo, no live host, no patching, no auto-submit) and only serves whitelisted artifacts
 — never the repo copy or arbitrary paths.
 
-> Intended for **localhost / single user**. It runs an agent over arbitrary repos — do not expose
-> it unauthenticated.
+> Intended for **localhost / single user**. It runs an agent over arbitrary repos.
+
+## Access control
+
+- **Token.** Every route except `/` (login redirect), `/health` and the static UI under `/app` needs
+  the per-process token. `argo serve` generates it and prints `http://127.0.0.1:8000/?token=…`;
+  opening that link sets an `argo_token` cookie (HttpOnly, `SameSite=Strict`) and lands on the UI.
+  Scripts send it as the `X-Argo-Token` header. A missing or wrong token gives `401`.
+- **No CORS.** The UI is same-origin, so no `Access-Control-Allow-*` headers are sent: a web page
+  on another origin can neither read responses nor attach the cookie.
+- **Loopback Host only.** Requests whose `Host` is not `127.0.0.1`, `localhost` or `::1` (plus the
+  address passed to `--host`) get `403`, which blocks DNS rebinding.
+- **Run ids** in URLs must be a single safe path component inside the runs directory; anything else
+  (`..`, separators, drive letters) is `404`.
+- **No host commands over HTTP.** `POST /runs/{id}/fixes` does not accept `build_cmd` or `docker`
+  (unknown fields are rejected with `422`); those stay CLI-only (`argo fix`).
+- The UI is served with a Content-Security-Policy (`script-src 'self'`, no plugins, no framing), and
+  model- or repo-controlled markdown is sanitized (DOMPurify) before rendering.
 
 ## Run it
 
@@ -44,7 +60,7 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | GET | `/runs/{id}/chat` | chat history for the run |
 | POST | `/runs/{id}/chat` | `{message}` → one chat turn: `{reply, generated, cost_usd, validated_candidate}` (read-only repo; test files go to `generated/`). **B1**: if the analyst proposes a `CANDIDATE_FINDING.json` for a "why didn't you find X?", it is re-validated by the pipeline's adversarial validator and `validated_candidate` carries the verdict (null otherwise). `cost_usd` is the chat turn; the re-validation session is logged to the ledger (in the run total). |
 | GET | `/runs/{id}/generated` | files the chat analyst produced (e.g. test suites) |
-| POST | `/runs/{id}/fixes` | **Phase 6** — propose + verify a patch per confirmed finding: `{verify, docker, build_cmd, only}` → the fixes report. Target repo stays read-only; verify runs on an isolated copy |
+| POST | `/runs/{id}/fixes` | **Phase 6** — propose + verify a patch per confirmed finding: `{verify, only, re_audit}` → the fixes report (`build_cmd`/`docker` are CLI-only). Target repo stays read-only; verify runs on an isolated copy |
 | GET | `/runs/{id}/fixes` | the fixes report (`fixes_report.json`), or `null` if none generated |
 | GET | `/runs/{id}/patches` | the proposed patches (unified diffs) under `patches/` |
 
@@ -86,9 +102,9 @@ verdict per finding:
   "reason": "ok", "targets": ["src/api/search.py"], "tool": "py_compile" }
 ```
 
-`verify` (default `true`) toggles the build check; `docker: "image"` runs the build in an offline
-container (`--network=none`); `build_cmd` supplies an explicit build/compile command; `only` limits
-to specific finding ids. `re_audit` (default `false`) additionally re-audits each patched copy and
+`verify` (default `true`) toggles the build check with the auto-detected build tool; `only` limits
+to specific finding ids. A Docker image or an explicit build command can be chosen only from the CLI
+(`argo fix --docker IMAGE --build-cmd CMD`), never over HTTP. `re_audit` (default `false`) additionally re-audits each patched copy and
 adds `verify.re_audit.confirmed_fixed` per finding (a probabilistic "the vuln is no longer detected"
 signal — one extra model session per patch; see [architecture.md](architecture.md#remediation--verification-phase-6-opt-in)).
 The target repo is **never** modified, nothing is applied in place, and no PR is opened.

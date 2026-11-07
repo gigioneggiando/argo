@@ -18,7 +18,8 @@ KEY = "mstrl_SERVER_SENTINEL_42"
 def _client(tmp_path):
     cfg = PipelineConfig(runner="mock", runs_dir=tmp_path / "runs",
                          ledger_path=tmp_path / "ledger.sqlite", fixtures_dir=FIXTURES)
-    return TestClient(create_app(cfg))
+    return TestClient(create_app(cfg, token="t"), base_url="http://127.0.0.1:8000",
+                      headers={"X-Argo-Token": "t"})
 
 
 def _req(**config):

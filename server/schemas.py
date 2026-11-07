@@ -12,7 +12,7 @@ class RunConfig(BaseModel):
     ``runner="mock"`` means a request spends **zero tokens** unless the client opts into
     ``headless``."""
     runner: str = Field("mock", description='"mock" (free) · "headless" (Claude Code) · "codex" (Codex CLI / OpenAI / OSS) · "gemini" (Gemini CLI) · "mistral-api" (Mistral API, Argo tool loop) · "mistral-vibe" (Mistral Vibe CLI)')
-    budget_usd: Optional[float] = Field(None, description="hard per-run USD ceiling")
+    budget_usd: Optional[float] = Field(None, description="per-run USD ceiling: no new session launches once spend reaches it")
     audit_model: Optional[str] = Field(None, description="override the Stage-3 audit model")
     calibration: bool = Field(False, description="run audit on Opus (all-Opus)")
     parallel: int = Field(3, ge=1, le=16, description="max concurrent audit/validate sessions")

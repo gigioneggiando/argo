@@ -371,6 +371,8 @@ def _audit_one(ctx: RunContext, scope, prompt_path: Path
         partial = True
         session_retry = getattr(exc, "failure_kind", None) not in TERMINAL_FAILURE_KINDS
         files = sorted(work.glob("SECURITY_FINDINGS__*.json"))
+        if getattr(exc, "failure_kind", None) == "budget_reached":
+            return slug, None, f"{_BUDGET_SKIP} ({exc})", False
         if not files:
             return slug, None, f"session failed, no partial artifact ({exc})", session_retry
         _log(f"{slug}: session failed ({exc}); recovered partial artifact from scratch dir")
@@ -526,6 +528,9 @@ def _run_critic_for_focus(ctx: RunContext, scope, slug: str, doc_path: Path,
         atomic_write_json(doc_path, doc)
 
 
+_BUDGET_SKIP = "budget reached before launch"
+
+
 def run(ctx: RunContext) -> list[Path]:
     scope = ctx.load_scope()
     prompts = sorted(ctx.prompts_out_dir.glob("audit_*.md"))
@@ -585,7 +590,12 @@ def run(ctx: RunContext) -> list[Path]:
                 futures[ex.submit(_audit_one, ctx, scope, p)] = p
             for fut in as_completed(futures):
                 slug, path, err, can_retry = fut.result()
-                if err:
+                if err and err.startswith(_BUDGET_SKIP):
+                    skipped.append(slug)
+                    _focus_progress(ctx, slug, "pending", attempt=attempt, retryable=True,
+                                    error=err)
+                    _log(f"{slug}: not launched ({err})")
+                elif err:
                     _log(f"{slug}: {'FAILED' if can_retry else 'SKIPPED'} ({err})"
                          + (f" [attempt {attempt}]" if attempt > 1 else ""))
                     if can_retry:

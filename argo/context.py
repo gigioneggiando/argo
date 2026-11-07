@@ -19,6 +19,7 @@ from .ledger import Ledger
 from .models import Scope
 from .rendering import extract_manifest
 from .runner import AgentRunner, ClaudeRunner, LLMResult, build_runner
+from .runner import BudgetExceeded as _RunnerBudgetExceeded
 from .schemas import validate_scope
 
 
@@ -52,8 +53,8 @@ def atomic_write_json(path: Path, data: Any, *, indent: int = 2) -> None:
     raise last_exc
 
 
-class BudgetExceeded(RuntimeError):
-    pass
+# Re-exported: stages import it from here; the runner raises it at the launch chokepoint.
+BudgetExceeded = _RunnerBudgetExceeded
 
 
 @dataclass

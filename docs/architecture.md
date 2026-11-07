@@ -662,7 +662,7 @@ findings_ledger(id, ts, program_name, run_id, dedup_key, title, verdict, validat
   (`moderation_flagged`, `rate_limited`, ...) — previously only visible inside a raised exception's
   message, never queryable after the fact. This is what `bench-cross`'s latency numbers and
   `refusal-probe`'s `refusal_flag_rate`/`refusal_recovery_rate` are computed from.
-- `llm_calls` powers cost control and the hard per-run `--budget` guard (`run_cost()`). A
+- `llm_calls` powers cost control and the per-run `--budget` launch gate (`run_cost()`). A
   second-opinion blind pass (`--second-opinion N`) runs under its own child run_id
   (`f"{run_id}-so{N}"`, its own isolated `run_dir`) but the **same** ledger file — `run_cost()`/
   `run_call_count()` combine a run_id with any `-soN` children by design, so the `--budget` ceiling

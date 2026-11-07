@@ -86,8 +86,11 @@ capped by wall-clock and cost ceilings that fire regardless of what the model is
 - **Wall-clock timeouts.** `session_timeout_s` (default **1800s**) and per-stage `stage_timeouts`; a
   hung or looping session is **killed**, not waited on forever. Cancellation kills the whole process
   tree mid-stage.
-- **Cost ceilings.** `budget_usd` is a **hard per-run USD ceiling** (deterministic abort, surfaced in
-  the UI); `session_max_cost_usd` caps a single session natively (`--max-budget-usd`);
+- **Cost ceilings.** `budget_usd` is a **per-run USD ceiling** enforced at launch: every session,
+  on every backend, is refused once ledgered spend reaches it (surfaced in the UI). Sessions already
+  running when it is reached finish, so a run can end above the ceiling by up to the cost of the
+  sessions in flight (`max_parallel_audits`). `session_max_cost_usd` caps a single session in-flight
+  where the backend allows it (Claude `--max-budget-usd`, Mistral API loop);
   `session_max_turns` is a per-session turn tripwire.
 - **Concurrency + fan-out caps.** `max_parallel_audits` (default 3); `max_focuses`
   (`--max-focuses`, unset by default; `--smoke` pins it to 1) bounds audit fan-out to the

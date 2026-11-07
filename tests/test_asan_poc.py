@@ -206,7 +206,11 @@ def _docker_ready() -> bool:
     if not shutil.which("docker"):
         return False
     try:
-        return subprocess.run(["docker", "info"], capture_output=True, timeout=20).returncode == 0
+        cp = subprocess.run(["docker", "info", "--format", "{{.OSType}}"], capture_output=True,
+                            text=True, timeout=20)
+        # The harness images are Linux images: a Windows-containers engine (GitHub's Windows
+        # runners) cannot run them, so treat it as "Docker not available".
+        return cp.returncode == 0 and cp.stdout.strip().lower() == "linux"
     except Exception:
         return False
 

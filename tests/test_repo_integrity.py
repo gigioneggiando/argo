@@ -64,6 +64,11 @@ def _bump_mtime(p):
 def test_each_mutation_changes_fingerprint(tmp_path, mutation):
     repo = _repo(tmp_path)
     os.chmod(repo / "src" / "a.py", 0o644)
+    # The repo copy predates the session by far more than one mtime tick; without this, a
+    # same-size edit made within the same timestamp granularity (seen on Windows CI) is
+    # indistinguishable by metadata, which is not the situation the check guards.
+    st = (repo / "src" / "a.py").stat()
+    os.utime(repo / "src" / "a.py", ns=(st.st_atime_ns, st.st_mtime_ns - 5_000_000_000))
     before = repo_fingerprint(repo)
     mutation(repo)
     assert repo_fingerprint(repo) != before

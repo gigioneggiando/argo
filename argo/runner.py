@@ -2149,6 +2149,7 @@ class FallbackRunner(AgentRunner):
     def run(self, **kwargs) -> LLMResult:
         last_exc: Exception | None = None
         stage = kwargs.get("stage")
+        attempts = 0
         for i, r in enumerate(self._runners):
             with self._fb_lock:
                 disabled_until = self._disabled.get(i)
@@ -2161,6 +2162,9 @@ class FallbackRunner(AgentRunner):
             kw = dict(kwargs)
             if stage is not None:                     # each backend picks its own model for the stage
                 kw["model"] = r.config.model_for(stage)
+            if attempts:
+                _set_aside_work_dir(kw.get("work_dir"), attempts)
+            attempts += 1
             try:
                 return r.run(**kw)
             except RunnerError as exc:
@@ -2200,6 +2204,28 @@ class FallbackRunner(AgentRunner):
 
     def _invoke(self, **kwargs):                      # never used — run() delegates whole calls
         raise NotImplementedError("FallbackRunner delegates whole run() calls to child runners")
+
+
+def _set_aside_work_dir(work_dir, attempt: int) -> None:
+    """Before a fallback backend reuses a session's scratch dir, move the failed attempt's files
+    to a sibling ``<dir>.failed-<n>``: stages glob the scratch dir, so a stale partial artifact
+    would otherwise be collected alongside (or instead of) the next backend's output. Kept on
+    disk for diagnosis. Best-effort: if the rename fails, the dir is left as it was."""
+    if work_dir is None:
+        return
+    wd = Path(work_dir)
+    try:
+        if not wd.is_dir() or not any(wd.iterdir()):
+            return
+        target = wd.with_name(f"{wd.name}.failed-{attempt}")
+        n = attempt
+        while target.exists():
+            n += 1
+            target = wd.with_name(f"{wd.name}.failed-{n}")
+        wd.rename(target)
+        wd.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 
 
 def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner:

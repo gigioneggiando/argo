@@ -27,6 +27,14 @@ particular while the version stays `0.y.z`.
   "python-multipart"`). Found by the 2026-11-07 end-to-end run. It is now declared, and a test
   checks that every runtime requirement is declared in `pyproject.toml` (the same gap as `httpx`
   before v0.12.1).
+- **Citation grounding could still drop findings whose file exists.** Whether a cited file exists was
+  decided from the content index, which covers only source extensions, files up to 2 MB and the
+  first 8000 files. So a prefix-truncated `.vue`/`.svelte`/`.erb` citation, or any file past that cap
+  in a large repository, was dropped as "not in repo". The v0.12.4 note ("only an explicit file that
+  exists nowhere is dropped") did not hold in those cases. Existence now comes from a complete
+  name-only listing (every file, no cap; `.git` and symlinks skipped); the cap applies only to
+  reading contents for symbol checks. Files too large to read are never flagged as having an
+  out-of-range line.
 
 ## [0.12.4] - 2026-11-06
 

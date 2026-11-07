@@ -196,3 +196,30 @@ def test_symlinked_file_is_not_indexed_or_excerpted(tmp_path):
         assert "LEAK_THIS_SECRET" not in _build_excerpts(tmp_path, ["outside.py:1"], 1, 2000)
     finally:
         external.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------- existence = complete listing
+def test_existing_file_outside_the_content_index_is_never_dropped(tmp_path):
+    # .vue is not a scanned source extension, the path is prefix-truncated: it exists -> keep.
+    _write(tmp_path, "frontend/src/components/Login.vue", "<template>x</template>")
+    kept, dropped = _ground(tmp_path, "components/Login.vue:12")
+    assert not dropped and kept[0].affected == ["frontend/src/components/Login.vue:12"]
+
+
+def test_existing_file_past_the_scan_cap_is_never_dropped(tmp_path, monkeypatch):
+    import argo.grounding as g
+    monkeypatch.setattr(g, "_SCAN_FILE_CAP", 5)                    # tiny cap, same mechanism
+    for i in range(20):
+        _write(tmp_path, f"aaa/f{i:02d}.py")
+    _write(tmp_path, "zzz/pkg/handlers.py")
+    kept, dropped = _ground(tmp_path, "pkg/handlers.py:3")
+    assert not dropped and kept[0].affected == ["zzz/pkg/handlers.py:3"]
+
+
+def test_existing_large_file_is_never_dropped(tmp_path, monkeypatch):
+    import argo.grounding as g
+    monkeypatch.setattr(g, "_FILE_BYTE_CAP", 100)
+    _write(tmp_path, "src/big/generated.py", "x = 1  # padding padding padding")   # > 100 bytes
+    kept, dropped = _ground(tmp_path, "big/generated.py:9999")
+    assert not dropped and kept[0].affected == ["src/big/generated.py:9999"]
+    assert not kept[0].grounding.out_of_range_lines                 # too large to count: never flagged

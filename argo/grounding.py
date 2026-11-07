@@ -32,6 +32,7 @@ stdlib/system calls (``read``, ``len``, ``strtod``) are never mistaken for hallu
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -92,6 +93,20 @@ def extract_cited_symbols(*texts: str) -> set[str]:
             if _is_project_specific(m.group(1)):
                 out.add(m.group(1))
     return out
+
+
+def _iter_all_files(repo_dir: Path):
+    """Every regular file under ``repo_dir`` (any extension, any size, no cap), names only.
+
+    This listing decides whether a cited file EXISTS, so it must be complete: an existence check
+    bounded by a content-scan cap or an extension list drops real findings (a ``.vue`` template, a
+    file past the cap of a large monorepo). ``.git`` and symlinks are skipped."""
+    for dirpath, dirnames, filenames in os.walk(repo_dir, followlinks=False):
+        dirnames[:] = [d for d in dirnames if d != ".git"]
+        for name in filenames:
+            path = Path(dirpath) / name
+            if not path.is_symlink():
+                yield path
 
 
 def _iter_source_files(repo_dir: Path):
@@ -168,13 +183,19 @@ class RepoIndex:
         combined = (re.compile(r"\b(?:%s)\b" % "|".join(re.escape(s) for s in sorted(self._wanted)))
                     if self._wanted else None)
         try:
-            for p in _iter_source_files(self.repo_dir):
+            # Existence: the complete name listing (cheap; no content read).
+            for p in _iter_all_files(self.repo_dir):
                 self._basenames.add(p.name)
                 try:
                     self._paths[p.relative_to(self.repo_dir).as_posix()] = p
                     self._basename_paths.setdefault(p.name, []).append(p)
                 except ValueError:
                     pass
+        except OSError:
+            pass
+        try:
+            # Symbol presence: content scan, bounded (source extensions, size and file-count caps).
+            for p in _iter_source_files(self.repo_dir):
                 if combined is not None and self._wanted - self._present:
                     text = p.read_text(encoding="utf-8", errors="replace")
                     for hit in combined.findall(text):
@@ -270,6 +291,8 @@ class RepoIndex:
         key = (rel, name)
         if key not in self._mention_cache:
             try:
+                if self._paths[rel].stat().st_size > _FILE_BYTE_CAP:
+                    raise OSError("too large to read for a name proof")
                 text = self._paths[rel].read_text(encoding="utf-8", errors="replace")
                 self._mention_cache[key] = re.search(rf"(?<![\w$]){re.escape(name)}(?![\w$])",
                                                      text) is not None
@@ -325,6 +348,8 @@ class RepoIndex:
         if path is None:
             return True
         try:
+            if path.stat().st_size > _FILE_BYTE_CAP:
+                return True                               # not read: never flag it out of range
             if path not in self._line_counts:
                 self._line_counts[path] = len(path.read_text(
                     encoding="utf-8", errors="replace").splitlines())

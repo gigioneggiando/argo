@@ -17,6 +17,14 @@ particular while the version stays `0.y.z`.
   A new **Questions** tab answers and re-validates from the browser. `RunConfig` gains
   `review_questions_enabled`. Until now this was CLI-only (`argo questions`, `answer-question`,
   `revalidate-context`).
+- **CI integration: `argo sarif` and `argo gate`.** `sarif` exports a finished run's reportable
+  findings as SARIF 2.1.0 for GitHub code scanning: one rule per CWE, level and `security-severity`
+  from the effective severity, a stable dedup-key fingerprint, and file locations only for explicit
+  path citations. It validates against the official OASIS schema. `gate --fail-on High` exits 1
+  when reportable findings reach the threshold. Both reuse the report's rules (confirmed only unless
+  `--include-unverified`; never design-accepted, fixed-upstream, refuted or stale) and make no model
+  calls. New `docs/ci.md` with a GitHub Actions example (`--profile cost-saver`,
+  `--incremental-base`, explicit budget).
 
 ### Fixed
 

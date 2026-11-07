@@ -34,7 +34,9 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
 - **Measured defaults:** use those results to decide whether built-in profiles should change. Until then
   profile routing remains marked `provisional` and no quality claim is made from one run.
 - **Optional product backlog:** streaming chat replies (B2), per-run subprocess isolation (C2), and
-  additional CI/Fast profiles remain lower-priority work; they are not prerequisites for the shipped
+  additional CI/Fast profiles remain lower-priority work (CI integration shipped 2026-11-06 as
+  `argo sarif` + `argo gate`, see `docs/ci.md`; `cost-saver` serves as the CI profile, so no
+  duplicate profile was added); they are not prerequisites for the shipped
   routing/planning tranche.
 
 ### Runner resilience — fallback partial-work recovery (analysis 2026-11-03; follow-ups shipped)

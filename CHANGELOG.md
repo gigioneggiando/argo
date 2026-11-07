@@ -31,6 +31,9 @@ particular while the version stays `0.y.z`.
   files outside the run directory.
 
 ### Fixed
+- **Freshness check could not fetch on Linux/macOS.** Before fetching it restored write access to
+  the files in the read-only `.git` but not to its directories, so `git fetch` failed with
+  `cannot open '.git/FETCH_HEAD': Permission denied` and no branch was checked.
 - **`--budget` enforced at every session launch.** The check moved into the runner, so it covers
   every stage and backend; previously stages checked once before fanning out, and several stages
   not at all. A refused session is `budget_reached` (not retried, no backend fallback); validate

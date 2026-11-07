@@ -23,9 +23,9 @@ models.
 
 Not a benchmark score — pull requests, published advisories, and real CVEs, on real open-source projects.
 
-**27** projects · **96** public records · **66** public PRs · **24** published advisories · **85** resolved records · **11** CVEs listed · **8** languages represented\*
+**27** projects · **97** public records · **66** public PRs · **24** published advisories · **86** resolved records · **13** CVEs listed · **8** languages represented\*
 
-These totals come from the public archive (snapshot: 28 October 2026). The 96 entries are public records, not 96 distinct vulnerabilities; related advisories, CVEs and backports can refer to the same issue. Private reports are excluded.
+These totals come from the public archive (snapshot: 6 November 2026). The 97 entries are public records, not 97 distinct vulnerabilities; related advisories, CVEs and backports can refer to the same issue. Private reports are excluded.
 
 ### Selected public results
 
@@ -76,8 +76,9 @@ symbolic executor.
   *supposed* to hold before the audit starts, turning the hunt into closed-ended verification
   instead of pattern-guessing that mistakes business logic for a bug.
 - **Threat-informed** — opt-out web OSINT (CVEs, advisories, history) feeds every audit.
-- **Multi-backend, including fully free** — Claude Code, Codex, Gemini, or a **local open-source
-  model** (Qwen, DeepSeek via Ollama/LM Studio) — same pipeline, your choice of cost.
+- **Multi-backend, including fully free** — Claude Code, Codex, Gemini, Mistral (API or Vibe CLI), or
+  a **local open-source model** (Qwen, DeepSeek via Ollama/LM Studio/vLLM) — same pipeline, your
+  choice of cost.
 - **Interrogation chat** — ask *"why didn't you find X?"* and get a real re-validation, not a
   chatty answer ([worked example](docs/chat-example.md)).
 - **Detection-only, read-only, never live by default** — guardrails enforced in code, not just
@@ -154,9 +155,12 @@ paraphrases them — see [guardrails](docs/guardrails.md)).
 argo/
   cli.py
   models.py            # pydantic models for scope + findings
-  runner.py            # AgentRunner interface (Claude headless · Codex · Gemini · mock)
-  stages/{ingest,research,recon,audit,sca,second_opinion,validate,corroborate,deep_verify,asan_poc,runtime,live,evidence,report}.py
-  research.py·fixes.py·verify.py·benchmark.py·chat.py·costs.py·archetype.py
+  runner.py            # AgentRunner interface (Claude headless · Codex · Gemini · mock · fallback)
+  mistral_api.py · mistral_vibe.py   # the two Mistral backends
+  stages/{ingest,target_memory,incremental,research,recon,audit,sca,second_opinion,validate,
+          corroborate,deep_verify,asan_poc,freshness,runtime,live,evidence,review_questions,
+          compose,report}.py
+  grounding.py·fixes.py·verify.py·benchmark.py·chat.py·costs.py·archetype.py·model_catalog.py
   prompts/             # the assets, version-controlled in git
   ledger.py            # SQLite findings + cost ledger
 server/ · webapp/      # HTTP API + no-build web UI
@@ -225,14 +229,14 @@ argo pipeline --repo ./my-code                                 # local/personal 
 
 **Auditing your own / private local code?** Omit `--brief` and point `--repo` at a **local folder**
 (it does not need to be a git repo, and is **never pushed anywhere**). Argo synthesizes a minimal
-**source-only** scope from the folder and audits it. A **cloud backend** (Claude / Codex / Gemini)
-sends the source to that provider's API to analyze it — only a **local / OSS model** (`--codex-oss`)
-keeps everything **fully on-device**.
+**source-only** scope from the folder and audits it. A **cloud backend** (Claude / Codex / Gemini /
+Mistral) sends the source to that provider's API to analyze it — only a **local / OSS model**
+(`--codex-oss`, or a local vLLM server) keeps everything **fully on-device**.
 
 Pick a backend (default `headless` = Claude Code):
 ```
 argo pipeline ... --runner codex                                  # Codex CLI / OpenAI
-argo pipeline ... --runner codex --codex-oss --codex-local-provider ollama --codex-model qwen2.5-coder:32b
+argo pipeline ... --runner codex --codex-oss --codex-local-provider ollama --codex-model qwen3.8:27b
 argo pipeline ... --runner gemini                                 # Gemini CLI / Google
 argo pipeline ... --runner mistral-api --no-research --no-corroborate   # Mistral API
 argo pipeline ... --runner mistral-vibe --no-research --no-corroborate  # Mistral Vibe CLI
@@ -277,17 +281,22 @@ the `AgentRunner` abstraction are in **[docs/architecture.md](docs/architecture.
 | Stage | What it does |
 |---|---|
 | 0 Ingest | Parses the brief into `scope.json`; clones the repo read-only. |
+| Target memory | Private, revision-bound facts from earlier runs of the same target, used as recon hints, never as evidence. |
+| Incremental review *(opt-in)* | `--incremental-base REF`: records the diff and invalidates facts about changed code before recon. |
 | 1 Research *(opt-out)* | Uses Stage 0 scope for web OSINT (CVEs, advisories, project history) before recon. |
 | 2 Recon + synthesis | Classifies the software, extracts security invariants + baseline-correct references, writes custom audit prompts. |
 | 3 Audit | Per-prompt agent sessions emit findings; a completeness-critic re-pass catches what a first read missed. |
 | SCA *(opt-out)* | Flags dependency-pinned versions with known advisories. |
 | Second opinion *(opt-in)* | N independent blind recon+audit passes, merged in before validate. |
-| 4 Validate | Dedup, then adversarial validation — a fresh session tries to refute each survivor. Downgrade-don't-delete: only provable contradictions get dropped. |
+| 4 Validate | Dedup and citation grounding (a cited file that exists nowhere is dropped; an unmapped symbol is kept and flagged), then adversarial validation — a fresh session tries to refute each survivor. Downgrade-don't-delete: only provable contradictions get dropped. |
 | Corroborate *(opt-out)* | Cross-checks survivors against the project's own docs and VCS history — catches "already fixed" and "documented by design". |
 | Verify *(opt-in, deep)* | One full independent session per survivor re-derives it from source and reasons across the whole set — split / merge / correct. |
 | ASan PoC *(opt-in, C/C++)* | Model writes a harness; a **fixed, non-model** step compiles and runs it under AddressSanitizer in an isolated container — a real sanitizer crash trace, not a judgment call. |
+| Freshness check *(opt-in)* | Flags later commits that touched a cited file, so a finding is re-checked before it is sent. |
 | Runtime *(opt-in, sandboxed)* | Builds the target into an egress-blocked container and confirms findings with a real HTTP PoC — never the program's live hosts. |
 | Evidence gate | Deterministically summarizes existing static/deep/ASan/runtime/live/corroboration evidence immediately before reporting. It adds no model call or probe; open obligations and contradictions stay visible, and blocking errors suppress drafts without deleting findings. |
+| Review questions *(opt-in)* | A private queue of architecture questions the source cannot settle; answers (with provenance) re-validate only the affected findings. |
+| Compose *(opt-in)* | Links findings into attack paths only on exact, same-context capability matches, for human review; never changes severity. |
 | 5 Report | `REPORT.md`, sorted by verified severity, plus one DRAFT submission per confirmed finding. |
 
 ---
@@ -338,7 +347,7 @@ This README is the conceptual overview. Deeper, implementation-level docs live i
 | [docs/guardrails.md](docs/guardrails.md) | The non-negotiable guardrails and **exactly where each is enforced in code** |
 | [docs/determinism-and-guardrails.md](docs/determinism-and-guardrails.md) | **Anti-hallucination**: every deterministic gate and hard physical limit that constrains the LLM — mechanical diffs, ground-truth verification, budget/timeout/request caps, scope-lock asserts, commit-pin reproducibility |
 | [docs/design-decisions.md](docs/design-decisions.md) | **Why** Argo is LLM-direct with **no CPG/AST engine**, what it uses instead, when we'd revisit, and threats to validity (paper-facing) |
-| [docs/backends.md](docs/backends.md) | **Multi-backend**: run on Claude Code, the Codex CLI (OpenAI), the Gemini CLI (Google), or local/open-source models — the abstraction, per-backend guardrail mapping, cost, cross-model study |
+| [docs/backends.md](docs/backends.md) | **Multi-backend**: run on Claude Code, the Codex CLI (OpenAI), the Gemini CLI (Google), Mistral (API or Vibe CLI), or local/open-source models — the abstraction, per-backend guardrail mapping, cost, cross-model study |
 | [docs/headless-runner.md](docs/headless-runner.md) | Real Claude Code integration: flags used, the JSON envelope, caps, error handling, partial recovery, the `--smoke` run |
 | [docs/runtime-verification-study.md](docs/runtime-verification-study.md) | The **opt-in, sandboxed runtime verification** design: the loopback-only sealed-container safety model, the propose→validate→execute→interpret flow, and the R1–R4 plan |
 | [docs/api.md](docs/api.md) | The HTTP API (`server/`) — backend for the web UI: endpoints, run lifecycle, live status/SSE, artifact whitelist |

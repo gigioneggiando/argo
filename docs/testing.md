@@ -1,9 +1,10 @@
 # Testing
 
-The suite runs **entirely on the `MockClaudeRunner`** — zero tokens, no `claude`/`codex`/`gemini`
-calls — except for the headless-, Codex-, and Gemini-seam tests, which drive the envelope parsers,
-the command construction, and the subprocess error paths with crafted inputs and fakes (still no
-real calls).
+The suite runs **entirely on the `MockClaudeRunner`** — zero tokens, no `claude`/`codex`/`gemini`/
+`vibe` calls and no Mistral API requests — except for the backend-seam tests (headless, Codex,
+Gemini, Mistral API, Mistral Vibe), which drive the envelope parsers, the command construction and
+the subprocess/HTTP error paths with crafted inputs and fakes (still no real calls). A handful of
+tests need the real `claude` CLI on `PATH` or Docker and are skipped when absent.
 
 ## Running
 
@@ -50,6 +51,23 @@ not trip Windows' global temp rotation.
 | `test_audit_retry.py` | **audit-focus retry**: a focus whose *session* never started (backend blip, `exit_1`, zero tokens, no partial artifact) is retried once and can then succeed, restoring full coverage; a focus that produced a malformed answer is a RESULT and is never retried (re-rolling it would select on the output); the retry is bounded to one pass and a still-failing focus leaves the run honestly short rather than looping |
 | `test_max_focuses.py` | **`--max-focuses`**: the cap keeps the first N planned focuses in slug order (decided before any focus runs, so it cannot depend on what a focus found), is a no-op above the planned count, names every skipped focus in the log, reaches `PipelineConfig` through `_build_config`, and rejects a cap below 1 (a cap of 0 would audit nothing and still exit 0) |
 | `test_neutral_retry.py` | **neutral-register moderation-flag recovery**: `AgentRunner.run()` retries once, same backend, with a caller-supplied `neutral_prompt` on a `moderation_flagged` failure (short delay, distinct from `FallbackRunner`'s 90s same-provider cooldown); no retry when `neutral_prompt` is omitted (byte-identical to pre-feature behavior); no retry for any other failure kind; bounded to exactly one retry even if the neutral variant also flags |
+| `test_grounding.py` / `test_grounding_fqn.py` / `test_grounding_symbolic.py` / `test_split_ref_locators.py` | **citation grounding** before validation: an explicit file that exists nowhere drops the finding (hallucinated location); a symbol-style or ambiguous citation is kept as `unresolved_refs` with one confidence notch down and an honest validator note; qualified names (`io.x.Foo.bar():26`, `pkg.login()`, inner classes) and prefix-truncated paths resolve to the one real file (cross-extension ambiguity and member-name proof required); `:L30` / `#L68-L73` tails; `split_ref` locator variants; root confinement and symlinks |
+| `test_semantic_dedup.py` / `test_batching.py` | cross-focus **semantic dedup** of the same root cause at different call sites; validate/corroborate **batching** cuts session count without changing which findings survive |
+| `test_infra_failure_classification.py` | `needs_runtime_verification` / `unknown` caused by an outage, a missing verdict or budget exhaustion is marked as "not examined", distinct from a genuine model judgement |
+| `test_static_analysis.py` | bounded **parse-only static context** for validation: supported languages, definition lines, syntactic def-use and possible callers, path-escape rejection, hard size/time bounds, reproducible ordering, explicitly non-semantic |
+| `test_checklists.py` / `test_census.py` / `test_design_context.py` | audit-prompt uplifts: the gated coverage **checklist**, the cross-file variant **census** worksheet, and the accepted-by-design list + anti-over-claim impact rules |
+| `test_audit_findings_file_choice.py` / `test_audit_schema_nulls.py` | audit robustness for weaker models: picks the model-written findings file over the untouched seed; a schema-forbidden `null` never discards an otherwise valid finding |
+| `test_recon.py` / `test_recon_unprefixed_prompts.py` | recon resilience: a synthesis cut-off that wrote ground truth but no audit prompts is repaired instead of aborting; template-conforming prompts saved without the `audit_` prefix are accepted |
+| `test_resume.py` | **`argo resume`**: skips done stages with the persisted config, retries only failed audit focuses, upgrades legacy runs (evidence + report), clear error without `config.json`, fallback re-arming after `Retry-After`, redacted API keys must be re-supplied |
+| `test_second_opinion.py` / `test_deep_verify.py` / `test_corroborate.py` | the opt-in **second-opinion** blind passes (isolated run dirs, merge before validate), **deep verify** (reconfirm / correct / split / merge / refute, cross-finding aware) and **corroboration** (fixed-upstream appendix, design-accepted suppresses drafts) on the mock runner |
+| `test_target_memory.py` / `test_compose.py` / `test_incremental.py` / `test_review_questions.py` | **F2–F5**: revision-bound target memory (stale facts never trusted silently), deterministic exact-context attack-path composition that never alters findings, incremental review treating a diff as invalidation (not a boundary), private context packs and the non-blocking review-question queue with provenance-bearing answers and targeted re-validation |
+| `test_freshness.py` | post-pin **freshness** check: commits touching a finding's file after the audited pin (same or sibling branch) are flagged, git failures never modify findings, executable transports/hooks disabled, option-shaped refs rejected, report appendix |
+| `test_live.py` | **L1 live-testing safety core**: RoE authorization gate, in-scope-only scope lock, stage gating; the one executor test hits a loopback server the test scope declares in-scope |
+| `test_codex_session_guard.py` | Codex local-model hardening: live turn cap, tool-loop and fail-streak tripwires, event capture outside the session cwd, disabled sub-agents, declared context window, recon JSON syntax repair |
+| `test_mistral.py` / `test_mistral_vibe.py` / `test_mistral_server.py` | the **Mistral backends** (HTTP faked with `httpx.MockTransport`, the Vibe CLI faked from a captured envelope): routing/config and key precedence, the tool dispatcher's path policy (traversal/symlink escape denied, writes only in scratch), the tool loop (tokens, served model, loop/turn caps), HTTP 401/402/429/5xx mapping, OSINT-stage refusal, Vibe's isolated config and exit codes, and the `/models` + `RunConfig` API surface |
+| `test_repo_integrity.py` | backend-agnostic **repo-integrity** check around every session: a session that mutates the audited repo copy fails closed with `failure_kind="repo_mutated"` |
+| `test_ledger_migration_race.py` / `test_provenance_cli_versions.py` / `test_branding.py` | two processes migrating one fresh ledger; backend CLI versions resolved through PATH/PATHEXT (Windows `.cmd` shims); the "Produced by Argo" provenance footer and its toggle |
+| `test_estimate.py` / `test_adaptive_knowledge.py` | cost **estimates** (historical-archetype range vs labelled cold start, extra stages cost more) and explicit, persisted adaptive escalation that defers when the session cap exceeds the remaining budget |
 
 ## Fixture replay versus real pre-audit checks
 

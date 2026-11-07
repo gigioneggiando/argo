@@ -52,12 +52,25 @@ def test_headless_cmd_is_readonly_sandboxed(tmp_path):
         disallowed=sorted(NETWORK_TOOLS | MUTATION_TOOLS),
     )
     assert "--add-dir" in cmd
-    assert "--permission-mode" in cmd and "bypassPermissions" in cmd
+    pm = cmd[cmd.index("--permission-mode") + 1]
+    assert pm == "default"
+    assert "bypassPermissions" not in cmd and "acceptEdits" not in cmd
     assert "--disallowedTools" in cmd
     # no network tool ever appears in the allowed segment
     a = cmd.index("--allowedTools")
     d = cmd.index("--disallowedTools")
     allowed_segment = cmd[a + 1:d]
     assert not (set(allowed_segment) & NETWORK_TOOLS)
+    # file tools are path-scoped: no bare Read/Write rule that would approve any path
+    assert allowed_segment == ["Write(./**)"]
     assert "Bash" in cmd and "WebFetch" in cmd  # present only in the disallow segment
     ledger.close()
+
+
+def test_scope_claude_allowed():
+    from argo.runner import scope_claude_allowed
+    assert scope_claude_allowed(["Read", "Grep", "Glob", "Write"]) == ["Write(./**)"]
+    assert scope_claude_allowed(["WebSearch", "WebFetch", "Read", "Write"]) == \
+        ["WebSearch", "WebFetch", "Write(./**)"]
+    assert scope_claude_allowed(["Edit", "Read(/x/**)"]) == ["Edit(./**)", "Read(/x/**)"]
+    assert scope_claude_allowed([]) == [] and scope_claude_allowed(None) == []

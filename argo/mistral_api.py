@@ -165,10 +165,13 @@ class Toolbox:
         for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
             dirnames[:] = sorted(n for n in dirnames if n not in _SKIP_DIRS)
             for name in sorted(filenames):
+                path = Path(dirpath) / name
+                if path.is_symlink():            # may point outside the allowed roots
+                    continue
                 count += 1
                 if count > MAX_GREP_FILES:
                     return
-                yield Path(dirpath) / name
+                yield path
 
     def glob(self, pattern: str, path: str | None = None) -> str:
         if not pattern:

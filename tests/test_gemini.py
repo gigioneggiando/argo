@@ -274,3 +274,16 @@ def test_api_and_cli_gemini_config_passthrough(tmp_path):
                        gemini_model=GEMINI_FLASH_LITE)
     assert c3.model_for("audit") == GEMINI_PRO           # calibration won
     assert c3.model_for("recon") == GEMINI_FLASH_LITE     # untouched stage kept the flat override
+
+
+def test_parser_reports_tool_calls_as_turns():
+    """session_max_turns is checked against num_turns after the call: Gemini must report it."""
+    import copy
+    raw = copy.deepcopy(REAL)
+    raw["stats"]["tools"]["totalCalls"] = 7
+    r = GeminiRunner.__new__(GeminiRunner)
+    res = r.parse_envelope(raw, model="gemini-3.5-flash", prompt_sha256="h", work_dir=Path("."))
+    assert res.num_turns == 7
+    raw["stats"].pop("tools")
+    res = r.parse_envelope(raw, model="gemini-3.5-flash", prompt_sha256="h", work_dir=Path("."))
+    assert res.num_turns == 0

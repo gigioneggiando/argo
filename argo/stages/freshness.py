@@ -90,13 +90,17 @@ def _git(repo_dir: Path, args: Sequence[str], desc: str, *, quiet_failure: bool 
 def _make_git_metadata_writable(repo_dir: Path) -> None:
     """The acquired repo copy is defense-in-depth read-only; fetch needs writable git metadata."""
     git_dir = repo_dir / ".git"
-    if not git_dir.exists():
+    if not git_dir.is_dir() or git_dir.is_symlink():
         return
-    for p in git_dir.rglob("*"):
-        if not p.is_file():
+    # Directories too (POSIX): git creates FETCH_HEAD, packs and refs inside them, and ingest's
+    # _make_readonly stripped their write bits. Symlinks are skipped (chmod would follow them).
+    for p in [git_dir, *git_dir.rglob("*")]:
+        if p.is_symlink():
             continue
+        if p.is_dir() and os.name == "nt":
+            continue                     # see _make_readonly: directory chmod is a no-op there
         try:
-            p.chmod(p.stat().st_mode | stat.S_IWRITE)
+            p.chmod(p.stat().st_mode | stat.S_IWUSR)
         except OSError:
             pass
 

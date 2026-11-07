@@ -1,0 +1,12 @@
+[
+  {
+    "label": "[FRSS-2026-0002] Self-update mutations can be triggered by cross-site GET requests",
+    "cwe": "CWE-352",
+    "aliases": [],
+    "file": "app/Controllers/updateController.php",
+    "line": 133,
+    "line_tolerance": 200,
+    "severity": "Medium",
+    "category": "Authentication & session"
+  }
+]

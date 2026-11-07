@@ -1,0 +1,14 @@
+[
+  {
+    "label": "[BSR-2026-0001] Data-sync source-type properties preview lacks workspace/permission authorization: any authenticated user triggers server-side outbound DB connections (SSRF + internal recon + schema disclosure)",
+    "cwe": "CWE-862",
+    "aliases": [
+      "CWE-918"
+    ],
+    "file": "backend/src/baserow/contrib/database/api/data_sync/views.py",
+    "line": 314,
+    "line_tolerance": 58,
+    "severity": "Medium",
+    "category": "SSRF"
+  }
+]

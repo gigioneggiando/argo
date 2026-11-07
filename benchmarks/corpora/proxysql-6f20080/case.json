@@ -1,0 +1,10 @@
+{
+  "name": "proxysql-6f20080",
+  "repo": "https://github.com/sysown/proxysql",
+  "commit": "6f2008001acda19c5e266788ee17be2567096b98",
+  "archetype": "other",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "proxysql@6f2008001acda19c5e266788ee17be2567096b98",
+  "cve_ids": [],
+  "expected": "expected_findings.json"
+}

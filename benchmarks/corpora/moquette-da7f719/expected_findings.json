@@ -1,0 +1,115 @@
+[
+  {
+    "label": "[MOQ-2026-0001] Pattern-ACL wildcard injection via attacker-controlled clientId/username (%c/%u substituted raw, then wildcard-matched)",
+    "cwe": "CWE-863",
+    "aliases": [],
+    "file": "broker/src/main/java/io/moquette/broker/security/AuthorizationsCollector.java",
+    "line": 122,
+    "line_tolerance": 40,
+    "severity": "Critical",
+    "category": "Access control"
+  },
+  {
+    "label": "[MOQ-2026-0002] SessionEventLoop thread dies on any per-command Throwable and is never restarted, wedging every co-located session (partitioned multi-client DoS, escalatable to whole-broker)",
+    "cwe": "CWE-248",
+    "aliases": [],
+    "file": "broker/src/main/java/io/moquette/broker/SessionEventLoop.java",
+    "line": 40,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[MOQ-2026-0003] Will message delivered with no canWrite authorization (and no reserved-topic/validity check) at fire time",
+    "cwe": "CWE-862",
+    "aliases": [],
+    "file": "broker/src/main/java/io/moquette/broker/PostOffice.java",
+    "line": 317,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Access control"
+  },
+  {
+    "label": "[MOQ-2026-0004] Malformed shared-subscription filter ($share/<name> with no topic part) throws StringIndexOutOfBoundsException that kills the SessionEventLoop thread (broker-wide DoS)",
+    "cwe": "CWE-248",
+    "aliases": [],
+    "file": "broker/src/main/java/io/moquette/broker/SharedSubscriptionUtils.java",
+    "line": 30,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[MOQ-2026-0005] AuthorizationsCollector pattern-branch throws NullPointerException on null username or wildcard-bearing clientId/username (same substitution sink as AUTHZ-001) -> kills SessionEventLoop thread",
+    "cwe": "CWE-248",
+    "aliases": [],
+    "file": "broker/src/main/java/io/moquette/broker/security/AuthorizationsCollector.java",
+    "line": 121,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[MOQ-2026-0006] Last-Will publish bypasses the write authorization (canWrite) and reserved-topic checks enforced on normal PUBLISH, allowing injection into forbidden/$-topics under a configured ACL",
+    "cwe": "CWE-862",
+    "aliases": [],
+    "file": "broker/src/main/java/io/moquette/broker/SessionRegistry.java:331-336,428-448",
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Access control"
+  },
+  {
+    "label": "[MOQ-2026-0008] ScheduledExpirationService uses scheduleWithFixedDelay with no exception guard: one Throwable in a Will/retained-expiry callback permanently disables ALL future expirations",
+    "cwe": "CWE-248",
+    "aliases": [],
+    "file": "broker/src/main/java/io/moquette/broker/scheduler/ScheduledExpirationService.java",
+    "line": 36,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[MOQ-2026-0010] Third ScheduledExpirationService instance (session-expiry) shares the fixed-delay no-guard defect: one throw permanently halts ALL session/subscription expiry -> unbounded state accumulation",
+    "cwe": "CWE-770",
+    "aliases": [],
+    "file": "broker/src/main/java/io/moquette/broker/SessionRegistry.java",
+    "line": 234,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[MOQ-2026-0018] ScheduledExpirationService.checkExpiredEntities has no exception containment; one throwing expiry action permanently disables all future expiration (scheduleWithFixedDelay suppression)",
+    "cwe": "CWE-248",
+    "aliases": [],
+    "file": "broker/src/main/java/io/moquette/broker/scheduler/ScheduledExpirationService.java",
+    "line": 35,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Denial of service"
+  },
+  {
+    "label": "[MOQ-2026-0035] H2 persistent-queue map-name collision via a client-id ending in \"_meta\" -> cross-session durable corruption (message loss / misdelivery / possible disclosure)",
+    "cwe": "CWE-668",
+    "aliases": [
+      "CWE-20"
+    ],
+    "file": "broker/src/main/java/io/moquette/persistence/H2PersistentQueue.java",
+    "line": 45,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Access control"
+  },
+  {
+    "label": "[MOQ-2026-0036] Fail-open authorization/authentication when a configured authorizator/authenticator class fails to load -> broker silently falls back to PermitAll / AcceptAll",
+    "cwe": "CWE-636",
+    "aliases": [
+      "CWE-306"
+    ],
+    "file": "broker/src/main/java/io/moquette/broker/Server.java",
+    "line": 483,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Access control"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "name": "ds4-80ebbc3",
+  "repo": "https://github.com/antirez/ds4",
+  "commit": "80ebbc396aee40eedc1d829222f3362d10fa4c6c",
+  "archetype": "other",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "ds4@80ebbc396aee40eedc1d829222f3362d10fa4c6c",
+  "cve_ids": [],
+  "expected": "expected_findings.json"
+}

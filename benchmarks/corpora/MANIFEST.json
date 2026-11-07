@@ -4,19 +4,77 @@
   "status": "frozen-partial",
   "ground_truth_policy": "Only independently verified, pinned commits with maintainer/runtime evidence are added. No synthetic labels are invented to reach a target count.",
   "cases": [
+    "baserow-7862aeb",
     "bonjour-service-takeover",
     "coturn-ipv6-acl-bypass",
+    "ds4-80ebbc3",
+    "freshrss-12bad60",
+    "freshrss-5baf803",
+    "freshrss-8f04cea",
+    "freshrss-d5ad610",
     "gguf-tools-oob",
+    "gitea-871c807",
     "jsoup-redirect-header-leak",
-    "libcsp-csp-ps-uaf"
+    "libcsp-csp-ps-uaf",
+    "moquette-da7f719",
+    "navidrome-64430af",
+    "php-cs-fixer-9fb2f9c",
+    "php-cs-fixer-b007879",
+    "pocketbase-089ca8a",
+    "proxysql-6f20080",
+    "surrealdb-9d9a5b0"
   ],
   "coverage": {
-    "languages": ["C", "Java", "JavaScript"],
-    "classes": ["memory-safety", "authorization", "spoofing", "information-disclosure"],
-    "negative_cases": 0
+    "languages": [
+      "C",
+      "C++",
+      "Go",
+      "Java",
+      "JavaScript",
+      "PHP",
+      "Python",
+      "Rust"
+    ],
+    "classes": [
+      "access control",
+      "authentication & session",
+      "authorization",
+      "crypto & integrity",
+      "denial of service",
+      "information-disclosure",
+      "injection",
+      "memory safety",
+      "memory-safety",
+      "path & file handling",
+      "spoofing",
+      "ssrf"
+    ],
+    "negative_cases": 0,
+    "expansion_2026_11_06": {
+      "cases_added": 14,
+      "vuln_labels_added": 43,
+      "by_category": {
+        "Denial of service": 14,
+        "Memory safety": 11,
+        "Access control": 7,
+        "SSRF": 3,
+        "Crypto & integrity": 3,
+        "Authentication & session": 3,
+        "Injection": 1,
+        "Path & file handling": 1
+      },
+      "by_severity": {
+        "Critical": 2,
+        "High": 13,
+        "Medium": 22,
+        "Low": 6
+      }
+    }
   },
   "expansion": {
-    "target_case_count": "10-20",
-    "blocked_on": "additional ground-truth cases with pinned commits and permission/licensing review"
+    "source": "maintainer-verdict findings (owner-reviewed 2026-11-06)",
+    "public_rule": "every label is publicly described: published advisory, CVE, or public fix PR/issue",
+    "private_candidates_held": 37,
+    "note": "cases with unfixed acknowledged vulns, private rejections or silently fixed issues stay out until public"
   }
 }

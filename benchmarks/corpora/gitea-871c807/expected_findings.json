@@ -1,0 +1,21 @@
+[
+  {
+    "label": "[GTA-2026-0005] API user subresource routes bypass private user visibility checks",
+    "cwe": "CWE-862",
+    "aliases": [],
+    "file": "routers/api/v1/api.go:927-942 individualPermsChecker",
+    "line_tolerance": 40,
+    "severity": "Low",
+    "category": "Access control"
+  },
+  {
+    "label": "[GTA-2026-0010] OAuth refresh endpoint accepts access-token JWTs as refresh tokens",
+    "cwe": "CWE-345",
+    "aliases": [],
+    "file": "services/oauth2_provider/token.go",
+    "line": 22,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Crypto & integrity"
+  }
+]

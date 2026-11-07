@@ -10,7 +10,6 @@ particular while the version stays `0.y.z`.
 ## [Unreleased]
 
 ### Security
-
 - **Local API hardened.** `argo serve` now prints a tokenized link: every API call needs that
   per-process token (an HttpOnly `SameSite=Strict` cookie set by the link, or an `X-Argo-Token`
   header). CORS is removed, the `Host` header must be a loopback address, and run ids in URLs must be
@@ -20,6 +19,14 @@ particular while the version stays `0.y.z`.
   vendored DOMPurify, chart tooltips escape their labels, the UI is served with a `script-src 'self'`
   CSP (inline script moved to `js/theme-init.js`), and `REPORT.md` escapes `<` in model text
   (identifiers and paths unchanged).
+
+### Fixed
+- **`argo serve` failed on a package install.** `python-multipart`, needed by the zip-upload
+  endpoint, was listed in `requirements.txt` but not in `pyproject.toml`, so an install from the
+  package metadata could not create the app (`RuntimeError: Form data requires
+  "python-multipart"`). Found by the 2026-11-07 end-to-end run. It is now declared, and a test
+  checks that every runtime requirement is declared in `pyproject.toml` (the same gap as `httpx`
+  before v0.12.1).
 
 ## [0.12.4] - 2026-11-06
 

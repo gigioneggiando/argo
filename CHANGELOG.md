@@ -9,7 +9,14 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **`argo serve` failed on a package install.** `python-multipart`, needed by the zip-upload
+  endpoint, was listed in `requirements.txt` but not in `pyproject.toml`, so an install from the
+  package metadata could not create the app (`RuntimeError: Form data requires
+  "python-multipart"`). Found by the 2026-11-07 end-to-end run. It is now declared, and a test
+  checks that every runtime requirement is declared in `pyproject.toml` (the same gap as `httpx`
+  before v0.12.1).
 
 ## [0.12.4] - 2026-11-06
 

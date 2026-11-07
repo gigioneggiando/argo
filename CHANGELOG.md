@@ -44,6 +44,13 @@ particular while the version stays `0.y.z`.
 - **`model_unavailable` not retried in place.** The orchestrator no longer re-runs a stage for it,
   a fallback chain benches that account for the run, and the Codex check reads only stderr and CLI
   error events (not tool output).
+- **Live audit log written as requests are sent.** `live_audit_log.jsonl` gets one flushed line per
+  request; previously it was written at the end of the stage and lost if the interpret session was
+  cancelled or failed.
+- **Gemini reports tool calls as turns** (`stats.tools.totalCalls`), so `session_max_turns` applies
+  to that backend.
+- **Per-finding validate path** (`validate_batch_size <= 1`) flags a malformed verdict file for
+  review instead of crashing.
 - **`argo serve` failed on a package install.** `python-multipart`, needed by the zip-upload
   endpoint, was listed in `requirements.txt` but not in `pyproject.toml`, so an install from the
   package metadata could not create the app (`RuntimeError: Form data requires

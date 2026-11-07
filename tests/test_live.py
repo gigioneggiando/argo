@@ -401,3 +401,25 @@ def test_l3_delete_in_run_aborts_before_sending(env, loopback_server):
     with pytest.raises(LiveWriteError):
         live.run(ctx)
     assert not (ctx.run_dir / "live_audit_log.jsonl").exists()
+
+
+def test_audit_log_survives_cancel_during_interpret(env, loopback_server):
+    """Requests already sent stay on record even if the stage dies after them."""
+    from argo.runner import RunnerCancelled
+    ctx = env(live_enabled=True, live_min_request_interval_s=0.0)
+    _write_scope(ctx, loopback_server)
+    (ctx.run_dir / "live_probe_plan.json").write_text(json.dumps([
+        {"finding_id": "F1", "requests": [
+            {"method": "GET", "url": f"http://{loopback_server}/a"}]}]), encoding="utf-8")
+    real_run = ctx.runner.run
+
+    def run(**kw):
+        if kw.get("label") == "live-interpret":
+            raise RunnerCancelled("cancel")
+        return real_run(**kw)
+
+    ctx.runner.run = run
+    with pytest.raises(RunnerCancelled):
+        live.run(ctx)
+    lines = (ctx.run_dir / "live_audit_log.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1 and json.loads(lines[0])["status"] == 200

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import os
 import random
 import sys
 import time
@@ -176,6 +177,18 @@ def _execute(ctx: RunContext, plan: list[dict], scope) -> tuple[dict, list[dict]
     results: dict = {"findings": []}
     audit: list[dict] = []
     sent = 0
+    # The audit log is written AS requests are sent (one flushed line each), so it survives a
+    # cancel or crash later in the stage: traffic already sent to the target is always on record.
+    log_path = ctx.run_dir / "live_audit_log.jsonl"
+    log_path.write_text("", encoding="utf-8")
+
+    def record(entry: dict) -> None:
+        audit.append(entry)
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+
     for entry in plan:
         opener = _build_opener()                            # per-finding cookie jar (carries a session)
         fr = {"finding_id": entry.get("finding_id"), "requests": []}
@@ -186,7 +199,7 @@ def _execute(ctx: RunContext, plan: list[dict], scope) -> tuple[dict, list[dict]
             sent += 1
             rec, alog = _send(opener, req, cfg, in_scope)
             fr["requests"].append(rec)
-            audit.append(alog)
+            record(alog)
             time.sleep(cfg.live_min_request_interval_s)     # rate cap (anti-DoS)
             # B: differential probing — run the control baseline and attach it for the interpret stage.
             ctrl = req.get("control")
@@ -196,7 +209,7 @@ def _execute(ctx: RunContext, plan: list[dict], scope) -> tuple[dict, list[dict]
                 calog["role"] = "control"
                 rec["control"] = {k: crec.get(k) for k in
                                   ("method", "url", "status", "body_snippet", "response_headers")}
-                audit.append(calog)
+                record(calog)
                 time.sleep(cfg.live_min_request_interval_s)
         results["findings"].append(fr)
     return results, audit
@@ -400,8 +413,6 @@ def run(ctx: RunContext):
     if verdicts:
         results["verdicts"] = list(verdicts.values())
 
-    (ctx.run_dir / "live_audit_log.jsonl").write_text(
-        "\n".join(json.dumps(a) for a in audit) + ("\n" if audit else ""), encoding="utf-8")
     out = ctx.run_dir / "live_results.json"
     atomic_write_json(out, results)
     _attach_to_findings(ctx, results, verdicts)

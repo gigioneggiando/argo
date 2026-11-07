@@ -176,7 +176,9 @@ target is the in-scope host instead of loopback — so the validators are **inve
   like any request via `_entry_requests`) so the interpret stage judges the *difference*, cutting
   false positives on access-control findings.
 - **Full accountability** — every request (probe + control) is written to `runs/<id>/live_audit_log.jsonl`
-  (timestamp, method, URL, status, size; a mutation's body); results land in `live_results.json`.
+  (timestamp, method, URL, status, size; a mutation's body) **as it is sent**, one flushed line per
+  request, so the log survives a cancel or crash later in the stage; results land in
+  `live_results.json`.
 - **Best-effort + off-by-default** — skips silently when disabled or no plan exists; any gate failure
   aborts the stage and sends nothing.
 - Tests: `test_live.py` (RoE gate accept/refuse; in-scope accept; out-of-scope/unknown/loopback/

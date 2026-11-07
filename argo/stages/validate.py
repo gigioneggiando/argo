@@ -486,12 +486,25 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         # No verdict produced: do not auto-confirm. Flag for human runtime review.
         return Validation(verdict="needs_runtime_verification",
                           rationale=_R_NO_VERDICT_FILE)
-    data = json.loads(files[0].read_text(encoding="utf-8-sig"))
+    return _parse_single_verdict(files[0])
+
+
+def _parse_single_verdict(path: Path) -> Validation:
+    """Parse one verdict file; anything malformed is flagged for review, never a crash."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        data = None
+    if not isinstance(data, dict):
+        return Validation(verdict="needs_runtime_verification", rationale=_R_NO_VERDICT_FILE)
     if data.get("verdict") not in {"confirmed", "refuted", "needs_runtime_verification",
                                    "out_of_scope"}:
         return Validation(verdict="needs_runtime_verification",
                           rationale=f"{_R_UNRECOGNIZED_VERDICT}{data.get('verdict')!r}")
-    return Validation.model_validate(data)
+    try:
+        return Validation.model_validate(data)
+    except ValueError:                          # pydantic ValidationError is a ValueError
+        return Validation(verdict="needs_runtime_verification", rationale=_R_NO_VERDICT_FILE)
 
 
 def _chunk(items: list, n: int) -> list[list]:

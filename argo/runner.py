@@ -1372,6 +1372,15 @@ def _looks_like_gemini_refusal(text: str) -> bool:
             and any(w in s for w in _GEMINI_REFUSAL_CONTEXT_WORDS))
 
 
+def _gemini_tool_calls(raw: dict) -> int:
+    """Tool calls the Gemini CLI reports in ``stats.tools.totalCalls`` (0 when absent), so the
+    post-call ``session_max_turns`` tripwire applies to this backend as to Claude."""
+    try:
+        return int((((raw.get("stats") or {}).get("tools") or {}).get("totalCalls")) or 0)
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
 class GeminiRunner(AgentRunner):
     """Runs the **Gemini CLI** (`gemini`) — Google's Gemini models, tiered per stage like Claude
     (pro/flash/flash-lite; see DEFAULT_GEMINI_STAGE_MODELS), unlike Codex's flat single model.
@@ -1532,7 +1541,7 @@ class GeminiRunner(AgentRunner):
             text=text, model=model, prompt_sha256=prompt_sha256, work_dir=work_dir,
             input_tokens=in_tok, output_tokens=out_tok,
             cost_usd=cost,   # estimated (token-based)
-            num_turns=0, session_id=raw.get("session_id"),
+            num_turns=_gemini_tool_calls(raw), session_id=raw.get("session_id"),
             stop_reason=f"exit_{raw.get('_exit_code', 0)}",
             is_error=is_error, api_error_status=None, raw=raw,
             requested_model=model, served_model=served, served_models=served_tuple,

@@ -10,7 +10,7 @@ hardened against the real CLI (Claude Code **v2.1.178**) and a live smoke run.
 claude -p --output-format json --model <model> \
        --permission-mode default \
        [--max-budget-usd <cap>] \
-       --add-dir <repo>  --allowedTools "Write(./**)" \
+       --add-dir <repo>  --allowedTools "Edit(./**)" \
        --disallowedTools Bash Edit MultiEdit NotebookEdit WebFetch WebSearch Task ...
 ```
 
@@ -19,8 +19,11 @@ claude -p --output-format json --model <model> \
 - `--permission-mode default`: in `-p` an action that would need approval is **denied**, not
   prompted, so a run never hangs. Read tools need no rule inside the working directories (the
   scratch cwd and the `--add-dir` repo) and are denied elsewhere, so they are not listed; file
-  writes are allowed only under the cwd (`Write(./**)`). `runner.scope_claude_allowed()` does this
+  writes are allowed only under the cwd (`Edit(./**)`: Claude Code checks every file write, `Write`
+  included, against `Edit(...)` rules; a `Write(...)` path rule is ignored). `runner.scope_claude_allowed()` does this
   translation. `--disallowedTools` still hard-blocks every network/mutation tool.
+- Unit tests cannot see these permission semantics: after any change to the flags above, run a
+  real `argo pipeline --smoke --runner headless` (about $0.50) before releasing.
 - Not `bypassPermissions` or `acceptEdits`: with either, a canary session wrote and read files
   outside both the cwd and the `--add-dir` directory. `--add-dir` grants access; it does not
   confine it.

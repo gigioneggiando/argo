@@ -121,7 +121,7 @@ Mono remain self-hosted so the local application stays offline-safe.
   - a **Cancel** button while running;
   - when it finishes, results appear inline as tabs: **Report** (rendered `REPORT.md`), **Findings**
     (a **severity-mix donut** over the survivors, plus the sortable/filterable table with a detail
-    drawer per finding), **Fixes** (see below), **Chat**
+    drawer per finding), **Questions** (see below), **Fixes** (see below), **Chat**
     (see below), **Drafts**, **Artifacts** (scope / repo profile / synthesis / validated JSON). A
     dry-run shows the prompts.
 - **Fixes** (a results tab, Phase 6) — opt-in remediation. "Propose & verify fixes" generates a
@@ -129,6 +129,13 @@ Mono remain self-hosted so the local application stays offline-safe.
   ✓ *verified — compiles, no new errors*, or ⚠ with the reason (didn't apply / introduced errors).
   Patches are proposals for a maintainer — never auto-applied to the target or submitted. Uses the
   run's runner (free for mock runs). From `POST /runs/{id}/fixes` + `GET …/patches`.
+- **Questions** (a results tab, F5) — the private architecture review queue. "Build review
+  questions" creates it for any finished run (deterministic, no model call). Each question shows why
+  the source cannot settle it and the affected findings; answering needs a **provenance** and marks
+  those verdicts stale (drafts withheld). "Re-validate N answered" re-runs validation for only those
+  findings (spends model calls on the run's backend, after a confirm; free on mock). Answers are
+  context, never proof, and never appear in the report. From `GET/POST /runs/{id}/questions`,
+  `POST …/questions/{qid}/answer`, `POST …/revalidate-context`.
 - **Chat** (a results tab) — an interactive analyst with the run's full context + read-only repo.
   Ask "why didn't you find X?", "explain SQLI-001", "what did you deprioritize?", or "generate a
   test suite for CWE-89". Generated test files are shown inline and written to `runs/<id>/generated/`

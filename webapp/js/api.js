@@ -59,6 +59,11 @@ export const api = {
   getFixes: (id) => req("GET", `/runs/${id}/fixes`),
   patches: (id) => req("GET", `/runs/${id}/patches`),
   generateFixes: (id, opts) => req("POST", `/runs/${id}/fixes`, opts || { verify: true }),
+  questions: (id) => req("GET", `/runs/${id}/questions`),
+  buildQuestions: (id) => req("POST", `/runs/${id}/questions`),
+  answerQuestion: (id, qid, answer, provenance) =>
+    req("POST", `/runs/${id}/questions/${encodeURIComponent(qid)}/answer`, { answer, provenance }),
+  revalidateContext: (id, body) => req("POST", `/runs/${id}/revalidate-context`, body || {}),
 };
 
 // Live status via Server-Sent Events. onUpdate(status) is called on each event;

@@ -61,6 +61,9 @@ class RunConfig(BaseModel):
         None, description="override the Stage-1 web research default (Mistral runners need false)")
     corroborate_enabled: Optional[bool] = Field(
         None, description="override the networked corroboration default (Mistral runners need false)")
+    review_questions_enabled: Optional[bool] = Field(
+        None, description="emit the private, non-blocking architecture review-question queue (F5); "
+                          "answer it later via POST /runs/{id}/questions/{qid}/answer")
     # NOTE: no claude_api_keys/codex_api_keys here, deliberately -- mirrors gemini_accounts' own
     # absence from RunConfig. Multi-account fallback chains are a CLI concept (one process, many
     # accounts); one HTTP request = one run = one identity.
@@ -151,3 +154,18 @@ class RunSummary(BaseModel):
     target_type: Optional[str] = None
     cost_usd: float = 0.0
     started_at: Optional[str] = None
+
+
+class QuestionAnswer(BaseModel):
+    """F5: a provenance-bearing answer to one private review question (no model call)."""
+    answer: str = Field(..., min_length=1, max_length=2000,
+                        description="concise architecture/business answer")
+    provenance: str = Field(..., min_length=1, max_length=500,
+                            description="where the answer came from (owner, document, ticket, ...)")
+
+
+class ContextRevalidationRequest(BaseModel):
+    """F5: re-validate only findings made stale by answered review questions (model calls)."""
+    question: Optional[str] = Field(None, pattern=r"^rq:[0-9a-f]{16}$",
+                                    description="only findings affected by this answered question")
+    budget_usd: Optional[float] = Field(None, gt=0, description="spend cap for this re-validation")

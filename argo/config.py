@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field, fields, replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 # --- Model IDs (current catalog snapshot; see argo.model_catalog) ------------------
@@ -186,8 +187,12 @@ def estimate_cost_usd(model: str | None, input_tokens: int, output_tokens: int,
     Unknown/local models return ``0.0`` for backwards-compatible numeric aggregation, but callers
     must inspect :func:`model_cost_source` (``"unknown"``) and must never present that value as a
     free or authoritative quote. ``as_of`` selects an effective-dated promotional price when the
-    static catalog contains one.
+    static catalog contains one; it defaults to today's UTC date.
     """
+    if as_of is None:
+        # The call happens now: price it at today's effective-dated rate, not the catalog's
+        # undated fallback (which would keep an expired introductory price forever).
+        as_of = datetime.now(timezone.utc).date().isoformat()
     rates = resolve_pricing(model, as_of=as_of)
     if rates is None:
         return 0.0
@@ -347,7 +352,7 @@ class PipelineConfig:
     session_timeout_s: int = 1800       # default per-session wall-clock cap (seconds)
     # per-stage wall-clock overrides; seeded with DEFAULT_STAGE_TIMEOUTS (deep recon + audit).
     stage_timeouts: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_STAGE_TIMEOUTS))
-    budget_usd: float | None = None     # HARD per-run USD ceiling; None = unbounded
+    budget_usd: float | None = None     # per-run USD ceiling (launch gate; in-flight sessions may overshoot); None = unbounded
     # Exact model pins are fail-closed by default.  Set only for deliberate best-effort runs where
     # a provider may auto-route a deprecated/floating identifier; provenance still records both IDs.
     allow_model_substitution: bool = False

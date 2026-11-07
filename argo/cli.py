@@ -78,7 +78,7 @@ def _build_config(
     cfg = PipelineConfig(
         runner=runner,
         max_parallel_audits=parallel,
-        budget_usd=budget,                # HARD per-run ceiling (aborts remaining sessions)
+        budget_usd=budget,                # per-run ceiling: no session launches once spend reaches it
         runs_dir=runs_dir,
         fixtures_scenario=scenario,
         session_max_turns=max_turns,
@@ -311,7 +311,7 @@ AdaptiveEscalationOpt = typer.Option(
     help="off|conservative|balanced|aggressive; opt-in and persisted in run provenance")
 AuditModelOpt = typer.Option(None, "--audit-model", help="override the Stage-3 audit model")
 CalibrationOpt = typer.Option(False, "--calibration", help="run audit on Opus (all-Opus)")
-BudgetOpt = typer.Option(None, "--budget", help="HARD per-run USD ceiling; aborts further sessions")
+BudgetOpt = typer.Option(None, "--budget", help="Per-run USD ceiling: no new session launches once ledgered spend reaches it (sessions already running can overshoot it)")
 ParallelOpt = typer.Option(3, "--parallel", help="max concurrent audit/validate sessions")
 MaxFocusesOpt = typer.Option(
     None, "--max-focuses",

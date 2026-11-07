@@ -47,7 +47,7 @@ _AUTO_RETRY_MAX_SLEEP = timedelta(minutes=10)
 #: see runner._COOLDOWN_BY_FAILURE_KIND's own reasoning for the same judgment call applied to
 #: FallbackRunner's backend-level cooldown. Retrying here would just burn the bounded retry budget
 #: on something that structurally cannot succeed, delaying the (still necessary) surfaced failure.
-_NO_AUTO_RETRY_FAILURE_KINDS = {"credits_exhausted"}
+_NO_AUTO_RETRY_FAILURE_KINDS = {"credits_exhausted", "model_unavailable", "budget_reached"}
 
 
 def _auto_retry_wait_seconds(exc: Exception) -> float | None:

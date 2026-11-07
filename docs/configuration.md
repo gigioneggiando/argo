@@ -101,7 +101,7 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 
 | Field | CLI flag | Effect |
 |---|---|---|
-| `budget_usd` | `--budget` | HARD per-run ceiling; aborts remaining sessions once real spend hits it |
+| `budget_usd` | `--budget` | per-run ceiling: no session launches once ledgered spend reaches it; sessions already running can overshoot (see [headless runner](headless-runner.md#caps-step-3)) |
 | `session_max_cost_usd` | `--session-budget` | per-session cap → the CLI's native `--max-budget-usd` |
 | `session_max_turns` | `--max-turns` | per-session turn tripwire (Claude: post-hoc; Codex: enforced mid-session) |
 | `codex_context_window` | `--codex-context-window` | local model's real context window; Codex compacts at 80% |

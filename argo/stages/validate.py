@@ -43,6 +43,13 @@ _R_SESSION_FAILED = "validation session failed; see the local LLM log for diagno
 _R_NO_VERDICT_FILE = "validation session produced no verdict file"
 _R_NO_VERDICT_IN_BATCH = "no verdict returned for this finding in the batch"
 _R_BUDGET_REACHED = "not adversarially validated: per-run budget reached"
+
+
+def _failed_rationale(exc: Exception) -> str:
+    """A session refused at launch for budget is not a session failure."""
+    if getattr(exc, "failure_kind", None) == "budget_reached":
+        return _R_BUDGET_REACHED
+    return _R_SESSION_FAILED
 _R_UNRECOGNIZED_VERDICT = "unrecognized verdict "        # prefix; the value is appended
 _R_SCHEMA_INVALID_VERDICT = "verdict row failed schema validation"
 _R_SCHEMA_REPAIRED = ("schema-repaired audit finding (fields were backfilled); kept for human "
@@ -473,7 +480,7 @@ def _validate_one(ctx: RunContext, scope, scope_json_text: str, finding: Finding
         # candidate. Keep it, flagged for human runtime review.
         _log(f"{finding.id}: validation session failed ({exc}); flagging for human review")
         return Validation(verdict="needs_runtime_verification",
-                          rationale=_R_SESSION_FAILED)
+                          rationale=_failed_rationale(exc))
     files = collect_output_files(result, "verdict_*.json")
     if not files:
         # No verdict produced: do not auto-confirm. Flag for human runtime review.
@@ -552,7 +559,7 @@ def _validate_batch(ctx: RunContext, scope, scope_json_text: str, batch: list[Fi
              f"flagging {len(ids)} finding(s) for human review")
         return {fid: Validation(
             verdict="needs_runtime_verification",
-            rationale=_R_SESSION_FAILED,
+            rationale=_failed_rationale(exc),
         ) for fid in ids}
     out: dict[str, Validation] = {}
     for fp in collect_output_files(result, "verdicts*.json"):

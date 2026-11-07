@@ -417,3 +417,18 @@ def test_benchmark_cheap_tier_and_adaptive_strong_model():
     assert _strong_model("mistral-api", cfg, "validate") == MISTRAL_API_TOP
     assert _strong_model("mistral-vibe", cfg, "validate") is None
     assert _set_stage_model(cfg, "mistral-api", "validate", "x").model_for("validate") == "x"
+
+
+def test_session_budget_stops_the_tool_loop(tmp_path, dirs):
+    repo, work, _ = dirs
+    # each turn: 1M prompt tokens; the cap is hit after the first turn
+    replies = [_reply(calls=[("grep", {"pattern": f"p{i}"})], pt=1_000_000,
+                      model="mistral-small-2603") for i in range(5)]
+    r, seen, _ = _runner(tmp_path, replies)
+    raw = r._invoke(prompt="audit this", work_dir=work, model="mistral-small-2603",
+                    repo_dir=repo, allowed=["Read", "Grep", "Glob", "Write"], disallowed=[],
+                    policy=session_policy("audit"), stage="audit", run_id="R", label="x",
+                    timeout_s=60, session_budget_usd=0.01)
+    assert raw["stop_reason"] == "budget_exceeded"
+    assert len(seen) == 1
+    r.ledger.close()

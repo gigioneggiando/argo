@@ -83,7 +83,7 @@ FailureKind = str  # Literal["moderation_flagged", "credits_exhausted", "rate_li
 #: mismatch). Stage-internal retry loops stop on these; FallbackRunner may still try ANOTHER backend.
 TERMINAL_FAILURE_KINDS = frozenset({"credits_exhausted", "auth_failed", "credential_bootstrap",
                                     "invalid_request", "unsupported_stage_tool", "repo_mutated",
-                                    "model_mismatch", "model_unavailable"})
+                                    "model_mismatch", "model_unavailable", "budget_reached"})
 
 #: Codex CLI refusals that mean "this model is not usable with THIS login/profile" (observed with
 #: codex-cli 0.166, 2026-11-06). Same-account retries cannot help; another account in a
@@ -97,6 +97,28 @@ _CODEX_MODEL_UNAVAILABLE = (
      "this ChatGPT plan does not include the model in Codex: use another --codex-model, another "
      "account (--codex-accounts), or an API key (--codex-api-key)"),
 )
+
+
+def _codex_error_events(stdout: str) -> str:
+    """Concatenate the messages of `codex exec --json` ``error``/``turn.failed`` events only."""
+    out: list[str] = []
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(ev, dict) or ev.get("type") not in {"error", "turn.failed"}:
+            continue
+        msg = ev.get("message")
+        err = ev.get("error")
+        if isinstance(err, dict):
+            msg = err.get("message") or msg
+        if msg:
+            out.append(str(msg))
+    return " ".join(out)
 
 
 def _codex_model_unavailable(text: str) -> str | None:
@@ -113,6 +135,14 @@ class RunnerError(RuntimeError):
         self.retry_after = retry_after
         self.retryable = retryable
         self.failure_kind = failure_kind
+
+
+class BudgetExceeded(RunnerError):
+    """The per-run budget is spent: no further session may launch. Not retryable (on any
+    backend: FallbackRunner re-raises it instead of falling through)."""
+
+    def __init__(self, message: str):
+        super().__init__(message, retryable=False, failure_kind="budget_reached")
 
 
 def repo_fingerprint(repo_dir: Path | str | None) -> str | None:
@@ -486,6 +516,15 @@ class AgentRunner(ABC):
         allowed, disallowed = enforce_session_tools(list(allowed_tools), stage=stage)
         assert_no_network_tools(allowed, stage=stage)  # hard stop right before launch
 
+        # Budget gate at the launch chokepoint (every backend, every stage): a stage's own
+        # pre-loop check cannot see spend from sessions that finish while it is fanning out.
+        if self.config.budget_usd is not None:
+            spent = self.ledger.run_cost(run_id)
+            if spent >= self.config.budget_usd:
+                raise BudgetExceeded(
+                    f"Per-run budget ${self.config.budget_usd:.2f} reached (spent ${spent:.4f}); "
+                    f"not launching stage={stage} label={label!r}")
+
         work_dir.mkdir(parents=True, exist_ok=True)
         prompt_sha = sha256_text(prompt)
 
@@ -512,6 +551,16 @@ class AgentRunner(ABC):
             )
         except RunnerError as exc:
             _assert_repo_unchanged(repo_dir, repo_before, stage=stage, label=label, cause=exc)
+            # A session that died without an envelope (timeout, startup failure) is still a call:
+            # ledger it so the failure is queryable. Its spend is unknown (cost 0, source unknown).
+            try:
+                self.ledger.log_call(
+                    run_id=run_id, stage=stage, model=model, prompt_sha256=prompt_sha,
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    failure_kind=exc.failure_kind or "session_error", label=label,
+                    requested_model=model, cost_source="unknown")
+            except Exception:  # noqa: BLE001 -- logging must never mask the session error
+                pass
             raise
         # checked now, raised only after the call is logged (its tokens/cost were still spent)
         repo_mutation: RunnerError | None = None
@@ -769,7 +818,8 @@ class HeadlessClaudeRunner(AgentRunner):
             raise RunnerError(
                 f"claude session timed out after {timeout}s "
                 f"(stage={stage}, run_id={run_id}, label={label}); the scratch dir may hold "
-                "partial artifacts but no metadata envelope was returned"
+                "partial artifacts but no metadata envelope was returned",
+                retryable=True, failure_kind="timeout",
             ) from exc
 
         # A result envelope may arrive WITH a non-zero exit (e.g. is_error / budget-exceeded);
@@ -1224,7 +1274,9 @@ class CodexRunner(AgentRunner):
         stdout = _redact_secrets(proc.stdout, self.config.codex_api_key)
         stderr = _redact_secrets(proc.stderr, self.config.codex_api_key)
         if proc.returncode != 0:
-            advice = _codex_model_unavailable(f"{stdout} {stderr}")
+            # stderr and CLI error events only: stdout also carries tool output (target files),
+            # which must not be able to classify the failure.
+            advice = _codex_model_unavailable(f"{_codex_error_events(stdout)} {stderr}")
             if advice:
                 # retryable=True so FallbackRunner can try the next account/backend; the failure
                 # kind is terminal, so recon/audit do not re-run it on this same account.
@@ -2036,6 +2088,8 @@ _NO_HINT_RETRY_COOLDOWN = timedelta(minutes=5)
 _COOLDOWN_BY_FAILURE_KIND: dict[str, timedelta] = {
     "credits_exhausted": timedelta(minutes=30),
     "moderation_flagged": timedelta(minutes=10),
+    # the account/profile cannot serve this model at all: benched for the rest of the run
+    "model_unavailable": timedelta(days=7),
 }
 
 #: Before advancing to the NEXT backend in the chain after a moderation-flagged failure, sleep this

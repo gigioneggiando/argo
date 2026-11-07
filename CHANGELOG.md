@@ -31,6 +31,19 @@ particular while the version stays `0.y.z`.
   files outside the run directory.
 
 ### Fixed
+- **`--budget` enforced at every session launch.** The check moved into the runner, so it covers
+  every stage and backend; previously stages checked once before fanning out, and several stages
+  not at all. A refused session is `budget_reached` (not retried, no backend fallback); validate
+  labels its findings "per-run budget reached". Docs no longer call it a hard ceiling: sessions in
+  flight can overshoot it. The Mistral API backend now honours the per-session cost cap.
+- **Sessions that fail without a result are ledgered** (timeout, startup failure) with their
+  failure kind; a Claude timeout is now retryable like Codex and Gemini.
+- **Effective-dated prices applied.** Token-based cost estimates use the price in effect on the
+  call date; previously the undated catalog price was used, so an expired introductory rate stayed
+  in force.
+- **`model_unavailable` not retried in place.** The orchestrator no longer re-runs a stage for it,
+  a fallback chain benches that account for the run, and the Codex check reads only stderr and CLI
+  error events (not tool output).
 - **`argo serve` failed on a package install.** `python-multipart`, needed by the zip-upload
   endpoint, was listed in `requirements.txt` but not in `pyproject.toml`, so an install from the
   package metadata could not create the app (`RuntimeError: Form data requires

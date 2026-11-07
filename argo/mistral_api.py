@@ -485,6 +485,13 @@ class MistralApiRunner(AgentRunner):
                 if not calls:
                     text, stop = content, choice.get("finish_reason") or "stop"
                     break
+                if session_budget_usd is not None and \
+                        estimate_cost_usd(model, in_tok, out_tok) >= session_budget_usd:
+                    # In-session cost cap (Claude has --max-budget-usd natively). Returns normally
+                    # so the call is ledgered; artifacts written so far stay collectable.
+                    log({"budget_stop": True, "cap_usd": session_budget_usd})
+                    text, stop = content, "budget_exceeded"
+                    break
                 messages.append({"role": "assistant", "content": content, "tool_calls": calls})
                 for call in calls:
                     fn = call.get("function") or {}

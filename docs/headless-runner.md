@@ -56,7 +56,7 @@ is lenient, so a dying session's partial output can still be recovered.
 | Per-session cost | native `--max-budget-usd` = `min(session cap, remaining run budget)` — kills the session mid-flight |
 | Per-session turns | orchestrator tripwire (`session_max_turns`); aborts after the call with a clear error (no native pre-emption exists) |
 | Per-session wall-clock | `subprocess` `timeout` (`config.timeout_for(stage)`) |
-| **Per-run** budget | `--budget`: a hard ceiling checked against real ledger spend before each session; once hit, remaining sessions are skipped (logged) |
+| **Per-run** budget | `--budget`: checked against ledgered spend at every session launch (the runner chokepoint, all backends); once reached, further sessions are refused (`budget_reached`, logged) and validate marks the affected findings "per-run budget reached". Sessions already in flight can overshoot it |
 
 The per-run budget uses **real** cost — `cost_usd` in the ledger is the envelope's
 `total_cost_usd`.

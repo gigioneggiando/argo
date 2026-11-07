@@ -165,7 +165,7 @@ cross-backend comparison (`GET /benchmark/cross`), and refusal rate (`GET /refus
   (see `PipelineConfig._SECRET_FIELDS`) — same redaction as `config.gemini_api_key`. Multi-account
   key chaining (`--claude-api-keys`/`--codex-api-keys`) is CLI-only, not exposed over this API
   (mirrors `gemini_accounts`' own absence from `RunConfig`).
-- `config` maps to `PipelineConfig` (budget is a hard per-run ceiling, etc. — see
+- `config` maps to `PipelineConfig` (budget is a per-run launch ceiling, etc. — see
   [configuration.md](configuration.md)).
 
 Returns `202` with `{ run_id, state, status_url, events_url }`.

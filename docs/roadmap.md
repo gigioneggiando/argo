@@ -27,6 +27,12 @@ These are deliberately recorded as follow-ups rather than silently inferred as c
   finding, grouped by vulnerability family and severity. Only cases whose every label is already
   public (fixed or CVE'd) can move into `benchmarks/corpora/`, after owner review of labels,
   completeness and licence.
+- **Corpus expansion — 19 cases (2026-11-06).** 14 cases / 43 labels added to `benchmarks/corpora/`
+  from maintainer verdicts (fixed, CVE'd or publicly fixed), owner-reviewed, all commits verified
+  upstream; each case lists every clear-verdict finding at its commit. Coverage: DoS 14, memory
+  safety 11, access control 7, SSRF / crypto / auth 3 each, injection and path 1 each; 2 Critical,
+  13 High, 22 Medium, 6 Low. Still open: negative (`kind: "safe"`) cases, which stay private for
+  now, and further cases as held findings become public (fixed or advisory published).
 - **Repeated cross-provider matrix:** run documented N≥3 comparisons on the same pinned corpus and
   settings across Claude, Codex, Gemini, and selected local/open-weight models (start with Qwen and
   DeepSeek), including effort variants and mixed-provider validation. First confirm `bench-cross`

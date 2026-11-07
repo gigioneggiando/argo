@@ -1,0 +1,21 @@
+[
+  {
+    "label": "[PCSF-2026-0002] Wrong-typed cache values can crash the process instead of triggering a cache rebuild",
+    "cwe": "CWE-20",
+    "aliases": [],
+    "file": "src/Cache/Cache.php",
+    "line": 120,
+    "line_tolerance": 40,
+    "severity": "Low",
+    "category": "Crypto & integrity"
+  },
+  {
+    "label": "[PCSF-2026-0003] Parallel worker killed by a non-exception fatal (memory_limit) silently drops its chunk; run still exits 0",
+    "cwe": "CWE-754",
+    "aliases": [],
+    "file": "src/Runner/Parallel/ProcessPool.php",
+    "line_tolerance": 40,
+    "severity": "Low",
+    "category": "Crypto & integrity"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "name": "baserow-7862aeb",
+  "repo": "https://github.com/baserow/baserow",
+  "commit": "7862aeb398e2cbc302f1bb1e9f6a9f77b5759a6f",
+  "archetype": "web_api_cms",
+  "corpus_id": "argo-confirmed-2026",
+  "seeded_from": "baserow@7862aeb398e2cbc302f1bb1e9f6a9f77b5759a6f",
+  "cve_ids": [],
+  "expected": "expected_findings.json"
+}

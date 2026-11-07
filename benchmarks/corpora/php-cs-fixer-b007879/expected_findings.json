@@ -1,0 +1,12 @@
+[
+  {
+    "label": "[PCSF-2026-0001] Symlinked cache path can redirect cache writes outside the intended location",
+    "cwe": "CWE-59",
+    "aliases": [],
+    "file": "src/Cache/FileHandler.php",
+    "line": 42,
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "Path & file handling"
+  }
+]

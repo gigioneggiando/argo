@@ -1,0 +1,40 @@
+[
+  {
+    "label": "[NAV-2026-0001] Share creation preserves a client-supplied owner and can publish another user's playlist under that user's library scope",
+    "cwe": "CWE-639",
+    "aliases": [],
+    "file": "server/nativeapi/native_api.go",
+    "line": 63,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Access control"
+  },
+  {
+    "label": "[NAV-2026-0002] Plugin HTTP host capability blocks only IP literals, not hostnames resolving to private/loopback/link-local \u2014 SSRF from inside the sandbox",
+    "cwe": "CWE-918",
+    "aliases": [],
+    "file": "plugins/host_httpclient.go:146 validateHost",
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "SSRF"
+  },
+  {
+    "label": "[NAV-2026-0013] Unchecked artist role filter is interpolated into raw SQL ORDER BY expressions",
+    "cwe": "CWE-89",
+    "aliases": [],
+    "file": "persistence/artist_repository.go",
+    "line": 696,
+    "line_tolerance": 40,
+    "severity": "High",
+    "category": "Injection"
+  },
+  {
+    "label": "[NAV-2026-0024] Plugin HTTP private-host guard does not resolve DNS before connecting",
+    "cwe": "CWE-918",
+    "aliases": [],
+    "file": "plugins/host_httpclient.go:70 httpServiceImpl.Send",
+    "line_tolerance": 40,
+    "severity": "Medium",
+    "category": "SSRF"
+  }
+]

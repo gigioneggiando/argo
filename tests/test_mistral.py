@@ -406,3 +406,17 @@ def test_benchmark_cheap_tier_and_adaptive_strong_model():
     assert _strong_model("mistral-api", cfg, "validate") == MISTRAL_API_TOP
     assert _strong_model("mistral-vibe", cfg, "validate") is None
     assert _set_stage_model(cfg, "mistral-api", "validate", "x").model_for("validate") == "x"
+
+
+def test_live_activity_reports_tool_calls_and_interim_text(tmp_path, dirs):
+    repo, work, _ = dirs
+    r, _seen, _ = _runner(tmp_path, [
+        _reply(content="Looking for secrets first", calls=[("grep", {"pattern": "SECRET"})]),
+        _reply(content="Done."),
+    ])
+    activity = []
+    r.on_activity = activity.append
+    raw = _invoke(r, repo, work)
+    assert raw["text"] == "Done."
+    assert activity == ["Looking for secrets first", 'grep {"pattern": "SECRET"}']
+    r.ledger.close()

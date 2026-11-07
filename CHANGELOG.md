@@ -10,7 +10,6 @@ particular while the version stays `0.y.z`.
 ## [Unreleased]
 
 ### Added
-
 - **Review questions in the API and web UI (F5).** `GET/POST /runs/{id}/questions` (list, or build
   the queue for a finished run), `POST /runs/{id}/questions/{qid}/answer` (provenance required, no
   model call) and `POST /runs/{id}/revalidate-context` (re-validates only the affected findings).
@@ -19,9 +18,15 @@ particular while the version stays `0.y.z`.
   `revalidate-context`).
 
 ### Fixed
-
 - **Web UI: a slow tab could overwrite the one selected after it.** Switching tabs while the
   previous one was still loading showed the stale tab's content. Late responses are now discarded.
+- **Live chat activity (B2).** While the analyst works on a chat turn, the web UI shows a step
+  count and the last actions (commands, files read, interim notes) instead of a bare spinner. New
+  `POST /runs/{id}/chat/stream` (NDJSON: `activity` lines, then the same payload as
+  `POST /runs/{id}/chat`) and `chat.ask(on_activity=)`. Runners expose an optional `on_activity`
+  sink: Claude (switching to `--output-format stream-json` only while a viewer is attached; the final
+  `result` event is the same envelope), Gemini (also `stream-json`, rebuilt into the json envelope),
+  Codex (from its `--json` events) and Mistral API report; Vibe shows the spinner only for now. Results, ledger and guardrails are unchanged.
 
 ## [0.12.4] - 2026-11-06
 

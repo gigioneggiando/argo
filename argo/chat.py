@@ -153,10 +153,13 @@ def _format_candidate_verdict(v: dict) -> str:
             f"it is not added to the run's findings).\n\n{rationale}")
 
 
-def ask(ctx: RunContext, message: str) -> dict:
+def ask(ctx: RunContext, message: str, on_activity=None) -> dict:
     """Run one chat turn. Returns ``{reply, generated, cost_usd, validated_candidate}`` and persists
     both messages. If the analyst proposes a ``CANDIDATE_FINDING.json`` (B1 — "why didn't you find
-    X?"), it is re-validated with the pipeline's adversarial validator and the verdict appended."""
+    X?"), it is re-validated with the pipeline's adversarial validator and the verdict appended.
+
+    ``on_activity`` (optional) receives one-line progress strings while the turn runs (tool calls,
+    interim messages) on backends that expose them; the reply itself is unchanged."""
     scope = ctx.load_scope()
     store = ChatStore(ctx.run_dir / "chat.jsonl")
     store.append("user", message)
@@ -166,17 +169,22 @@ def ask(ctx: RunContext, message: str) -> dict:
     work.mkdir(parents=True, exist_ok=True)
     before = {p.name for p in work.glob("*") if p.is_file()}
 
-    result = ctx.runner_for("chat").run(
-        prompt=prompt,
-        run_dir=ctx.run_dir,
-        work_dir=work,
-        model=ctx.config.model_for("chat"),
-        stage="chat",
-        run_id=ctx.run_id,
-        repo_dir=ctx.repo_dir,                # READ-ONLY
-        allowed_tools=ARTIFACT_TOOLS,         # read repo + write to the generated/ workspace
-        label="chat",
-    )
+    runner = ctx.runner_for("chat")
+    runner.on_activity = on_activity
+    try:
+        result = runner.run(
+            prompt=prompt,
+            run_dir=ctx.run_dir,
+            work_dir=work,
+            model=ctx.config.model_for("chat"),
+            stage="chat",
+            run_id=ctx.run_id,
+            repo_dir=ctx.repo_dir,                # READ-ONLY
+            allowed_tools=ARTIFACT_TOOLS,         # read repo + write to the generated/ workspace
+            label="chat",
+        )
+    finally:
+        runner.on_activity = None
     reply = (result.text or "").strip() or "(no reply)"
 
     # B1: did the analyst propose a candidate missed finding to re-validate?
@@ -185,6 +193,8 @@ def ask(ctx: RunContext, message: str) -> dict:
     if _CANDIDATE_FILE in new_names:
         try:
             candidate = json.loads((work / _CANDIDATE_FILE).read_text(encoding="utf-8-sig"))
+            if on_activity is not None:
+                on_activity("Re-validating the proposed candidate finding")
             validated_candidate = _validate_candidate(ctx, scope, candidate)
             (work / f"candidate_{validated_candidate['finding_id']}.json").write_text(
                 json.dumps({"candidate": candidate, "validation": validated_candidate}, indent=2),

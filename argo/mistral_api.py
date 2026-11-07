@@ -483,6 +483,7 @@ class MistralApiRunner(AgentRunner):
                     text, stop = content, choice.get("finish_reason") or "stop"
                     break
                 messages.append({"role": "assistant", "content": content, "tool_calls": calls})
+                self._activity(content)                  # interim reasoning shown to a live viewer
                 for call in calls:
                     fn = call.get("function") or {}
                     name, raw_args = fn.get("name", ""), fn.get("arguments") or "{}"
@@ -494,6 +495,7 @@ class MistralApiRunner(AgentRunner):
                             f"mistral-api tool loop: {name} called {repeats}x with identical "
                             f"arguments ({ctx}); events: {events}", retryable=True,
                             failure_kind="tool_loop")
+                    self._activity(f"{name} {raw_args if isinstance(raw_args, str) else json.dumps(raw_args)}")
                     try:
                         args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
                         result = tb.dispatch(name, args)

@@ -20,7 +20,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import queue
 import shutil
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -404,6 +406,41 @@ def create_app(base_config: PipelineConfig | None = None) -> FastAPI:
                 ctx.ledger.close()
             except Exception:
                 pass
+
+    @app.post("/runs/{run_id}/chat/stream")
+    def post_chat_stream(run_id: str, body: ChatMessage):
+        """One chat turn as NDJSON: ``{"type":"activity","text":...}`` lines while the analyst
+        works (tool calls / interim messages, on backends that expose them), then one
+        ``{"type":"done", ...}`` line with the same payload as ``POST /runs/{id}/chat`` (or
+        ``{"type":"error","detail":...}``). Same guardrails and ledger logging as the plain call."""
+        rd = _run_dir(run_id)
+        if not (rd / "scope.json").exists():
+            raise HTTPException(status_code=409, detail="run has no scope yet — wait for ingest")
+        events: queue.Queue = queue.Queue()
+
+        def turn() -> None:
+            ctx = _chat_ctx(run_id)
+            try:
+                result = chat_engine.ask(
+                    ctx, body.message, on_activity=lambda t: events.put({"type": "activity", "text": t}))
+                events.put({"type": "done", **result})
+            except Exception as exc:  # noqa: BLE001 -- surfaced to the client, not swallowed
+                events.put({"type": "error", "detail": str(exc)[:500]})
+            finally:
+                try:
+                    ctx.ledger.close()
+                except Exception:
+                    pass
+                events.put(None)
+
+        threading.Thread(target=turn, name=f"chat-{run_id}", daemon=True).start()
+
+        def lines():
+            while (ev := events.get()) is not None:
+                yield json.dumps(ev) + "\n"
+
+        return StreamingResponse(lines(), media_type="application/x-ndjson",
+                                 headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
     # -- fixes / remediation (Phase 6) ------------------------------------------------
     @app.get("/runs/{run_id}/fixes")

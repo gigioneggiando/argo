@@ -137,6 +137,9 @@ Mono remain self-hosted so the local application stays offline-safe.
   context, never proof, and never appear in the report. From `GET/POST /runs/{id}/questions`,
   `POST …/questions/{qid}/answer`, `POST …/revalidate-context`.
 - **Chat** (a results tab) — an interactive analyst with the run's full context + read-only repo.
+  While it works, the pending reply shows a live step count and the last few actions (commands,
+  files read, interim notes) on backends that report them (Claude, Codex, Gemini, Mistral API); Vibe shows the
+  spinner only. From `POST /runs/{id}/chat/stream`.
   Ask "why didn't you find X?", "explain SQLI-001", "what did you deprioritize?", or "generate a
   test suite for CWE-89". Generated test files are shown inline and written to `runs/<id>/generated/`
   — never into the target repo. **B1 — re-validation:** when you challenge a *specific* missed

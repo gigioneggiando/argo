@@ -481,6 +481,9 @@ table.findings tr.frow:hover td { background: var(--surface-2); }
 .chat-body { padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
 .chat-msg.user .chat-body { border-color: color-mix(in srgb, var(--primary) 30%, var(--border)); background: var(--primary-soft); }
 .chat-plain { white-space: pre-wrap; }
+.chat-activity:empty { display: none; }
+.chat-activity { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; color: var(--text-faint); font-size: 12px; }
+.chat-activity-line { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .chat-inputrow { display: flex; align-items: flex-end; gap: 10px; margin-top: 14px; }
 .chat-input { min-height: 46px; flex: 1; }
 

@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -171,8 +172,12 @@ def test_resume_cli_missing_config_fails_clear(tmp_path):
 
     result = CliRunner().invoke(app, ["resume", "--run", run_id, "--runs-dir", str(tmp_path / "runs")])
     assert result.exit_code != 0
-    assert "config.json is missing" in result.output
-    assert "manual per-stage commands" in result.output
+    # rich colours and wraps the error box per platform/terminal width (it can break inside the
+    # run path), so compare with ANSI codes, box characters and all whitespace removed.
+    text = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    text = re.sub(r"[\s\u2500-\u257f]", "", text)
+    assert "config.jsonismissing" in text
+    assert "manualper-stagecommands" in text
 
 
 class _NoStatusErrorRunner(AgentRunner):

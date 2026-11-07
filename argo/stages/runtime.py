@@ -67,7 +67,7 @@ while time.time() < deadline:
 
 def send(opener, req):
     path = req.get("path", "/")
-    url = path if path.startswith("http") else base + (path if path.startswith("/") else "/" + path)
+    url = path if path.lower().startswith("http") else base + (path if path.startswith("/") else "/" + path)
     data = req.get("body")
     body = data.encode("utf-8") if isinstance(data, str) else None
     r = urllib.request.Request(url, data=body, method=req.get("method", "GET").upper(),

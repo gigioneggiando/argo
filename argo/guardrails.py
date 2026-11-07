@@ -206,8 +206,13 @@ def _probe_host(path_or_url: str) -> str | None:
     """Return the host a probe targets, or None for a host-relative path (host is injected as
     loopback by the runner). An absolute URL must carry an explicit host."""
     s = (path_or_url or "").strip()
-    if s.startswith(("http://", "https://")):
-        return urlsplit(s).hostname
+    if s.lower().startswith("http"):
+        # Any value the probe runner would send as-is (it checks the same prefix, case-insensitive)
+        # must name a host; "" (no parseable host, e.g. ``http:/x``) is rejected by the caller.
+        try:
+            return urlsplit(s).hostname or ""
+        except ValueError:
+            return ""
     if s.startswith("//"):                         # protocol-relative -> //host/...
         return s[2:].split("/", 1)[0].split(":")[0] or None
     return None                                    # host-relative path: loopback by construction

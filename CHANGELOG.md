@@ -9,7 +9,15 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+
+- **Fallback backends start from a clean scratch directory.** When a backend fails and the chain
+  moves on, the failed attempt's files are moved to `<dir>.failed-<n>` instead of being collected
+  together with the next backend's output.
+- **Runtime probe URLs parsed case-insensitively.** `HTTP://host/...` and host-less `http:` values
+  are checked as URLs (and rejected unless loopback), matching how the probe runner sends them.
+- **CI:** actions pinned to commit SHAs (Dependabot keeps them current); a Windows job runs the
+  suite on Python 3.13.
 
 ## [0.13.0] - 2026-11-07
 

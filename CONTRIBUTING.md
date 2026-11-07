@@ -53,7 +53,7 @@ python -m pytest tests/ -q
 trip Windows' temp rotation. On any OS, `argo` ≡ `python -m argo.cli`.
 
 CI (`.github/workflows/tests.yml`) runs this exact same command on every PR and every push to
-`main`, on Python 3.11 and 3.13 — no secrets, no real model calls, so it also runs cleanly on PRs
+`main`, on Python 3.11 and 3.13 (Linux) plus 3.13 on Windows — no secrets, no real model calls, so it also runs cleanly on PRs
 from forks. It's a required check on `main`; a red CI run blocks merge.
 
 ## The mock-first dev loop

@@ -164,6 +164,13 @@ cross-backend comparison (`GET /benchmark/cross`), and refusal rate (`GET /refus
   `config.corroborate_enabled: false` (or route those stages elsewhere via `config.stage_runners`),
   otherwise `POST /runs` answers **400** before any model call. Keys are redacted like the others.
   See [backends.md](backends.md#mistral-api-specifics-runner--mistral-api).
+- Vibe additionally accepts `config.mistral_vibe_auth: "key" | "stored"` (default `key`). For
+  stored mode omit `mistral_vibe_api_key`; Vibe uses the **server OS user's** saved keyring login,
+  not the browser client's login. The server must have completed Vibe browser setup manually.
+  No credential/profile paths are accepted for this feature. `GET /models` is discovery, not a
+  paid authentication or quota probe. An invalid auth enum is a schema validation error (422);
+  incompatible stored-plus-key config is rejected with 400 before starting a job. An expired or
+  inaccessible login discovered during execution is a job failure, not a successful auth preflight.
 - An invalid routing/config (unknown backend/model pairing, an OSINT stage on a Mistral backend,
   bad `stage_effort`) is a **400** with the reason in `detail`.
 - `config.claude_api_key`/`config.codex_api_key` are never echoed back or persisted in the clear

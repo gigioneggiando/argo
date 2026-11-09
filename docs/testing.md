@@ -22,6 +22,7 @@ not trip Windows' global temp rotation.
 |---|---|
 | `test_agent_onboarding.py` | Agent entry-point links/headings/imports, documented CLI commands/options, marked discovery/mock-pipeline snippets, and interrupted-run CLI recovery from the agent guide; isolated state, unchanged target, guards against real runner invocation and intercepted Python TCP connections (not a full egress sandbox) |
 | `test_guardrails.py` | tool-allowlist stripping, `assert_no_network_tools`, **the `research`-stage OSINT carve-out** (research keeps WebSearch/WebFetch but loses the shell; every other stage stays offline), prohibited-technique present/missing/empty, audit-prompt well-formedness, placeholder/`.j2` rendering |
+| `test_config.py` | Vibe key/stored configuration validation, old-config defaults and secret-free resume; smoke presets preserve narrower time/turn/cost/budget and stage-timeout caps |
 | `test_units.py` | `split_ref` / `dedup_key`, manifest extraction + glob fallback, schema conformance of fixtures, artifact-contract shape; **neutral-register prompts** — `render_prompt_pair` finds/renders a `.neutral.md` companion or returns `None` when absent, `neutralize_audit_prompt` softens narrative vocabulary while leaving the PROHIBITED TECHNIQUES block byte-identical |
 | `test_ledger.py` | `Ledger.run_cost`/`run_call_count` combine a run with its second-opinion children (`-soN`) so the `--budget` ceiling and reported cost reflect TRUE total spend, not just the primary pass's own rows; unrelated runs never leak into each other's total; a run_id containing a literal `%`/`_` doesn't turn into an unintended LIKE wildcard; the `duration_ms`/`failure_kind`/`label` migration adds the columns cleanly to a pre-existing DB fixture |
 | `test_runner.py` | the runner strips network/mutation tools even when a stage requests them; headless command is read-only/sandboxed |
@@ -113,3 +114,23 @@ python -m argo.cli pipeline --smoke      # ≈ $1, one focus, real claude
 ```
 
 See [headless-runner.md](headless-runner.md#the---smoke-run).
+
+### Vibe saved-login seam (opt-in, not CI)
+
+First complete `vibe --setup` → **Launch browser** manually on the host/user that will execute
+Argo. Use a benign fixture only. Verify the account and relevant Vibe usage counter at the provider;
+native saved credentials do not by themselves certify a subscription/billing destination.
+Then, after approval to consume allowance:
+
+```bash
+python -m argo.cli pipeline --smoke --runner mistral-vibe --mistral-vibe-auth stored \
+  --timeout 180 --max-turns 5 --parallel 1 --no-research --no-corroborate
+```
+
+Do not add a fallback, API key, runtime/live tools or extra passes to make this succeed. Use an
+external 15-minute process-tree deadline for an unattended integration test; session caps are not
+a whole-run deadline. Inspect `status.json`, required artifacts, per-call metadata and unchanged
+repo, not just the CLI exit code. A turn/time/token-limited session or partially recovered run is
+not a completed smoke. A native canary needs enough tokens for Vibe's own system prompt; record
+the approved actual caps and usage. Fake tests remain free and do not require the installed CLI,
+keyring, subscription or credentials.

@@ -191,7 +191,8 @@ The one hard boundary: a run that stopped **before ingest finished** (no usable
 |---|---|---|
 | `--runner {headless\|codex\|gemini\|mistral-api\|mistral-vibe\|mock}` | `headless` | `headless` = Claude Code · `codex` = Codex CLI (OpenAI / OSS) · `gemini` = Gemini CLI (Google) · `mistral-api` = Mistral API with Argo's own tool loop (key from `ARGO_MISTRAL_API_KEY`/`MISTRAL_API_KEY`) · `mistral-vibe` = Mistral Vibe CLI under an isolated Argo config; both offline stages only, add `--no-research --no-corroborate` · `mock` = zero-token fixtures. See [backends.md](backends.md). |
 | `--mistral-api-model ID` | `mistral-large-4` | (`--runner mistral-api`) model for every stage; `--stage-model STAGE=ID` overrides one stage. |
-| `--mistral-vibe-model ALIAS` | `mistral-medium-3.5` | (`--runner mistral-vibe`) Vibe model alias for every stage; needs the `vibe` CLI (`uv tool install mistral-vibe`) and `ARGO_MISTRAL_VIBE_API_KEY`. |
+| `--mistral-vibe-model ALIAS` | `mistral-medium-3.5` | (`--runner mistral-vibe`) Vibe model alias for every stage; needs the `vibe` CLI (`uv tool install mistral-vibe`) and the explicitly selected auth mechanism below. |
+| `--mistral-vibe-auth {key\|stored}` | `key` | Vibe auth mechanism: legacy key precedence, or Vibe's native saved OS-keyring credentials after manual browser login. Stored mode strips API-key overrides from the child and never falls back to key mode. The isolated runtime home remains Argo-managed. Resume retains the saved mode; no `auto` or arbitrary profile path. See [backends.md](backends.md#mistral-vibe-specifics-runner--mistral-vibe). |
 | `--codex-model MODEL` | — | (runner=codex) model id (e.g. `gpt-6.1-sol`); **omit to use the Codex CLI default** (recommended) |
 | `--codex-oss` | off | (runner=codex) use the open-source provider (`--oss`) |
 | `--codex-local-provider {ollama\|lmstudio}` | — | (runner=codex --codex-oss) which local provider |
@@ -238,7 +239,7 @@ The one hard boundary: a run that stopped **before ingest finished** (no usable
 | `--attribution / --no-attribution` | append the "Produced by Argo" provenance footer to `REPORT.md`, drafts and the fix report (default on). Attribution only; never changes a licence. |
 | `--yes` | proceed past the pre-audit cost estimate without prompting (non-interactive use, e.g. CI). Not a substitute for approving the spend. |
 | `--dry-run` | run ingest + recon, then **stop before any audit**. The prompt-quality feedback loop: inspect the generated prompts (incl. the ground-truth sections) before paying to run them. |
-| `--smoke` | de-risked **real** end-to-end check: cheapest models, one audit focus, low budget + short timeout + tight caps. Defaults `--brief`/`--repo` to the bundled fixtures (and forces `--no-research`). See [headless-runner.md](headless-runner.md#the---smoke-run). |
+| `--smoke` | de-risked **real** end-to-end check: cheapest models, one audit focus, low budget + short timeout + tight caps. Explicit narrower time/turn/session-cost/run-budget caps are preserved, including narrower stage timeouts; larger/default caps are tightened by the preset. Defaults `--brief`/`--repo` to the bundled fixtures (and disables research/corroboration). See [headless-runner.md](headless-runner.md#the---smoke-run). |
 
 `compare-recon` reads only `repo_profile.json`, `prompts/audit_*.md`, optional recon artifacts,
 `meta.json`, `recon_inputs.json`, and recon rows from `llm_log.jsonl`. It writes nothing and makes no

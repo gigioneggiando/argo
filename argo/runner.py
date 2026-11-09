@@ -60,6 +60,9 @@ class LLMResult:
     served_model: str | None = None
     served_models: tuple[str, ...] = ()
     cost_source: str = "unknown"
+    # Backend-classified diagnostics, never raw vendor error text. Optional for legacy backends.
+    failure_kind: str | None = None
+    metadata: dict = field(default_factory=dict)
 
 
 #: Best-effort classification of WHY a backend call failed, so a caller (FallbackRunner, a future
@@ -585,6 +588,18 @@ class AgentRunner(ABC):
                     duration_ms=int((time.monotonic() - started) * 1000),
                     failure_kind=exc.failure_kind or "session_error", label=label,
                     requested_model=model, cost_source="unknown")
+                if self.config.runner == "mistral-vibe":
+                    self._append_jsonl(run_dir, {
+                        "stage": stage, "label": label, "backend": "mistral-vibe",
+                        "backend_account": self.account_label, "model": model,
+                        "requested_model": model, "prompt_sha256": prompt_sha,
+                        "is_error": True, "failure_kind": exc.failure_kind or "session_error",
+                        "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
+                        "cost_source": "unknown", "num_turns": 0,
+                        "duration_ms": int((time.monotonic() - started) * 1000),
+                        "mistral_vibe_auth": self.config.mistral_vibe_auth,
+                        "auth_source": "unknown", "vibe_version": None,
+                    })
             except Exception:  # noqa: BLE001 -- logging must never mask the session error
                 pass
             raise
@@ -610,7 +625,7 @@ class AgentRunner(ABC):
         if result.is_error:
             classify_text = (f"{result.api_error_status} {result.text}" if result.api_error_status
                              else result.text)
-            failure_kind = _classify_failure_text(classify_text)
+            failure_kind = result.failure_kind or _classify_failure_text(classify_text)
             if failure_kind is None and result.api_error_status and "429" in str(result.api_error_status):
                 failure_kind = "rate_limited"
         model_mismatch = bool(result.served_model and result.served_model != model)
@@ -663,6 +678,9 @@ class AgentRunner(ABC):
             "session_limit_reset_hint": reset_hint,
             "duration_ms": duration_ms,
             "failure_kind": failure_kind,
+            **{name: result.metadata[name]
+               for name in ("mistral_vibe_auth", "auth_source", "vibe_version")
+               if name in result.metadata},
         })
 
         if repo_mutation is not None:
@@ -705,7 +723,9 @@ class AgentRunner(ABC):
                 f"recoverable is_error session (stage={stage}, run_id={run_id}, label={label}, "
                 f"stop_reason={result.stop_reason!r}, detail={result.text[:300]!r}{reset_suffix})",
                 retry_after=reset_hint,
-                retryable=True,
+                retryable=(not result.failure_kind
+                           or failure_kind in {"credits_exhausted", "model_unavailable"}
+                           or failure_kind not in TERMINAL_FAILURE_KINDS),
                 failure_kind=failure_kind or "unknown_retryable",
             )
         return result

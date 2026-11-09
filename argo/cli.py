@@ -62,6 +62,7 @@ def _build_config(
     gemini_accounts: Optional[str] = None,
     mistral_api_model: Optional[str] = None,
     mistral_vibe_model: Optional[str] = None,
+    mistral_vibe_auth: str = "key",
     claude_api_key: Optional[str] = None,
     claude_api_keys: Optional[str] = None,
     codex_api_key: Optional[str] = None,
@@ -73,6 +74,8 @@ def _build_config(
     profile: Optional[str] = None,
     adaptive_escalation: str = "off",
 ) -> PipelineConfig:
+    if mistral_vibe_auth not in {"key", "stored"}:
+        raise typer.BadParameter("--mistral-vibe-auth must be key or stored")
     if adaptive_escalation not in {"off", "conservative", "balanced", "aggressive"}:
         raise typer.BadParameter("--adaptive-escalation must be off, conservative, balanced, or aggressive")
     cfg = PipelineConfig(
@@ -93,6 +96,7 @@ def _build_config(
         mistral_api_model=mistral_api_model,
         mistral_vibe_model=mistral_vibe_model,
         allow_model_substitution=allow_model_substitution,
+        mistral_vibe_auth=mistral_vibe_auth,
         adaptive_escalation=adaptive_escalation,
     )
     if profile:
@@ -247,6 +251,10 @@ MistralApiModelOpt = typer.Option(
     None, "--mistral-api-model",
     help="(runner=mistral-api) model id for every stage, default mistral-large-4 (priced, exact); "
          "e.g. mistral-small-2603 for a cheap run; --stage-model STAGE=ID overrides one stage")
+MistralVibeAuthOpt = typer.Option(
+    "key", "--mistral-vibe-auth", metavar="key|stored",
+    help="Vibe authentication: key (legacy API-key sources) or stored (existing Vibe credentials "
+         "for the process's OS account). Does not select an account or guarantee billing/allowance.")
 GeminiModelOpt = typer.Option(
     None, "--gemini-model",
     help="(runner=gemini) flat override across every stage, e.g. gemini-3.1-pro; applied before "
@@ -545,6 +553,7 @@ def show_routing(
     mistral_api_model: Optional[str] = MistralApiModelOpt,
     mistral_vibe_model: Optional[str] = MistralVibeModelOpt,
     stage_model: Optional[list[str]] = StageModelOpt,
+    mistral_vibe_auth: str = MistralVibeAuthOpt,
     stage_runner: Optional[list[str]] = StageRunnerOpt,
     stage_effort: Optional[list[str]] = StageEffortOpt,
 ):
@@ -555,6 +564,7 @@ def show_routing(
                         mistral_api_model=mistral_api_model,
                         mistral_vibe_model=mistral_vibe_model,
                         stage_models=stage_model, stage_runners=stage_runner,
+                        mistral_vibe_auth=mistral_vibe_auth,
                         stage_efforts=stage_effort)
     stages = sorted(set(cfg.stage_models) | set(cfg.gemini_stage_models) |
                     set(cfg.codex_stage_models) | set(cfg.mistral_api_stage_models) |
@@ -566,7 +576,9 @@ def show_routing(
         out[s] = {"runner": cfg.stage_runners.get(s, cfg.runner), "model": model,
                   "effort": cfg.stage_effort.get(s, "provider_default"),
                   "catalog": spec.__dict__ if spec else {"status": "custom/unverified"}}
-    _emit({"runner": cfg.runner, "stages": out})
+        if out[s]["runner"] == "mistral-vibe":
+            out[s]["mistral_vibe_auth"] = cfg.mistral_vibe_auth
+    _emit({"runner": cfg.runner, "mistral_vibe_auth": cfg.mistral_vibe_auth, "stages": out})
 def _parse_duration(text: str) -> timedelta:
     raw = text.strip().lower()
     if raw.isdigit():
@@ -668,11 +680,13 @@ def ingest(
     accepted_risks: Optional[Path] = AcceptedRisksOpt,
     context_pack: Optional[Path] = ContextPackOpt,
     run: Optional[str] = typer.Option(None, "--run", help="run id (generated if omitted)"),
+    mistral_vibe_auth: str = MistralVibeAuthOpt,
     runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
     calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
     parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
 ):
-    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
+                        mistral_vibe_auth=mistral_vibe_auth)
     ctx = build_context(cfg, run or new_run_id())
     scope = do_ingest(ctx, brief, repo, links_path=links, accepted_risks_path=accepted_risks,
                       context_pack_path=context_pack)
@@ -1225,6 +1239,7 @@ def estimate(
     claude_api_keys: Optional[str] = ClaudeApiKeysOpt,
     codex_api_key: Optional[str] = CodexApiKeyOpt,
     codex_api_keys: Optional[str] = CodexApiKeysOpt,
+    mistral_vibe_auth: str = MistralVibeAuthOpt,
 ):
     """Run ingest+recon only, classify the target, and print a pre-audit cost estimate."""
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
@@ -1237,7 +1252,8 @@ def estimate(
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
                         gemini_accounts=gemini_accounts,
                         claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
-                        codex_api_key=codex_api_key, codex_api_keys=codex_api_keys)
+                        codex_api_key=codex_api_key, codex_api_keys=codex_api_keys,
+                        mistral_vibe_auth=mistral_vibe_auth)
     cfg = cfg.with_overrides(sca_enabled=sca, research_enabled=research, runtime_enabled=runtime,
                              runtime_image=runtime_image, runtime_run_cmd=runtime_run_cmd,
                              corroborate_enabled=corroborate, doc_links=list(docs_url or []),
@@ -1386,6 +1402,7 @@ def pipeline(
     mistral_api_model: Optional[str] = MistralApiModelOpt,
     mistral_vibe_model: Optional[str] = MistralVibeModelOpt,
     claude_api_key: Optional[str] = ClaudeApiKeyOpt,
+    mistral_vibe_auth: str = MistralVibeAuthOpt,
     claude_api_keys: Optional[str] = ClaudeApiKeysOpt,
     codex_api_key: Optional[str] = CodexApiKeyOpt,
     codex_api_keys: Optional[str] = CodexApiKeysOpt,
@@ -1409,6 +1426,7 @@ def pipeline(
                         gemini_accounts=gemini_accounts, mistral_api_model=mistral_api_model,
                         mistral_vibe_model=mistral_vibe_model,
                         claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
+                        mistral_vibe_auth=mistral_vibe_auth,
                         codex_api_key=codex_api_key, codex_api_keys=codex_api_keys,
                         stage_models=stage_model, stage_runners=stage_runner,
                         stage_efforts=stage_effort,
@@ -1512,11 +1530,13 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
               help="with --fixes: re-audit each patched copy and report the bug-actually-gone rate"),
           runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
           calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
-          parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt):
+          parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+          mistral_vibe_auth: str = MistralVibeAuthOpt):
     """Phase 7: run a labeled suite and score findings precision/recall/F1 (by archetype + CWE).
     Use --runner mock for a free harness check; headless measures real model quality."""
     from .benchmark import ab_compare, run_suite
-    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario)
+    cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
+                        mistral_vibe_auth=mistral_vibe_auth)
     if ab_audit_model:
         _emit(ab_compare(cfg, suite, audit_model_b=ab_audit_model, fixes=fixes,
                          parallel_cases=parallel_cases, re_audit=re_audit))

@@ -349,6 +349,8 @@ class PipelineConfig:
     mistral_vibe_model: str | None = None
     mistral_vibe_stage_models: dict[str, str] = field(default_factory=dict)
     mistral_vibe_api_key: str | None = None
+    # Explicit opt-in to native Vibe keyring credentials. Old runs retain key-only resolution.
+    mistral_vibe_auth: str = "key"       # key | stored; never an implicit auto/fallback
     session_timeout_s: int = 1800       # default per-session wall-clock cap (seconds)
     # per-stage wall-clock overrides; seeded with DEFAULT_STAGE_TIMEOUTS (deep recon + audit).
     stage_timeouts: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_STAGE_TIMEOUTS))
@@ -558,6 +560,12 @@ class PipelineConfig:
     fixtures_dir: Path = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
     fixtures_scenario: str = "happy"
 
+    def __post_init__(self) -> None:
+        if self.mistral_vibe_auth not in ("key", "stored"):
+            raise ValueError("mistral_vibe_auth must be key or stored")
+        if self.mistral_vibe_auth == "stored" and self.mistral_vibe_api_key:
+            raise ValueError("mistral_vibe_api_key is incompatible with mistral_vibe_auth=stored")
+
     def model_for(self, stage: str) -> str:
         backend = self.stage_runners.get(stage, self.runner)
         if backend == "codex":
@@ -650,17 +658,25 @@ class PipelineConfig:
         codex_models["recon"] = CODEX_BALANCED
         gemini_models = {k: GEMINI_CHEAP for k in self.gemini_stage_models}
         gemini_models["recon"] = GEMINI_FLASH
+        # A smoke preset may tighten a caller's caps, never silently relax them. Zero/None
+        # turns or session price mean no cap on the underlying CLI, not a zero-sized smoke.
+        timeout = min(600, self.session_timeout_s) if self.session_timeout_s > 0 else 600
+        turns = (min(60, self.session_max_turns)
+                 if self.session_max_turns is not None and self.session_max_turns > 0 else 60)
+        price = (min(0.75, self.session_max_cost_usd)
+                 if self.session_max_cost_usd is not None and self.session_max_cost_usd > 0 else 0.75)
         return replace(
             self,
             runner="headless",
             stage_models=models,
             codex_stage_models=codex_models,
             gemini_stage_models=gemini_models,
-            budget_usd=2.0,
-            stage_timeouts={},            # smoke stays cheap: no deep recon/audit overrides
-            session_timeout_s=600,        # sonnet recon explores the repo; give it headroom
-            session_max_cost_usd=0.75,
-            session_max_turns=60,
+            budget_usd=min(2.0, self.budget_usd) if self.budget_usd is not None else 2.0,
+            stage_timeouts={stage: seconds for stage, seconds in self.stage_timeouts.items()
+                            if 0 < seconds < timeout},
+            session_timeout_s=timeout,
+            session_max_cost_usd=price,
+            session_max_turns=turns,
             max_focuses=1,
             max_parallel_audits=1,
             audit_critic_passes=0,        # smoke stays single-session

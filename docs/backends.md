@@ -229,7 +229,7 @@ argo show-routing --runner mistral-api --stage-model audit=mistral-large-latest
 
 `mistral-vibe` runs the Mistral **Vibe** coding-agent CLI headless (`vibe -p --output json`),
 verified with mistral-vibe 3.1.0 on Windows. Install it with `uv tool install mistral-vibe`. Vibe is
-an agent with its own shell and web tools, so Argo never uses your Vibe setup: every session gets
+an agent with its own shell and web tools, so Argo never imports your Vibe configuration: every session gets
 an **isolated `VIBE_HOME`** (next to, not inside, the scratch dir) with an Argo-written
 `config.toml`:
 
@@ -245,10 +245,26 @@ an **isolated `VIBE_HOME`** (next to, not inside, the scratch dir) with an Argo-
   telemetry, update checks. Never `--auto-approve`, `--trust`, `--add-dir`.
 - **Limits:** `--max-turns`, `--time-limit` (session timeout − 15 s), the process tree is killed on
   cancel/timeout. Exit 1 (config) → `invalid_request`; 2 (runtime) and 3 (a limit) → recoverable,
-  partial scratch artifacts salvaged; a 401/403 → `auth_failed`, not retried.
-- **Key:** `ARGO_MISTRAL_VIBE_API_KEY`, else `ARGO_MISTRAL_API_KEY`, else `MISTRAL_API_KEY`,
-  passed only as the child's `MISTRAL_API_KEY`. A browser/subscription login is not used (the
-  isolated home has none).
+  partial scratch artifacts salvaged. Rejected credentials → `auth_failed`, known policy conflicts
+  → `invalid_request`, exhausted allowance → `credits_exhausted`; these stop same-backend retries.
+  Exhausted credits/unavailable models can still advance through an explicitly configured fallback
+  chain; bootstrap/auth/invalid-request failures do not silently select another backend or account.
+  A generic 403 is not proof of expired login, and a generic 429 is not proof of exhausted billing.
+  Argo's dollar caps use reported/estimated usage and are checked after a Vibe call; this backend
+  does not pass a native price cap. They are not hard in-flight billing limits. Keep time/turn caps
+  as well as an approved budget and check the subscription counter separately.
+- **Authentication:** explicit `--mistral-vibe-auth key|stored`, default **key** for compatibility
+  (including old saved runs). In key mode the precedence is `config.mistral_vibe_api_key` →
+  `ARGO_MISTRAL_VIBE_API_KEY` → `config.mistral_api_key` → `ARGO_MISTRAL_API_KEY` →
+  `MISTRAL_API_KEY`; the resolved value reaches Vibe only as the child's `MISTRAL_API_KEY`.
+  Missing/invalid keys never silently fall back to a saved login.
+- **Saved login:** `stored` lets Vibe resolve the OS keyring itself, without Argo reading a token
+  or copying your home/`.env`. Complete `vibe --setup` → **Launch browser** manually first. The
+  same OS user must run Vibe and Argo (or the server); browser login on a client machine is not
+  authentication for a remote server. Mistral key environment overrides are removed from the
+  child; an explicit Vibe key in config is incompatible with stored mode. No `auto`, profile-home,
+  dotenv bridge, or automatic browser setup. If the keyring is unavailable, fail and reauthenticate
+  outside Argo rather than weakening isolation. Unsupported OIDC overrides are not enabled by Argo.
 - **Models:** Vibe **aliases** (`--mistral-vibe-model`, default `mistral-medium-3.5` →
   `mistral-vibe-cli-latest`, i.e. Medium 3.5, which Mistral has deprecated for the API but still
   ships as Vibe's default); the served API name is recorded in `served_models`. Tokens and Vibe's
@@ -257,10 +273,30 @@ an **isolated `VIBE_HOME`** (next to, not inside, the scratch dir) with an Argo-
   this backend reads code with `read_file` only. Prefer `mistral-api` for large repos.
 - Like `mistral-api`, `research`/`corroborate` are refused in preflight (no web tools).
 
-```
+These are native Vibe **tool/path policies, not an OS sandbox**. Argo keeps the repo-integrity
+check as defense in depth. Inherited Vibe configuration overrides must not widen the policy;
+the user/project home is never imported. Treat all session exports/transcripts as private even
+when Vibe redacts config. API/UI expose only allowed artifacts and metadata, not raw sessions.
+Each invocation gets a fresh home/export directory; prior attempts are kept private rather than
+deleted or reused. This avoids stale dotenv/agent state and Windows read-only Vibe cache deletion
+failures during retries or resume.
+
+Stored mode identifies the chosen credential mechanism, not an independently verified browser
+identity or entitlement. Resume preserves the mode but resolves credentials again: it cannot
+guarantee the same person still occupies the keyring slot. Per-call auth metadata must say
+`unknown` when the actual source cannot be verified. Provider-estimated USD cost and tokens are
+not the subscription's billed amount or remaining allowance; check the relevant product/workspace
+usage counter before expanding a real test. Do not use an account's monthly allowance as an Argo
+spend authorization, and do not silently switch from Vibe included usage to the direct API.
+
+```bash
 uv tool install mistral-vibe
+# Legacy key mode (default):
 export ARGO_MISTRAL_VIBE_API_KEY=...
 argo pipeline --repo ./target --brief brief.txt --runner mistral-vibe --no-research --no-corroborate
+# Alternatively, after manual browser login, with separately approved usage:
+argo pipeline --repo ./target --runner mistral-vibe --mistral-vibe-auth stored \
+  --no-research --no-corroborate
 ```
 
 ## Gemini specifics (`runner = gemini`)

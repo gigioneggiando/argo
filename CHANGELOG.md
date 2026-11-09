@@ -9,6 +9,25 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- Explicit Mistral Vibe authentication selection (`key` / `stored`) through configuration, CLI,
+  HTTP and the existing Vibe UI selector. Stored mode delegates to Vibe's native OS keyring while
+  retaining the isolated Argo runtime home, without importing user profiles or falling back to an
+  API key. Existing runs default to key mode and retain legacy credential precedence.
+
+### Fixed
+
+- Smoke presets retain narrower explicit session, stage-timeout, turn and cost/budget caps.
+- Vibe session-envelope validation, normalized failure diagnostics and non-secret auth/version
+  metadata; raw session diagnostics are not treated as safe public artifacts.
+- Fresh Vibe homes/exports per invocation preserve private attempts without trying to delete
+  native read-only cache blobs during Windows retries/resume.
+- Preserve explicitly configured fallback routing for exhausted Vibe credits/unavailable models
+  while keeping same-backend stage retries terminal and credential/auth failures fail-closed.
+- HTTP preflight and saved execution config respect the same effective research switch; brief-less
+  jobs disable both networked stages before checking Mistral routing, matching the CLI.
+
 ## [0.14.0] - 2026-11-07
 
 ### Added

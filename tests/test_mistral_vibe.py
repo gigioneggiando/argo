@@ -147,7 +147,8 @@ def test_command_env_and_isolated_home(tmp_path, monkeypatch):
     assert seen["env"]["MISTRAL_API_KEY"] == KEY
     home = seen["env"]["VIBE_HOME"]
     assert ".argo_sessions" in home and not home.startswith(str(tmp_path / "work" / "audit"))
-    toml = (tmp_path / "work" / ".argo_sessions" / "audit.vibe.x" / "home" / "config.toml").read_text()
+    from pathlib import Path
+    toml = (Path(home) / "config.toml").read_text()
     assert KEY not in toml
     assert raw["text"] == "Done. Generated files: out.md"
     r.ledger.close()
@@ -238,3 +239,312 @@ def test_provenance_records_vibe_version(monkeypatch):
     monkeypatch.setattr(provenance.subprocess, "run", fake_run)
     monkeypatch.setattr(provenance.shutil, "which", lambda name: None)
     assert provenance.cli_versions()["vibe"] == "vibe 9.9.9"
+
+
+def test_stored_auth_bypasses_key_resolution_and_sanitizes_child(tmp_path, monkeypatch):
+    r = _runner(tmp_path, mistral_vibe_api_key=None, mistral_api_key="other-backend-key")
+    object.__setattr__(r.config, "mistral_vibe_auth", "stored")
+    for name in ("MISTRAL_API_KEY", "ARGO_MISTRAL_API_KEY", "ARGO_MISTRAL_VIBE_API_KEY"):
+        monkeypatch.setenv(name, "must-not-reach-vibe")
+    for name in ("VIBE_ENABLED_TOOLS", "VIBE_CONFIG_FILE", "VIBE_AGENT", "VIBE_ADMIN_CONFIG"):
+        monkeypatch.setenv(name, "hostile-policy")
+    monkeypatch.setenv("SSL_CERT_FILE", "approved-cert")
+    monkeypatch.setattr(r, "_api_key", lambda: pytest.fail("stored must not resolve keys"))
+    seen = _fake(r, monkeypatch, export=EXPORT_OK)
+    _invoke(r, tmp_path)
+    assert not {"MISTRAL_API_KEY", "ARGO_MISTRAL_API_KEY", "ARGO_MISTRAL_VIBE_API_KEY"} & seen["env"].keys()
+    assert {k for k in seen["env"] if k.startswith("VIBE_")} == {"VIBE_HOME"}
+    assert seen["env"]["SSL_CERT_FILE"] == "approved-cert"
+    r.ledger.close()
+
+
+@pytest.mark.parametrize("source", range(5))
+def test_complete_legacy_key_precedence(tmp_path, monkeypatch, source):
+    values = ["config-vibe", "env-vibe", "config-api", "env-api", "env-mistral"]
+    r = _runner(tmp_path, mistral_vibe_api_key=values[0] if source == 0 else None,
+                mistral_api_key=values[2] if source <= 2 else None)
+    for index, name in ((1, "ARGO_MISTRAL_VIBE_API_KEY"), (3, "ARGO_MISTRAL_API_KEY"),
+                        (4, "MISTRAL_API_KEY")):
+        if source <= index:
+            monkeypatch.setenv(name, values[index])
+    assert r._api_key() == values[source]
+    r.ledger.close()
+
+
+def test_oidc_override_is_rejected_before_launch(tmp_path, monkeypatch):
+    r = _runner(tmp_path)
+    monkeypatch.setenv("VIBE_CLI_OIDC_ENABLED", "true")
+    seen = _fake(r, monkeypatch, export=EXPORT_OK)
+    with pytest.raises(RunnerError) as exc:
+        _invoke(r, tmp_path)
+    assert exc.value.failure_kind == "credential_bootstrap"
+    assert "cmd" not in seen
+    r.ledger.close()
+
+
+def test_stale_home_dotenv_and_agents_are_not_imported(tmp_path, monkeypatch):
+    r = _runner(tmp_path)
+    home = tmp_path / "work" / ".argo_sessions" / "audit.vibe.x" / "home"
+    home.mkdir(parents=True)
+    (home / ".env").write_text("MISTRAL_API_KEY=stale-key")
+    (home / "agents").mkdir()
+    (home / "agents" / "default.toml").write_text('enabled_tools = ["bash"]')
+    seen = _fake(r, monkeypatch, export=EXPORT_OK)
+    _invoke(r, tmp_path)
+    from pathlib import Path
+    fresh_home = Path(seen["env"]["VIBE_HOME"])
+    assert fresh_home != home
+    assert not (fresh_home / ".env").exists()
+    assert not (fresh_home / "agents").exists()
+    r.ledger.close()
+
+
+def _run(r, tmp_path):
+    return r.run(prompt="audit", run_dir=tmp_path / "run", work_dir=tmp_path / "work" / "audit",
+                 model=MISTRAL_VIBE_DEFAULT, stage="audit", run_id="R", label="x")
+
+
+@pytest.mark.parametrize("diagnostic,kind,retryable", [
+    ("429 Too many requests", "rate_limited", True),
+    ("429 monthly Vibe allowance exhausted", "credits_exhausted", True),
+    ("402 API budget exhausted", "credits_exhausted", True),
+    ("403 Forbidden by organization policy", "invalid_request", False),
+    ("403 Forbidden", "unknown_retryable", True),
+    ("model_not_found: model unavailable", "model_unavailable", True),
+])
+@pytest.mark.parametrize("channel", ["stderr", "export"])
+def test_run_classifies_vendor_diagnostics_without_exposing_them(
+        tmp_path, monkeypatch, diagnostic, kind, retryable, channel):
+    unknown_secret = "opaque-unknown-vendor-secret-782"
+    r = _runner(tmp_path, mistral_vibe_api_key=None)
+    object.__setattr__(r.config, "mistral_vibe_auth", "stored")
+    message = diagnostic + " " + unknown_secret
+    export = {**EXPORT_OK, "outcome": "error", "exit_code": 2,
+              "error": {"message": message} if channel == "export" else None}
+    _fake(r, monkeypatch, rc=2, stderr=message if channel == "stderr" else "", export=export)
+    with pytest.raises(RunnerError) as exc:
+        _run(r, tmp_path)
+    assert exc.value.failure_kind == kind
+    assert exc.value.retryable is retryable
+    assert unknown_secret not in str(exc.value)
+    row = json.loads((tmp_path / "run" / "llm_log.jsonl").read_text())
+    assert row["failure_kind"] == kind
+    assert row["mistral_vibe_auth"] == "stored"
+    assert row["auth_source"] == "unknown"
+    assert unknown_secret not in json.dumps(row)
+    assert r.ledger._conn.execute("SELECT failure_kind FROM llm_calls").fetchone()[0] == kind
+    r.ledger.close()
+
+
+@pytest.mark.parametrize("change", [None, [], {"usage": []}, {"usage": {"input_tokens": "12", "output_tokens": 1}},
+    {"usage": {"input_tokens": True, "output_tokens": 1}},
+    {"usage": {"input_tokens": -1, "output_tokens": 1}}, {"steps": "4"},
+    {"cost_usd": float("nan")}, {"cost_usd": float("inf")}, {"cost_usd": -0.1},
+    {"outcome": "error"}, {"error": {"message": "vendor-secret"}}, {"config": []},
+    {"config": {"models": []}}, {"exit_code": 2},
+])
+def test_exit_zero_rejects_malformed_export(tmp_path, monkeypatch, change):
+    r = _runner(tmp_path)
+    export = {**EXPORT_OK, **change} if isinstance(change, dict) else change
+    _fake(r, monkeypatch, export=export)
+    with pytest.raises(RunnerError) as exc:
+        _invoke(r, tmp_path)
+    assert exc.value.failure_kind == "invalid_request"
+    assert "vendor-secret" not in str(exc.value)
+    r.ledger.close()
+
+
+@pytest.mark.parametrize("stdout", ["not json", "{}", '"text"', '[{"type":"message","role":"assistant","content":[{"type":"text","text":1}]}]'])
+def test_exit_zero_rejects_malformed_stdout(tmp_path, monkeypatch, stdout):
+    r = _runner(tmp_path)
+    _fake(r, monkeypatch, export=EXPORT_OK, stdout=stdout)
+    with pytest.raises(RunnerError) as exc:
+        _invoke(r, tmp_path)
+    assert exc.value.failure_kind == "invalid_request"
+    r.ledger.close()
+
+
+@pytest.mark.parametrize("rc", [2, 3])
+def test_partial_failure_keeps_scratch_and_tolerates_missing_envelope(tmp_path, monkeypatch, rc):
+    r = _runner(tmp_path)
+    _fake(r, monkeypatch, rc=rc, stdout="broken", export=[])
+    scratch = tmp_path / "work" / "audit"
+    scratch.mkdir(parents=True)
+    (scratch / "partial.json").write_text('{"findings": []}')
+    with pytest.raises(RunnerError) as exc:
+        _run(r, tmp_path)
+    assert exc.value.retryable
+    assert (scratch / "partial.json").exists()
+    assert r.ledger.run_call_count("R") == 1
+    r.ledger.close()
+
+
+def test_malformed_failure_metadata_never_crashes_or_echoes_vendor_values(tmp_path, monkeypatch):
+    r = _runner(tmp_path, mistral_vibe_api_key=None, mistral_vibe_auth="stored")
+    _fake(r, monkeypatch, rc=2, stdout="UNKNOWN_SENTINEL", stderr="UNKNOWN_SENTINEL",
+          export={"outcome": [], "config": {"models": [], "active_model": []},
+                  "vibe_version": "UNKNOWN_SENTINEL", "usage": [], "cost_usd": "bad"})
+    with pytest.raises(RunnerError) as exc:
+        _run(r, tmp_path)
+    assert "UNKNOWN_SENTINEL" not in str(exc.value)
+    assert exc.value.retryable
+    assert "UNKNOWN_SENTINEL" not in (tmp_path / "run" / "llm_log.jsonl").read_text()
+    r.ledger.close()
+
+
+def test_missing_stored_credentials_are_terminal_and_do_not_expose_diagnostics(tmp_path, monkeypatch):
+    r = _runner(tmp_path, mistral_vibe_api_key=None, mistral_vibe_auth="stored")
+    _fake(r, monkeypatch, rc=1, stdout="", stderr="Missing API key UNKNOWN_SENTINEL",
+          export={"error": {"message": "Missing API key UNKNOWN_SENTINEL"}})
+    with pytest.raises(RunnerError) as exc:
+        _run(r, tmp_path)
+    assert exc.value.failure_kind == "credential_bootstrap"
+    assert not exc.value.retryable
+    assert "vibe --setup" in str(exc.value) and "UNKNOWN_SENTINEL" not in str(exc.value)
+    from argo.runner import _is_retryable
+    assert not _is_retryable(exc.value)
+    row = json.loads((tmp_path / "run" / "llm_log.jsonl").read_text())
+    assert row["mistral_vibe_auth"] == "stored"
+    assert row["failure_kind"] == "credential_bootstrap"
+    assert row["cost_source"] == "unknown"
+    assert "UNKNOWN_SENTINEL" not in json.dumps(row)
+    r.ledger.close()
+
+
+@pytest.mark.parametrize("diagnostic,kind", [
+    ("429 monthly Vibe allowance exhausted", "credits_exhausted"),
+    ("402 API budget exhausted", "credits_exhausted"),
+    ("model_not_found: model unavailable", "model_unavailable"),
+])
+@pytest.mark.parametrize("channel", ["stderr", "export"])
+def test_run_routes_terminal_backend_failure_to_explicit_fallback(
+        tmp_path, monkeypatch, diagnostic, kind, channel):
+    from datetime import datetime, timezone
+    from unittest.mock import Mock
+    from argo.runner import FallbackRunner, TERMINAL_FAILURE_KINDS, _COOLDOWN_BY_FAILURE_KIND
+
+    cfg = PipelineConfig(runner="mistral-vibe", mistral_vibe_api_key=KEY,
+                         runner_fallbacks=["mock"])
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        chain = build_runner(cfg, ledger)
+        assert isinstance(chain, FallbackRunner)
+        vibe, fallback = chain._runners
+        assert isinstance(vibe, MistralVibeRunner)
+        vibe._resolved_bin = "vibe"
+        _fake(vibe, monkeypatch, rc=2,
+              stderr=diagnostic if channel == "stderr" else "",
+              export={**EXPORT_OK, "outcome": "error", "exit_code": 2,
+                      "error": {"message": diagnostic} if channel == "export" else None})
+        execute = Mock(wraps=vibe._exec)
+        monkeypatch.setattr(vibe, "_exec", execute)
+        next_run = Mock(return_value="FALLBACK-RESULT")
+        monkeypatch.setattr(fallback, "run", next_run)
+
+        before = datetime.now(timezone.utc)
+        assert _run(chain, tmp_path) == "FALLBACK-RESULT"
+        after = datetime.now(timezone.utc)
+        assert kind in TERMINAL_FAILURE_KINDS  # still terminal for same-backend stage retries
+        cooldown = _COOLDOWN_BY_FAILURE_KIND[kind]
+        disabled_until = chain._disabled[0]
+        assert disabled_until is not None
+        assert before + cooldown <= disabled_until <= after + cooldown
+        assert _run(chain, tmp_path) == "FALLBACK-RESULT"
+        assert execute.call_count == 1  # subsequent calls skip the cooled-down Vibe backend
+        assert next_run.call_count == 2
+        assert next_run.call_args.kwargs["model"] == fallback.config.model_for("audit")
+        assert ledger._conn.execute("SELECT failure_kind FROM llm_calls").fetchone()[0] == kind
+    finally:
+        ledger.close()
+
+
+@pytest.mark.parametrize("diagnostic,kind", [
+    ("Missing API key", "credential_bootstrap"),
+    ("401 Unauthorized", "auth_failed"),
+    ("403 Forbidden by organization policy", "invalid_request"),
+])
+def test_run_does_not_fallback_on_credentials_or_invalid_request(
+        tmp_path, monkeypatch, diagnostic, kind):
+    from unittest.mock import Mock
+    from argo.runner import FallbackRunner
+
+    r = _runner(tmp_path)
+    _fake(r, monkeypatch, rc=2, stderr=diagnostic,
+          export={**EXPORT_OK, "outcome": "error", "exit_code": 2})
+    fallback = build_runner(PipelineConfig(runner="mock"), r.ledger)
+    next_run = Mock(return_value="UNEXPECTED-FALLBACK")
+    monkeypatch.setattr(fallback, "run", next_run)
+    chain = FallbackRunner(r.config, r.ledger, [r, fallback])
+    try:
+        with pytest.raises(RunnerError) as exc:
+            _run(chain, tmp_path)
+        assert exc.value.failure_kind == kind
+        assert exc.value.retryable is False
+        next_run.assert_not_called()
+        assert not chain._disabled
+    finally:
+        r.ledger.close()
+
+
+@pytest.mark.parametrize("diagnostic,kind", [
+    ("402 API budget exhausted", "credits_exhausted"),
+    ("model_not_found: model unavailable", "model_unavailable"),
+])
+def test_recon_does_not_retry_vibe_terminal_backend_failure(
+        tmp_path, monkeypatch, env, diagnostic, kind):
+    from unittest.mock import Mock
+    from argo.orchestrator import do_ingest
+    from argo.runner import TERMINAL_FAILURE_KINDS
+    from argo.stages import recon
+    from conftest import BRIEF, REPO
+
+    ctx = env()
+    do_ingest(ctx, BRIEF, str(REPO))  # fixture-only setup, no real CLI
+    r = _runner(tmp_path)
+    _fake(r, monkeypatch, rc=2, stderr=diagnostic,
+          export={**EXPORT_OK, "outcome": "error", "exit_code": 2})
+    execute = Mock(wraps=r._exec)
+    monkeypatch.setattr(r, "_exec", execute)
+    ctx.runner = r
+    try:
+        with pytest.raises(RunnerError) as exc:
+            recon.run(ctx)
+        assert exc.value.failure_kind == kind
+        assert exc.value.retryable is True  # eligible for an explicit cross-backend fallback
+        assert kind in TERMINAL_FAILURE_KINDS
+        assert execute.call_count == 1  # recon's same-backend retry must nevertheless stop
+    finally:
+        r.ledger.close()
+
+
+def test_repeated_invocations_use_fresh_homes_without_deleting_readonly_logs(tmp_path, monkeypatch):
+    import argo.mistral_vibe as mv
+    from pathlib import Path
+    r = _runner(tmp_path)
+    seen = _fake(r, monkeypatch, export=EXPORT_OK)
+    _invoke(r, tmp_path)
+    first_home = Path(seen['env']['VIBE_HOME'])
+    readonly_log = first_home / 'logs' / 'plugin-blob'
+    readonly_log.parent.mkdir()
+    readonly_log.write_text('immutable native Vibe cache')
+    original = mv.shutil.rmtree
+    def refuse_native_home_deletion(path, *args, **kwargs):
+        if Path(path) == first_home:
+            raise PermissionError('simulated Windows read-only plugin blob')
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(mv.shutil, 'rmtree', refuse_native_home_deletion)
+    _invoke(r, tmp_path)
+    assert Path(seen['env']['VIBE_HOME']) != first_home
+    assert readonly_log.exists()
+    r.ledger.close()
+
+
+@pytest.mark.parametrize("outcome,rc", [("deadline", 3), ("terminated", 3), ("length", 3),
+    ("refusal", 3), ("infrastructure_failure", 2), ("aborted", 4)])
+def test_native_vibe_stop_outcomes_are_preserved(tmp_path, monkeypatch, outcome, rc):
+    r = _runner(tmp_path)
+    _fake(r, monkeypatch, rc=rc, export={**EXPORT_OK, "outcome": outcome, "exit_code": rc})
+    raw = _invoke(r, tmp_path)
+    result = r.parse_envelope(raw, model="m", prompt_sha256="h", work_dir=tmp_path)
+    assert result.is_error and result.stop_reason == outcome
+    r.ledger.close()

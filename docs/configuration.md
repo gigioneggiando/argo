@@ -48,6 +48,10 @@ drop to Sonnet for broad low-value sweeps once a target class reliably yields go
 `config.for_smoke()` uses a cheap map with recon on a balanced tier.  Every run persists the
 catalog snapshot, effective stage maps, CLI versions, and requested/served model IDs.
 
+`for_smoke()` only tightens safety caps: an explicit 180-second/5-turn limit is not replaced by
+the 600-second/60-turn preset. Smaller positive per-stage timeouts survive; larger overrides
+cannot bypass the smoke's effective session timeout. A zero run budget remains a launch stop.
+
 ### Per-stage routing and effort
 
 Use repeatable flags for advanced runs:
@@ -187,6 +191,7 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 | `mistral_api_model` / `mistral_api_stage_models` | `--mistral-api-model` / `--stage-model` | Mistral API model, flat and per stage (default `mistral-large-4`) |
 | `mistral_api_key` / `mistral_api_base_url` / `mistral_api_context_window` | — (env vars; HTTP API `RunConfig`) | secret (redacted; else `ARGO_MISTRAL_API_KEY`, then `MISTRAL_API_KEY`), API base URL, context window for tool-output elision (default 128k) |
 | `mistral_vibe_model` / `mistral_vibe_stage_models` / `mistral_vibe_api_key` | `--mistral-vibe-model` | Vibe model aliases (default `mistral-medium-3.5`) and key (else `ARGO_MISTRAL_VIBE_API_KEY`, then the API key) |
+| `mistral_vibe_auth` | `--mistral-vibe-auth key\|stored` | default `key`, also for legacy saved configs. `stored` delegates credential resolution to Vibe's OS keyring, without API-key overrides or imported user configuration. An explicit `mistral_vibe_api_key` is incompatible with stored. Serialized non-secret field; resume preserves the mode, not a guaranteed identity. No changes to the separate direct-API runner. |
 | `model_catalog_snapshot` | — | frozen, credential-free model metadata stored with the run so requested/served IDs stay interpretable later |
 
 ## Programmatic example

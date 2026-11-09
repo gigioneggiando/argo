@@ -27,6 +27,7 @@ import fnmatch
 import json
 import os
 import re
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,7 @@ import httpx
 from .config import MISTRAL_API_BASE_URL, PipelineConfig, estimate_cost_usd, model_cost_source
 from .ledger import Ledger
 from .runner import AgentRunner, LLMResult, RunnerCancelled, RunnerError, _redact_secrets
+from .tool_errors import ToolError, validate_json_content
 
 # --- caps (bounded tool results keep one session's context and cost predictable) ---------------
 MAX_READ_LINES = 2000
@@ -58,11 +60,6 @@ MAX_RATE_LIMIT_RETRIES = 8
 MAX_TRANSIENT_RETRIES = 4
 _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist", "build"}
 _ELIDED = "[earlier tool output elided to fit the context window; call the tool again if needed]"
-
-
-class ToolError(Exception):
-    """A tool call the model got wrong (bad path, missing arg...). Returned to the model as the
-    tool result so it can correct itself; never fatal to the session."""
 
 
 # ============================================================================== tool dispatcher
@@ -229,24 +226,19 @@ class Toolbox:
             raise ToolError(f"content too large ({len(data)} bytes > {MAX_WRITE_BYTES})")
         target = self._resolve_write(path)
         if target.suffix.lower() == ".json":
-            # No shell means the model cannot run a JSON linter itself; validate here and hand
-            # the exact error back, so a stray quote is fixed in-session instead of failing the
-            # stage later as "findings file is not valid JSON".
-            try:
-                json.loads(content)
-            except json.JSONDecodeError as exc:
-                lines = content.splitlines()
-                bad = lines[exc.lineno - 1] if 0 < exc.lineno <= len(lines) else ""
-                lo = max(0, exc.colno - 60)
-                raise ToolError(
-                    f"not written: invalid JSON ({exc.msg} at line {exc.lineno}, column "
-                    f"{exc.colno}). Near: {bad[lo:exc.colno + 40]!r}. Escape inner double quotes "
-                    "as \\\" and newlines as \\n, then call write_file again with the full "
-                    "corrected content.") from None
+            validate_json_content(content)
         target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_name(target.name + ".argo-tmp")
-        tmp.write_bytes(data)
-        os.replace(tmp, target)
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".argo-tmp",
+                                        dir=target.parent)
+        try:
+            with os.fdopen(fd, "wb") as tmp:
+                tmp.write(data)
+            os.replace(tmp_name, target)
+        finally:
+            try:
+                os.unlink(tmp_name)
+            except FileNotFoundError:
+                pass
         return f"wrote {len(data)} bytes to {target}"
 
     # -- schema + dispatch ------------------------------------------------------------------

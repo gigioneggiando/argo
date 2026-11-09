@@ -4,6 +4,8 @@ auth, OSINT refusal and key hygiene. The CLI is faked; the real envelope was cap
 mistral-vibe 3.1.0 on 2026-11-06."""
 
 import json
+import os
+import subprocess
 import tomllib
 
 import pytest
@@ -73,18 +75,23 @@ EXPORT_OK = {"outcome": "finished", "stop_reason": None, "error": None,
 
 # ---------------------------------------------------------------------------- config envelope
 def test_config_grants_repo_read_only_and_denies_outside_writes(tmp_path):
-    cfg = tomllib.loads(vibe_config_toml(tmp_path / "repo", allow_write=True))
+    cfg = tomllib.loads(vibe_config_toml(tmp_path / "repo", allow_write=True,
+                                         work_dir=tmp_path / "work"))
     assert cfg["outside_workdir"] == "deny"
-    assert cfg["enabled_tools"] == ["read_file", "write_file"]
+    assert cfg["enabled_tools"] == ["read_file", "argo_write_file"]
+    assert "write_file" in cfg["disabled_tools"]
+    assert cfg["enable_mcp"] is True
+    assert cfg["mcp_servers"][0]["name"] == "argo"
+    assert cfg["mcp_servers"][0]["transport"] == "stdio"
+    assert cfg["mcp_servers"][0]["args"][-2:] == ["--work-dir", str((tmp_path / "work").resolve())]
     for off in ("bash", "powershell", "git_bash", "web_fetch", "web_search", "task", "edit"):
         assert off in cfg["disabled_tools"]
     for shell in ("bash", "powershell", "git_bash"):
         assert cfg["tools"][shell]["permission"] == "never"
     grant = cfg["tools"]["read_file"]["allowlist"]
     assert len(grant) == 1 and grant[0].startswith("vibe-path:directory_recursive:")
-    assert "allowlist" not in cfg["tools"]["write_file"]              # repo never writable
-    assert cfg["tools"]["write_file"]["outside_workdir"] == "deny"
-    for flag in ("enable_mcp", "enable_subagents", "enable_connectors", "include_project_context",
+    assert "allowlist" not in cfg["tools"]["argo_write_file"]         # writer gets scratch only
+    for flag in ("enable_subagents", "enable_connectors", "include_project_context",
                  "enable_background_processes", "enable_telemetry", "bypass_tool_permissions"):
         assert cfg[flag] is False
 
@@ -140,7 +147,7 @@ def test_command_env_and_isolated_home(tmp_path, monkeypatch):
     assert "--add-dir" not in cmd and "--auto-approve" not in cmd and "--trust" not in cmd
     assert cmd[cmd.index("--workdir") + 1] == str(tmp_path / "work" / "audit")
     assert [cmd[i + 1] for i, c in enumerate(cmd) if c == "--enabled-tools"] == ["read_file",
-                                                                                 "write_file"]
+                                                                                 "argo_write_file"]
     assert cmd[cmd.index("--max-turns") + 1] == "40"
     assert cmd[cmd.index("--model") + 1] == MISTRAL_VIBE_DEFAULT
     assert KEY not in " ".join(cmd) and seen["prompt"] == "audit"
@@ -152,6 +159,75 @@ def test_command_env_and_isolated_home(tmp_path, monkeypatch):
     assert KEY not in toml
     assert raw["text"] == "Done. Generated files: out.md"
     r.ledger.close()
+
+
+def _mcp_write_from_vibe_config(tmp_path, work, name, content):
+    work.mkdir(parents=True, exist_ok=True)
+    cfg = tomllib.loads(vibe_config_toml(None, allow_write=True, work_dir=work))
+    server = cfg["mcp_servers"][0]
+    requests = [
+        {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+         "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo":
+                    {"name": "test-vibe", "version": "1"}}},
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+         "params": {"name": "write_file", "arguments": {"path": name, "content": content}}},
+    ]
+    env = {**server["env"], "PATH": os.environ.get("PATH", ""),
+           "USERPROFILE": str(tmp_path)}
+    proc = subprocess.run([server["command"], *server["args"]], input="".join(
+        json.dumps(request) + "\n" for request in requests), text=True, capture_output=True,
+        cwd=server["cwd"], env=env, timeout=20, check=True)
+    replies = [json.loads(line) for line in proc.stdout.splitlines()]
+    assert [reply["id"] for reply in replies] == [1, 2, 3]
+    assert replies[1]["result"]["tools"][0]["name"] == "write_file"
+    return replies[2]["result"]
+
+
+def test_vibe_mcp_writer_writes_valid_json_unchanged(tmp_path):
+    work = tmp_path / "work"
+    content = '{"brief": "line one\\nline two", "quote": "say \\"hi\\""}'
+    result = _mcp_write_from_vibe_config(tmp_path, work, "scope.JSON", content)
+    assert "isError" not in result
+    assert (work / "scope.JSON").read_text(encoding="utf-8") == content
+    assert not list(work.glob("*.argo-tmp"))
+
+
+@pytest.mark.parametrize("name,content", [
+    ("scope.json", '{"brief": "first line\nsecond line"}'),
+    ("scope.JSON", '{"brief": "say "hi""}'),
+])
+def test_vibe_mcp_writer_rejects_bad_json_before_write_and_keeps_previous_file(
+        tmp_path, name, content):
+    work = tmp_path / "work"
+    work.mkdir()
+    target = work / name
+    target.write_text('{"previous": true}', encoding="utf-8")
+
+    result = _mcp_write_from_vibe_config(tmp_path, work, name, content)
+    message = result["content"][0]["text"]
+    assert result["isError"] is True
+    assert "not written" in message and "invalid JSON" in message
+    assert "line 1, column" in message and "Escape inner double quotes" in message
+    assert "\\n" in message
+    assert len(message) < 400
+    assert target.read_text(encoding="utf-8") == '{"previous": true}'
+    assert not list(work.glob("*.argo-tmp"))
+
+
+def test_vibe_mcp_json_error_excerpt_is_sanitized(tmp_path):
+    work = tmp_path / "work"
+    secret = "PRIVATE_BRIEF_SENTINEL_23984"
+    result = _mcp_write_from_vibe_config(
+        tmp_path, work, "scope.json", '{"brief": "' + secret + '\ncontinued"}')
+    message = result["content"][0]["text"]
+    assert result["isError"] is True
+    assert "Invalid control character" in message
+    assert secret not in message
+    assert "*" in message
+    assert len(message) < 400
+    assert not (work / "scope.json").exists()
 
 
 def test_parse_envelope_usage_cost_and_served_alias(tmp_path, monkeypatch):

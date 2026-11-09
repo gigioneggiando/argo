@@ -4,16 +4,18 @@ Verified against mistral-vibe 3.1.0 on Windows (2026-11-06). Each session gets a
 isolated ``VIBE_HOME`` (never the user's own config, sessions or project trust) whose
 ``config.toml`` pins the safety envelope:
 
-  * tools: only ``read_file`` and (when the stage grants ``Write``) ``write_file``; every shell
-    (``bash``/``powershell``/``git_bash``), web, task, skill and edit tool disabled, and the shells
-    additionally set to ``permission = "never"`` (observed: Vibe still *offers* ``file_system.bash``
-    to the model, but a ``never`` tool call is refused, not run);
+  * tools: only ``read_file`` and (when the stage grants ``Write``) Argo's local stdio MCP
+    ``argo_write_file``; Vibe's native writer, every shell (``bash``/``powershell``/``git_bash``),
+    web, task, skill and edit tool disabled, and the shells additionally set to
+    ``permission = "never"`` (observed: Vibe still *offers* ``file_system.bash`` to the model, but
+    a ``never`` tool call is refused, not run);
   * ``outside_workdir = "deny"`` with the session scratch dir as ``--workdir``, so writes land only
     in scratch; the audited repo is readable through one encoded path grant
     (``vibe-path:directory_recursive:<repo>``) on ``read_file`` only -- never ``--add-dir``, which
     would make the repo writable too;
-  * MCP, subagents, connectors, background processes, project context (``AGENTS.md``), telemetry
-    and update checks off.
+  * remote MCP servers, subagents, connectors, background processes, project context (``AGENTS.md``),
+    telemetry and update checks off. The only MCP server is the Argo-owned local JSON writer;
+    it has no network tools and is scoped to this session's scratch directory.
 
 Vibe 3.1 has no ``grep`` tool (search goes through the shell, which stays off), so this backend
 reads code with ``read_file`` only: correct, but slower on large repos than ``mistral-api``.
@@ -29,6 +31,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -53,28 +56,42 @@ def _toml_literal(value: str) -> str:
     return f"'{value}'"
 
 
-def vibe_config_toml(repo_dir: Path | None, allow_write: bool) -> str:
+def vibe_config_toml(repo_dir: Path | None, allow_write: bool,
+                     work_dir: Path | None = None) -> str:
     """The isolated session config (no secrets). ``repo_dir`` is granted read-only."""
-    enabled = ["read_file"] + (["write_file"] if allow_write else [])
+    use_argo_writer = allow_write and work_dir is not None
+    enabled = ["read_file"] + (["argo_write_file"] if use_argo_writer else [])
     lines = [
         "# Managed by Argo (runner=mistral-vibe). Regenerated every session; no secrets here.",
         'outside_workdir = "deny"',
-        "enable_mcp = false", "enable_subagents = false", "enable_connectors = false",
+        f"enable_mcp = {'true' if use_argo_writer else 'false'}",
+        "enable_subagents = false", "enable_connectors = false",
         "enable_background_processes = false", "include_project_context = false",
         "enable_telemetry = false", "enable_update_checks = false", "enable_auto_update = false",
         "bypass_tool_permissions = false",
         "enabled_tools = [" + ", ".join(f'"{t}"' for t in enabled) + "]",
         "disabled_tools = [" + ", ".join(f'"{t}"' for t in
-                                          _DISABLED + ([] if allow_write else ["write_file"])) + "]",
+                                          _DISABLED + ["write_file"]) + "]",
         "", "[tools.read_file]", 'permission = "always"',
     ]
     if repo_dir is not None:
         grant = "vibe-path:directory_recursive:" + os.path.realpath(repo_dir)
         lines.append(f"allowlist = [{_toml_literal(grant)}]")
-    lines += ["", "[tools.write_file]",
-              f'permission = "{"always" if allow_write else "never"}"', 'outside_workdir = "deny"']
+    lines += ["", "[tools.write_file]", 'permission = "never"',
+              'outside_workdir = "deny"', "", '[tools."argo_write_file"]',
+              f'permission = "{"always" if use_argo_writer else "never"}"']
     for shell in ("bash", "powershell", "git_bash"):
         lines += ["", f"[tools.{shell}]", 'permission = "never"']
+    if use_argo_writer:
+        module_root = Path(__file__).resolve().parent.parent
+        command = [sys.executable, "-m", "argo.mistral_vibe_tools"]
+        lines += [
+            "", "[[mcp_servers]]", 'name = "argo"', 'transport = "stdio"',
+            f"command = {json.dumps(command[0])}",
+            "args = " + json.dumps([*command[1:], "--work-dir", str(Path(work_dir).resolve())]),
+            f"cwd = {json.dumps(str(Path(work_dir).resolve()))}",
+            "env = { PYTHONPATH = " + json.dumps(str(module_root)) + " }",
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -195,7 +212,7 @@ class MistralVibeRunner(AgentRunner):
                "--workdir", str(work_dir), "--time-limit", str(max(30, int(timeout_s) - 15)),
                "--enabled-tools", "read_file"]
         if allow_write:
-            cmd += ["--enabled-tools", "write_file"]
+            cmd += ["--enabled-tools", "argo_write_file"]
         if self.config.session_max_turns:
             cmd += ["--max-turns", str(int(self.config.session_max_turns))]
         if model:
@@ -229,7 +246,8 @@ class MistralVibeRunner(AgentRunner):
         home, export_dir = side / "home", side / "export"
         home.mkdir(mode=0o700)
         (home / "config.toml").write_text(
-            vibe_config_toml(Path(repo_dir) if repo_dir else None, allow_write), encoding="utf-8")
+            vibe_config_toml(Path(repo_dir) if repo_dir else None, allow_write, work_dir),
+            encoding="utf-8")
         timeout = int(timeout_s or self.config.session_timeout_s)
         cmd = self.build_cmd(model=model, work_dir=work_dir, export_dir=export_dir,
                              allow_write=allow_write, timeout_s=timeout)

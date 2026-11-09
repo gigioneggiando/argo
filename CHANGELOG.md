@@ -9,6 +9,13 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-11-09
+
+### Fixed
+
+- Mistral Vibe JSON artifacts are validated through Argo's local writer before they can replace
+  session files; ingest retains its independent final validation.
+
 ## [0.15.0] - 2026-11-09
 
 ### Added

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -49,6 +49,9 @@ class RunConfig(BaseModel):
         None, description="(runner=mistral-api) model id for every stage; default mistral-large-4")
     mistral_vibe_model: Optional[str] = Field(
         None, description="(runner=mistral-vibe) Vibe model alias; default mistral-medium-3.5")
+    mistral_vibe_auth: Literal["key", "stored"] = Field(
+        "key", description="Vibe authentication: key (legacy API-key sources) or stored "
+                           "(Vibe credentials for the server process's OS account; billing unknown)")
     mistral_api_key: Optional[str] = Field(
         None, description="(runner=mistral-api) Mistral API key for this run; omit to use "
                           "ARGO_MISTRAL_API_KEY / MISTRAL_API_KEY. Never echoed back or persisted "

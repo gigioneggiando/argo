@@ -38,6 +38,7 @@ class JobManager:
             codex_api_key=req.config.codex_api_key,
             mistral_api_model=req.config.mistral_api_model,
             mistral_vibe_model=req.config.mistral_vibe_model,
+            mistral_vibe_auth=req.config.mistral_vibe_auth,
             mistral_api_key=req.config.mistral_api_key,
             mistral_vibe_api_key=req.config.mistral_vibe_api_key,
             stage_runners=dict(req.config.stage_runners),
@@ -52,10 +53,15 @@ class JobManager:
             # those can still bump individual stages on top -- mirrors the CLI's _build_config.
             cfg = cfg.with_overrides(
                 gemini_stage_models={k: req.config.gemini_model for k in cfg.gemini_stage_models})
-        if req.config.research_enabled is not None:
-            cfg = cfg.with_overrides(research_enabled=req.config.research_enabled)
+        # Preflight, persisted config and execution must use the same effective stage set.
+        # The UI sends the top-level research switch, not always the config-level override.
+        research = (req.config.research_enabled if req.config.research_enabled is not None
+                    else req.research)
+        cfg = cfg.with_overrides(research_enabled=bool(research))
         if req.config.corroborate_enabled is not None:
             cfg = cfg.with_overrides(corroborate_enabled=req.config.corroborate_enabled)
+        if not (req.brief and req.brief.strip()):
+            cfg = cfg.with_overrides(research_enabled=False, corroborate_enabled=False)
         if req.config.review_questions_enabled is not None:
             cfg = cfg.with_overrides(review_questions_enabled=req.config.review_questions_enabled)
         if req.config.calibration:
@@ -99,7 +105,7 @@ class JobManager:
         local_mode = not (req.brief and req.brief.strip())
         if not local_mode:
             (ctx.run_dir / "brief.txt").write_text(req.brief, encoding="utf-8")
-        research = bool(req.research) and not local_mode
+        research = ctx.config.research_enabled
         links_path: Path | None = None
         if req.links and req.links.strip():
             links_path = ctx.run_dir / "links.txt"

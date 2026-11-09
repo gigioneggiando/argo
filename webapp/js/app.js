@@ -257,7 +257,7 @@ function renderOverview(allRuns, notice, statRow, grid) {
 
 // --------------------------------------------------------------- NEW RUN view
 function newRunView() {
-  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "", gemini_model: "", gemini_api_key: "", claude_api_key: "", codex_api_key: "", mistral_model: "", mistral_key: "", profile: "", stage_runners: "", stage_models: "", stage_effort: "" };
+  const form = { brief: "", repo: "", links: "", runner: "mock", budget: "", audit_model: "", parallel: 3, dry_run: false, calibration: false, research: true, codex_model: "", codex_oss: false, codex_local_provider: "", gemini_model: "", gemini_api_key: "", claude_api_key: "", codex_api_key: "", mistral_model: "", mistral_key: "", mistral_vibe_auth: "key", profile: "", stage_runners: "", stage_models: "", stage_effort: "" };
 
   let mode = "general";  // "general" = audit any code (no brief) · "bounty" = scoped program
   const briefEl = h("textarea", { placeholder: "Paste the bug-bounty program page: scope, rules, rewards, exclusions, “no DoS”…", oninput: (e) => form.brief = e.target.value });
@@ -270,6 +270,7 @@ function newRunView() {
     mistralRow.classList.toggle("hidden", !isMistral(v));
     mistralModelEl.placeholder = v === "mistral-vibe" ? `blank = Vibe default (${mistralDefaults["mistral-vibe"]})` : `blank = ${mistralDefaults["mistral-api"]}`;
     mistralKeyEl.placeholder = v === "mistral-vibe" ? "blank = server's ARGO_MISTRAL_VIBE_API_KEY / MISTRAL_API_KEY" : "blank = server's ARGO_MISTRAL_API_KEY / MISTRAL_API_KEY";
+    updateVibeAuth();
     demoBanner.classList.toggle("hidden", v !== "mock");
     claudeRow.classList.toggle("hidden", v !== "headless");
     codexRow.classList.toggle("hidden", v !== "codex");
@@ -296,11 +297,27 @@ function newRunView() {
   const mistralDefaults = { "mistral-api": "mistral-large-4", "mistral-vibe": "mistral-medium-3.5" };
   const mistralModelEl = h("input", { type: "text", list: "dl-mistral-models", placeholder: "blank = mistral-large-4", oninput: (e) => form.mistral_model = e.target.value.trim() });
   const mistralKeyEl = h("input", { type: "password", placeholder: "blank = server's ARGO_MISTRAL_API_KEY / MISTRAL_API_KEY", oninput: (e) => form.mistral_key = e.target.value.trim() });
+  const mistralKeyField = field("Mistral key", mistralKeyEl, "Blank uses the server's environment in key mode. Never echoed back or persisted in the clear.");
+  const vibeAuthEl = h("select", { name: "mistral_vibe_auth", id: "mistral-vibe-auth", "aria-label": "Vibe authentication", onchange: (e) => {
+    form.mistral_vibe_auth = e.target.value;
+    if (form.runner === "mistral-vibe" && form.mistral_vibe_auth === "stored") {
+      form.mistral_key = ""; mistralKeyEl.value = "";
+    }
+    updateVibeAuth();
+  } }, h("option", { value: "key" }, "API key — legacy sources"),
+       h("option", { value: "stored" }, "Existing Vibe login — saved credentials"));
+  const vibeAuthRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
+    field("Vibe authentication", vibeAuthEl, "Existing login uses Vibe's native OS keyring for the user running the Argo server, not this browser's session. Complete vibe --setup on that host manually. Account, plan and allowance are not verified here; no automatic API-key fallback."));
+  function updateVibeAuth() {
+    const stageVibe = form.stage_runners.split(",").some((entry) => entry.split("=")[1]?.trim() === "mistral-vibe");
+    vibeAuthRow.classList.toggle("hidden", form.runner !== "mistral-vibe" && !stageVibe);
+    mistralKeyField.classList.toggle("hidden", form.runner === "mistral-vibe" && form.mistral_vibe_auth === "stored");
+  }
   const mistralRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
     h("div", { class: "grid-2" },
       field("Mistral model", mistralModelEl, "Mistral API: a model id (mistral-large-4 is priced and pinned). Mistral Vibe: a Vibe alias (needs the vibe CLI on the server)."),
-      field("Mistral key", mistralKeyEl, "Blank uses the server's environment. Never echoed back or persisted in the clear.")),
-    h("p", { class: "hint", style: { marginTop: "8px" } }, "Mistral backends have no web tools: web research and corroboration are switched off for this run. Argo runs the Mistral tools itself (read-only repository, writes only to the session scratch dir)."));
+      mistralKeyField),
+    h("p", { class: "hint", style: { marginTop: "8px" } }, "Mistral backends have no web tools: web research and corroboration are switched off for this run. Mistral API uses Argo tools; Vibe uses an isolated Argo-managed CLI configuration. Repository read-only; writes only to session scratch."));
   const drySeg = seg([["false", "Full pipeline"], ["true", "Dry-run (stop after recon)"]], "false", (v) => form.dry_run = v === "true");
   const calSeg = seg([["false", "Off"], ["true", "Calibration (audit→Opus)"]], "false", (v) => form.calibration = v === "true");
   const researchSeg = seg([["true", "On · web OSINT"], ["false", "Off · offline"]], "true", (v) => form.research = v === "true");
@@ -326,7 +343,7 @@ function newRunView() {
   const profileEl = h("select", { onchange: (e) => form.profile = e.target.value },
     h("option", { value: "" }, "Built-in defaults"),
     ...["balanced", "maximum-quality", "cost-saver", "diverse-validation", "smoke"].map((p) => h("option", { value: p }, p)));
-  const stageRunnerEl = h("input", { type: "text", placeholder: "optional: audit=codex,validate=headless", oninput: (e) => form.stage_runners = e.target.value });
+  const stageRunnerEl = h("input", { type: "text", placeholder: "optional: audit=codex,validate=headless", oninput: (e) => { form.stage_runners = e.target.value; updateVibeAuth(); } });
   const stageModelEl = h("input", { type: "text", placeholder: "optional: audit=gpt-6.1-sol", oninput: (e) => form.stage_models = e.target.value });
   const stageEffortEl = h("input", { type: "text", placeholder: "Claude only: validate=high", oninput: (e) => form.stage_effort = e.target.value });
 
@@ -348,7 +365,7 @@ function newRunView() {
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Stage models", stageModelEl, "Comma-separated STAGE=MODEL overrides."),
       field("Stage effort", stageEffortEl, "Claude-only native effort values.")),
-    codexRow, codexKeyRow, claudeRow, geminiRow, mistralRow);
+    codexRow, codexKeyRow, claudeRow, geminiRow, mistralRow, vibeAuthRow);
   const advToggle = h("div", { class: "adv-toggle" }, h("span", { class: "chev" }, "▸"), "Advanced configuration");
   advToggle.addEventListener("click", () => { advToggle.classList.toggle("open"); adv.classList.toggle("hidden"); });
 
@@ -410,7 +427,8 @@ function newRunView() {
         mistral_api_model: form.runner === "mistral-api" ? (form.mistral_model || null) : null,
         mistral_vibe_model: form.runner === "mistral-vibe" ? (form.mistral_model || null) : null,
         mistral_api_key: form.runner === "mistral-api" ? (form.mistral_key || null) : null,
-        mistral_vibe_api_key: form.runner === "mistral-vibe" ? (form.mistral_key || null) : null,
+        mistral_vibe_auth: form.mistral_vibe_auth,
+        ...(form.runner === "mistral-vibe" && form.mistral_vibe_auth === "key" ? { mistral_vibe_api_key: form.mistral_key || null } : {}),
         corroborate_enabled: isMistral(form.runner) ? false : null,
         profile: form.profile || null, stage_runners: assignments(form.stage_runners),
         models: assignments(form.stage_models), stage_effort: assignments(form.stage_effort) };

@@ -17,27 +17,30 @@ isolated ``VIBE_HOME`` (never the user's own config, sessions or project trust) 
 
 Vibe 3.1 has no ``grep`` tool (search goes through the shell, which stays off), so this backend
 reads code with ``read_file`` only: correct, but slower on large repos than ``mistral-api``.
-The networked OSINT stages are refused (no web tools). The key (``ARGO_MISTRAL_VIBE_API_KEY``,
-else ``ARGO_MISTRAL_API_KEY``, else ``MISTRAL_API_KEY``) reaches Vibe only as the child's
-``MISTRAL_API_KEY``; a browser/subscription login is not used, because the isolated home has none.
+The networked OSINT stages are refused (no web tools). Explicit ``key`` auth preserves the
+legacy key chain; ``stored`` delegates credential resolution to Vibe's native OS keyring,
+without reading credentials in Argo or importing the user's home/profile.
 """
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from .config import PipelineConfig
 from .ledger import Ledger
-from .runner import AgentRunner, LLMResult, RunnerError, _redact_secrets
+from .runner import AgentRunner, LLMResult, RunnerError, _classify_failure_text, _redact_secrets
 
 #: Vibe exit codes (``vibe -p``): 0 finished, 1 invocation/config error, 2 runtime/model error,
 #: 3 stopped by a limit (turns, tokens, price, time) or interrupted.
 _EXIT_CONFIG, _EXIT_RUNTIME, _EXIT_LIMIT = 1, 2, 3
-_AUTH_RE = re.compile(r"\b401\b|\b403\b|unauthori[sz]ed|invalid api key|api key", re.I)
+_AUTH_RE = re.compile(r"\b401\b|unauthori[sz]ed|invalid api key|expired (?:access )?token|"
+                      r"token (?:has )?expired|authentication failed", re.I)
 _DISABLED = ["bash", "bash_*", "powershell", "powershell_*", "git_bash", "git_bash_*",
              "web_fetch", "web_search", "task", "skill", "edit", "todo", "ask_user_question"]
 
@@ -87,8 +90,72 @@ def _final_text(messages) -> str:
                 return content
             if isinstance(content, list):
                 return "".join(c.get("text", "") for c in content
-                               if isinstance(c, dict) and c.get("type") == "text")
+                               if isinstance(c, dict) and c.get("type") == "text"
+                               and isinstance(c.get("text"), str))
     return ""
+
+
+def _valid_count(value) -> bool:
+    return type(value) is int and value >= 0
+
+
+def _valid_cost(value) -> bool:
+    return value is None or (type(value) in (int, float) and math.isfinite(value) and value >= 0)
+
+
+def _valid_usage(value) -> bool:
+    return (isinstance(value, dict)
+            and all(_valid_count(value.get(k)) for k in ("input_tokens", "output_tokens"))
+            and all(v is None or _valid_count(v) for v in value.values()))
+
+
+def _valid_messages(value) -> bool:
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        return False
+    for item in value:
+        if item.get("type") != "message":
+            continue
+        content = item.get("content")
+        if isinstance(content, str):
+            continue
+        if not isinstance(content, list) or not all(isinstance(c, dict) for c in content):
+            return False
+        if any(c.get("type") == "text" and not isinstance(c.get("text"), str) for c in content):
+            return False
+    return True
+
+
+def _valid_export(value) -> bool:
+    if not isinstance(value, dict):
+        return False
+    cfg = value.get("config")
+    return (value.get("outcome") == "finished" and value.get("error") is None
+            and type(value.get("exit_code")) is int and value["exit_code"] == 0
+            and _valid_usage(value.get("usage")) and _valid_cost(value.get("cost_usd"))
+            and (value.get("steps") is None or _valid_count(value["steps"]))
+            and isinstance(cfg, dict) and isinstance(cfg.get("models", {}), dict)
+            and all(isinstance(model, dict) for model in cfg.get("models", {}).values()))
+
+
+def _vibe_failure(text: str) -> str:
+    """Only an Argo-owned label leaves the diagnostic boundary.
+
+    A 403 is not evidence of expired login, nor is a 429 evidence of exhausted billing.
+    Never classify assistant/tool text: it may quote source files or user instructions.
+    """
+    if re.search(r"missing.*api.?key|no.*credentials|keyring.*(?:unavailable|inaccessible|failed)|"
+                 r"no recommended backend|no keyring backend", text, re.I):
+        return "credential_bootstrap"
+    if re.search(r"(?:organization|workspace|admin(?:istrator)?).{0,30}policy|policy conflict", text, re.I):
+        return "invalid_request"
+    if _AUTH_RE.search(text):
+        return "auth_failed"
+    if re.search(r"out of credits|insufficient_quota|(?:budget|credits?|allowance|balance)"
+                 r".{0,50}(?:exhausted|depleted|exceeded)|payment required", text, re.I):
+        return "credits_exhausted"
+    if re.search(r"model_not_found|model.{0,50}(?:unavailable|not (?:found|supported))", text, re.I):
+        return "model_unavailable"
+    return _classify_failure_text(" " + text) or "unknown_retryable"
 
 
 class MistralVibeRunner(AgentRunner):
@@ -117,8 +184,8 @@ class MistralVibeRunner(AgentRunner):
         if not key:
             raise RunnerError(
                 "runner=mistral-vibe needs a Mistral key: set ARGO_MISTRAL_VIBE_API_KEY (or "
-                "ARGO_MISTRAL_API_KEY / MISTRAL_API_KEY); Argo runs Vibe with an isolated home, "
-                "so a browser login is not used", retryable=False,
+                "ARGO_MISTRAL_API_KEY / MISTRAL_API_KEY); key mode never falls back to stored "
+                "credentials", retryable=False,
                 failure_kind="credential_bootstrap")
         return key
 
@@ -142,24 +209,38 @@ class MistralVibeRunner(AgentRunner):
                 f"runner=mistral-vibe has no web tools enabled, so stage {stage!r} cannot run on "
                 f"it: pass --no-{stage} or route it elsewhere (--stage-runner {stage}=headless|"
                 "codex|gemini)", retryable=False, failure_kind="unsupported_stage_tool")
-        key = self._api_key()
+        auth_mode = getattr(self.config, "mistral_vibe_auth", "key")
+        if os.environ.get("VIBE_CLI_OIDC_ENABLED", "").lower() in {"1", "true"}:
+            raise RunnerError("Vibe OIDC override is incompatible with Argo key/stored auth; "
+                              "disable it in the launching environment", retryable=False,
+                              failure_kind="credential_bootstrap")
+        key = self._api_key() if auth_mode == "key" else None
         work_dir = Path(work_dir)
         work_dir.mkdir(parents=True, exist_ok=True)
         allow_write = "Write" in (allowed or [])
         safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", label or stage)
         # Home + export live NEXT TO the scratch dir: outside the workdir, so the model can neither
         # read its own config/transcript nor rewrite the policy.
-        side = work_dir.parent / ".argo_sessions" / f"{work_dir.name}.vibe.{safe}"
+        sessions = work_dir.parent / ".argo_sessions"
+        sessions.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # Vibe caches can contain read-only blobs (Windows) and prior attempts are private
+        # evidence. Never delete/reuse them during a retry, or import stale dotenv/agent state.
+        side = Path(tempfile.mkdtemp(prefix=f"{work_dir.name}.vibe.{safe}.", dir=sessions))
         home, export_dir = side / "home", side / "export"
-        if export_dir.exists():
-            shutil.rmtree(export_dir, ignore_errors=True)
-        home.mkdir(parents=True, exist_ok=True)
+        home.mkdir(mode=0o700)
         (home / "config.toml").write_text(
             vibe_config_toml(Path(repo_dir) if repo_dir else None, allow_write), encoding="utf-8")
         timeout = int(timeout_s or self.config.session_timeout_s)
         cmd = self.build_cmd(model=model, work_dir=work_dir, export_dir=export_dir,
                              allow_write=allow_write, timeout_s=timeout)
-        env = {**os.environ, "VIBE_HOME": str(home), "MISTRAL_API_KEY": key}
+        # Keep OS/PATH/certificates/proxies/keyring transport, not inherited Vibe policy or
+        # authentication overrides. Never mutate the parent environment.
+        key_vars = {"MISTRAL_API_KEY", "ARGO_MISTRAL_API_KEY", "ARGO_MISTRAL_VIBE_API_KEY"}
+        env = {k: v for k, v in os.environ.items()
+               if not k.upper().startswith("VIBE_") and k.upper() not in key_vars}
+        env["VIBE_HOME"] = str(home)
+        if key is not None:
+            env["MISTRAL_API_KEY"] = key
         try:
             proc = self._exec(cmd, prompt=prompt, cwd=work_dir, timeout=timeout, env=env)
         except subprocess.TimeoutExpired as exc:   # pragma: no cover - real-runner path
@@ -173,28 +254,56 @@ class MistralVibeRunner(AgentRunner):
         except (OSError, ValueError):
             pass
         rc = proc.returncode
+        if rc == 0 and not _valid_export(export):
+            raise RunnerError("vibe returned an invalid or missing success export",
+                              retryable=False, failure_kind="invalid_request")
+        if not isinstance(export, dict):
+            export = {}
         err_text = f"{stderr}\n{json.dumps(export.get('error'))}"
-        if rc != 0 and _AUTH_RE.search(err_text):
-            raise RunnerError(f"Mistral rejected the Vibe key (stage={stage}, label={label}); "
-                              "check ARGO_MISTRAL_VIBE_API_KEY -- not retrying",
-                              retryable=False, failure_kind="auth_failed")
+        failure_kind = _vibe_failure(err_text) if rc != 0 else None
+        if failure_kind in {"auth_failed", "credential_bootstrap"}:
+            instruction = ("complete `vibe --setup` browser login manually under the server OS "
+                           "account; a file-only credential is not imported" if auth_mode == "stored"
+                           else "check the configured Vibe key")
+            raise RunnerError(f"Vibe authentication unavailable; {instruction}",
+                              retryable=False, failure_kind=failure_kind)
         if rc == _EXIT_CONFIG:
-            raise RunnerError(f"vibe rejected its invocation/config (stage={stage}, "
-                              f"label={label}): {stderr[-800:]}", retryable=False,
-                              failure_kind="invalid_request")
+            raise RunnerError("vibe rejected its invocation/config; inspect private session output",
+                              retryable=False, failure_kind=(failure_kind if failure_kind !=
+                              "unknown_retryable" else "invalid_request"))
         try:
             messages = json.loads(stdout) if stdout.strip() else []
         except ValueError:
-            messages = []
-        cfg = export.get("config") or {}
+            messages = None
+        if rc == 0 and not _valid_messages(messages):
+            raise RunnerError("vibe returned malformed success messages",
+                              retryable=False, failure_kind="invalid_request")
+        config_value = export.get("config")
+        cfg = config_value if isinstance(config_value, dict) else {}
         alias = model or cfg.get("active_model") or ""
-        served = ((cfg.get("models") or {}).get(alias) or {}).get("name") if alias else None
-        return {"_backend": "mistral-vibe", "returncode": rc, "text": _final_text(messages),
-                "outcome": export.get("outcome"), "stop_reason": export.get("stop_reason"),
-                "usage": export.get("usage") or {}, "cost_usd": export.get("cost_usd"),
-                "steps": export.get("steps"), "served_model": served,
-                "vibe_version": export.get("vibe_version"), "warnings": export.get("warnings"),
-                "stderr": stderr[-2000:], "export_dir": str(export_dir)}
+        alias = alias if isinstance(alias, str) else ""
+        models_value = cfg.get("models")
+        models = models_value if isinstance(models_value, dict) else {}
+        served_model = models.get(alias)
+        served = served_model.get("name") if isinstance(served_model, dict) else None
+        served = served if isinstance(served, str) and re.fullmatch(r"[A-Za-z0-9_.:/-]{1,160}", served) else None
+        version = export.get("vibe_version")
+        version = version if isinstance(version, str) and re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", version) else None
+        # Unknown keyring secrets cannot be scrubbed by value in the parent. On failure only
+        # fixed labels leave this boundary, never assistant/tool text or vendor diagnostics.
+        outcome = export.get("outcome")
+        outcome = outcome if isinstance(outcome, str) and outcome in {"finished", "error", "config_error", "turn_limit",
+            "token_limit", "price_limit", "time_limit", "interrupted", "tool_denied", "usage_error",
+            "infrastructure_failure", "deadline", "terminated", "length", "refusal", "aborted"} else f"exit_{rc}"
+        return {"_backend": "mistral-vibe", "returncode": rc,
+                "text": _final_text(messages) if rc == 0 else "Vibe session did not finish",
+                "outcome": outcome,
+                "usage": export.get("usage") if _valid_usage(export.get("usage")) else {},
+                "cost_usd": export.get("cost_usd") if _valid_cost(export.get("cost_usd")) else None,
+                "steps": export.get("steps") if _valid_count(export.get("steps")) else 0,
+                "served_model": served, "vibe_version": version,
+                "stderr": "", "failure_kind": failure_kind,
+                "mistral_vibe_auth": auth_mode, "auth_source": "unknown"}
 
     def parse_envelope(self, raw: dict, *, model: str, prompt_sha256: str,
                        work_dir: Path) -> LLMResult:
@@ -215,4 +324,7 @@ class MistralVibeRunner(AgentRunner):
             # Vibe aliases (mistral-medium-3.5) map to API names (mistral-vibe-cli-latest):
             # recorded in served_models, never reported as a substitution.
             served_model=None, served_models=(served,) if served else (),
+            failure_kind=raw.get("failure_kind"),
+            metadata={"mistral_vibe_auth": raw.get("mistral_vibe_auth", "key"),
+                      "auth_source": "unknown", "vibe_version": raw.get("vibe_version")},
             cost_source="provider_estimated" if isinstance(cost, (int, float)) else "unknown")

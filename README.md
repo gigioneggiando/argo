@@ -364,3 +364,14 @@ Apache License 2.0 — see [LICENSE](LICENSE). Argo is **detection-only** and in
 **authorized** security testing (bug-bounty programs with safe harbor, your own code, CTFs, or
 research). You are responsible for staying within the scope and rules of engagement of any program
 you point it at.
+
+## DeepSeek cloud API
+
+`--runner deepseek-api` adds an Argo-owned, tool/path-confined Chat Completions loop.
+It requires a runtime environment key and explicit finite budget; source is sent
+to the cloud. DeepSeek on Codex OSS remains local and unpriced. See
+[setup, caps, prices, recovery and approved-run examples](docs/deepseek.md).
+
+Vibe saved-login setup remains separate: complete `vibe --setup` on the server OS
+account, then choose `--runner mistral-vibe --mistral-vibe-auth stored` for a separately
+approved run. See [the manual Vibe seam](docs/testing.md#vibe-saved-login-seam-opt-in-not-ci).

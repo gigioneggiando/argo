@@ -340,3 +340,12 @@ python -m argo.cli report    --run 20260616-...
 Each command prints a small JSON summary to stdout (run id, artifact paths, cost). Progress and
 warnings go to **stderr** (`[ingest]`, `[recon]`, `[audit]`, `[validate]`, `[evidence]`, `[report]`,
 `[runner]` prefixes). Every run also writes `runs/<RUN_ID>/llm_log.jsonl` (one line per LLM call).
+
+## DeepSeek API options
+
+`pipeline` and `show-routing` accept `--deepseek-api-model`, `--deepseek-thinking`,
+`--deepseek-reasoning-effort`, `--deepseek-max-tokens`, `--deepseek-context-window`
+and `--deepseek-max-requests`. Use `--runner deepseek-api`; no key flag exists.
+`show-routing` does not invoke a model. Smoke selects Flash. `resume` restores the
+saved settings and obtains a fresh key from the runtime environment. See
+[the capped example](deepseek.md#authorized-live-validation-only).

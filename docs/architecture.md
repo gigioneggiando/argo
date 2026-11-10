@@ -765,3 +765,13 @@ default and disabled in benchmark mode. When enabled, a high/critical audit resu
 the next validation stage to a stronger configured model/provider. The decision, old/new routing,
 trigger, and result are appended to `adaptive_events.jsonl`; no stage is silently added, no safety
 rail is bypassed, and no budget is increased.
+
+## DeepSeek native API flow
+
+Factory → `DeepSeekApiRunner(AgentRunner)` → per-invocation HTTPX async client →
+volatile Chat Completions history → validated batches → shared `Toolbox`.
+`_invoke` returns a sanitized internal envelope; `parse_envelope` normalizes it,
+and the common runner logs exactly one aggregate. Accounting-only fsynced journals
+retain request intents and observations; resume reconciles orphan aggregates
+through the ledger accounting-ID unique index. No private transcript is restored.
+See [transport/accounting details and deferrals](deepseek.md).

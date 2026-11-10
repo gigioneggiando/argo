@@ -113,3 +113,10 @@ Keep run artifacts, context packs, and drafts private unless approved for disclo
 | API or UI integration | [API](docs/api.md), [UI](docs/ui.md) |
 | Development and tests | [Contributing](CONTRIBUTING.md), [testing](docs/testing.md) |
 | All documentation | [Documentation index](docs/README.md) |
+
+## DeepSeek development and execution
+
+For `deepseek-api`, read [the backend contract](docs/deepseek.md). Discovery is free;
+smoke and dry-run invoke a cloud model and require approval plus finite caps.
+No automatic web tools, context compaction, credential recovery or provider switch.
+Resume reconciles accounting before a new attempt and requires a runtime key.

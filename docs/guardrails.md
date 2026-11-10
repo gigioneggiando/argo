@@ -285,3 +285,12 @@ This page is the **safety** envelope (can Argo do something it shouldn't?). The 
 covered in [determinism-and-guardrails.md](determinism-and-guardrails.md): mechanical diffs,
 ground-truth build verification, physical budget/timeout/request caps, the scope-lock asserts above
 viewed as anti-hallucination gates, and commit-pin reproducibility.
+
+## DeepSeek provider boundary
+
+DeepSeek composes the shared toolbox above. Private reasoning stays in volatile
+history, and only accounting enters the run journal outside the tool roots.
+Whole batches are validated before dispatch. HTTP redirects and environment
+proxies are disabled; an absolute deadline also covers heartbeat bodies and waits.
+This remains a tool/path boundary, not an OS sandbox or a guarantee that authorized
+source contains no secrets. See [the backend limits](deepseek.md).

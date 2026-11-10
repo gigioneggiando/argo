@@ -186,3 +186,12 @@ see [roadmap.md](roadmap.md)) are **CLI-only**: `server/schemas.py`'s `RunConfig
 covers only the core-loop fields, so there is nothing to wire up in the UI yet. Revisit if/when
 that server-side scope is intentionally widened — this is not an oversight, `live` in particular
 carries an authorization acknowledgement that needs its own careful UI treatment, not a checkbox.
+
+## DeepSeek API form
+
+The cloud selector is separate from Codex OSS. The form exposes thinking/effort,
+output/context/HTTP caps, session limits and a per-run password input. Keys are
+never placed in browser settings or storage. Research remains a visible choice;
+DeepSeek needs it off or a capable explicit route. Corroboration has its own
+visible opt-out/route choice. Run status separates incomplete usage reserves from
+known cost. See [privacy and recovery](deepseek.md).

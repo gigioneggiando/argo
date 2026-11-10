@@ -124,7 +124,7 @@ Then, after approval to consume allowance:
 
 ```bash
 python -m argo.cli pipeline --smoke --runner mistral-vibe --mistral-vibe-auth stored \
-  --timeout 180 --max-turns 5 --parallel 1 --no-research --no-corroborate
+  --timeout 360 --max-turns 60 --parallel 1 --no-research --no-corroborate
 ```
 
 Do not add a fallback, API key, runtime/live tools or extra passes to make this succeed. Use an
@@ -134,3 +134,14 @@ repo, not just the CLI exit code. A turn/time/token-limited session or partially
 not a completed smoke. A native canary needs enough tokens for Vibe's own system prompt; record
 the approved actual caps and usage. Fake tests remain free and do not require the installed CLI,
 keyring, subscription or credentials.
+
+## DeepSeek offline contracts
+
+`tests/test_deepseek_api.py`, `test_deepseek_protocol.py` and
+`test_deepseek_server.py` use synthetic keys and fake providers. Tests cover the
+factory/AgentRunner path, schema-valid scratch artifacts, volatile reasoning,
+pre-batch validation, cache accounting, orphan-journal idempotence and a real
+loopback heartbeat server for the absolute deadline. No inference is required.
+See [the separate manual live matrix](deepseek.md#authorized-live-validation-only).
+The four Flash/Pro thinking combinations and a complete fixture pipeline require
+new approval; fake results do not pass those gates.

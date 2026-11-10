@@ -25,6 +25,13 @@ particular while the version stays `0.y.z`.
   `model_for("corroborate_docs")` raised `KeyError` (e.g. when corroborate fell back onto Claude),
   killing the run after validate. The offline pass now uses the same model tier as the online
   corroborate pass on every backend.
+- DeepSeek cloud API backend with explicit thinking and output caps, validated native
+  tool batches, total HTTP deadlines, conservative cache pricing, unknown-usage
+  reservations and accounting-only orphan recovery. CLI/HTTP/UI expose provider
+  controls without a key CLI argument; runtime keys are input-only and redacted.
+  Local Codex OSS retains separate, unpriced semantics. Live provider validation
+  remains a separately authorized gate; offline fixtures are not live evidence.
+
 ### Changed
 
 - The model-facing tools of API-native runners moved to `argo/api_tools.py`, shared by
@@ -645,4 +652,5 @@ here forward.
   history.
 - 388 tests, zero-token by default via a mock runner; a Docker-gated real end-to-end proof for
   the sandboxed stages.
+
 

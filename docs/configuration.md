@@ -206,3 +206,11 @@ from argo.config import PipelineConfig, OPUS
 cfg = (PipelineConfig(runner="headless", budget_usd=20.0, max_parallel_audits=2)
        .with_stage_model("audit", OPUS))      # high-value target: audit on Opus
 ```
+
+## DeepSeek controls
+
+[DeepSeek API configuration](deepseek.md#configuration) lists every field, default,
+CLI mapping and precedence. `deepseek_api_stage_models` is the provider-specific
+map; CLI stage assignments and REST `models` feed it. `deepseek_api_key` is input-only
+and redacted in saved configuration. Budget decisions use known estimates plus
+unknown-usage reserves; these do not guarantee a maximum invoice.

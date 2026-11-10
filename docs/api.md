@@ -226,3 +226,15 @@ dry-run, the SSE stream reaching a terminal state, the artifact whitelist, and 4
 
 Auth/multi-user and subprocess isolation per run (vs. in-process threads). (Mid-stage cancellation,
 the frontend, and repo-zip upload are done.) See [roadmap.md](roadmap.md).
+
+## DeepSeek HTTP contract
+
+`GET /models` lists the cloud backend, model aliases and dated prices without
+authenticating to DeepSeek. `RunConfig` accepts the controls and input-only
+`deepseek_api_key` described in [DeepSeek API](deepseek.md); the same page includes
+a complete POST payload. HTTP caps additionally include `session_timeout_s`,
+`session_max_turns`, `session_max_cost_usd` and `max_focuses`. Configuration research
+overrides top-level research when provided. Missing execution prerequisites or
+incompatible OSINT routing return 400 before a job; schema failures return sanitized
+422 details without input values. Chat without a fresh runtime key returns 409.
+Status exposes `unknown_reserved_usd` and `incomplete_calls` separately from known cost.

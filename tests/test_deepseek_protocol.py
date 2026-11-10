@@ -422,3 +422,16 @@ def test_later_model_mismatch_stops_before_tools_and_is_recorded(tmp_path):
     assert ledger.run_cost('synthetic')>0
     assert ledger.run_model_mismatches('synthetic')
     ledger.close()
+
+
+def test_production_chain_rejects_real_mock_before_any_provider(tmp_path,monkeypatch):
+    from argo.runner import build_runner
+    monkeypatch.delenv('ARGO_DEEPSEEK_API_KEY',raising=False)
+    monkeypatch.delenv('DEEPSEEK_API_KEY',raising=False)
+    with Ledger(tmp_path/'chain.sqlite') as ledger:
+        runner=build_runner(PipelineConfig(runner='deepseek-api',runner_fallbacks=['mock'],
+                                           budget_usd=1),ledger)
+        with pytest.raises(RunnerError) as exc:
+            invoke(runner,tmp_path)
+        assert exc.value.failure_kind=='invalid_request'
+        assert not ledger.run_calls('synthetic')

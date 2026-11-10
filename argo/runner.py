@@ -2514,6 +2514,9 @@ class FallbackRunner(AgentRunner):
             r.on_activity = sink
 
     def run(self, **kwargs) -> LLMResult:
+        if self.config.runner != 'mock' and any(isinstance(r, MockClaudeRunner) for r in self._runners):
+            raise RunnerError('production fallback chains cannot produce synthetic mock evidence',
+                              failure_kind='invalid_request')
         last_exc: Exception | None = None
         stage = kwargs.get("stage")
         attempts = 0

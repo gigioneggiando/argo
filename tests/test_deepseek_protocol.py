@@ -435,3 +435,20 @@ def test_production_chain_rejects_real_mock_before_any_provider(tmp_path,monkeyp
             invoke(runner,tmp_path)
         assert exc.value.failure_kind=='invalid_request'
         assert not ledger.run_calls('synthetic')
+
+
+@pytest.mark.parametrize('limit',['context','budget'])
+def test_response_resource_limit_stops_before_tool_effect(tmp_path,limit):
+    data=response(calls=[call(name='write_file',args=json.dumps({
+        'path':'must-not-exist.txt','content':'unexpected effect'}))],finish='tool_calls')
+    if limit=='context':
+        data['choices'][0]['message']['reasoning_content']='r'*270000
+    else:
+        data['usage']={'prompt_tokens':4000000,'completion_tokens':1}
+    runner,ledger=setup_runner(tmp_path,lambda req:httpx.Response(200,json=data))
+    with pytest.raises(RunnerError) as exc:
+        invoke(runner,tmp_path)
+    assert exc.value.failure_kind==('context_limit' if limit=='context' else 'budget_reached')
+    assert not (tmp_path/'run/scratch/must-not-exist.txt').exists()
+    assert ledger.run_cost('synthetic')>0
+    ledger.close()

@@ -325,6 +325,13 @@ class DeepSeekApiRunner(AgentRunner):
                     ids.update(batch_ids)
                     for cid, name, arguments, args in batch:
                         check()
+                        size = len(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+                        if size + cfg.deepseek_api_max_tokens + DEEPSEEK_CONTEXT_MARGIN > cfg.deepseek_api_context_window:
+                            raise _Failure('context_limit')
+                        remaining = (cfg.budget_usd - self.ledger.run_budget_spent(run_id)
+                                     if cfg.budget_usd is not None else budget)
+                        if raw['cost_usd'] + md['unknown_reserved_usd'] >= min(budget, remaining):
+                            raise _Failure('budget_reached')
                         sig = (name, arguments)
                         repeats = repeats + 1 if sig == last else 1
                         last = sig

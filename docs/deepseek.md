@@ -101,13 +101,13 @@ The following is an example for a separately approved synthetic fixture run;
 do not execute it as a free discovery command:
 
 ```bash
-python -m argo.cli pipeline --repo tests/fixtures/repo --runner deepseek-api --deepseek-api-model deepseek-flash --deepseek-thinking enabled --deepseek-reasoning-effort high --deepseek-max-tokens 32768 --budget 3 --session-budget 1 --timeout 360 --max-turns 60 --parallel 1 --max-focuses 1 --no-research --no-corroborate
+python -m argo.cli pipeline --repo tests/fixtures/repo --runner deepseek-api --deepseek-api-model deepseek-flash --deepseek-thinking enabled --deepseek-reasoning-effort high --deepseek-max-tokens 32768 --deepseek-context-window 1000000 --budget 3 --session-budget 1 --timeout 360 --max-turns 60 --parallel 1 --max-focuses 1 --no-research --no-corroborate
 ```
 
 Equivalent HTTP payload (also paid execution, not a second automatic test):
 
 ```json
-{"repo":"tests/fixtures/repo","research":false,"config":{"runner":"deepseek-api","deepseek_api_model":"deepseek-flash","deepseek_thinking":"enabled","deepseek_reasoning_effort":"high","deepseek_api_max_tokens":32768,"budget_usd":3,"session_max_cost_usd":1,"session_timeout_s":360,"session_max_turns":60,"parallel":1,"max_focuses":1,"corroborate_enabled":false}}
+{"repo":"tests/fixtures/repo","research":false,"config":{"runner":"deepseek-api","deepseek_api_model":"deepseek-flash","deepseek_thinking":"enabled","deepseek_reasoning_effort":"high","deepseek_api_max_tokens":32768,"deepseek_api_context_window":1000000,"budget_usd":3,"session_max_cost_usd":1,"session_timeout_s":360,"session_max_turns":60,"parallel":1,"max_focuses":1,"corroborate_enabled":false}}
 ```
 
 Offline tests use MockTransport plus a loopback heartbeat server, synthetic keys,
@@ -116,3 +116,18 @@ provider behavior. Before release, separately approve and run Flash and Pro with
 thinking enabled/high and disabled, then a complete Flash fixture pipeline.
 Recheck official availability/pricing then. Token streaming, web tools, strict
 beta mode and automatic compaction remain outside this version.
+
+### Recorded manual validation
+
+On 2026-11-10, the four Flash/Pro thinking-enabled/high and thinking-disabled
+contracts passed against the provider. A synthetic fixture pipeline with its
+fixture brief then completed ingest, recon, one capped audit focus, validation,
+evidence and report with no failed sessions, using a **1000000 local context cap**
+and the other caps above. Runtime implementation: `ddba088`; model aliases and
+fingerprints are observations, not physical pins or quality-benchmark claims.
+
+The default remains 262144. Its UTF-8 byte estimate is deliberately conservative;
+an earlier fixture attempt stopped recon/audit at `context_limit` and recovered
+artifacts. That attempt was not accepted as a clean smoke. The example above
+therefore explicitly uses the successfully validated cap; it still does not
+enable compaction or guarantee that an arbitrary repository will fit.

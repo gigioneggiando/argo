@@ -34,6 +34,12 @@ particular while the version stays `0.y.z`.
 
 ### Changed
 
+- The documented DeepSeek fixture example now explicitly sets a 1000000 local
+  context cap, matching clean manual pipeline validation. The default remains
+  262144; its conservative estimate can stop a session earlier. Four Flash/Pro
+  thinking-mode contracts and the capped fixture pipeline passed; artifact
+  recovery after an earlier context limit was not counted as a clean smoke.
+
 - The model-facing tools of API-native runners moved to `argo/api_tools.py`, shared by
   `mistral-api` and the Vibe artifact writer. Reads, walks and writes no longer follow Windows
   junctions out of the roots; UNC/device/reserved/alternate-data-stream paths are denied; reads are

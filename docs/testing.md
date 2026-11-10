@@ -145,3 +145,20 @@ loopback heartbeat server for the absolute deadline. No inference is required.
 See [the separate manual live matrix](deepseek.md#authorized-live-validation-only).
 The four Flash/Pro thinking combinations and a complete fixture pipeline require
 new approval; fake results do not pass those gates.
+
+### Recorded DeepSeek manual acceptance (2026-11-10)
+
+The four Flash/Pro thinking-enabled/high and disabled contracts passed on runtime
+SHA `ddba088`. The synthetic pipeline also passed cleanly with local context cap
+1000000, output 32768/request, 360 s/session, 60 tools, 128 HTTP requests/session,
+USD 1/session, USD 3/run, parallelism 1, one audit focus and a 900 s external
+watchdog. Web stages, fallback, SCA and target execution were disabled. Every
+session ended normally; required artifacts existed and source hashes were intact.
+The pipeline's peak estimate was USD 0.163207, not a provider invoice or price
+promise. The earlier 262144-cap attempt recovered artifacts after context limits
+and was explicitly not counted as clean. New paid runs need their own approval.
+
+With Docker's Linux engine available, the sealed-loopback runtime and ASan
+heap-overflow fixture integration tests both passed (mock model, zero inference).
+These tests execute only their synthetic fixtures; they do not authorize enabling
+runtime or ASan in an audit.

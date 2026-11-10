@@ -89,7 +89,9 @@ FailureKind = str  # Literal["moderation_flagged", "credits_exhausted", "rate_li
 TERMINAL_FAILURE_KINDS = frozenset({"credits_exhausted", "auth_failed", "credential_bootstrap",
                                     "invalid_request", "unsupported_stage_tool", "repo_mutated",
                                     "model_mismatch", "model_unavailable", "budget_reached",
-                                    "artifact_isolation_failed"})
+                                    "artifact_isolation_failed", "context_limit", "invalid_response",
+                                    "response_limit", "request_limit", "tool_loop",
+                                    "turn_limit_exceeded", "cancelled"})
 
 #: Codex CLI refusals that mean "this model is not usable with THIS login/profile" (observed with
 #: codex-cli 0.166, 2026-11-06). Same-account retries cannot help; another account in a
@@ -748,6 +750,9 @@ class AgentRunner(ABC):
             if failure_kind is None and result.api_error_status and "429" in str(result.api_error_status):
                 failure_kind = "rate_limited"
         model_mismatch = bool(result.served_model and result.served_model != model)
+        if model_mismatch and self.config.runner == "deepseek-api":
+            from .deepseek_api import equivalent_model
+            model_mismatch = not equivalent_model(model, result.served_model)
         if repo_mutation is not None:
             failure_kind = "repo_mutated"
         # One sanitized metadata object for BOTH the ledger and the JSONL line.
@@ -808,6 +813,11 @@ class AgentRunner(ABC):
 
         if repo_mutation is not None:
             raise repo_mutation
+
+        if self.config.runner == "deepseek-api" and failure_kind == "cancelled":
+            raise RunnerCancelled("DeepSeek session cancelled")
+        if self.config.runner == "deepseek-api" and failure_kind == "budget_reached":
+            raise BudgetExceeded("DeepSeek request reservation exceeds remaining budget")
 
         if model_mismatch and not self.config.allow_model_substitution:
             raise RunnerError(
@@ -2280,7 +2290,8 @@ _RETRYABLE_HINTS = ("session limit", "rate limit", "rate_limit", "api_error_stat
 #: explicitly configured alternative provider.
 _FAIL_CLOSED_KINDS = frozenset({"credential_bootstrap", "auth_failed", "invalid_request",
                                 "context_limit", "repo_mutated", "artifact_isolation_failed",
-                                "budget_reached", "cancelled"})
+                                "budget_reached", "cancelled", "invalid_response", "response_limit",
+                                "request_limit", "tool_loop", "turn_limit_exceeded", "model_mismatch"})
 
 
 def _is_retryable(exc: Exception) -> bool:

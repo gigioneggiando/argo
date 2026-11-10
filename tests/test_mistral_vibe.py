@@ -500,7 +500,7 @@ def test_run_routes_terminal_backend_failure_to_explicit_fallback(
     from argo.runner import FallbackRunner, TERMINAL_FAILURE_KINDS, _COOLDOWN_BY_FAILURE_KIND
 
     cfg = PipelineConfig(runner="mistral-vibe", mistral_vibe_api_key=KEY,
-                         runner_fallbacks=["mock"])
+                         runner_fallbacks=["codex"])
     ledger = Ledger(tmp_path / "l.sqlite")
     try:
         chain = build_runner(cfg, ledger)
@@ -514,6 +514,8 @@ def test_run_routes_terminal_backend_failure_to_explicit_fallback(
                       "error": {"message": diagnostic} if channel == "export" else None})
         execute = Mock(wraps=vibe._exec)
         monkeypatch.setattr(vibe, "_exec", execute)
+        # Fake the authorized successor's run method; a real mock backend is
+        # forbidden in production chains because it would fabricate audit evidence.
         next_run = Mock(return_value="FALLBACK-RESULT")
         monkeypatch.setattr(fallback, "run", next_run)
 
@@ -547,7 +549,7 @@ def test_run_does_not_fallback_on_credentials_or_invalid_request(
     r = _runner(tmp_path)
     _fake(r, monkeypatch, rc=2, stderr=diagnostic,
           export={**EXPORT_OK, "outcome": "error", "exit_code": 2})
-    fallback = build_runner(PipelineConfig(runner="mock"), r.ledger)
+    fallback = build_runner(PipelineConfig(runner="codex"), r.ledger)
     next_run = Mock(return_value="UNEXPECTED-FALLBACK")
     monkeypatch.setattr(fallback, "run", next_run)
     chain = FallbackRunner(r.config, r.ledger, [r, fallback])

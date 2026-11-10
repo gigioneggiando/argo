@@ -103,3 +103,72 @@ def test_run_calls_returns_rows_for_pairing_flag_and_retry(tmp_path):
     assert calls[0]["label"] == "p1-t0" and calls[0]["failure_kind"] == "moderation_flagged"
     assert calls[1]["label"] == "p1-t0-neutral-retry" and calls[1]["failure_kind"] is None
     ledger.close()
+
+
+# ------------------------------------------------------------------------------ accounting extensions
+def _old_db(path):
+    import sqlite3
+    conn = sqlite3.connect(str(path))
+    conn.execute("""CREATE TABLE llm_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, run_id TEXT NOT NULL,
+        stage TEXT NOT NULL, model TEXT NOT NULL, prompt_sha256 TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd REAL NOT NULL DEFAULT 0.0, num_turns INTEGER NOT NULL DEFAULT 0,
+        session_id TEXT, stop_reason TEXT)""")
+    conn.execute("INSERT INTO llm_calls (ts, run_id, stage, model, prompt_sha256, cost_usd) "
+                 "VALUES ('t','R','audit','m','h', 0.25)")
+    conn.commit()
+    conn.close()
+
+
+def test_migration_adds_accounting_columns_and_keeps_legacy_rows(tmp_path):
+    import sqlite3
+    p = tmp_path / "old.sqlite"
+    _old_db(p)
+    ledger = Ledger(p)
+    cols = {r["name"] for r in ledger._conn.execute("PRAGMA table_info(llm_calls)")}
+    assert {"metadata_json", "accounting_id", "unknown_reserved_usd"} <= cols
+    row = ledger._conn.execute("SELECT metadata_json, accounting_id, unknown_reserved_usd "
+                               "FROM llm_calls").fetchone()
+    assert (row["metadata_json"], row["accounting_id"], row["unknown_reserved_usd"]) == (None, None, 0)
+    assert ledger.run_cost("R") == 0.25 and ledger.run_budget_spent("R") == 0.25
+    ledger.close()
+    Ledger(p).close()                                   # reopening is idempotent
+    conn = sqlite3.connect(str(p))
+    idx = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")]
+    conn.close()
+    assert "idx_llm_calls_accounting" in idx
+
+
+def test_aggregate_with_the_same_accounting_id_is_recorded_once(tmp_path):
+    import json
+    ledger = Ledger(tmp_path / "l.sqlite")
+    kw = dict(run_id="R", stage="audit", model="m", prompt_sha256="h", cost_usd=0.5,
+              accounting_id="acct-0123456789abcdef", metadata={"request_count": 2})
+    assert ledger.log_call(**kw) is True
+    assert ledger.log_call(**kw) is False               # crash-recovery replay: no duplicate
+    assert ledger.run_call_count("R") == 1 and ledger.run_cost("R") == 0.5
+    assert ledger.has_accounting_id("acct-0123456789abcdef")
+    row = ledger._conn.execute("SELECT metadata_json FROM llm_calls").fetchone()
+    assert json.loads(row["metadata_json"]) == {"request_count": 2}
+    ledger.close()
+
+
+def test_rows_without_accounting_id_are_never_deduplicated(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    for _ in range(3):
+        _log(ledger, "R", 0.1)
+    assert ledger.run_call_count("R") == 3
+    ledger.close()
+
+
+def test_budget_spent_adds_unknown_reserves_to_known_cost(tmp_path):
+    ledger = Ledger(tmp_path / "l.sqlite")
+    _log(ledger, "R", 0.4)
+    ledger.log_call(run_id="R", stage="audit", model="m", prompt_sha256="h", cost_usd=0.1,
+                    unknown_reserved_usd=0.7)
+    ledger.log_call(run_id="R-so1", stage="audit", model="m", prompt_sha256="h",
+                    unknown_reserved_usd=0.2)
+    assert abs(ledger.run_cost("R") - 0.5) < 1e-9                 # known minimum unchanged
+    assert abs(ledger.run_budget_spent("R") - 1.4) < 1e-9          # + reserves, children included
+    ledger.close()

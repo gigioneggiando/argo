@@ -195,32 +195,15 @@ def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[st
     if runner_map:
         cfg = cfg.with_overrides(stage_runners={**cfg.stage_runners, **runner_map})
     if model_map:
-        codex = dict(cfg.codex_stage_models)
-        gemini = dict(cfg.gemini_stage_models)
-        mistral = dict(cfg.mistral_api_stage_models)
-        vibe = dict(cfg.mistral_vibe_stage_models)
-        claude = dict(cfg.stage_models)
+        from .model_catalog import validate_selection
         for stage, model in model_map.items():
-            backend = runner_map.get(stage, cfg.stage_runners.get(stage, cfg.runner))
-            from .model_catalog import validate_selection
+            backend = cfg.stage_runners.get(stage, cfg.runner)      # runner_map already applied
             check = validate_selection(model, backend)
             if check.get("selectable") is False:
                 raise typer.BadParameter(
                     f"--stage-model {stage}={model!r} is incompatible with backend {backend}: "
                     f"{check.get('reason', 'invalid selection')}")
-            if backend == "codex":
-                codex[stage] = model
-            elif backend == "gemini":
-                gemini[stage] = model
-            elif backend == "mistral-api":
-                mistral[stage] = model
-            elif backend == "mistral-vibe":
-                vibe[stage] = model
-            else:
-                claude[stage] = model
-        cfg = cfg.with_overrides(codex_stage_models=codex, gemini_stage_models=gemini,
-                                 mistral_api_stage_models=mistral,
-                                 mistral_vibe_stage_models=vibe, stage_models=claude)
+            cfg = cfg.with_stage_model(stage, model)                # same setter as HTTP
     if effort_map:
         allowed = {"low", "medium", "high", "xhigh", "max"}
         invalid = sorted(set(effort_map.values()) - allowed)

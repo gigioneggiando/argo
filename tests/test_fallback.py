@@ -721,3 +721,39 @@ def test_empty_or_missing_scratch_needs_no_quarantine(tmp_path):
         **dict(_KW, work_dir=work)) == "ok"
     assert second.calls == 1
 
+
+# ------------------------------------------------------------------------------ failure-kind precedence
+@pytest.mark.parametrize("kind", ["invalid_request", "auth_failed", "credential_bootstrap",
+                                  "context_limit", "repo_mutated", "artifact_isolation_failed",
+                                  "budget_reached", "cancelled"])
+def test_fail_closed_kinds_beat_retry_flags_and_vendor_text(kind):
+    for retryable in (False, True):
+        exc = RunnerError("upstream said: quota / rate limit / 429 too many requests",
+                          retryable=retryable, failure_kind=kind)
+        assert _is_retryable(exc) is False
+
+
+@pytest.mark.parametrize("kind", ["credits_exhausted", "model_unavailable", "rate_limited"])
+def test_cross_provider_fallback_kinds_still_fall_back(kind):
+    assert _is_retryable(RunnerError("x", retryable=True, failure_kind=kind)) is True
+
+
+def test_unclassified_vendor_text_keeps_the_legacy_hint_behaviour():
+    assert _is_retryable(RunnerError("HTTP 429 Too Many Requests")) is True
+    assert _is_retryable(RunnerError("something else broke")) is False
+
+
+def test_invalid_request_with_quota_text_never_reaches_the_successor():
+    first = _Fake("mistral-api", _raise_terminal("invalid request: 'quota' field rejected",
+                                                 "invalid_request"))
+    second = _Fake("headless", _return("ok"))
+    with pytest.raises(RunnerError):
+        FallbackRunner(PipelineConfig(), None, [first, second]).run(**_KW)
+    assert second.calls == 0
+
+
+def _raise_terminal(msg, kind):
+    def b(kw):
+        raise RunnerError(msg, retryable=False, failure_kind=kind)
+    return b
+

@@ -32,9 +32,22 @@ particular while the version stays `0.y.z`.
   junctions out of the roots; UNC/device/reserved/alternate-data-stream paths are denied; reads are
   memory-bounded (8 MiB scan per call); tool arguments are type-checked; grep uses matching
   timeouts and refuses oversized patterns. New runtime dependency: `regex`.
+- Ledger: additive columns `metadata_json` (allowlisted, validated call metadata, identical to the
+  `llm_log.jsonl` record), `accounting_id` (unique when present: a replayed aggregate is recorded
+  once) and `unknown_reserved_usd`. The budget gate counts known cost plus unknown-usage reserves;
+  the resolved provider effort reaches the `effort` column.
 
 ### Fixed
 
+- HTTP `models` now land in the map of the backend that runs each stage, matching CLI
+  `--stage-model`; calibration picks the top model of the audit stage's backend.
+- Structured fail-closed failures (invalid request, auth, credential bootstrap, context limit,
+  repo mutation, scratch isolation, budget, cancel) are never retried or sent to a fallback because
+  their message happens to contain rate-limit wording.
+- HTTP chat runs on the run's saved `config.json` (auth mode, caps, budget), like `argo resume`;
+  only runs that predate config persistence use `meta.json`.
+- A session that mutated the repo after failing is ledgered before the integrity error is raised;
+  a backend can attach already-consumed usage to a raised failure (`partial_result`).
 - A fallback no longer runs on a scratch dir it could not isolate: a failed set-aside now stops the
   chain with non-retryable `artifact_isolation_failed` instead of exposing stale artifacts.
 

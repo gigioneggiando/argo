@@ -613,19 +613,24 @@ class PipelineConfig:
         return replace(self, **kwargs)
 
     def with_stage_model(self, stage: str, model: str) -> "PipelineConfig":
-        if self.runner == "codex":
+        """Pin ``stage`` to ``model`` in the map of the backend that actually runs that stage
+        (``stage_runners`` first, else the primary runner) -- the same map model_for() reads.
+        CLI --stage-model and HTTP ``models`` both go through here, so the two surfaces route a
+        mixed-backend assignment identically. Apply stage_runners before calling this."""
+        backend = self.stage_runners.get(stage, self.runner)
+        if backend == "codex":
             models = dict(self.codex_stage_models)
             models[stage] = model
             return replace(self, codex_stage_models=models)
-        if self.runner == "mistral-api":
+        if backend == "mistral-api":
             models = dict(self.mistral_api_stage_models)
             models[stage] = model
             return replace(self, mistral_api_stage_models=models)
-        if self.runner == "mistral-vibe":
+        if backend == "mistral-vibe":
             models = dict(self.mistral_vibe_stage_models)
             models[stage] = model
             return replace(self, mistral_vibe_stage_models=models)
-        if self.runner == "gemini":
+        if backend == "gemini":
             models = dict(self.gemini_stage_models)
             models[stage] = model
             return replace(self, gemini_stage_models=models)
@@ -642,13 +647,21 @@ class PipelineConfig:
         which is a NO-OP for Codex -- model_for() ignores stage_models entirely when
         runner=="codex" (it reads codex_model instead), so calibrated() silently did nothing for a
         Codex run. Caught while building the cross-backend benchmark, whose --tier top mode
-        depends on calibrated() actually working per backend to be a fair comparison."""
-        if self.runner == "gemini":
+        depends on calibrated() actually working per backend to be a fair comparison.
+
+        The top model is chosen for the backend that RUNS the audit stage (stage_runners), never
+        a top model of another provider: a backend without a defined top tier is left as is."""
+        backend = self.stage_runners.get("audit", self.runner)
+        if backend == "gemini":
             return self.with_stage_model("audit", GEMINI_ARGON)
-        if self.runner == "codex":
-            return self.with_overrides(codex_model=CODEX_TOP)
-        if self.runner == "mistral-api":
+        if backend == "codex":
+            if self.runner == "codex":
+                return self.with_overrides(codex_model=CODEX_TOP)
+            return self.with_stage_model("audit", CODEX_TOP)
+        if backend == "mistral-api":
             return self.with_stage_model("audit", MISTRAL_API_TOP)
+        if backend == "mistral-vibe":
+            return self
         return self.with_stage_model("audit", OPUS)
 
     def for_smoke(self) -> "PipelineConfig":

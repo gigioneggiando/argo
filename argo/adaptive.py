@@ -89,7 +89,7 @@ def _escalation_budget(ctx: RunContext) -> tuple[float | None, str]:
         return float(session_cap), "session_max_cost_usd"
     run_cap = ctx.config.budget_usd
     if run_cap is not None:
-        spent = ctx.ledger.run_cost(ctx.run_id)
+        spent = ctx.ledger.run_budget_spent(ctx.run_id)
         return max(0.0, float(run_cap) - spent), "remaining_budget_usd"
     return None, "unbounded"
 
@@ -144,7 +144,7 @@ def maybe_escalate_after_audit(ctx: RunContext) -> list[dict]:
     estimate, basis = _escalation_budget(ctx)
     remaining = None
     if ctx.config.budget_usd is not None:
-        remaining = max(0.0, float(ctx.config.budget_usd) - ctx.ledger.run_cost(ctx.run_id))
+        remaining = max(0.0, float(ctx.config.budget_usd) - ctx.ledger.run_budget_spent(ctx.run_id))
     if remaining is not None and estimate is not None and estimate > remaining:
         event = {"policy": policy, "trigger": "high_severity_finding", "reason_code": "BUDGET_HEADROOM_INSUFFICIENT",
                  "old_stage": stage, "old_backend": old_backend, "old_model": old_model,

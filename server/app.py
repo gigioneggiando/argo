@@ -75,6 +75,9 @@ _SINGLE_ARTIFACTS = {
     "fixes_report": "fixes_report.json",
 }
 _TERMINAL = {"completed", "failed", "cancelled"}
+# Backends added after config.json persistence existed: a run of theirs without config.json is
+# damaged, not legacy, so chat must not rebuild it from server defaults (identity/caps would change).
+_NO_LEGACY_CHAT_BACKENDS = frozenset({"deepseek-api"})
 #: Same shape RunContext accepts: a single path component, never "." / ".." / a separator / drive.
 _RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")  # == RunContext.__post_init__
 #: Hostnames a browser may use to reach the local server (anything else = DNS rebinding / proxy).
@@ -170,11 +173,17 @@ def create_app(base_config: PipelineConfig | None = None, *, token: str | None =
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
 
     def _chat_ctx(run_id: str):
-        """Build a RunContext for chat that matches how the run was executed (same runner +
-        per-stage models, from meta.json) so a mock run chats for free and a real run on the
-        real CLI."""
+        """Build a RunContext for chat that matches how the run was executed, so a mock run chats
+        for free and a real run on its real backend. The run's persisted config.json is loaded
+        through the same loader as ``argo resume`` (routes, models, auth mode, caps, budget;
+        redacted secrets come back unset, never as the marker). Only runs that predate config
+        persistence fall back to the runner + stage models recorded in meta.json."""
         rd = _run_dir(run_id)
+        if (rd / "config.json").is_file():
+            return _saved_ctx(run_id)
         meta = _read_json(rd / "meta.json") or {}
+        if meta.get("runner") in _NO_LEGACY_CHAT_BACKENDS:
+            raise HTTPException(status_code=409, detail="run has no saved configuration to chat with")
         chat_cfg = cfg.with_overrides(runner=meta.get("runner", cfg.runner))
         for stage, model in (meta.get("stage_models") or {}).items():
             if model:

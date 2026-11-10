@@ -226,7 +226,7 @@ class RunContext:
         cap = self.config.budget_usd
         if cap is None:
             return
-        spent = self.ledger.run_cost(self.run_id)
+        spent = self.ledger.run_budget_spent(self.run_id)   # known cost + unknown-usage reserves
         if spent >= cap:
             raise BudgetExceeded(
                 f"Per-run budget ${cap:.2f} reached (spent ${spent:.4f}); aborting before "

@@ -307,7 +307,7 @@ Same pipeline, swappable engine — pick what you have: `--runner headless` (Cla
 `--runner codex` (Codex CLI → OpenAI, or `--codex-oss --codex-local-provider ollama|lmstudio` for
 **local open-source models** like Qwen/DeepSeek, fully free and on-device) · `--runner gemini`
 (Gemini CLI → Google, tiered pro/flash/flash-lite per stage like Claude) · `--runner mistral-api`
-(Mistral API, Argo's own sandboxed tool loop, any OS) · `--runner mistral-vibe` (Mistral Vibe
+(Mistral API, Argo's own path-confined tool loop, any OS; not an OS sandbox) · `--runner mistral-vibe` (Mistral Vibe
 CLI under an isolated, read-only config) · `--runner mock` (free
 fixtures). Backends and accounts chain transparently on a rate limit or transient failure, so a long
 run self-heals instead of stalling. Full model-per-stage defaults, the resilience/fallback design,

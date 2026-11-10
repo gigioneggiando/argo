@@ -20,7 +20,7 @@ AgentRunner (ABC)
 ├─ HeadlessClaudeRunner   # `claude -p` — Claude Code
 ├─ CodexRunner            # `codex exec` — OpenAI, or local/OSS via --oss / a custom provider (vLLM)
 ├─ GeminiRunner           # `gemini` — Google, tiered per stage like Claude
-├─ MistralApiRunner       # Mistral Chat Completions + Argo's own sandboxed tool loop (argo/mistral_api.py)
+├─ MistralApiRunner       # Mistral Chat Completions + Argo's path-confined tool loop (argo/mistral_api.py, tools: argo/api_tools.py)
 ├─ MistralVibeRunner      # `vibe` CLI under an isolated, Argo-written config (argo/mistral_vibe.py)
 ├─ MockClaudeRunner       # fixtures (zero tokens; the test suite)
 └─ FallbackRunner         # an ordered chain of the above (accounts and backends; see "Fallback")

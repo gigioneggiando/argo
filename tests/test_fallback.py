@@ -1,4 +1,4 @@
-"""Resilience: the FallbackRunner chains backends, retrying a session/rate-limited call on the next
+﻿"""Resilience: the FallbackRunner chains backends, retrying a session/rate-limited call on the next
 backend (Claude -> Codex -> local), with a circuit breaker and per-backend model selection."""
 
 import pytest
@@ -39,7 +39,7 @@ _KW = dict(prompt="x", run_dir=None, work_dir=None, model="m", stage="validate",
 
 
 def test_is_retryable():
-    assert _is_retryable(RunnerError("You've hit your session limit · resets 5pm"))
+    assert _is_retryable(RunnerError("You've hit your session limit Â· resets 5pm"))
     assert _is_retryable(RunnerError("api_error_status=429, ..."))
     assert _is_retryable(RunnerError("model overloaded"))
     assert not _is_retryable(RunnerError("findings file is not valid JSON"))
@@ -53,8 +53,8 @@ def test_extract_session_reset_hint():
     # The real detail text seen in production (moquette + gguf-tools runs): a human/resume-script
     # should be able to grep the run log for this instead of re-reading the raw API error text.
     assert _extract_session_reset_hint(
-        "You've hit your session limit · resets 12:50am (Europe/Rome)") == "12:50am (Europe/Rome)"
-    assert _extract_session_reset_hint("You've hit your session limit · resets 5pm") == "5pm"
+        "You've hit your session limit Â· resets 12:50am (Europe/Rome)") == "12:50am (Europe/Rome)"
+    assert _extract_session_reset_hint("You've hit your session limit Â· resets 5pm") == "5pm"
     assert _extract_session_reset_hint("model overloaded, try again later") is None
     assert _extract_session_reset_hint(None) is None
     assert _extract_session_reset_hint("") is None
@@ -81,7 +81,7 @@ def test_classify_failure_text():
     assert _classify_failure_text(
         "ERROR: Your workspace is out of credits. Please contact your administrator."
     ) == "credits_exhausted"
-    assert _classify_failure_text("You've hit your session limit · resets 5pm") == "rate_limited"
+    assert _classify_failure_text("You've hit your session limit Â· resets 5pm") == "rate_limited"
     assert _classify_failure_text("api_error_status=429, retry later") == "rate_limited"
     # generic/unrelated text and empty input match nothing specific
     assert _classify_failure_text("codex produced no output; likely auth/startup failure") is None
@@ -276,7 +276,7 @@ def test_each_backend_picks_its_own_model():
 class _Always429(__import__("argo.runner", fromlist=["AgentRunner"]).AgentRunner):
     """A real AgentRunner whose every session raises a retryable session-limit error."""
     def _invoke(self, **kwargs):
-        raise RunnerError("You've hit your session limit · resets later")
+        raise RunnerError("You've hit your session limit Â· resets later")
 
 
 def test_full_pipeline_self_heals_onto_fallback(env):
@@ -663,3 +663,61 @@ def test_for_smoke_clears_codex_model_chain():
 def test_codex_model_chain_rejects_empty_entries():
     with pytest.raises(ValueError, match="codex_model_chain"):
         PipelineConfig(runner="codex", codex_model_chain=["gpt-6.1-sol", "  "])
+# ------------------------------------------------------------------------------ scratch quarantine
+def _retryable(kw):
+    raise RunnerError("synthetic transient", retryable=True, failure_kind="rate_limited")
+
+
+def test_locked_scratch_stops_the_chain_before_the_successor(tmp_path, monkeypatch):
+    """A failed set-aside must not let the next backend run on the stale scratch dir."""
+    from pathlib import Path
+    work = tmp_path / "audit" / "focus"
+    work.mkdir(parents=True)
+    (work / "SECURITY_FINDINGS__stale.json").write_text("{}")
+    first, second = _Fake("codex", _retryable), _Fake("headless", _return("ok"))
+    real_rename = Path.rename
+
+    def locked(self, target):
+        if self == work:
+            raise PermissionError("synthetic: scratch held open")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", locked)
+    fb = FallbackRunner(PipelineConfig(), None, [first, second])
+    with pytest.raises(RunnerError) as info:
+        fb.run(**dict(_KW, work_dir=work))
+    assert info.value.failure_kind == "artifact_isolation_failed"
+    assert not _is_retryable(info.value)
+    assert second.calls == 0
+    assert (work / "SECURITY_FINDINGS__stale.json").is_file()       # preserved, not deleted
+
+
+def test_scratch_not_recreated_empty_is_an_isolation_failure(tmp_path, monkeypatch):
+    from pathlib import Path
+    work = tmp_path / "audit" / "focus"
+    work.mkdir(parents=True)
+    (work / "partial.json").write_text("{}")
+    first, second = _Fake("codex", _retryable), _Fake("headless", _return("ok"))
+    real_mkdir = Path.mkdir
+
+    def refuse(self, *a, **k):
+        if self == work:
+            raise PermissionError("synthetic: cannot recreate scratch")
+        return real_mkdir(self, *a, **k)
+
+    monkeypatch.setattr(Path, "mkdir", refuse)
+    with pytest.raises(RunnerError) as info:
+        FallbackRunner(PipelineConfig(), None, [first, second]).run(**dict(_KW, work_dir=work))
+    assert info.value.failure_kind == "artifact_isolation_failed"
+    assert second.calls == 0
+    assert (work.with_name("focus.failed-1") / "partial.json").is_file()
+
+
+def test_empty_or_missing_scratch_needs_no_quarantine(tmp_path):
+    work = tmp_path / "audit" / "focus"
+    work.mkdir(parents=True)
+    first, second = _Fake("codex", _retryable), _Fake("headless", _return("ok"))
+    assert FallbackRunner(PipelineConfig(), None, [first, second]).run(
+        **dict(_KW, work_dir=work)) == "ok"
+    assert second.calls == 1
+

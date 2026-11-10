@@ -1,7 +1,7 @@
 """Minimal stdio MCP server exposing Argo's validated Vibe artifact writer.
 
 The server accepts only ``write_file`` and delegates path policy, JSON validation, and atomic
-replacement to the same toolbox used by ``mistral-api``. It is launched by the isolated Vibe
+replacement to the shared API-runner toolbox (``argo/api_tools.py``). It is launched by the isolated Vibe
 session with the session scratch directory as its only write root.
 """
 from __future__ import annotations
@@ -11,7 +11,7 @@ import json
 import sys
 from pathlib import Path
 
-from .mistral_api import Toolbox
+from .api_tools import Toolbox
 from .tool_errors import ToolError
 
 

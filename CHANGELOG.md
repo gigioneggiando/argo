@@ -1,9 +1,9 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to Argo are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html) — see
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) â€” see
 [docs/releasing.md](docs/releasing.md) for what that means concretely for this project, in
 particular while the version stays `0.y.z`.
 
@@ -12,7 +12,7 @@ particular while the version stays `0.y.z`.
 ### Added
 
 - `--codex-model-chain <id,id,...>`: a Codex model de-escalation chain, strongest first. It expands
-  into one fallback entry per `(model × --codex-accounts)` (model-outer, so a strong tier is
+  into one fallback entry per `(model Ã— --codex-accounts)` (model-outer, so a strong tier is
   exhausted across every account before a weaker one), with any `--fallback` backends after. A
   non-terminal `moderation_flagged` or usage limit on a strong model advances the chain to a weaker
   tier automatically. Supersedes `--codex-model` for codex; `--smoke` ignores it. See
@@ -25,6 +25,18 @@ particular while the version stays `0.y.z`.
   `model_for("corroborate_docs")` raised `KeyError` (e.g. when corroborate fell back onto Claude),
   killing the run after validate. The offline pass now uses the same model tier as the online
   corroborate pass on every backend.
+### Changed
+
+- The model-facing tools of API-native runners moved to `argo/api_tools.py`, shared by
+  `mistral-api` and the Vibe artifact writer. Reads, walks and writes no longer follow Windows
+  junctions out of the roots; UNC/device/reserved/alternate-data-stream paths are denied; reads are
+  memory-bounded (8 MiB scan per call); tool arguments are type-checked; grep uses matching
+  timeouts and refuses oversized patterns. New runtime dependency: `regex`.
+
+### Fixed
+
+- A fallback no longer runs on a scratch dir it could not isolate: a failed set-aside now stops the
+  chain with non-retryable `artifact_isolation_failed` instead of exposing stale artifacts.
 
 ## [0.15.1] - 2026-11-09
 
@@ -344,7 +356,7 @@ particular while the version stays `0.y.z`.
 - `--verify-high` deep-verifies only validation-confirmed High/Critical survivors;
   `--verify-max-findings N` caps the sessions (#59).
 - Redesigned web audit workspace; clearer synthetic-demo labelling and Argo branding.
-- Agent-first onboarding (`AGENTS.md`, agent guide) and documentation refreshes (#50–#57, #61).
+- Agent-first onboarding (`AGENTS.md`, agent guide) and documentation refreshes (#50â€“#57, #61).
 - `--codex-context-window` / `codex_context_window` declares a local model's window so Codex
   auto-compacts before Ollama/LM Studio silently discard context.
 - Codex session events are persisted under `<run>/work/.argo_sessions/`.
@@ -430,18 +442,18 @@ particular while the version stays `0.y.z`.
   `"validation session failed:"` with a colon while the stage writes
   `"validation session failed; see the local LLM log for diagnostics"` with a semicolon. Every run
   that lost a validation batch to a session or backend failure therefore reported that nothing had
-  been skipped, while its own log said findings had been flagged for human review — the statistic
+  been skipped, while its own log said findings had been flagged for human review â€” the statistic
   that exists to catch a degraded gate was the one hiding it. The rationales are now module
   constants referenced at both the write sites and the detector, so they cannot drift apart again.
   Same treatment applied to `corroborate.py`, where `"corroboration row failed schema validation"`
   was never in the list at all. Two further survivors now counted honestly: a schema-repaired
   finding kept without adversarial validation (the stage already logged it as "kept unvalidated"),
   and a corroboration row that failed schema validation. The existing tests could not have caught
-  this — they listed the same strings by hand, so test and code shared one belief; they now iterate
+  this â€” they listed the same strings by hand, so test and code shared one belief; they now iterate
   the modules' own constants and assert the exact sentence each stage writes.
 - **Audit: a focus whose session never started is now retried once instead of abandoned.**
   Both backends can fail inside the same minute (a transient limit, `exit_1` with zero
-  tokens and no partial artifact) and the stage used to drop that focus permanently — a run
+  tokens and no partial artifact) and the stage used to drop that focus permanently â€” a run
   could finish clean having audited one of three focus areas, which makes its finding count a
   property of when it ran rather than of the target. Retried once after `audit_retry_delay_s`
   (90 s), controlled by `audit_retry_passes` (0 restores the old behaviour). Only SESSION
@@ -451,7 +463,7 @@ particular while the version stays `0.y.z`.
 
 ### Added
 
-- **`--max-focuses N`** on `pipeline`, `run` and `estimate` — cap the audit fan-out to the first N
+- **`--max-focuses N`** on `pipeline`, `run` and `estimate` â€” cap the audit fan-out to the first N
   of the focus areas recon planned, in slug order. The config field already existed but was
   reachable only through `--smoke` (which pins it to 1). Recon decides the fan-out from the
   repository, and across 108 real runs it chose anywhere from 1 to 7 focuses (mode 3), so a raw
@@ -460,10 +472,10 @@ particular while the version stays `0.y.z`.
   and the skipped slugs are named in the log rather than dropped silently. A cap below 1 is
   rejected at parse time.
 - Web UI **Overview dashboard** (the new landing at `#/`): KPI stat tiles plus theme-aware,
-  dependency-free charts — findings by severity, findings by verification (proven vs.
-  needs-runtime-check), runs by outcome, top CWEs, spend by run, runs by archetype — aggregated
+  dependency-free charts â€” findings by severity, findings by verification (proven vs.
+  needs-runtime-check), runs by outcome, top CWEs, spend by run, runs by archetype â€” aggregated
   across all runs. A severity-mix donut also appears on each run's Findings tab.
-- Self-hosted **Inter + JetBrains Mono** variable fonts (`webapp/assets/fonts/`) — no runtime CDN,
+- Self-hosted **Inter + JetBrains Mono** variable fonts (`webapp/assets/fonts/`) â€” no runtime CDN,
   offline-safe with system fallbacks.
 
 ### Changed
@@ -485,9 +497,9 @@ particular while the version stays `0.y.z`.
 - **Explicit API keys for the Claude and Codex backends** (`--claude-api-key`/`--claude-api-keys`,
   `--codex-api-key`/`--codex-api-keys`), matching what Gemini already had. Claude needs only a bare
   `ANTHROPIC_API_KEY` (coexists additively with `--claude-accounts`); Codex does not accept a bare
-  env var — Argo bootstraps a dedicated, cached `CODEX_HOME` for it via `codex login
+  env var â€” Argo bootstraps a dedicated, cached `CODEX_HOME` for it via `codex login
   --with-api-key` (key piped over stdin only, never argv; cached under
-  `~/.argo/codex_homes/<sha256-of-key>`, never the literal key in a path). Both are real secrets —
+  `~/.argo/codex_homes/<sha256-of-key>`, never the literal key in a path). Both are real secrets â€”
   redacted in `runs/<id>/config.json`, `type="password"` in the web UI, never echoed back over the
   HTTP API. `argo resume` gained `--claude-api-key`/`--codex-api-key` (alongside the pre-existing,
   now-actually-working `--gemini-api-key`) to re-supply a redacted key on resume.
@@ -498,16 +510,16 @@ particular while the version stays `0.y.z`.
   downgrading confidence and warning the validator without auto-dropping the finding.
 - **`pipeline_config_from_dict` never de-redacted a secret on load.** A `config.json` written by a
   Gemini run stored the literal string `"<redacted>"` for `gemini_api_key`; loading it back (`argo
-  resume`/`argo chat`) set the field to that literal string — truthy, so it was injected as the
+  resume`/`argo chat`) set the field to that literal string â€” truthy, so it was injected as the
   actual `GEMINI_API_KEY`, clobbering any real ambient key and silently breaking auth. Found and
   fixed while adding the Claude/Codex key fields (which would have tripled the blast radius);
   redacted secrets now come back `None`/`[]` on load, never resurrected as the sentinel string.
 - `argo resume --gemini-api-key` didn't actually exist as a CLI option despite `docs/backends.md`
-  documenting it — `resume` now genuinely accepts it (and the new Claude/Codex equivalents).
+  documenting it â€” `resume` now genuinely accepts it (and the new Claude/Codex equivalents).
 - **`corroborate` mixed repo content and network access in one session**, contradicting its own
   documented guarantee. Now runs two isolated passes per finding: an offline docs/VCS-history pass
   (repo-mounted, no network) and a separate OSINT pass (networked, no repo mount, no source
-  excerpts in its prompt) — closing the gap without losing the OSINT capability.
+  excerpts in its prompt) â€” closing the gap without losing the OSINT capability.
 - A full self-audit pass (Argo audited its own codebase, then a dedicated pass over the new
   API-key code) surfaced and fixed dozens more real issues: git clone/checkout hardened against
   option and `ext::` transport injection, guardrail scope/host/redirect checks tightened, secrets
@@ -518,9 +530,9 @@ particular while the version stays `0.y.z`.
 - `runtime.py` was missing an import that would crash any real run with Docker actually available
   (a live-Docker-only code path, so untested by CI).
 - `report.py` could leave a stale submission draft behind for a finding a later stage went on to
-  refute — drafts are now cleaned up to match the current survivor set on every regeneration.
+  refute â€” drafts are now cleaned up to match the current survivor set on every regeneration.
 - Two spots (`argo/stages/second_opinion.py`, the test suite's own cleanup helper) restored write
-  permission on the wrong path when removing a hardened repo copy — POSIX needs it on the *parent*
+  permission on the wrong path when removing a hardened repo copy â€” POSIX needs it on the *parent*
   directory to delete anything inside, not the entry itself; this passed on every prior CI run
   purely because nothing had exercised a hardened directory tree deeply enough to hit it before.
 
@@ -529,21 +541,21 @@ particular while the version stays `0.y.z`.
 ### Added
 
 - **Web UI: Gemini as a full runner option.** New Run's runner selector and Settings' default-runner
-  picker now offer Gemini alongside Claude/Codex/Mock (Settings previously only offered Mock/Claude —
+  picker now offer Gemini alongside Claude/Codex/Mock (Settings previously only offered Mock/Claude â€”
   Codex was missing there too). A Gemini model picker (populated from `GET /models`) + API-key field
   appear when Gemini is selected, mirroring the existing Codex row. The backend (`RunConfig.gemini_model`/
   `gemini_api_key`, `GET /models`' `gemini` entry) already supported this since `v0.4.0`; the webapp
   never wired it up until now.
-- **Web UI: cross-backend benchmark + refusal-probe cards** on the Benchmarks page — reads the
+- **Web UI: cross-backend benchmark + refusal-probe cards** on the Benchmarks page â€” reads the
   already-existing `GET /benchmark/cross` / `GET /refusal-probe` endpoints (added in `v0.5.0`, never
   surfaced in the UI), rendering per-backend cost/latency/precision/recall/F1 and refusal-flag/
   recovery rates when a report exists.
 
 ### Fixed
 
-- Settings' runner selector was missing **Codex** entirely (only Mock/Claude) — an independent,
+- Settings' runner selector was missing **Codex** entirely (only Mock/Claude) â€” an independent,
   pre-existing gap now fixed alongside the Gemini addition.
-- The "danger" (real-spend) styling on the runner selector only ever applied to Claude — Codex was
+- The "danger" (real-spend) styling on the runner selector only ever applied to Claude â€” Codex was
   silently unflagged. `seg()` now takes an explicit danger set so every real backend gets it.
 - A New-Run submit-error fallback had inverted logic (`runner === "headless" ? real : free`), which
   would have mislabeled the Start button after a failed Codex/Gemini run. Now checks for `"mock"`.
@@ -554,7 +566,7 @@ particular while the version stays `0.y.z`.
 
 - **Cross-backend benchmark**: `argo bench-cross --suite DIR --backends headless,codex,gemini
   [--tier cheap|top]` runs the same labeled corpus once per backend and reports
-  cost/latency/precision/recall/F1 side by side (`compare_backends()` in `argo/benchmark.py`) — a
+  cost/latency/precision/recall/F1 side by side (`compare_backends()` in `argo/benchmark.py`) â€” a
   genuinely N-way comparison, distinct from `bench --ab-audit-model`'s same-backend, two-model A/B.
   `--tier cheap` (default) picks each backend's cheapest model (Haiku/`o4-mini`/Flash-Lite);
   `--tier top` picks each backend's own top-tier model (fixed a latent bug along the way:
@@ -562,17 +574,17 @@ particular while the version stays `0.y.z`.
   Codex runs before this).
 - **Per-LLM-call latency tracking**: `duration_ms` is now recorded per call in the ledger and
   per-run `llm_log.jsonl`, alongside a new `failure_kind` column that persists the same
-  classification (`moderation_flagged`, `rate_limited`, ...) a `RunnerError` already carried —
+  classification (`moderation_flagged`, `rate_limited`, ...) a `RunnerError` already carried â€”
   previously only visible inside a raised exception's message, never queryable after the fact.
 - **`argo refusal-probe --backends headless,codex,gemini [--trials N] [--tier cheap|top]`**:
   measures how often each backend's OWN safety classifier false-positives on a legitimate,
   authorized security-audit prompt (`refusal_flag_rate`), and how often the same backend's
   existing neutral-register retry recovers it (`refusal_recovery_rate`). Deliberately NOT
-  jailbreak/adversarial-prompt testing — see `argo/refusal_probe.py`'s module docstring and
+  jailbreak/adversarial-prompt testing â€” see `argo/refusal_probe.py`'s module docstring and
   `tests/fixtures/refusal_prompts.json`.
 - **Benchmark corpus**: 4 new real, independently re-verified cases (`libcsp-csp-ps-uaf`,
   `coturn-ipv6-acl-bypass`, `bonjour-service-takeover`, `jsoup-redirect-header-leak`), spanning
-  C/JavaScript/Java — see `benchmarks/README.md`.
+  C/JavaScript/Java â€” see `benchmarks/README.md`.
 
 ## [0.4.0] - 2026-08-17
 
@@ -580,7 +592,7 @@ particular while the version stays `0.y.z`.
 
 - **Gemini CLI backend** (`--runner gemini`): a third swappable engine alongside Claude Code and
   Codex, tiered per stage like Claude (`gemini-3.1-pro` / `gemini-3.5-flash` / `gemini-3.1-flash-lite`
-  — see `DEFAULT_GEMINI_STAGE_MODELS`), fully composable into the existing fallback chain
+  â€” see `DEFAULT_GEMINI_STAGE_MODELS`), fully composable into the existing fallback chain
   (`--fallback`) and multi-account resilience machinery. Guardrails map onto Gemini's **Policy
   Engine** (a named-tool denylist, the same dialect Claude uses), not `--sandbox`, which was found
   to have a hard, unreliable Docker/Podman dependency during empirical verification against a real
@@ -593,9 +605,9 @@ particular while the version stays `0.y.z`.
 
 - `argo verify` is now **resumable by default**: re-running it on a run that already has some
   deep-verify verdicts skips findings that got a real answer and only re-attempts unverified or
-  infra-failure (`inconclusive`) ones — safe to re-invoke after a backend runs out of credits, a
+  infra-failure (`inconclusive`) ones â€” safe to re-invoke after a backend runs out of credits, a
   rate limit, or a crash without re-spending on already-completed sessions.
-- `argo verify --only ID,ID` — force specific findings to (re-)verify regardless of their current
+- `argo verify --only ID,ID` â€” force specific findings to (re-)verify regardless of their current
   state, leaving every other survivor untouched (mirrors `fix --only`).
 
 ## [0.2.0] - 2026-08-14
@@ -607,7 +619,7 @@ here forward.
 
 ### Added
 
-- Core pipeline: ingest → recon → audit → validate → report.
+- Core pipeline: ingest â†’ recon â†’ audit â†’ validate â†’ report.
 - Opt-in stages: deep verification (`deep_verify`), corroboration, second-opinion
   reconciliation across independent audit passes, dependency/SCA scanning, sandboxed
   runtime verification (loopback-only, `--network=none`), live authorized-target probing,
@@ -620,3 +632,4 @@ here forward.
   history.
 - 388 tests, zero-token by default via a mock runner; a Docker-gated real end-to-end proof for
   the sandboxed stages.
+

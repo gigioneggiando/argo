@@ -4,6 +4,7 @@ jsonschema>=4.0
 pydantic>=2.0
 pyyaml>=6.0
 typer>=0.12
+regex>=2026.11.9          # bounded grep in API-runner tools (argo/api_tools.py)
 
 # HTTP API (server/) — the backend for the web UI
 fastapi>=0.110

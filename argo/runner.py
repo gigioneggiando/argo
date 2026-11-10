@@ -83,10 +83,11 @@ FailureKind = str  # Literal["moderation_flagged", "credits_exhausted", "rate_li
 
 #: Failure kinds that a same-backend retry cannot fix (exhausted credits, a rejected or missing
 #: key, an invalid request, a stage the backend cannot serve, a repo mutation, a model pin
-#: mismatch). Stage-internal retry loops stop on these; FallbackRunner may still try ANOTHER backend.
+#: mismatch, a failed attempt's scratch dir that could not be isolated). Stage-internal retry loops stop on these; FallbackRunner may still try ANOTHER backend.
 TERMINAL_FAILURE_KINDS = frozenset({"credits_exhausted", "auth_failed", "credential_bootstrap",
                                     "invalid_request", "unsupported_stage_tool", "repo_mutated",
-                                    "model_mismatch", "model_unavailable", "budget_reached"})
+                                    "model_mismatch", "model_unavailable", "budget_reached",
+                                    "artifact_isolation_failed"})
 
 #: Codex CLI refusals that mean "this model is not usable with THIS login/profile" (observed with
 #: codex-cli 0.166, 2026-11-06). Same-account retries cannot help; another account in a
@@ -2426,12 +2427,20 @@ def _set_aside_work_dir(work_dir, attempt: int) -> None:
     """Before a fallback backend reuses a session's scratch dir, move the failed attempt's files
     to a sibling ``<dir>.failed-<n>``: stages glob the scratch dir, so a stale partial artifact
     would otherwise be collected alongside (or instead of) the next backend's output. Kept on
-    disk for diagnosis. Best-effort: if the rename fails, the dir is left as it was."""
+    disk for diagnosis, never deleted.
+
+    Fail-closed: the successor may only run on a scratch dir that exists and is empty. If the
+    move or the re-creation fails (e.g. a file held open on Windows), raise a non-retryable
+    ``artifact_isolation_failed`` instead of letting the next backend reuse stale artifacts."""
     if work_dir is None:
         return
     wd = Path(work_dir)
     try:
-        if not wd.is_dir() or not any(wd.iterdir()):
+        if not wd.exists():
+            return
+        if not wd.is_dir():
+            raise OSError("scratch path is not a directory")
+        if not any(wd.iterdir()):
             return
         target = wd.with_name(f"{wd.name}.failed-{attempt}")
         n = attempt
@@ -2440,8 +2449,13 @@ def _set_aside_work_dir(work_dir, attempt: int) -> None:
             target = wd.with_name(f"{wd.name}.failed-{n}")
         wd.rename(target)
         wd.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
+        if not wd.is_dir() or any(wd.iterdir()):
+            raise OSError("scratch dir was not recreated empty")
+    except OSError as exc:
+        raise RunnerError(
+            f"could not isolate the failed attempt's scratch dir before falling back "
+            f"({type(exc).__name__}); the next backend was not started",
+            retryable=False, failure_kind="artifact_isolation_failed") from None
 
 
 def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner:

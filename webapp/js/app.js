@@ -264,8 +264,25 @@ function newRunView() {
   const linksEl = h("textarea", { placeholder: "https://project.example/docs\nhttps://project.example/security", style: { minHeight: "70px" }, oninput: (e) => form.links = e.target.value });
   const repoEl = h("input", { type: "text", placeholder: "/home/me/project   ·   C:\\dev\\app   ·   https://github.com/org/repo", oninput: (e) => form.repo = e.target.value });
 
+  Object.assign(form, { deepseek_api_model: "", deepseek_api_key: "", deepseek_thinking: "enabled", deepseek_reasoning_effort: "high", deepseek_api_max_tokens: 32768, deepseek_api_context_window: 262144, deepseek_api_max_requests: 128, corroborate_enabled: false, session_timeout_s: 360, session_max_turns: 60, session_max_cost_usd: 1, max_focuses: 1 });
+  const deepseekKeyEl = h("input", { type: "password", autocomplete: "off", placeholder: "blank = server runtime key", oninput: e => form.deepseek_api_key = e.target.value.trim() });
+  const dsNumber = (name, label) => field(label, h("input", { type: "number", min: "1", value: String(form[name]), oninput: e => form[name] = Number(e.target.value) }));
+  const deepseekRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
+    h("p", { class: "hint" }, "DeepSeek API sends authorized source to the cloud. This differs from DeepSeek on Codex OSS. No web tools, shell or automatic context compaction. Model IDs are rolling aliases, not physical pins. A finite budget is required; reserves and concurrent sessions can affect spend."),
+    h("div", { class: "grid-2" },
+      field("DeepSeek cloud model", h("select", { onchange: e => form.deepseek_api_model = e.target.value }, h("option", { value: "" }, "Default / profile"), h("option", { value: "deepseek-flash" }, "Flash"), h("option", { value: "deepseek-v4-pro" }, "Pro"))),
+      field("DeepSeek API key", deepseekKeyEl, "Used only for this request. Never saved in browser settings. Resume/chat need a runtime key on the server.")),
+    h("div", { class: "grid-2" },
+      field("Thinking", h("select", { onchange: e => form.deepseek_thinking = e.target.value }, h("option", { value: "enabled" }, "Enabled"), h("option", { value: "disabled" }, "Disabled"))),
+      field("Reasoning effort", h("select", { onchange: e => form.deepseek_reasoning_effort = e.target.value }, ...["low", "high", "max"].map(v => h("option", { value: v, selected: v === "high" }, v))), "Omitted when thinking is disabled.")),
+    h("div", { class: "grid-2" }, dsNumber("deepseek_api_max_tokens", "Maximum output tokens"), dsNumber("deepseek_api_context_window", "Context window cap")),
+    h("div", { class: "grid-2" }, dsNumber("deepseek_api_max_requests", "Maximum HTTP requests"), dsNumber("session_timeout_s", "Session timeout (seconds)")),
+    h("div", { class: "grid-2" }, dsNumber("session_max_turns", "Maximum tool calls"), dsNumber("session_max_cost_usd", "Session budget (USD)")),
+    dsNumber("max_focuses", "Maximum audit focuses"),
+    field("Web corroboration", h("select", { onchange: e => form.corroborate_enabled = e.target.value === "true" }, h("option", { value: "false" }, "Off"), h("option", { value: "true" }, "On — requires a web-capable stage route")), "Research is controlled by the visible Web research switch. Turn it off or explicitly route the web stage to a capable backend."));
   const isMistral = (v) => v === "mistral-api" || v === "mistral-vibe";
-  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"], ["mistral-api", "Mistral API"], ["mistral-vibe", "Mistral Vibe"]], "mock", (v) => {
+  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"], ["mistral-api", "Mistral API"], ["mistral-vibe", "Mistral Vibe"], ["deepseek-api", "DeepSeek API · cloud"]], "mock", (v) => {
+    deepseekRow.classList.toggle("hidden", v !== "deepseek-api");
     form.runner = v; costBanner.classList.toggle("hidden", v === "mock");
     mistralRow.classList.toggle("hidden", !isMistral(v));
     mistralModelEl.placeholder = v === "mistral-vibe" ? `blank = Vibe default (${mistralDefaults["mistral-vibe"]})` : `blank = ${mistralDefaults["mistral-api"]}`;
@@ -277,7 +294,7 @@ function newRunView() {
     codexKeyRow.classList.toggle("hidden", v !== "codex");
     geminiRow.classList.toggle("hidden", v !== "gemini");
     startBtn.lastChild.textContent = v === "mock" ? "Run synthetic demo" : "Start real audit";
-  }, ["headless", "codex", "gemini", "mistral-api", "mistral-vibe"]);
+  }, ["headless", "codex", "gemini", "mistral-api", "mistral-vibe", "deepseek-api"]);
   const claudeApiKeyEl = h("input", { type: "password", placeholder: "blank = server's Claude Code login / ANTHROPIC_API_KEY", oninput: (e) => form.claude_api_key = e.target.value.trim() });
   const claudeRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
     field("Claude API key", claudeApiKeyEl, "Blank uses the server's ambient ANTHROPIC_API_KEY / existing Claude Code subscription login. Never echoed back or persisted in the clear."));
@@ -309,6 +326,7 @@ function newRunView() {
   const vibeAuthRow = h("div", { class: "hidden", style: { marginTop: "14px" } },
     field("Vibe authentication", vibeAuthEl, "Existing login uses Vibe's native OS keyring for the user running the Argo server, not this browser's session. Complete vibe --setup on that host manually. Account, plan and allowance are not verified here; no automatic API-key fallback."));
   function updateVibeAuth() {
+    deepseekRow.classList.toggle("hidden", form.runner !== "deepseek-api" && !form.stage_runners.includes("deepseek-api"));
     const stageVibe = form.stage_runners.split(",").some((entry) => entry.split("=")[1]?.trim() === "mistral-vibe");
     vibeAuthRow.classList.toggle("hidden", form.runner !== "mistral-vibe" && !stageVibe);
     mistralKeyField.classList.toggle("hidden", form.runner === "mistral-vibe" && form.mistral_vibe_auth === "stored");
@@ -365,7 +383,7 @@ function newRunView() {
     h("div", { class: "grid-2", style: { marginTop: "14px" } },
       field("Stage models", stageModelEl, "Comma-separated STAGE=MODEL overrides."),
       field("Stage effort", stageEffortEl, "Claude-only native effort values.")),
-    codexRow, codexKeyRow, claudeRow, geminiRow, mistralRow, vibeAuthRow);
+    codexRow, codexKeyRow, claudeRow, geminiRow, mistralRow, vibeAuthRow, deepseekRow);
   const advToggle = h("div", { class: "adv-toggle" }, h("span", { class: "chev" }, "▸"), "Advanced configuration");
   advToggle.addEventListener("click", () => { advToggle.classList.toggle("open"); adv.classList.toggle("hidden"); });
 
@@ -409,6 +427,13 @@ function newRunView() {
     const am = cfg.audit_model || (cfg.models && cfg.models.audit) || "";
     form.audit_model = am; modelEl.value = am;
     setSeg(calSeg, cfg.calibration ? "true" : "false");
+    const names = ["deepseek_api_model", "deepseek_api_key", "deepseek_thinking", "deepseek_reasoning_effort", "deepseek_api_max_tokens", "deepseek_api_context_window", "deepseek_api_max_requests", "session_timeout_s", "session_max_turns", "session_max_cost_usd", "max_focuses", "corroborate_enabled"];
+    [...deepseekRow.querySelectorAll('input, select')].forEach((control, index) => {
+      const name = names[index];
+      if (name !== 'deepseek_api_key' && cfg[name] != null) {
+        form[name] = cfg[name]; control.value = String(cfg[name]);
+      }
+    });
   }
 
   async function submit() {
@@ -416,6 +441,7 @@ function newRunView() {
     // General mode => empty brief => local/personal source-only review (scope synthesized).
     const brief = mode === "general" ? "" : form.brief;
     const links = mode === "general" ? null : (form.links.trim() || null);
+    if (form.runner === "deepseek-api" && (!form.budget || !Number.isFinite(Number(form.budget)) || Number(form.budget) <= 0)) return toast("DeepSeek API requires an explicit positive budget in USD", true);
     startBtn.disabled = true; startBtn.lastChild.textContent = "Starting…";
     try {
       const assignments = (text) => Object.fromEntries((text || "").split(",").map((x) => x.trim()).filter(Boolean).map((x) => x.split("=", 2)).filter((x) => x.length === 2 && x[0] && x[1]));
@@ -429,11 +455,19 @@ function newRunView() {
         mistral_api_key: form.runner === "mistral-api" ? (form.mistral_key || null) : null,
         mistral_vibe_auth: form.mistral_vibe_auth,
         ...(form.runner === "mistral-vibe" && form.mistral_vibe_auth === "key" ? { mistral_vibe_api_key: form.mistral_key || null } : {}),
-        corroborate_enabled: isMistral(form.runner) ? false : null,
+        ...(form.runner === "deepseek-api" || form.stage_runners.includes("deepseek-api") ? {
+          deepseek_api_model: form.deepseek_api_model || null, deepseek_api_key: form.deepseek_api_key || null,
+          deepseek_thinking: form.deepseek_thinking, deepseek_reasoning_effort: form.deepseek_reasoning_effort,
+          deepseek_api_max_tokens: form.deepseek_api_max_tokens, deepseek_api_context_window: form.deepseek_api_context_window,
+          deepseek_api_max_requests: form.deepseek_api_max_requests, session_timeout_s: form.session_timeout_s,
+          session_max_turns: form.session_max_turns, session_max_cost_usd: form.session_max_cost_usd, max_focuses: form.max_focuses,
+        } : {}),
+        corroborate_enabled: form.runner === "deepseek-api" ? form.corroborate_enabled : (isMistral(form.runner) ? false : null),
         profile: form.profile || null, stage_runners: assignments(form.stage_runners),
         models: assignments(form.stage_models), stage_effort: assignments(form.stage_effort) };
       const research = isMistral(form.runner) ? false : form.research;   // no web tools on Mistral
       const res = await api.startRun({ brief, repo: form.repo, links, dry_run: form.dry_run, research, config: cfg });
+      form.deepseek_api_key = ""; deepseekKeyEl.value = "";
       location.hash = `#/run/${encodeURIComponent(res.run_id)}`;
     } catch (e) {
       toast(e.message, true); startBtn.disabled = false;
@@ -549,7 +583,7 @@ function settingsView() {
   const STAGES = ["ingest", "research", "recon", "audit", "validate", "evidence", "report"];
   const s = { runner: "mock", budget_usd: null, parallel: 3, audit_model: null, calibration: false, models: {} };
 
-  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"], ["mistral-api", "Mistral API"], ["mistral-vibe", "Mistral Vibe"]], "mock", (v) => s.runner = v, ["headless", "codex", "gemini", "mistral-api", "mistral-vibe"]);
+  const runnerSeg = seg([["mock", "Demo · synthetic"], ["headless", "Claude"], ["codex", "Codex"], ["gemini", "Gemini"], ["mistral-api", "Mistral API"], ["mistral-vibe", "Mistral Vibe"], ["deepseek-api", "DeepSeek API · cloud"]], "mock", (v) => s.runner = v, ["headless", "codex", "gemini", "mistral-api", "mistral-vibe", "deepseek-api"]);
   const calSeg = seg([["false", "Off"], ["true", "Calibration"]], "false", (v) => s.calibration = v === "true");
   const budgetEl = h("input", { type: "number", min: "0", placeholder: "none", oninput: (e) => s.budget_usd = e.target.value ? Number(e.target.value) : null });
   const parallelEl = h("input", { type: "number", min: "1", max: "16", value: "3", oninput: (e) => s.parallel = +e.target.value || 3 });
@@ -560,15 +594,33 @@ function settingsView() {
     (cl ? cl.models : []).forEach((m) => setDL.append(h("option", { value: m.id }, m.label || "")));
   }).catch(() => {});
   const modelEls = {};
+  const dsSettingEls = {};
+  const dsSettingFields = [
+    ['deepseek_api_model', 'DeepSeek cloud model', 'deepseek-flash'],
+    ['deepseek_thinking', 'DeepSeek thinking', 'enabled'],
+    ['deepseek_reasoning_effort', 'DeepSeek effort', 'high'],
+    ['deepseek_api_max_tokens', 'Maximum output tokens', 32768],
+    ['deepseek_api_context_window', 'Context window cap', 262144],
+    ['deepseek_api_max_requests', 'Maximum HTTP requests', 128]];
+  const dsSettings = dsSettingFields.map(([name,label,initial]) => {
+    s[name] = initial;
+    const numeric = typeof initial === 'number';
+    dsSettingEls[name] = h('input', {type: numeric ? 'number' : 'text', value: String(initial),
+      oninput: e => s[name] = numeric ? Number(e.target.value) : e.target.value});
+    return field(label, dsSettingEls[name]);
+  });
   STAGES.forEach((st) => { modelEls[st] = h("input", { type: "text", list: "dl-set-models", placeholder: "default", oninput: (e) => { const v = e.target.value.trim(); if (v) s.models[st] = v; else delete s.models[st]; } }); });
 
   const saveBtn = h("button", { class: "btn btn-primary", onclick: async () => {
     saveBtn.disabled = true;
-    try { await api.saveSettings({ runner: s.runner, budget_usd: s.budget_usd, parallel: s.parallel, audit_model: s.audit_model, calibration: s.calibration, models: s.models }); toast("Settings saved"); }
+    try { await api.saveSettings({ ...s }); toast("Settings saved"); }
     catch (e) { toast(e.message, true); } finally { saveBtn.disabled = false; }
   } }, "Save defaults");
 
   function apply(d) {
+    dsSettingFields.forEach(([name,label,initial]) => {
+      s[name] = d[name] ?? initial; dsSettingEls[name].value = String(s[name]);
+    });
     s.runner = d.runner || "mock"; setSeg(runnerSeg, s.runner);
     s.budget_usd = d.budget_usd ?? null; budgetEl.value = s.budget_usd ?? "";
     s.parallel = d.parallel || 3; parallelEl.value = s.parallel;
@@ -601,6 +653,10 @@ function settingsView() {
       h("div", { class: "settings-panel" },
         h("div", { class: "grid-2" },
           ...STAGES.map((st) => field(st[0].toUpperCase() + st.slice(1), modelEls[st]))))),
+    h('section', {class: 'settings-section'},
+      h('div', {class: 'settings-copy'}, h('h2', {}, 'DeepSeek cloud'),
+        h('p', {}, 'Non-secret preferences only. Provider keys stay per-run; local Codex OSS is separate.')),
+      h('div', {class: 'settings-panel'}, h('div', {class: 'grid-2'}, ...dsSettings))),
     h("div", { class: "settings-actions" }, saveBtn));
 }
 
@@ -629,7 +685,7 @@ function runView(id) {
           "This screen exercises the pipeline with fixed demo data. It is not a security assessment of the selected repository.")));
     } else if (st.runner) mount(modeBannerHost);
     mount(stateChipHost, stateChip(st.state));
-    mount(costHost, costChip(st.cost_usd));
+    mount(costHost, costChip(st.cost_usd), ...(st.incomplete_calls ? [h("span", { class: "hint" }, `Usage incomplete; unknown-usage reserve ${usd(st.unknown_reserved_usd || 0)} (separate from known cost)`)] : []));
     cancelBtn.classList.toggle("hidden", !["starting", "running"].includes(st.state));
     renderTimeline(tlHost, st.stages || []);
     renderArtifacts(artHost, st.artifacts || {});
@@ -977,7 +1033,7 @@ function chatPanel(id) {
 }
 
 // backend ids -> display labels (mirrors GET /models' backend list)
-const BACKEND_LABELS = { headless: "Claude", codex: "Codex", gemini: "Gemini", "mistral-api": "Mistral API", "mistral-vibe": "Mistral Vibe", mock: "Demo" };
+const BACKEND_LABELS = { headless: "Claude", codex: "Codex", gemini: "Gemini", "mistral-api": "Mistral API", "mistral-vibe": "Mistral Vibe", "deepseek-api": "DeepSeek API (cloud)", mock: "Demo" };
 
 // ------------------------------------------------------------------ fixes panel (Phase 6)
 // F5 private review questions: architecture/business facts the source cannot settle. Answering is

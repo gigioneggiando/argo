@@ -145,7 +145,7 @@ def _cold_start_estimate(
     run_dir = runs_dir / run_id if run_id else None
     basis = _prompt_and_repo_basis(run_dir)
     rates, fallback_rate = _model_rates(ledger)
-    spent = ledger.run_cost(run_id) if run_id else 0.0
+    spent = ledger.run_budget_spent(run_id) if run_id else 0.0
     future, stages = _cold_future_cost(config, basis, rates, fallback_rate)
     center = spent + future
     low = spent + future * 0.60

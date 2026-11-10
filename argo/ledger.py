@@ -278,6 +278,22 @@ class Ledger:
             ).fetchone()
         return {"calls": int(row["n"]), "cost_usd": float(row["c"]), "runs": int(row["r"])}
 
+    def accounting_summary(self, run_id: str | None = None) -> dict:
+        where, args = '', ()
+        if run_id is not None:
+            exact, children = self._run_id_and_children(run_id)
+            where, args = " WHERE run_id = ? OR run_id LIKE ? ESCAPE '\\'", (exact, children)
+        with self._lock:
+            rows = self._conn.execute('SELECT unknown_reserved_usd, metadata_json FROM llm_calls'
+                                      + where, args).fetchall()
+        incomplete = 0
+        for row in rows:
+            md = json.loads(row['metadata_json']) if row['metadata_json'] else {}
+            incomplete += bool(row['unknown_reserved_usd'] or md.get('usage_complete') is False
+                               or md.get('accounting_complete') is False)
+        return {'unknown_reserved_usd': sum(row['unknown_reserved_usd'] for row in rows),
+                'incomplete_calls': incomplete}
+
     def cost_by_model(self) -> list[dict]:
         with self._lock:
             rows = self._conn.execute(

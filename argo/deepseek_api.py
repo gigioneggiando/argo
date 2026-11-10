@@ -19,9 +19,11 @@ from pathlib import Path
 import httpx
 
 from .api_tools import Toolbox, ToolError, bound_tool_result
-from .config import DEEPSEEK_API_BASE_URL, DEEPSEEK_CONTEXT_MARGIN
+from .config import DEEPSEEK_API_BASE_URL, DEEPSEEK_CONTEXT_MARGIN, PipelineConfig
+from .ledger import Ledger
 from .model_catalog import DEEPSEEK_PRICING_SNAPSHOT_ID, get_model_spec
 from .runner import AgentRunner, LLMResult, RunnerCancelled, RunnerError, sanitize_metadata
+from .rendering import sha256_text
 
 MAX_BODY_BYTES = 16 * 1024 * 1024
 
@@ -37,7 +39,7 @@ def equivalent_model(requested: str, returned: str) -> bool:
                                         and a.model_id == b.model_id)
 
 
-def _integer(value):
+def _integer(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
@@ -62,11 +64,12 @@ def _sync(coro):
 
 
 class DeepSeekApiRunner(AgentRunner):
-    def __init__(self, config, ledger, *, transport=None):
+    def __init__(self, config: PipelineConfig, ledger: Ledger, *,
+                 transport: httpx.AsyncBaseTransport | None = None):
         super().__init__(config, ledger)
         self._transport = transport
 
-    def _api_key(self):
+    def _api_key(self) -> str:
         key = (self.config.deepseek_api_key or os.environ.get('ARGO_DEEPSEEK_API_KEY')
                or os.environ.get('DEEPSEEK_API_KEY') or '').strip()
         if not key or key == '<redacted>':
@@ -75,7 +78,8 @@ class DeepSeekApiRunner(AgentRunner):
         return key
 
     def _invoke(self, *, prompt, work_dir, model, repo_dir, allowed, disallowed,
-                policy=None, stage, run_id, label, session_budget_usd=None, timeout_s=None):
+                policy=None, stage, run_id, label, session_budget_usd=None, timeout_s=None,
+                run_dir=None):
         if policy is not None and policy.network:
             raise RunnerError('deepseek-api has no web tools', failure_kind='unsupported_stage_tool')
         key = self._api_key()
@@ -85,10 +89,11 @@ class DeepSeekApiRunner(AgentRunner):
         return _sync(self._session(prompt=prompt, work_dir=Path(work_dir), model=model,
                      repo_dir=Path(repo_dir) if repo_dir else None, allowed=allowed, key=key,
                      stage=stage, run_id=run_id, budget=session_budget_usd,
+                     run_dir=Path(run_dir) if run_dir else Path(work_dir).parent,
                      timeout=timeout_s if timeout_s is not None else self.config.session_timeout_s))
 
     async def _session(self, *, prompt, work_dir, model, repo_dir, allowed, key,
-                       stage, run_id, budget, timeout):
+                       stage, run_id, budget, timeout, run_dir):
         cfg = self.config
         deadline = time.monotonic() + max(0, timeout)
         tb = Toolbox(repo_dir=repo_dir, work_dir=work_dir, allow_write='Write' in allowed,
@@ -100,7 +105,7 @@ class DeepSeekApiRunner(AgentRunner):
             'Finish with a nonempty plain text answer.')),
             dict(role='user', content=prompt)]
         aid = uuid.uuid4().hex
-        journal_dir = work_dir.parent / '.argo_sessions'
+        journal_dir = run_dir / '.argo_sessions'
         for root in (repo_dir, work_dir):
             if root and journal_dir.resolve().is_relative_to(root.resolve()):
                 raise RunnerError('accounting journal must be outside tool roots',
@@ -134,7 +139,8 @@ class DeepSeekApiRunner(AgentRunner):
             # flush+fsync before sending: a crash leaves a reconcilable outstanding intent.
             with journal.open('ab') as fh:
                 record = dict(event=event, run_id=run_id, stage=stage, model=model,
-                              accounting_id=aid, request_index=md['request_count'], **fields)
+                              accounting_id=aid, request_index=md['request_count'],
+                              pid=os.getpid(), prompt_sha256=sha256_text(prompt), **fields)
                 fh.write((json.dumps(record, separators=(',', ':')) + '\n').encode())
                 fh.flush()
                 os.fsync(fh.fileno())
@@ -166,23 +172,28 @@ class DeepSeekApiRunner(AgentRunner):
 
         def observe(data, reserve):
             usage = data.get('usage')
-            if not isinstance(usage, dict) or not all(_integer(usage.get(k)) for k in
-                                                   ('prompt_tokens', 'completion_tokens')):
+            usage = usage if isinstance(usage, dict) else {}
+            complete = all(_integer(usage.get(k)) for k in ('prompt_tokens', 'completion_tokens'))
+            if not complete:
                 md['usage_complete'] = md['accounting_complete'] = False
                 md['unknown_request_count'] += 1
                 md['unknown_reserved_usd'] += reserve
-                return
-            inp, out = usage['prompt_tokens'], usage['completion_tokens']
+            inp = usage['prompt_tokens'] if _integer(usage.get('prompt_tokens')) else 0
+            out = usage['completion_tokens'] if _integer(usage.get('completion_tokens')) else 0
             hit, miss = usage.get('prompt_cache_hit_tokens'), usage.get('prompt_cache_miss_tokens')
             if not (_integer(hit) and _integer(miss) and hit + miss == inp):
+                if 'prompt_cache_hit_tokens' in usage or 'prompt_cache_miss_tokens' in usage:
+                    md['accounting_complete'] = False
                 hit, miss = 0, inp
                 md['cache_breakdown_unavailable'] = True
             raw['input_tokens'] += inp
             raw['output_tokens'] += out
             md['input_cache_hit_tokens'] += hit
             md['input_cache_miss_tokens'] += miss
-            raw['cost_usd'] += (hit*spec.input_cache_hit_per_million +
-                               miss*spec.input_per_million + out*spec.output_per_million)/1e6
+            priced = get_model_spec(data.get('model')) if isinstance(data.get('model'), str) else None
+            priced = priced if priced and priced.provider == 'deepseek' else spec
+            raw['cost_usd'] += (hit*priced.input_cache_hit_per_million +
+                               miss*priced.input_per_million + out*priced.output_per_million)/1e6
 
         last, repeats, ids = None, 0, set()
         try:
@@ -269,6 +280,8 @@ class DeepSeekApiRunner(AgentRunner):
                     if not isinstance(choices, list) or len(choices) != 1 or not isinstance(choices[0], dict):
                         raise _Failure('invalid_response')
                     choice = choices[0]
+                    if choice.get('index') != 0 or isinstance(choice.get('index'), bool):
+                        raise _Failure('invalid_response')
                     msg, finish = choice.get('message'), choice.get('finish_reason')
                     if not isinstance(msg, dict) or msg.get('role') != 'assistant':
                         raise _Failure('invalid_response')
@@ -278,7 +291,7 @@ class DeepSeekApiRunner(AgentRunner):
                     if not calls:
                         if finish != 'stop' or not isinstance(content, str) or not content.strip():
                             raise _Failure('invalid_response')
-                        raw['text'] = content
+                        raw['text'] = content.replace(key, '<redacted>')
                         break
                     if finish != 'tool_calls' or not isinstance(calls, list):
                         raise _Failure('invalid_response')
@@ -337,7 +350,8 @@ class DeepSeekApiRunner(AgentRunner):
         log('final', summary=raw)
         return raw
 
-    def parse_envelope(self, raw, *, model, prompt_sha256, work_dir):
+    def parse_envelope(self, raw: dict, *, model: str, prompt_sha256: str,
+                       work_dir: Path) -> LLMResult:
         md = sanitize_metadata(raw['metadata'])
         served = tuple(raw['served_models'])
         return LLMResult(text=raw['text'], model=model, prompt_sha256=prompt_sha256,
@@ -345,5 +359,95 @@ class DeepSeekApiRunner(AgentRunner):
             cost_usd=raw['cost_usd'], num_turns=raw['tool_calls'], stop_reason=raw['stop_reason'],
             is_error=bool(raw['failure_kind']), failure_kind=raw['failure_kind'], raw=raw,
             requested_model=model, served_model=served[0] if len(served) == 1 else None,
-            served_models=served, metadata=md, cost_source='estimated_peak' if md['usage_complete']
+            served_models=served, metadata=md, cost_source='estimated_peak' if md['usage_complete'] and md['accounting_complete']
             else ('estimated_partial' if raw['cost_usd'] else 'unknown'))
+
+
+def _process_alive(pid: int | None) -> bool:
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        kernel.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+        handle = kernel.OpenProcess(0x100000, False, pid)
+        if not handle:
+            return ctypes.get_last_error() == 5  # access denied: conservatively active
+        try:
+            return kernel.WaitForSingleObject(handle, 0) == 258
+        finally:
+            kernel.CloseHandle(handle)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def reconcile_journals(run_dir: Path, ledger: Ledger, run_id: str) -> None:
+    """Recover one aggregate per orphan attempt; never restore private model history.
+
+    A still-live owner blocks reconciliation. PID reuse can conservatively block a
+    stale journal; an operator must resolve that ambiguity rather than reset spend.
+    """
+    directory = Path(run_dir) / '.argo_sessions'
+    if not directory.exists():
+        return
+    if directory.is_symlink() or directory.resolve().parent != Path(run_dir).resolve():
+        raise RunnerError('unsafe accounting directory', failure_kind='artifact_isolation_failed')
+    for path in directory.glob('deepseek-*.jsonl'):
+        if path.is_symlink() or path.stat().st_size > 16*1024*1024:
+            raise RunnerError('unsafe accounting journal', failure_kind='invalid_response')
+        records = []
+        for line in path.read_bytes().splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                # A final torn append is expected after process termination.
+                if line == path.read_bytes().splitlines()[-1]:
+                    break
+                raise RunnerError('malformed accounting journal', failure_kind='invalid_response') from None
+            if not isinstance(record, dict) or record.get('run_id') != run_id:
+                raise RunnerError('accounting journal run mismatch', failure_kind='invalid_response')
+            records.append(record)
+        if not records:
+            continue
+        last = records[-1]
+        aid = last.get('accounting_id')
+        if not sanitize_metadata({'accounting_id':aid}):
+            raise RunnerError('invalid accounting identity', failure_kind='invalid_response')
+        if ledger.has_accounting_id(aid):
+            continue
+        if last['event'] != 'final' and _process_alive(last.get('pid')):
+            raise RunnerError('accounting owner is still active', failure_kind='artifact_isolation_failed')
+        summary = next((r['summary'] for r in reversed(records) if 'summary' in r), {})
+        md = sanitize_metadata(summary.get('metadata', {}))
+        pending = {}
+        for record in records:
+            index = record['request_index']
+            if record['event'] == 'intent':
+                pending[index] = record['reserve_usd']
+            elif record['event'] in ('observed', 'unknown', 'rejected'):
+                pending.pop(index, None)
+        extra = sum(pending.values())
+        md.update(accounting_version=1, accounting_id=aid,
+                  request_count=last['request_index'],
+                  unknown_request_count=md.get('unknown_request_count',0)+len(pending),
+                  unknown_reserved_usd=md.get('unknown_reserved_usd',0.)+extra)
+        if pending or last['event'] != 'final':
+            md.update(usage_complete=False, accounting_complete=False)
+        md = sanitize_metadata(md)
+        ledger.log_call(run_id=run_id, stage=last['stage'], model=last['model'],
+            prompt_sha256=last.get('prompt_sha256', ''),
+            input_tokens=summary.get('input_tokens',0), output_tokens=summary.get('output_tokens',0),
+            cost_usd=summary.get('cost_usd',0.), num_turns=summary.get('tool_calls',0),
+            failure_kind=summary.get('failure_kind') or ('interrupted' if last['event'] != 'final' else None),
+            cost_source='estimated_peak' if md.get('usage_complete') else 'estimated_partial',
+            served_models=summary.get('served_models',()), metadata=md, accounting_id=aid,
+            unknown_reserved_usd=md['unknown_reserved_usd'], effort=md.get('resolved_effort'))

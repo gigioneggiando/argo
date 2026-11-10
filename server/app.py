@@ -32,6 +32,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (JSONResponse, PlainTextResponse, RedirectResponse,
                                StreamingResponse)
 from fastapi.staticfiles import StaticFiles
@@ -165,12 +166,19 @@ def create_app(base_config: PipelineConfig | None = None, *, token: str | None =
         st["runner"] = meta.get("runner")
         try:
             st["cost_usd"] = round(ledger.run_cost(run_id), 6)  # live cost, even mid-stage
+            st.update(ledger.accounting_summary(run_id))
         except Exception:
             pass
         return st
 
     def _read_json(path: Path):
         return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+    @app.exception_handler(RequestValidationError)
+    async def safe_validation_error(request, exc):
+        return JSONResponse(status_code=422, content={'detail': [
+            {'loc': list(e['loc']), 'type': e['type'], 'msg': 'Invalid request value'}
+            for e in exc.errors()]})
 
     def _chat_ctx(run_id: str):
         """Build a RunContext for chat that matches how the run was executed, so a mock run chats
@@ -180,7 +188,16 @@ def create_app(base_config: PipelineConfig | None = None, *, token: str | None =
         persistence fall back to the runner + stage models recorded in meta.json."""
         rd = _run_dir(run_id)
         if (rd / "config.json").is_file():
-            return _saved_ctx(run_id)
+            ctx = _saved_ctx(run_id)
+            if ctx.config.stage_runners.get('chat', ctx.config.runner) == 'deepseek-api':
+                from argo.deepseek_api import DeepSeekApiRunner
+                from argo.runner import RunnerError
+                try:
+                    DeepSeekApiRunner(ctx.config, ledger)._api_key()
+                except RunnerError:
+                    ctx.ledger.close()
+                    raise HTTPException(status_code=409, detail='credential_bootstrap: configure a DeepSeek runtime key') from None
+            return ctx
         meta = _read_json(rd / "meta.json") or {}
         if meta.get("runner") in _NO_LEGACY_CHAT_BACKENDS:
             raise HTTPException(status_code=409, detail="run has no saved configuration to chat with")
@@ -284,6 +301,11 @@ def create_app(base_config: PipelineConfig | None = None, *, token: str | None =
                  "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("openai")]},
                 {"id": "gemini", "label": "Gemini CLI", "cost": "estimated (token-based)",
                  "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("gemini")]},
+                {"id": "deepseek-api", "label": "DeepSeek API (cloud)",
+                 "default_model": "deepseek-flash", "offline_only": True, "installed": True,
+                 "cost": "peak estimate; unknown usage reserves are separate",
+                 "key_env": ["ARGO_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"],
+                 "models": [{**s.__dict__, "id": s.model_id} for s in catalog_by_provider("deepseek")]},
                 {"id": "mistral-api", "label": "Mistral API",
                  "cost": "estimated (token-based; unknown for unpriced models)",
                  "default_model": MISTRAL_API_BALANCED, "offline_only": True,
@@ -490,9 +512,9 @@ def create_app(base_config: PipelineConfig | None = None, *, token: str | None =
         if not (rd / "scope.json").exists():
             raise HTTPException(status_code=409, detail="run has no scope yet — wait for ingest")
         events: queue.Queue = queue.Queue()
+        ctx = _chat_ctx(run_id)  # credential/config failures must precede the NDJSON response
 
         def turn() -> None:
-            ctx = _chat_ctx(run_id)
             try:
                 result = chat_engine.ask(
                     ctx, body.message, on_activity=lambda t: events.put({"type": "activity", "text": t}))

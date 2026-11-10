@@ -669,6 +669,7 @@ class AgentRunner(ABC):
                 label=label,
                 session_budget_usd=self._session_budget(run_id),
                 timeout_s=self.config.timeout_for(stage),
+                **({'run_dir': run_dir} if self.config.runner == 'deepseek-api' else {}),
             )
         except RunnerError as exc:
             # Integrity is checked now but raised only AFTER the call is ledgered: whatever the
@@ -753,6 +754,8 @@ class AgentRunner(ABC):
         if model_mismatch and self.config.runner == "deepseek-api":
             from .deepseek_api import equivalent_model
             model_mismatch = not equivalent_model(model, result.served_model)
+        if self.config.runner == 'deepseek-api' and result.failure_kind == 'model_mismatch':
+            model_mismatch = True  # a later response can differ even when no single served ID exists
         if repo_mutation is not None:
             failure_kind = "repo_mutated"
         # One sanitized metadata object for BOTH the ledger and the JSONL line.

@@ -90,6 +90,24 @@ def networked_stage_conflicts(cfg: "PipelineConfig") -> list[str]:
                        f"headless|codex|gemini (--stage-runner {stage}=...)")
     return out
 
+
+def deepseek_run_conflicts(cfg: 'PipelineConfig') -> list[str]:
+    """Side-effect-free execution preflight; discovery/factory do not call this."""
+    import math
+    import os
+    backends = {cfg.runner, *cfg.stage_runners.values(), *cfg.runner_fallbacks}
+    if 'deepseek-api' not in backends:
+        return []
+    problems = []
+    if cfg.budget_usd is None or not math.isfinite(cfg.budget_usd) or cfg.budget_usd <= 0:
+        problems.append('DeepSeek API requires an explicit positive finite run budget')
+    key = cfg.deepseek_api_key or os.environ.get('ARGO_DEEPSEEK_API_KEY') or os.environ.get('DEEPSEEK_API_KEY')
+    if not key or not key.strip() or key == '<redacted>':
+        problems.append('credential_bootstrap: configure a DeepSeek runtime key')
+    if cfg.runner != 'mock' and 'mock' in cfg.runner_fallbacks:
+        problems.append('a production DeepSeek chain cannot fall back to synthetic mock output')
+    return problems
+
 # Codex's model selection is stage-aware.  The map is intentionally separate from the user
 # override field so an explicit --codex-model can still flatten every stage, while a per-stage
 # override wins over that global convenience flag.

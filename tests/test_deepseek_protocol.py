@@ -176,3 +176,249 @@ def test_context_and_reservation_stop_before_http(tmp_path):
         invoke(runner, tmp_path)
     assert exc.value.failure_kind == 'budget_reached' and not calls
     ledger.close()
+
+
+def test_journal_reconciliation_is_idempotent(tmp_path):
+    from argo.deepseek_api import reconcile_journals
+    runner, ledger = setup_runner(tmp_path, lambda req: httpx.Response(200, json=response()))
+    invoke(runner, tmp_path)
+    other = Ledger(tmp_path / 'after-crash.sqlite')
+    reconcile_journals(tmp_path / 'run', other, 'synthetic')
+    assert other.run_cost('synthetic') == ledger.run_cost('synthetic')
+    reconcile_journals(tmp_path / 'run', other, 'synthetic')
+    assert len(other.run_calls('synthetic')) == 1
+    other.close()
+    ledger.close()
+
+
+def test_orphan_intent_is_reserved(tmp_path):
+    from argo.deepseek_api import reconcile_journals
+    directory = tmp_path / '.argo_sessions'
+    directory.mkdir()
+    record = dict(event='intent', accounting_id='0123456789abcdef', run_id='synthetic',
+                  stage='audit', model='deepseek-flash', request_index=1, reserve_usd=.05)
+    (directory / 'deepseek-0123456789abcdef.jsonl').write_bytes((json.dumps(record)+'\n').encode())
+    with Ledger(tmp_path / 'after-crash.sqlite') as ledger:
+        reconcile_journals(tmp_path, ledger, 'synthetic')
+        assert ledger.run_budget_spent('synthetic') == pytest.approx(.05)
+        assert ledger.run_cost('synthetic') == 0
+
+
+def test_factory_run_reads_repo_and_writes_schema_valid_artifact(tmp_path):
+    from argo.runner import build_runner
+    from argo.schemas import validate_findings
+    repo = tmp_path/'repo'
+    repo.mkdir()
+    source = repo/'main.py'
+    source.write_bytes(b'print("synthetic fixture")\n')
+    artifact = json.loads((Path(__file__).parent/'fixtures/happy/audit/audit_p1_full_scope.findings.json').read_text())
+    requests = []
+    def handler(req):
+        payload = json.loads(req.content)
+        requests.append(payload)
+        if len(requests) == 1:
+            return httpx.Response(200, json=response(calls=[call(name='read_file',
+                args=json.dumps({'path':str(source)}))], finish='tool_calls'))
+        if len(requests) == 2:
+            assert 'synthetic fixture' in payload['messages'][-1]['content']
+            return httpx.Response(200, json=response(calls=[call(id='write', name='write_file',
+                args=json.dumps({'path':'findings.json','content':json.dumps(artifact)}))], finish='tool_calls'))
+        return httpx.Response(200, json=response())
+    with Ledger(tmp_path/'factory.sqlite') as ledger:
+        runner = build_runner(PipelineConfig(runner='deepseek-api', budget_usd=1,
+                                             deepseek_api_key=KEY),ledger)
+        runner._transport = httpx.MockTransport(handler)
+        result = runner.run(prompt='Synthetic fixture only', run_dir=tmp_path/'run',
+            work_dir=tmp_path/'run/scratch', repo_dir=repo, model='deepseek-flash', stage='audit',
+            run_id='fixture')
+        validate_findings(json.loads((result.work_dir/'findings.json').read_text()))
+        assert source.read_bytes() == b'print("synthetic fixture")\n'
+        assert len(ledger.run_calls('fixture')) == 1
+
+
+def test_socket_heartbeat_does_not_extend_total_deadline(tmp_path):
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+        def do_POST(self):
+            self.rfile.read(int(self.headers['Content-Length']))
+            self.send_response(200)
+            self.end_headers()
+            try:
+                for _ in range(50):
+                    self.wfile.write(b' \n')
+                    self.wfile.flush()
+                    time.sleep(.02)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+    server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    class Loopback(httpx.AsyncBaseTransport):
+        def __init__(self):
+            self.inner = httpx.AsyncHTTPTransport()
+        async def handle_async_request(self, request):
+            request.url = request.url.copy_with(scheme='http', host='127.0.0.1',port=server.server_port)
+            return await self.inner.handle_async_request(request)
+        async def aclose(self):
+            await self.inner.aclose()
+    runner, ledger = setup_runner(tmp_path, lambda req: None, stage_timeouts={'audit':.15})
+    runner._transport = Loopback()
+    try:
+        start = time.monotonic()
+        with pytest.raises(RunnerError) as exc:
+            invoke(runner,tmp_path)
+        assert exc.value.failure_kind == 'timeout'
+        assert time.monotonic()-start < 1.5
+        assert ledger.run_budget_spent('synthetic') > 0
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(2)
+        ledger.close()
+
+
+def test_body_cap_is_accounted_without_dispatch(tmp_path, monkeypatch):
+    import argo.deepseek_api as ds
+    monkeypatch.setattr(ds,'MAX_BODY_BYTES',16)
+    runner, ledger = setup_runner(tmp_path, lambda req:httpx.Response(200,text='x'*17))
+    with pytest.raises(RunnerError) as exc:
+        invoke(runner,tmp_path)
+    assert exc.value.failure_kind == 'response_limit'
+    assert ledger.run_budget_spent('synthetic') > 0
+    ledger.close()
+
+
+@pytest.mark.parametrize('content', ['', '   ', None])
+def test_empty_final_is_error(tmp_path,content):
+    runner,ledger=setup_runner(tmp_path,lambda req:httpx.Response(200,json=response(content=content)))
+    with pytest.raises(RunnerError) as exc:
+        invoke(runner,tmp_path)
+    assert exc.value.failure_kind=='invalid_response' and not exc.value.retryable
+    ledger.close()
+
+
+def test_partial_usage_survives_a_later_402(tmp_path):
+    count=0
+    def handler(req):
+        nonlocal count
+        count+=1
+        return (httpx.Response(200,json=response(calls=[call()],finish='tool_calls'))
+                if count==1 else httpx.Response(402,text=REASON))
+    runner,ledger=setup_runner(tmp_path,handler)
+    with pytest.raises(RunnerError) as exc:
+        invoke(runner,tmp_path)
+    assert exc.value.failure_kind=='credits_exhausted'
+    row=json.loads((tmp_path/'run/llm_log.jsonl').read_text().splitlines()[0])
+    assert row['input_tokens']==100 and row['output_tokens']==20 and row['cost_usd']>0
+    assert ledger.run_cost('synthetic')==pytest.approx(row['cost_usd'])
+    ledger.close()
+
+
+def test_context_limit_preserves_history_and_stops_before_send(tmp_path):
+    requests=[]
+    runner,ledger=setup_runner(tmp_path,lambda req:requests.append(req),
+                               deepseek_api_context_window=42000)
+    with pytest.raises(RunnerError) as exc:
+        runner.run(prompt='x'*5000,run_dir=tmp_path/'run',work_dir=tmp_path/'run/scratch',
+                   model='deepseek-flash',stage='audit',run_id='synthetic')
+    assert exc.value.failure_kind=='context_limit' and not requests
+    ledger.close()
+
+
+def test_bad_tool_arguments_and_unknown_tool_get_ordered_denials(tmp_path):
+    count=0
+    def handler(req):
+        nonlocal count
+        count+=1
+        if count==1:
+            return httpx.Response(200,json=response(calls=[call('one','exec','{}'),
+                call('two','write_file','{invalid')],finish='tool_calls'))
+        payload=json.loads(req.content)
+        assert [m['tool_call_id'] for m in payload['messages'][-2:]]==['one','two']
+        assert all(m['content'].startswith('ERROR:') for m in payload['messages'][-2:])
+        return httpx.Response(200,json=response())
+    runner,ledger=setup_runner(tmp_path,handler)
+    invoke(runner,tmp_path)
+    assert not list((tmp_path/'run/scratch').iterdir())
+    ledger.close()
+
+
+def test_rate_retry_is_bounded_and_counts_http(tmp_path):
+    count=0
+    def handler(req):
+        nonlocal count
+        count+=1
+        return httpx.Response(429,headers={'Retry-After':'0'},text=REASON)
+    runner,ledger=setup_runner(tmp_path,handler)
+    with pytest.raises(RunnerError) as exc:
+        invoke(runner,tmp_path)
+    assert count==4 and exc.value.failure_kind=='rate_limited'
+    ledger.close()
+
+
+def test_missing_key_never_constructs_http(tmp_path,monkeypatch):
+    import argo.deepseek_api as ds
+    monkeypatch.delenv('ARGO_DEEPSEEK_API_KEY',raising=False)
+    monkeypatch.delenv('DEEPSEEK_API_KEY',raising=False)
+    monkeypatch.setattr(ds.httpx,'AsyncClient',lambda **kw:pytest.fail('HTTP constructed'))
+    with Ledger(tmp_path/'key.sqlite') as ledger:
+        runner=ds.DeepSeekApiRunner(PipelineConfig(runner='deepseek-api',budget_usd=1),ledger)
+        with pytest.raises(RunnerError) as exc:
+            invoke(runner,tmp_path)
+        assert exc.value.failure_kind=='credential_bootstrap'
+
+
+def test_three_workers_expose_non_atomic_budget_overshoot(tmp_path):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    barrier=threading.Barrier(3)
+    def handler(req):
+        barrier.wait(timeout=5)
+        data=response()
+        data['usage']={'prompt_tokens':100000,'completion_tokens':20000}
+        return httpx.Response(200,json=data)
+    runner,ledger=setup_runner(tmp_path,handler)
+    runner.config=runner.config.with_overrides(budget_usd=.05)
+    def worker(index):
+        return runner.run(prompt='synthetic concurrent fixture',run_dir=tmp_path/'run',
+            work_dir=tmp_path/'run'/f'scratch-{index}',model='deepseek-flash',stage='audit',
+            run_id='synthetic')
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        results=list(pool.map(worker,range(3)))
+    assert len(results)==3 and ledger.run_budget_spent('synthetic')>.05
+    assert len(ledger.run_calls('synthetic'))==3
+    ledger.close()
+
+
+def test_inconsistent_cache_breakdown_is_conservative_and_incomplete(tmp_path):
+    data=response()
+    data['usage']['prompt_cache_hit_tokens']=1000
+    runner,ledger=setup_runner(tmp_path,lambda req:httpx.Response(200,json=data))
+    result=invoke(runner,tmp_path)
+    assert result.cost_usd==pytest.approx((100*.30+20*1.20)/1e6)
+    assert result.metadata['cache_breakdown_unavailable']
+    assert result.metadata['accounting_complete'] is False
+    assert result.cost_source=='estimated_partial'
+    ledger.close()
+
+
+def test_later_model_mismatch_stops_before_tools_and_is_recorded(tmp_path):
+    count=0
+    def handler(req):
+        nonlocal count
+        count+=1
+        data=response(calls=[call(id=str(count))],finish='tool_calls')
+        if count==2:
+            data['model']='deepseek-v4-pro'
+        return httpx.Response(200,json=data)
+    runner,ledger=setup_runner(tmp_path,handler)
+    with pytest.raises(RunnerError) as exc:
+        invoke(runner,tmp_path)
+    assert exc.value.failure_kind=='model_mismatch' and count==2
+    assert ledger.run_cost('synthetic')>0
+    assert ledger.run_model_mismatches('synthetic')
+    ledger.close()

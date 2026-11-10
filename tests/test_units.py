@@ -144,7 +144,8 @@ def test_cost_report(tmp_path):
                  input_tokens=10, output_tokens=2000, cost_usd=0.20)
     rep = cost_report(led)
     assert rep["totals"] == {"calls": 3, "runs": 2, "cost_usd": 0.9,
-                             "avg_cost_per_run": 0.45}
+                             "avg_cost_per_run": 0.45, "unknown_reserved_usd": 0.0,
+                             "incomplete_calls": 0}
     by_model = {m["model"]: m for m in rep["by_model"]}
     assert by_model["opus"]["cost_usd"] == 0.5 and by_model["sonnet"]["calls"] == 2
     # sonnet is cheaper per 1k output tokens (0.40/4000*1000=0.10) than opus (0.50)

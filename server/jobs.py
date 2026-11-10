@@ -88,7 +88,8 @@ class JobManager:
                   | set(cfg.stage_runners))
         for stage in stages:
             backend = cfg.stage_runners.get(stage, cfg.runner)
-            check = validate_selection(cfg.model_for(stage), backend)
+            check = validate_selection(cfg.model_for(stage), backend,
+                                       local=backend == "codex" and cfg.codex_oss)
             if check.get("selectable") is False:
                 raise ValueError(f"invalid effective routing for {stage}: {check.get('reason')}")
         from argo.config import networked_stage_conflicts

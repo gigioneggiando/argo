@@ -34,7 +34,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .config import ARTIFACT_TOOLS, PipelineConfig, estimate_cost_usd, model_cost_source
+from .config import (ARTIFACT_TOOLS, NO_WEB_BACKENDS, PipelineConfig, estimate_cost_usd,
+                     model_cost_source)
 from .guardrails import GuardrailError, assert_no_network_tools, enforce_session_tools, session_policy
 from .ledger import Ledger
 from .rendering import sha256_text
@@ -338,6 +339,8 @@ def _derived_account_label(config: PipelineConfig) -> str:
         return "mistral-api:api-key" if config.mistral_api_key else "mistral-api:ambient"
     if backend == "mistral-vibe":
         return "mistral-vibe:api-key" if config.mistral_vibe_api_key else "mistral-vibe:ambient"
+    if backend == "deepseek-api":
+        return "deepseek-api:api-key" if config.deepseek_api_key else "deepseek-api:ambient"
     return f"{backend}:default"
 
 
@@ -1612,15 +1615,18 @@ class CodexRunner(AgentRunner):
         served_models = _scan_codex_models(stdout)
         served = served_models[0] if len(served_models) == 1 else None
         effective_model = served or model
+        # A local provider (codex --oss) is never billed by a cloud provider: a catalog row with
+        # the same model ID (e.g. deepseek-flash) must not lend it a cloud price.
+        local = bool(self.config.codex_oss)
         return LLMResult(
             text=text, model=model, prompt_sha256=prompt_sha256, work_dir=work_dir,
             input_tokens=in_tok, output_tokens=out_tok,
-            cost_usd=estimate_cost_usd(effective_model, in_tok, out_tok),   # estimated (token-based)
+            cost_usd=0.0 if local else estimate_cost_usd(effective_model, in_tok, out_tok),
             num_turns=_count_codex_turns(stdout), session_id=None, stop_reason=f"exit_{rc}",
             is_error=(rc != 0),   # non-zero -> recoverable (the stage globs scratch for partials)
             api_error_status=None, raw=raw, requested_model=model,
             served_model=served, served_models=served_models,
-            cost_source=model_cost_source(effective_model),
+            cost_source="local_unpriced" if local else model_cost_source(effective_model),
         )
 
 
@@ -2506,6 +2512,9 @@ class FallbackRunner(AgentRunner):
                     if datetime.now(timezone.utc) <= disabled_until.astimezone(timezone.utc):
                         continue
                     del self._disabled[i]
+            if stage is not None and session_policy(stage).network \
+                    and r.config.runner in NO_WEB_BACKENDS:
+                continue        # cannot serve a web stage: skip it, never consume it as a fallback
             kw = dict(kwargs)
             if stage is not None:                     # each backend picks its own model for the stage
                 kw["model"] = r.config.model_for(stage)
@@ -2604,7 +2613,11 @@ def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner
     if name == "mistral-vibe":
         from .mistral_vibe import MistralVibeRunner
         return MistralVibeRunner(cfg, ledger)
-    raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', 'gemini', 'mistral-api', 'mistral-vibe', or 'mock')")
+    if name == "deepseek-api":
+        from .deepseek_api import DeepSeekApiRunner   # lazy, like mistral-api
+        return DeepSeekApiRunner(cfg, ledger)
+    raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', 'gemini', "
+                     "'mistral-api', 'mistral-vibe', 'deepseek-api', or 'mock')")
 
 
 def _label_runner(runner: AgentRunner, backend: str, account: str, index: int) -> AgentRunner:

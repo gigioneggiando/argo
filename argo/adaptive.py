@@ -44,6 +44,9 @@ def _strong_model(backend: str, config: PipelineConfig, stage: str) -> str | Non
     if backend == "mistral-api":
         from .config import MISTRAL_API_TOP
         return MISTRAL_API_TOP
+    if backend == "deepseek-api":
+        from .config import DEEPSEEK_API_TOP
+        return DEEPSEEK_API_TOP
     return None                     # mistral-vibe: Vibe aliases have no stronger verified tier
 
 
@@ -64,6 +67,10 @@ def _set_stage_model(config: PipelineConfig, backend: str, stage: str, model: st
         values = dict(config.mistral_vibe_stage_models)
         values[stage] = model
         return config.with_overrides(mistral_vibe_stage_models=values)
+    if backend == "deepseek-api":
+        values = dict(config.deepseek_api_stage_models)
+        values[stage] = model
+        return config.with_overrides(deepseek_api_stage_models=values)
     values = dict(config.stage_models)
     values[stage] = model
     return config.with_overrides(stage_models=values)
@@ -127,7 +134,8 @@ def maybe_escalate_after_audit(ctx: RunContext) -> list[dict]:
         # credential or silently pick a backend that was not configured for this run.
         for candidate in ctx.config.runner_fallbacks:
             if candidate != old_backend and candidate in {"headless", "codex", "gemini",
-                                                          "mistral-api", "mistral-vibe"}:
+                                                          "mistral-api", "mistral-vibe",
+                                                          "deepseek-api"}:
                 new_backend = candidate
                 break
     new_model = _strong_model(new_backend, ctx.config, stage)

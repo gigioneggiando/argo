@@ -150,7 +150,8 @@ def _build_config(
     stages = set(cfg.stage_models) | set(cfg.codex_stage_models) | set(cfg.gemini_stage_models) | set(cfg.stage_runners)
     for stage in stages:
         backend = cfg.stage_runners.get(stage, cfg.runner)
-        check = validate_selection(cfg.model_for(stage), backend)
+        check = validate_selection(cfg.model_for(stage), backend,
+                                   local=backend == "codex" and cfg.codex_oss)
         if check.get("selectable") is False:
             raise typer.BadParameter(f"effective routing {stage}: {check.get('reason', 'invalid model/backend pair')}")
     for model in cfg.codex_model_chain:
@@ -188,7 +189,8 @@ def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[st
     runner_map = _parse_assignments(stage_runners, "--stage-runner")
     model_map = _parse_assignments(stage_models, "--stage-model")
     effort_map = _parse_assignments(stage_efforts, "--stage-effort")
-    valid_backends = {"headless", "codex", "gemini", "mistral-api", "mistral-vibe", "mock"}
+    valid_backends = {"headless", "codex", "gemini", "mistral-api", "mistral-vibe",
+                      "deepseek-api", "mock"}
     unknown = sorted(set(runner_map.values()) - valid_backends)
     if unknown:
         raise typer.BadParameter(f"--stage-runner unknown backend(s): {', '.join(unknown)}")
@@ -198,7 +200,7 @@ def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[st
         from .model_catalog import validate_selection
         for stage, model in model_map.items():
             backend = cfg.stage_runners.get(stage, cfg.runner)      # runner_map already applied
-            check = validate_selection(model, backend)
+            check = validate_selection(model, backend, local=backend == "codex" and cfg.codex_oss)
             if check.get("selectable") is False:
                 raise typer.BadParameter(
                     f"--stage-model {stage}={model!r} is incompatible with backend {backend}: "

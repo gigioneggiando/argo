@@ -43,6 +43,10 @@ class ModelSpec:
     exact_pinning: bool = True
     approval_required: bool = False
     minimum_cli_version: str | None = None
+    # Additive (DeepSeek): price of input tokens served from the provider's context cache, and
+    # the provider's DECLARED version behind an alias (a dated catalog statement, not a pin).
+    input_cache_hit_per_million: float | None = None
+    declared_version: str | None = None
 
     @property
     def pricing_known(self) -> bool:
@@ -217,7 +221,28 @@ MODEL_CATALOG: tuple[ModelSpec, ...] = (
               lifecycle="deprecated", exact_pinning=False, verified_at="2026-11-06",
               notes="Large 3, deprecated (retires 2027-04-30); still the target of "
                     "mistral-large-latest. No published price."),
+    # DeepSeek developer API (runner deepseek-api). Snapshot 2026-11-09 of the official pricing
+    # page: PEAK rates (Argo v1 always budgets at peak; off-peak is half), USD/1M, input = cache
+    # miss, plus the cache-hit input rate. Both IDs are aliases whose served version can change:
+    # declared_version records what the page stated on that date. `deepseek-v4-flash` is the
+    # official legacy name, served by the current Flash model at the Flash price.
+    ModelSpec("deepseek", "deepseek-flash", 0.30, 1.20, aliases=("deepseek-v4-flash",),
+              input_cache_hit_per_million=0.006, declared_version="DeepSeek-V4.1-Flash-1017",
+              supports_reasoning=True, supports_thinking=True, exact_pinning=False,
+              source_url="https://api-docs.deepseek.com/quick_start/pricing",
+              verified_at="2026-11-09",
+              notes="Flash; 1M context, max output 384K; thinking + tool calls. Cloud API only: "
+                    "a local DeepSeek through Codex OSS is a different transport and unpriced."),
+    ModelSpec("deepseek", "deepseek-v4-pro", 1.32, 3.96,
+              input_cache_hit_per_million=0.044, declared_version="DeepSeek-V4-Pro-0813",
+              supports_reasoning=True, supports_thinking=True, exact_pinning=False,
+              source_url="https://api-docs.deepseek.com/quick_start/pricing",
+              verified_at="2026-11-09",
+              notes="Pro; 1M context, max output 384K; thinking + tool calls. Cloud API only."),
 )
+
+#: Dated identity of the DeepSeek price table used for estimates (recorded per call).
+DEEPSEEK_PRICING_SNAPSHOT_ID = "deepseek-2026-11-09-peak"
 
 
 _BY_ID = {spec.model_id.lower(): spec for spec in MODEL_CATALOG}
@@ -285,6 +310,8 @@ def catalog_snapshot() -> dict:
                 "exact_pinning": s.exact_pinning,
                 "approval_required": s.approval_required,
                 "minimum_cli_version": s.minimum_cli_version,
+                "input_cache_hit_per_million": s.input_cache_hit_per_million,
+                "declared_version": s.declared_version,
             }
             for s in MODEL_CATALOG
         ],
@@ -319,22 +346,33 @@ def selection_status(model_id: str | None, *, allow_preview: bool = False,
 
 
 def validate_selection(model_id: str | None, backend: str, *, exact: bool = False,
-                       allow_preview: bool = False, allow_trusted: bool = False) -> dict:
+                       allow_preview: bool = False, allow_trusted: bool = False,
+                       local: bool = False) -> dict:
     """Return an actionable, side-effect-free preflight result for a backend/model pair.
 
     Unknown IDs remain valid custom selections (the adapters accept arbitrary provider IDs), but
     are explicitly marked unverified and cannot be considered exact benchmark evidence.  Known
     legacy/preview/trusted IDs are rejected only for exact selection; normal best-effort routing
     receives a warning so migration of old run directories remains possible.
+
+    ``local=True`` (Codex OSS / a local provider): the ID names a model served on the user's own
+    infrastructure. A cloud catalog row with the same ID neither rejects it (wrong provider) nor
+    lends it a cloud price or exact-pin status.
     """
     spec = get_model_spec(model_id)
+    if local:
+        return {"model_id": model_id, "status": "local", "selectable": True, "backend": backend,
+                "pricing": "unpriced", "exact_pinning": False,
+                "warnings": ["local model on the configured local provider; cloud catalog "
+                             "pricing and pin status are not applied"]}
     result = selection_status(model_id, allow_preview=allow_preview, allow_trusted=allow_trusted)
     result["backend"] = backend
     if spec is None:
         result["warnings"] = ["custom/unverified model ID; pricing and served-model support are unknown"]
         return result
     expected = {"headless": "anthropic", "gemini": "gemini", "codex": "openai",
-                "mistral-api": "mistral", "mistral-vibe": "mistral"}.get(backend)
+                "mistral-api": "mistral", "mistral-vibe": "mistral",
+                "deepseek-api": "deepseek"}.get(backend)
     if expected and spec.provider != expected:
         result.update(selectable=False, reason=f"model belongs to {spec.provider}, not {backend}")
         return result

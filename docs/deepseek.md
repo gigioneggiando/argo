@@ -23,8 +23,9 @@ settings. Resume and chat need a fresh runtime key after a process restart.
 
 Thinking accepts `enabled` or `disabled`; effort accepts `low`, `high`, `max` and
 is omitted on the wire when thinking is disabled. Output is 1–393216 tokens;
-context is at most 1000000, and output plus an 8192-token margin must fit inside
-it. These integer caps reject booleans. Context estimation includes the full
+context is at most 1048576 (the provider's 1M-token ceiling); Argo conservatively
+measures the serialized request in UTF-8 bytes, and output plus an 8192-unit margin
+must fit inside it. These integer caps reject booleans. Context estimation includes the full
 volatile history and tool schemas and deliberately overestimates using UTF-8 byte
 length. There is no automatic compaction: `context_limit` stops before sending.
 HTTP request caps include retries. Tool calls have a separate cap (150 when unset).
@@ -125,7 +126,7 @@ beta mode and automatic compaction remain outside this version.
 On 2026-11-10, the four Flash/Pro thinking-enabled/high and thinking-disabled
 contracts passed against the provider. A synthetic fixture pipeline with its
 fixture brief then completed ingest, recon, one capped audit focus, validation,
-evidence and report with no failed sessions, using a **1000000 local context cap**
+evidence and report with no failed sessions, using a **1048576 local byte cap**
 and the other caps above. Runtime implementation: `ddba088`; model aliases and
 fingerprints are observations, not physical pins or quality-benchmark claims.
 

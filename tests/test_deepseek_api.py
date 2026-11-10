@@ -74,7 +74,7 @@ def test_smoke_preset_uses_flash_and_one_focus():
     ("deepseek_api_max_tokens", 0), ("deepseek_api_max_tokens", True),
     ("deepseek_api_max_tokens", 393217), ("deepseek_api_max_tokens", "1024"),
     ("deepseek_api_max_tokens", 1.5),
-    ("deepseek_api_context_window", 1_000_001), ("deepseek_api_context_window", 0),
+    ("deepseek_api_context_window", 1_048_577), ("deepseek_api_context_window", 0),
     ("deepseek_api_max_requests", 0), ("deepseek_api_max_requests", -1),
     ("deepseek_api_max_requests", True),
 ])
@@ -87,6 +87,13 @@ def test_output_plus_margin_must_fit_the_context_cap():
     with pytest.raises(ValueError, match="context"):
         PipelineConfig(deepseek_api_max_tokens=100_000, deepseek_api_context_window=100_000)
     PipelineConfig(deepseek_api_max_tokens=100_000, deepseek_api_context_window=200_000)
+
+
+def test_context_cap_matches_provider_million_token_limit():
+    cfg = PipelineConfig(deepseek_api_context_window=1_048_576)
+    assert cfg.deepseek_api_context_window == 1_048_576
+    with pytest.raises(ValueError, match="deepseek_api_context_window"):
+        PipelineConfig(deepseek_api_context_window=1_048_577)
 
 
 def test_key_is_secret_in_repr_and_serialization():

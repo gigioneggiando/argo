@@ -84,7 +84,10 @@ Budget gates include known cost plus unknown reserves. Concurrent sessions can
 overshoot the global budget: this is not an atomic billing cap.
 
 The accounting-only journal lives at the run's `.argo_sessions` outside tool
-roots. Intent is fsynced before sending, observations afterward. Resume reconciles
+roots. Intent is fsynced before sending, observations afterward. Diagnostics retain
+bounded `response_finish` labels (`stop`, `tool_calls`, `length`, `content_filter`,
+`insufficient_system_resource`, `aborted`, or `unknown`) without storing response bodies.
+Resume reconciles
 orphan attempts into one ledger aggregate per accounting ID; already logged IDs
 are ignored. An intent without an outcome retains a reserve. A live owner blocks
 reconciliation; PID reuse may conservatively require operator investigation.

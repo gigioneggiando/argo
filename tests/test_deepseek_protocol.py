@@ -71,12 +71,18 @@ def test_wire_and_reasoning_never_persist(tmp_path, thinking):
 
 
 @pytest.mark.parametrize('finish', ['length', 'content_filter', 'aborted',
-                                     'insufficient_system_resource', 'mystery'])
+                                     'insufficient_system_resource', 'mystery', REASON, None, {}])
 def test_non_final_reasons_fail_with_usage(tmp_path, finish):
     runner, ledger = setup_runner(tmp_path, lambda req: httpx.Response(200, json=response(finish=finish)))
     with pytest.raises(RunnerError):
         invoke(runner, tmp_path)
     assert ledger.run_cost('synthetic') > 0
+    events = [json.loads(line) for path in (tmp_path / 'run' / '.argo_sessions').glob('*.jsonl')
+              for line in path.read_text(encoding='utf-8').splitlines()]
+    finishes = [event['finish_reason'] for event in events if event['event'] == 'response_finish']
+    allowed = ('length', 'content_filter', 'aborted', 'insufficient_system_resource')
+    assert finishes == [finish if isinstance(finish, str) and finish in allowed else 'unknown']
+    assert REASON not in json.dumps(events) and KEY not in json.dumps(events)
     ledger.close()
 
 

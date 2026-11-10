@@ -283,6 +283,11 @@ class DeepSeekApiRunner(AgentRunner):
                     if choice.get('index') != 0 or isinstance(choice.get('index'), bool):
                         raise _Failure('invalid_response')
                     msg, finish = choice.get('message'), choice.get('finish_reason')
+                    # Retain a bounded diagnostic label, never arbitrary provider strings.
+                    known_finishes = ('stop', 'tool_calls', 'length', 'content_filter',
+                                      'insufficient_system_resource', 'aborted')
+                    log('response_finish', finish_reason=(
+                        finish if isinstance(finish, str) and finish in known_finishes else 'unknown'))
                     if not isinstance(msg, dict) or msg.get('role') != 'assistant':
                         raise _Failure('invalid_response')
                     content, calls = msg.get('content'), msg.get('tool_calls')

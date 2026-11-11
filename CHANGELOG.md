@@ -9,6 +9,15 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Added
+
+- `--codex-model-chain <id,id,...>`: a Codex model de-escalation chain, strongest first. It expands
+  into one fallback entry per `(model × --codex-accounts)` (model-outer, so a strong tier is
+  exhausted across every account before a weaker one), with any `--fallback` backends after. A
+  non-terminal `moderation_flagged` or usage limit on a strong model advances the chain to a weaker
+  tier automatically. Supersedes `--codex-model` for codex; `--smoke` ignores it. See
+  [docs/backends.md](docs/backends.md).
+
 ### Fixed
 
 - `corroborate` no longer crashes the pipeline when its offline `corroborate_docs` pass runs on the

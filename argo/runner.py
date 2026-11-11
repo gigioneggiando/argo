@@ -2470,6 +2470,46 @@ def _label_runner(runner: AgentRunner, backend: str, account: str, index: int) -
     return runner
 
 
+def _dedupe_preserving_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def _expand_codex_model_chain(config: PipelineConfig, ledger: Ledger, name: str) -> list[AgentRunner]:
+    """Codex de-escalation chain: one runner per (model, credential-slot), models strongest first
+    (outer loop) so the strong model is exhausted across every account before a tier is dropped;
+    runner_fallbacks backends follow afterwards (see build_runner). Each runner carries a flat
+    codex_model, so FallbackRunner.run()'s per-entry model_for() picks the tier for that entry.
+    Credential slots mirror the non-chain codex branches of _expand_backend. Invalid (account,
+    model) pairs (e.g. a daybreak account that does not serve a strong model) are NOT pruned here:
+    they surface at call time as a non-terminal model_unavailable that simply advances the chain."""
+    models = _dedupe_preserving_order([m.strip() for m in config.codex_model_chain if m and m.strip()])
+    if config.codex_accounts:
+        slots = [(d, dict(codex_home=d, codex_api_key=None, codex_api_keys=[]))
+                 for d in config.codex_accounts]
+    elif config.codex_api_keys:
+        slots = [("<api-key>", dict(codex_home=None, codex_api_key=k))
+                 for k in config.codex_api_keys]
+    else:
+        slots = [(config.codex_home, dict(codex_api_key=None, codex_api_keys=[]))]
+    runners: list[AgentRunner] = []
+    index = 0
+    for model in models:
+        for account, overrides in slots:
+            runner = CodexRunner(config.with_overrides(
+                runner=name, codex_model=model, codex_stage_models={}, **overrides), ledger)
+            component = "api-key" if account == "<api-key>" else _safe_account_component(account)
+            runner.account_label = f"{name}:{component}@{model}[{index + 1}]"
+            runners.append(runner)
+            index += 1
+    return runners
+
+
 def _expand_backend(config: PipelineConfig, ledger: Ledger, name: str) -> list[AgentRunner]:
     """One backend name -> one or more runners. Multi-account backends expand to one runner per
     credential dir (limits are per-account): Claude via CLAUDE_CONFIG_DIR, Codex via CODEX_HOME,
@@ -2486,6 +2526,8 @@ def _expand_backend(config: PipelineConfig, ledger: Ledger, name: str) -> list[A
         return [_label_runner(HeadlessClaudeRunner(config.with_overrides(
                     runner=name, claude_config_dir=None, claude_api_key=k), ledger),
                     name, "<api-key>", i) for i, k in enumerate(config.claude_api_keys)]
+    if name == "codex" and config.codex_model_chain:
+        return _expand_codex_model_chain(config, ledger, name)
     if name == "codex" and config.codex_accounts:
         return [_label_runner(CodexRunner(config.with_overrides(
                     runner=name, codex_home=d, codex_api_key=None, codex_api_keys=[]), ledger),

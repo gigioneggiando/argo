@@ -329,6 +329,13 @@ class PipelineConfig:
     # Codex backend (runner == "codex"). ``codex_model`` remains a flat compatibility override;
     # the explicit codex_stage_models map is used by new defaults and wins per stage.
     codex_model: str | None = None
+    # Ordered Codex model de-escalation chain, strongest first (e.g. gpt-6-astra, gpt-6.1-sol,
+    # gpt-5.6-sol). When non-empty it drives the codex fallback chain: each model becomes its own
+    # chain entry (crossed with codex_accounts/codex_api_keys), so a moderation flag or usage limit
+    # on a strong model advances the FallbackRunner to a weaker one before dropping to another
+    # backend. Supersedes codex_model for building the chain; assumes no per-stage codex_stage_models
+    # (the common case). See runner._expand_backend and docs/backends.md.
+    codex_model_chain: list[str] = field(default_factory=list)
     codex_oss: bool = False             # use Codex's open-source provider (--oss)
     codex_local_provider: str | None = None  # "ollama" | "lmstudio" (with --oss)
     # Codex features passed as `--disable <name>` on every session. multi_agent is off by default:
@@ -568,6 +575,8 @@ class PipelineConfig:
             raise ValueError("mistral_vibe_auth must be key or stored")
         if self.mistral_vibe_auth == "stored" and self.mistral_vibe_api_key:
             raise ValueError("mistral_vibe_api_key is incompatible with mistral_vibe_auth=stored")
+        if any(not isinstance(m, str) or not m.strip() for m in self.codex_model_chain):
+            raise ValueError("codex_model_chain entries must be non-empty model ids")
 
     def model_for(self, stage: str) -> str:
         backend = self.stage_runners.get(stage, self.runner)
@@ -673,6 +682,7 @@ class PipelineConfig:
             runner="headless",
             stage_models=models,
             codex_stage_models=codex_models,
+            codex_model_chain=[],          # a smoke is one cheap model, never a de-escalation chain
             gemini_stage_models=gemini_models,
             budget_usd=min(2.0, self.budget_usd) if self.budget_usd is not None else 2.0,
             stage_timeouts={stage: seconds for stage, seconds in self.stage_timeouts.items()

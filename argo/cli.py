@@ -51,6 +51,7 @@ def _build_config(
     max_focuses: Optional[int] = None,
     session_budget: Optional[float] = None,
     codex_model: Optional[str] = None,
+    codex_model_chain: Optional[str] = None,
     codex_oss: bool = False,
     codex_local_provider: Optional[str] = None,
     codex_context_window: Optional[int] = None,
@@ -129,6 +130,9 @@ def _build_config(
     if codex_accounts:
         dirs = [d.strip() for d in codex_accounts.split(",") if d.strip()]
         cfg = cfg.with_overrides(codex_accounts=dirs)
+    if codex_model_chain:
+        models = [m.strip() for m in codex_model_chain.split(",") if m.strip()]
+        cfg = cfg.with_overrides(codex_model_chain=models)
     if gemini_accounts:
         keys = [k.strip() for k in gemini_accounts.split(",") if k.strip()]
         cfg = cfg.with_overrides(gemini_accounts=keys)
@@ -149,6 +153,10 @@ def _build_config(
         check = validate_selection(cfg.model_for(stage), backend)
         if check.get("selectable") is False:
             raise typer.BadParameter(f"effective routing {stage}: {check.get('reason', 'invalid model/backend pair')}")
+    for model in cfg.codex_model_chain:
+        check = validate_selection(model, "codex")
+        if check.get("selectable") is False:
+            raise typer.BadParameter(f"--codex-model-chain {model!r}: {check.get('reason', 'invalid model for codex')}")
     return cfg
 
 
@@ -235,6 +243,12 @@ RunnerOpt = typer.Option("headless", "--runner",
 CodexModelOpt = typer.Option(None, "--codex-model",
                              help="(runner=codex) model id, e.g. gpt-6.1-sol; omit to use the "
                                   "Codex CLI's own default")
+CodexModelChainOpt = typer.Option(None, "--codex-model-chain",
+                             help="(runner=codex) comma-separated model de-escalation chain, "
+                                  "strongest first, e.g. 'gpt-6-astra,gpt-6.1-sol,gpt-5.6-sol'. On a "
+                                  "moderation flag or usage limit the fallback steps DOWN a tier "
+                                  "(crossed with --codex-accounts) before dropping to --fallback. "
+                                  "Supersedes --codex-model for codex.")
 CodexOssOpt = typer.Option(False, "--codex-oss", help="(runner=codex) use the open-source provider (--oss)")
 CodexProviderOpt = typer.Option(None, "--codex-local-provider",
                                 help="(runner=codex --codex-oss) ollama | lmstudio")
@@ -1393,6 +1407,7 @@ def pipeline(
     session_budget: Optional[float] = SessionBudgetOpt,
     max_focuses: Optional[int] = MaxFocusesOpt,
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
+    codex_model_chain: Optional[str] = CodexModelChainOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
     codex_context_window: Optional[int] = CodexContextWindowOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
@@ -1418,7 +1433,8 @@ def pipeline(
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
                         timeout=timeout, max_turns=max_turns, session_budget=session_budget,
                         max_focuses=max_focuses,
-                        codex_model=codex_model, codex_oss=codex_oss,
+                        codex_model=codex_model, codex_model_chain=codex_model_chain,
+                        codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
                         codex_context_window=codex_context_window,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,

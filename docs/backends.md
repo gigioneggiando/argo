@@ -86,6 +86,17 @@ equivalent re-validation for the Codex sandbox), and `tests/test_gemini.py`
 - `--codex-model <id>` is a compatibility flat override. New runs use the explicit stage map:
   `gpt-6-astra` for recon/validate/verify, `gpt-6.1-sol` for audit/runtime, and `gpt-6-luna`
   for ingest/SCA/report. Use repeatable `--stage-model STAGE=ID` to override one stage.
+- `--codex-model-chain <id,id,...>` is a model **de-escalation chain**, strongest first
+  (e.g. `gpt-6-astra,gpt-6.1-sol,gpt-5.6-sol`). It expands into one chain entry per
+  `(model × account)`, model-outer, so the strong tier is exhausted across every `--codex-accounts`
+  entry before a weaker tier is tried; `--fallback` backends follow the whole codex chain. A
+  moderation flag (`moderation_flagged`) or usage limit on a strong model is non-terminal, so it
+  advances to the next tier automatically. It supersedes `--codex-model` for codex and assumes no
+  per-stage codex models. Note: tiers in the same model family often share one moderation classifier,
+  so a tier-chain mainly buys rate/usage-limit resilience; keep a different backend (Claude via
+  `--fallback headless`) as the terminal low-moderation escape. Account/model pairs a plan does not
+  serve (e.g. a `daybreak` account asked for a too-new model) surface as a non-terminal
+  `model_unavailable` and are skipped at call time.
 - `--stage-runner STAGE=backend` deliberately mixes providers while retaining the same guardrails;
   `argo show-routing` prints the resolved map before spending tokens.
 - `--codex-oss` + `--codex-local-provider <ollama|lmstudio>` — run a **local / open-source** model

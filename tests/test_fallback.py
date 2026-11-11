@@ -577,3 +577,89 @@ def test_runtime_credentials_are_redacted_and_not_resurrected():
         "username": "<redacted>", "password": "<redacted>"}
     assert "correct-horse" not in str(written)
     assert pipeline_config_from_dict(written).runtime_credentials == {}
+
+
+# --- Codex model de-escalation chain (--codex-model-chain) -------------------------------------
+def test_codex_model_chain_crosses_accounts_strongest_first(tmp_path):
+    """One runner per (model, account), model-outer so the strong tier is exhausted across every
+    account before a weaker tier starts; each entry carries its own flat codex_model, and the
+    label records both account and model."""
+    from argo.ledger import Ledger
+    from argo.runner import CodexRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="codex",
+                             codex_model_chain=["gpt-6-astra", "gpt-6.1-sol", "gpt-5.6-sol"],
+                             codex_accounts=["/acct/c", "/acct/b"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 6
+        assert all(isinstance(x, CodexRunner) for x in r._runners)
+        assert all(x.config.runner == "codex" for x in r._runners)
+        assert [x.config.model_for("audit") for x in r._runners] == [
+            "gpt-6-astra", "gpt-6-astra", "gpt-6.1-sol", "gpt-6.1-sol", "gpt-5.6-sol", "gpt-5.6-sol"]
+        assert [x.config.codex_home for x in r._runners] == [
+            "/acct/c", "/acct/b", "/acct/c", "/acct/b", "/acct/c", "/acct/b"]
+        # label component is the sanitized leaf of the account dir ("/acct/c" -> "c")
+        assert r._runners[0].account_label == "codex:c@gpt-6-astra[1]"
+        assert r._runners[5].account_label == "codex:b@gpt-5.6-sol[6]"
+    finally:
+        ledger.close()
+
+
+def test_codex_model_chain_without_accounts_uses_single_slot(tmp_path):
+    from argo.ledger import Ledger
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="codex", codex_model_chain=["gpt-6.1-sol", "gpt-5.6-sol"])
+        r = build_runner(cfg, ledger)
+        assert isinstance(r, FallbackRunner) and len(r._runners) == 2
+        assert [x.config.model_for("audit") for x in r._runners] == ["gpt-6.1-sol", "gpt-5.6-sol"]
+    finally:
+        ledger.close()
+
+
+def test_codex_model_chain_then_fallback_backend_appended(tmp_path):
+    """The weaker tiers come first; a --fallback backend (Claude) is appended AFTER the whole
+    codex chain, so Claude is the terminal low-moderation escape."""
+    from argo.ledger import Ledger
+    from argo.runner import CodexRunner, HeadlessClaudeRunner
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="codex", runner_fallbacks=["headless"],
+                             codex_model_chain=["gpt-6.1-sol", "gpt-5.6-sol"])
+        r = build_runner(cfg, ledger)
+        assert [type(x).__name__ for x in r._runners] == [
+            "CodexRunner", "CodexRunner", "HeadlessClaudeRunner"]
+        assert r._runners[-1].config.runner == "headless"
+    finally:
+        ledger.close()
+
+
+def test_single_model_chain_still_wraps_only_when_needed(tmp_path):
+    from argo.ledger import Ledger
+    ledger = Ledger(tmp_path / "l.sqlite")
+    try:
+        cfg = PipelineConfig(runner="codex", codex_model_chain=["gpt-6.1-sol"])
+        r = build_runner(cfg, ledger)
+        # one model, one (default) slot -> a single runner, not wrapped in FallbackRunner
+        assert not isinstance(r, FallbackRunner)
+        assert r.config.model_for("audit") == "gpt-6.1-sol"
+    finally:
+        ledger.close()
+
+
+def test_codex_model_chain_roundtrips_through_config_json():
+    from argo.config import pipeline_config_from_dict, pipeline_config_to_dict
+    cfg = PipelineConfig(runner="codex", codex_model_chain=["gpt-6-astra", "gpt-5.6-sol"])
+    loaded = pipeline_config_from_dict(pipeline_config_to_dict(cfg))
+    assert loaded.codex_model_chain == ["gpt-6-astra", "gpt-5.6-sol"]
+
+
+def test_for_smoke_clears_codex_model_chain():
+    cfg = PipelineConfig(runner="codex", codex_model_chain=["gpt-6-astra", "gpt-5.6-sol"])
+    assert cfg.for_smoke().codex_model_chain == []
+
+
+def test_codex_model_chain_rejects_empty_entries():
+    with pytest.raises(ValueError, match="codex_model_chain"):
+        PipelineConfig(runner="codex", codex_model_chain=["gpt-6.1-sol", "  "])

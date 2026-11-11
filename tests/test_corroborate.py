@@ -229,3 +229,22 @@ def test_only_scopes_corroboration_and_leaves_other_verdicts_untouched(env):
     assert kept["AUTHZ-002"]["corroboration"]["verdict"] == "unknown"
     assert kept["AUTHZ-002"]["corroboration"]["rationale"] == "preserve this sentinel"
     assert "corroboration" not in kept["FULL-003"]
+
+
+def test_corroborate_docs_stage_resolves_a_model_on_every_backend():
+    """Regression: corroborate splits into an online 'corroborate' pass and an OFFLINE
+    'corroborate_docs' pass (corroborate.py). model_for('corroborate_docs') must resolve on every
+    backend -- the headless/gemini default maps previously omitted it, so when corroborate fell onto
+    Claude the generic lookup raised KeyError('No model configured for stage corroborate_docs') and
+    killed the whole pipeline after validate. Each backend's offline pass should use the same tier as
+    its online corroborate pass."""
+    from argo.config import (PipelineConfig, DEFAULT_STAGE_MODELS, DEFAULT_CODEX_STAGE_MODELS,
+                             DEFAULT_GEMINI_STAGE_MODELS)
+    for mp in (DEFAULT_STAGE_MODELS, DEFAULT_CODEX_STAGE_MODELS, DEFAULT_GEMINI_STAGE_MODELS):
+        assert mp.get("corroborate_docs") == mp["corroborate"]
+    for runner in ("headless", "codex", "gemini"):
+        cfg = PipelineConfig(runner=runner)
+        assert cfg.model_for("corroborate_docs") == cfg.model_for("corroborate")
+    # the exact crash path: corroborate routed to the headless backend as a fallback
+    routed = PipelineConfig(runner="codex", stage_runners={"corroborate_docs": "headless"})
+    assert routed.model_for("corroborate_docs") == DEFAULT_STAGE_MODELS["corroborate_docs"]

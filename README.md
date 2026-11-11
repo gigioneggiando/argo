@@ -23,9 +23,9 @@ models.
 
 Not a benchmark score — pull requests, published advisories, and real CVEs, on real open-source projects.
 
-**27** projects · **97** public records · **66** public PRs · **24** published advisories · **86** resolved records · **13** CVEs listed · **8** languages represented\*
+**27** projects · **97** public records · **66** public PRs · **24** published advisories · **86** resolved records · **5** open · **5** unpatched · **1** other closed · **13** CVEs listed\*
 
-These totals come from the public archive (snapshot: 6 November 2026). The 97 entries are public records, not 97 distinct vulnerabilities; related advisories, CVEs and backports can refer to the same issue. Private reports are excluded.
+These counts mirror the [public archive](https://gigioneggiando.com/argo), checked 11 November 2026. The archive is a snapshot: 97 entries are public records, not distinct vulnerabilities; related advisories, CVEs and backports can refer to the same issue. Private reports are excluded; follow upstream links for current status.
 
 ### Selected public results
 
@@ -84,7 +84,11 @@ symbolic executor.
 - **Detection-only, read-only, never live by default** — guardrails enforced in code, not just
   prompts.
 
-![End-to-end pipeline flow](docs/diagrams/pipeline_flow.svg)
+![Argo architecture overview for v0.16.0](docs/diagrams/argo-architecture-v0.16.0.png)
+
+*Prepared for v0.16.0 | [SVG](docs/diagrams/argo-architecture-v0.16.0.svg) |
+[PDF](docs/diagrams/argo-architecture-v0.16.0.pdf) | [editable PowerPoint](docs/diagrams/argo-architecture-v0.16.0.pptx) |
+[detailed stage flow](docs/diagrams/pipeline_flow.svg)*
 
 ---
 
@@ -307,7 +311,7 @@ Same pipeline, swappable engine — pick what you have: `--runner headless` (Cla
 `--runner codex` (Codex CLI → OpenAI, or `--codex-oss --codex-local-provider ollama|lmstudio` for
 **local open-source models** like Qwen/DeepSeek, fully free and on-device) · `--runner gemini`
 (Gemini CLI → Google, tiered pro/flash/flash-lite per stage like Claude) · `--runner mistral-api`
-(Mistral API, Argo's own sandboxed tool loop, any OS) · `--runner mistral-vibe` (Mistral Vibe
+(Mistral API, Argo's own path-confined tool loop, any OS; not an OS sandbox) · `--runner mistral-vibe` (Mistral Vibe
 CLI under an isolated, read-only config) · `--runner mock` (free
 fixtures). Backends and accounts chain transparently on a rate limit or transient failure, so a long
 run self-heals instead of stalling. Full model-per-stage defaults, the resilience/fallback design,
@@ -364,3 +368,14 @@ Apache License 2.0 — see [LICENSE](LICENSE). Argo is **detection-only** and in
 **authorized** security testing (bug-bounty programs with safe harbor, your own code, CTFs, or
 research). You are responsible for staying within the scope and rules of engagement of any program
 you point it at.
+
+## DeepSeek cloud API
+
+`--runner deepseek-api` adds an Argo-owned, tool/path-confined Chat Completions loop.
+It requires a runtime environment key and explicit finite budget; source is sent
+to the cloud. DeepSeek on Codex OSS remains local and unpriced. See
+[setup, caps, prices, recovery and approved-run examples](docs/deepseek.md).
+
+Vibe saved-login setup remains separate: complete `vibe --setup` on the server OS
+account, then choose `--runner mistral-vibe --mistral-vibe-auth stored` for a separately
+approved run. See [the manual Vibe seam](docs/testing.md#vibe-saved-login-seam-opt-in-not-ci).

@@ -23,33 +23,21 @@ error/log string.
 """
 from __future__ import annotations
 
-import fnmatch
 import json
 import os
 import re
-import tempfile
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 
+# The tool dispatcher (path policy, bounded IO/regex, atomic writes) is shared with the other
+# API-native runners; re-exported here for existing importers.
+from .api_tools import MAX_TOOL_RESULT_CHARS, Toolbox, ToolError  # noqa: F401
 from .config import MISTRAL_API_BASE_URL, PipelineConfig, estimate_cost_usd, model_cost_source
 from .ledger import Ledger
 from .runner import AgentRunner, LLMResult, RunnerCancelled, RunnerError, _redact_secrets
-from .tool_errors import ToolError, validate_json_content
 
-# --- caps (bounded tool results keep one session's context and cost predictable) ---------------
-MAX_READ_LINES = 2000
-MAX_READ_BYTES = 256 * 1024
-MAX_LINE_CHARS = 2000
-MAX_LIST_ENTRIES = 500
-MAX_GLOB_RESULTS = 300
-MAX_GREP_MATCHES = 200
-MAX_GREP_FILE_BYTES = 2 * 1024 * 1024
-MAX_GREP_FILES = 20000
-MAX_WRITE_BYTES = 4 * 1024 * 1024
-MAX_TOOL_RESULT_CHARS = 60_000
 DEFAULT_MAX_TURNS = 150
 DEFAULT_CONTEXT_WINDOW = 128_000          # tokens; mistral-medium/large are >= 128k
 CHARS_PER_TOKEN = 3.5                     # conservative estimate for budgeting the context
@@ -58,229 +46,7 @@ LOOP_REPEAT_LIMIT = 4                     # identical consecutive tool calls -> 
 HTTP_TIMEOUT_S = 300
 MAX_RATE_LIMIT_RETRIES = 8
 MAX_TRANSIENT_RETRIES = 4
-_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist", "build"}
 _ELIDED = "[earlier tool output elided to fit the context window; call the tool again if needed]"
-
-
-# ============================================================================== tool dispatcher
-@dataclass
-class Toolbox:
-    repo_dir: Path | None
-    work_dir: Path
-    allow_write: bool
-
-    def __post_init__(self):
-        self.work_real = Path(os.path.realpath(self.work_dir))
-        self.repo_real = Path(os.path.realpath(self.repo_dir)) if self.repo_dir else None
-        self.roots = [r for r in (self.work_real, self.repo_real) if r is not None]
-
-    # -- path policy ------------------------------------------------------------------------
-    @staticmethod
-    def _inside(path: Path, root: Path) -> bool:
-        try:
-            return os.path.commonpath([os.path.normcase(str(path)), os.path.normcase(str(root))]) \
-                == os.path.normcase(str(root))
-        except ValueError:                      # different drives on Windows
-            return False
-
-    def _resolve_read(self, raw: str) -> Path:
-        if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
-            raise ToolError("path must be a non-empty string")
-        p = Path(raw.strip())
-        candidates = [p] if p.is_absolute() else [self.work_real / p] + (
-            [self.repo_real / p] if self.repo_real else [])
-        for cand in candidates:
-            real = Path(os.path.realpath(cand))
-            if any(self._inside(real, root) for root in self.roots):
-                if real.exists():
-                    return real
-        for cand in candidates:                 # report the precise reason
-            real = Path(os.path.realpath(cand))
-            if not any(self._inside(real, root) for root in self.roots):
-                raise ToolError(f"access denied: {raw} is outside the repository and the "
-                                "working directory")
-        raise ToolError(f"not found: {raw}")
-
-    def _resolve_write(self, raw: str) -> Path:
-        if not self.allow_write:
-            raise ToolError("write_file is not available in this stage")
-        if not isinstance(raw, str) or not raw.strip() or "\x00" in raw:
-            raise ToolError("path must be a non-empty string")
-        p = Path(raw.strip())
-        target = p if p.is_absolute() else self.work_real / p
-        parent_real = Path(os.path.realpath(target.parent))
-        if not self._inside(parent_real, self.work_real):
-            raise ToolError("access denied: files may only be written inside the working "
-                            f"directory {self.work_real}")
-        final = parent_real / target.name
-        if final.is_symlink():
-            raise ToolError("access denied: refusing to write through a symlink")
-        if self.repo_real and self._inside(Path(os.path.realpath(final)), self.repo_real):
-            raise ToolError("access denied: the repository is read-only")
-        return final
-
-    def _display(self, p: Path) -> str:
-        return str(p)
-
-    # -- tools ------------------------------------------------------------------------------
-    def read_file(self, path: str, offset: int = 1, limit: int = MAX_READ_LINES) -> str:
-        f = self._resolve_read(path)
-        if f.is_dir():
-            raise ToolError(f"{path} is a directory; use list_dir")
-        if not f.is_file():
-            raise ToolError(f"{path} is not a regular file")
-        offset = max(1, int(offset or 1))
-        limit = max(1, min(int(limit or MAX_READ_LINES), MAX_READ_LINES))
-        out, size = [], 0
-        with open(f, "r", encoding="utf-8", errors="replace") as fh:
-            for n, line in enumerate(fh, start=1):
-                if n < offset:
-                    continue
-                if n >= offset + limit or size > MAX_READ_BYTES:
-                    out.append(f"... [truncated at line {n - 1}; use offset={n} to continue]")
-                    break
-                line = line.rstrip("\n")
-                if len(line) > MAX_LINE_CHARS:
-                    line = line[:MAX_LINE_CHARS] + " ...[line truncated]"
-                out.append(f"{n:6}\t{line}")
-                size += len(line) + 8
-        return "\n".join(out) if out else "(empty file or offset past end)"
-
-    def list_dir(self, path: str = ".") -> str:
-        d = self._resolve_read(path or ".")
-        if not d.is_dir():
-            raise ToolError(f"{path} is not a directory")
-        entries = sorted(os.scandir(d), key=lambda e: (not e.is_dir(follow_symlinks=False), e.name))
-        lines = [f"{e.name}/" if e.is_dir(follow_symlinks=False) else e.name
-                 for e in entries[:MAX_LIST_ENTRIES]]
-        if len(entries) > MAX_LIST_ENTRIES:
-            lines.append(f"... [{len(entries) - MAX_LIST_ENTRIES} more entries]")
-        return f"{d}:\n" + ("\n".join(lines) if lines else "(empty)")
-
-    def _walk(self, base: Path):
-        count = 0
-        for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
-            dirnames[:] = sorted(n for n in dirnames if n not in _SKIP_DIRS)
-            for name in sorted(filenames):
-                path = Path(dirpath) / name
-                if path.is_symlink():            # may point outside the allowed roots
-                    continue
-                count += 1
-                if count > MAX_GREP_FILES:
-                    return
-                yield path
-
-    def glob(self, pattern: str, path: str | None = None) -> str:
-        if not pattern:
-            raise ToolError("pattern is required")
-        base = self._resolve_read(path) if path else (self.repo_real or self.work_real)
-        if not base.is_dir():
-            raise ToolError(f"{path} is not a directory")
-        pat = pattern.replace("\\", "/")
-        hits = []
-        for f in self._walk(base):
-            rel = f.relative_to(base).as_posix()
-            if fnmatch.fnmatch(rel, pat) or ("/" not in pat and fnmatch.fnmatch(f.name, pat)) \
-                    or (pat.startswith("**/") and fnmatch.fnmatch(rel, pat[3:])):
-                hits.append(str(f))
-                if len(hits) >= MAX_GLOB_RESULTS:
-                    hits.append(f"... [stopped at {MAX_GLOB_RESULTS} results; narrow the pattern]")
-                    break
-        return "\n".join(hits) if hits else "(no matches)"
-
-    def grep(self, pattern: str, path: str | None = None, glob: str | None = None,
-             ignore_case: bool = False, max_results: int = MAX_GREP_MATCHES) -> str:
-        if not pattern:
-            raise ToolError("pattern is required")
-        try:
-            rx = re.compile(pattern, re.IGNORECASE if ignore_case else 0)
-        except re.error as exc:
-            raise ToolError(f"invalid regex: {exc}") from None
-        base = self._resolve_read(path) if path else (self.repo_real or self.work_real)
-        files = [base] if base.is_file() else self._walk(base)
-        cap = max(1, min(int(max_results or MAX_GREP_MATCHES), MAX_GREP_MATCHES))
-        out = []
-        for f in files:
-            if glob and not (fnmatch.fnmatch(f.name, glob)
-                             or fnmatch.fnmatch(f.as_posix(), "*" + glob.lstrip("*"))):
-                continue
-            try:
-                if f.stat().st_size > MAX_GREP_FILE_BYTES:
-                    continue
-                with open(f, "r", encoding="utf-8", errors="strict") as fh:
-                    for n, line in enumerate(fh, start=1):
-                        if rx.search(line):
-                            out.append(f"{f}:{n}: {line.rstrip()[:300]}")
-                            if len(out) >= cap:
-                                out.append(f"... [stopped at {cap} matches; narrow the search]")
-                                return "\n".join(out)
-            except (UnicodeDecodeError, OSError):
-                continue                        # binary or unreadable file
-        return "\n".join(out) if out else "(no matches)"
-
-    def write_file(self, path: str, content: str) -> str:
-        if not isinstance(content, str):
-            raise ToolError("content must be a string")
-        data = content.encode("utf-8")
-        if len(data) > MAX_WRITE_BYTES:
-            raise ToolError(f"content too large ({len(data)} bytes > {MAX_WRITE_BYTES})")
-        target = self._resolve_write(path)
-        if target.suffix.lower() == ".json":
-            validate_json_content(content)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".argo-tmp",
-                                        dir=target.parent)
-        try:
-            with os.fdopen(fd, "wb") as tmp:
-                tmp.write(data)
-            os.replace(tmp_name, target)
-        finally:
-            try:
-                os.unlink(tmp_name)
-            except FileNotFoundError:
-                pass
-        return f"wrote {len(data)} bytes to {target}"
-
-    # -- schema + dispatch ------------------------------------------------------------------
-    def schemas(self) -> list[dict]:
-        def fn(name, desc, props, required):
-            return {"type": "function", "function": {
-                "name": name, "description": desc,
-                "parameters": {"type": "object", "properties": props, "required": required}}}
-        s = {"type": "string"}
-        i = {"type": "integer"}
-        tools = [
-            fn("read_file", "Read a text file (repository or working directory). Returns numbered "
-               f"lines; at most {MAX_READ_LINES} lines per call, use offset to page.",
-               {"path": s, "offset": i, "limit": i}, ["path"]),
-            fn("list_dir", "List a directory (repository or working directory).",
-               {"path": s}, []),
-            fn("glob", "Find files by glob pattern, e.g. '**/*.java' or 'src/**/Auth*.go'. "
-               "Defaults to the repository root.", {"pattern": s, "path": s}, ["pattern"]),
-            fn("grep", "Search file contents with a Python regular expression. Optional path "
-               "(file or directory) and glob filter on file names, e.g. '*.py'.",
-               {"pattern": s, "path": s, "glob": s, "ignore_case": {"type": "boolean"},
-                "max_results": i}, ["pattern"]),
-        ]
-        if self.allow_write:
-            tools.append(fn("write_file", "Create or overwrite a file in the working directory "
-                            "(relative paths resolve there). The repository is read-only.",
-                            {"path": s, "content": s}, ["path", "content"]))
-        return tools
-
-    def dispatch(self, name: str, args: dict) -> str:
-        impl = {"read_file": self.read_file, "list_dir": self.list_dir, "glob": self.glob,
-                "grep": self.grep}
-        if self.allow_write:
-            impl["write_file"] = self.write_file
-        if name not in impl:
-            raise ToolError(f"unknown tool {name!r}; available: {', '.join(sorted(impl))}")
-        if not isinstance(args, dict):
-            raise ToolError("arguments must be a JSON object")
-        try:
-            return impl[name](**args)
-        except TypeError as exc:
-            raise ToolError(f"bad arguments for {name}: {exc}") from None
 
 
 def _system_prompt(tb: Toolbox) -> str:

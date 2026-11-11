@@ -19,7 +19,13 @@ normalization/guardrail stages. The security
 logic lives in the prompts (`argo/prompts/`); this code ingests a program, sequences the
 stages, and produces a reviewable report. It never writes audit logic itself.
 
-See [diagrams/pipeline_flow.svg](diagrams/pipeline_flow.svg) for the visual flow.
+## Architecture overview (planned v0.16.0)
+
+![Argo architecture overview for v0.16.0](diagrams/argo-architecture-v0.16.0.png)
+
+[SVG](diagrams/argo-architecture-v0.16.0.svg) | [PDF](diagrams/argo-architecture-v0.16.0.pdf) |
+[editable PowerPoint](diagrams/argo-architecture-v0.16.0.pptx). This is a high-level map; the
+[detailed pipeline flow](diagrams/pipeline_flow.svg) shows execution ordering and stage outputs.
 
 ## Module map
 
@@ -765,3 +771,13 @@ default and disabled in benchmark mode. When enabled, a high/critical audit resu
 the next validation stage to a stronger configured model/provider. The decision, old/new routing,
 trigger, and result are appended to `adaptive_events.jsonl`; no stage is silently added, no safety
 rail is bypassed, and no budget is increased.
+
+## DeepSeek native API flow
+
+Factory → `DeepSeekApiRunner(AgentRunner)` → per-invocation HTTPX async client →
+volatile Chat Completions history → validated batches → shared `Toolbox`.
+`_invoke` returns a sanitized internal envelope; `parse_envelope` normalizes it,
+and the common runner logs exactly one aggregate. Accounting-only fsynced journals
+retain request intents and observations; resume reconciles orphan aggregates
+through the ledger accounting-ID unique index. No private transcript is restored.
+See [transport/accounting details and deferrals](deepseek.md).

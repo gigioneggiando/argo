@@ -284,7 +284,7 @@ textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
 input::placeholder, textarea::placeholder { color: var(--text-faint); }
 input:focus, textarea:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
 .help { margin-top: 6px; color: var(--text-faint); font-size: 13px; }
-.seg { display: inline-flex; max-width: 100%; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.seg { display: inline-flex; flex-wrap: wrap; max-width: 100%; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
 .seg button { min-height: 30px; padding: 5px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text-dim); cursor: pointer; white-space: nowrap; }
 .seg button:hover { color: var(--text); }
 .seg button.on { background: var(--surface); color: var(--text); }

@@ -57,8 +57,26 @@ MISTRAL_API_BASE_URL = "https://api.mistral.ai/v1"
 # Mistral Vibe CLI (runner == "mistral-vibe"; argo/mistral_vibe.py). Vibe takes its own model
 # ALIASES, not API ids; this is mistral-vibe 3.1.0's default (-> mistral-vibe-cli-latest).
 MISTRAL_VIBE_DEFAULT = "mistral-medium-3.5"
+# DeepSeek developer API (runner == "deepseek-api"; argo/deepseek_api.py): cloud Chat Completions
+# with an Argo-owned tool loop. Distinct from a LOCAL DeepSeek served through Codex OSS / Ollama /
+# vLLM: same weights family, different transport, no cloud price. Snapshot 2026-11-09 of the
+# official model/pricing pages: both IDs are provider aliases (declared versions in the catalog,
+# not physical pins); context 1M, max output 384K tokens.
+DEEPSEEK_API_BASE_URL = "https://api.deepseek.com"   # fixed; custom gateways are out of scope (v1)
+DEEPSEEK_FLASH = "deepseek-flash"
+DEEPSEEK_PRO = "deepseek-v4-pro"
+DEEPSEEK_API_DEFAULT = DEEPSEEK_FLASH
+DEEPSEEK_API_TOP = DEEPSEEK_PRO
+DEEPSEEK_MAX_OUTPUT_TOKENS = 393_216      # provider max_tokens upper bound (384K)
+DEEPSEEK_CONTEXT_CAP = 1_048_576          # provider's 1M-token limit, measured conservatively in bytes
+DEEPSEEK_CONTEXT_MARGIN = 8_192           # reserved on top of input estimate + max_tokens
+DEEPSEEK_COMPACT_FRACTION = 0.8           # auto-compact when input estimate exceeds this share of the
+                                          # usable input budget (window - max_tokens - margin), like Codex
+DEEPSEEK_MAX_REQUESTS_CAP = 10_000        # sanity bound for deepseek_api_max_requests
+DEEPSEEK_THINKING_MODES = ("enabled", "disabled")
+DEEPSEEK_EFFORTS = ("low", "high", "max")
 #: Backends that expose no web tools: the networked OSINT stages cannot run on them.
-NO_WEB_BACKENDS: frozenset[str] = frozenset({"mistral-api", "mistral-vibe"})
+NO_WEB_BACKENDS: frozenset[str] = frozenset({"mistral-api", "mistral-vibe", "deepseek-api"})
 
 
 def networked_stage_conflicts(cfg: "PipelineConfig") -> list[str]:
@@ -73,6 +91,24 @@ def networked_stage_conflicts(cfg: "PipelineConfig") -> list[str]:
                        f"disable it (--no-{stage} / {stage}_enabled=false) or route it to "
                        f"headless|codex|gemini (--stage-runner {stage}=...)")
     return out
+
+
+def deepseek_run_conflicts(cfg: 'PipelineConfig') -> list[str]:
+    """Side-effect-free execution preflight; discovery/factory do not call this."""
+    import math
+    import os
+    backends = {cfg.runner, *cfg.stage_runners.values(), *cfg.runner_fallbacks}
+    if 'deepseek-api' not in backends:
+        return []
+    problems = []
+    if cfg.budget_usd is None or not math.isfinite(cfg.budget_usd) or cfg.budget_usd <= 0:
+        problems.append('DeepSeek API requires an explicit positive finite run budget')
+    key = cfg.deepseek_api_key or os.environ.get('ARGO_DEEPSEEK_API_KEY') or os.environ.get('DEEPSEEK_API_KEY')
+    if not key or not key.strip() or key == '<redacted>':
+        problems.append('credential_bootstrap: configure a DeepSeek runtime key')
+    if cfg.runner != 'mock' and 'mock' in cfg.runner_fallbacks:
+        problems.append('a production DeepSeek chain cannot fall back to synthetic mock output')
+    return problems
 
 # Codex's model selection is stage-aware.  The map is intentionally separate from the user
 # override field so an explicit --codex-model can still flatten every stage, while a per-stage
@@ -359,6 +395,17 @@ class PipelineConfig:
     mistral_vibe_model: str | None = None
     mistral_vibe_stage_models: dict[str, str] = field(default_factory=dict)
     mistral_vibe_api_key: str | None = None
+    # DeepSeek API backend (runner == "deepseek-api"). Flat override + per-stage map. The key is a
+    # SECRET: excluded from repr, redacted from config.json, never accepted on argv; when unset,
+    # ARGO_DEEPSEEK_API_KEY then DEEPSEEK_API_KEY from the environment are used.
+    deepseek_api_model: str | None = None
+    deepseek_api_stage_models: dict[str, str] = field(default_factory=dict)
+    deepseek_api_key: str | None = field(default=None, repr=False)
+    deepseek_thinking: str = "enabled"              # enabled | disabled (no "auto" in v1)
+    deepseek_reasoning_effort: str = "high"         # low | high | max; omitted on the wire if disabled
+    deepseek_api_max_tokens: int = 32_768           # always sent as max_tokens
+    deepseek_api_context_window: int = 262_144      # conservative application cap, not a tokenizer
+    deepseek_api_max_requests: int = 128            # HTTP requests per session, retries included
     # Explicit opt-in to native Vibe keyring credentials. Old runs retain key-only resolution.
     mistral_vibe_auth: str = "key"       # key | stored; never an implicit auto/fallback
     session_timeout_s: int = 1800       # default per-session wall-clock cap (seconds)
@@ -577,6 +624,23 @@ class PipelineConfig:
             raise ValueError("mistral_vibe_api_key is incompatible with mistral_vibe_auth=stored")
         if any(not isinstance(m, str) or not m.strip() for m in self.codex_model_chain):
             raise ValueError("codex_model_chain entries must be non-empty model ids")
+        self._validate_deepseek()
+
+    def _validate_deepseek(self) -> None:
+        if self.deepseek_thinking not in DEEPSEEK_THINKING_MODES:
+            raise ValueError("deepseek_thinking must be enabled or disabled")
+        if self.deepseek_reasoning_effort not in DEEPSEEK_EFFORTS:
+            raise ValueError("deepseek_reasoning_effort must be low, high or max")
+        for name, upper in (("deepseek_api_max_tokens", DEEPSEEK_MAX_OUTPUT_TOKENS),
+                            ("deepseek_api_context_window", DEEPSEEK_CONTEXT_CAP),
+                            ("deepseek_api_max_requests", DEEPSEEK_MAX_REQUESTS_CAP)):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= upper:
+                raise ValueError(f"{name} must be an integer between 1 and {upper}")
+        if self.deepseek_api_max_tokens + DEEPSEEK_CONTEXT_MARGIN >= self.deepseek_api_context_window:
+            raise ValueError(
+                f"deepseek_api_max_tokens + {DEEPSEEK_CONTEXT_MARGIN} margin must stay below "
+                "deepseek_api_context_window (the output is reserved inside the context)")
 
     def model_for(self, stage: str) -> str:
         backend = self.stage_runners.get(stage, self.runner)
@@ -594,6 +658,10 @@ class PipelineConfig:
             if stage in self.mistral_vibe_stage_models:
                 return self.mistral_vibe_stage_models[stage]
             return self.mistral_vibe_model or MISTRAL_VIBE_DEFAULT
+        if backend == "deepseek-api":
+            if stage in self.deepseek_api_stage_models:
+                return self.deepseek_api_stage_models[stage]
+            return self.deepseek_api_model or DEEPSEEK_API_DEFAULT
         # Gemini is tiered per stage like Claude, via its own dict (see DEFAULT_GEMINI_STAGE_MODELS).
         if backend == "gemini":
             try:
@@ -613,19 +681,28 @@ class PipelineConfig:
         return replace(self, **kwargs)
 
     def with_stage_model(self, stage: str, model: str) -> "PipelineConfig":
-        if self.runner == "codex":
+        """Pin ``stage`` to ``model`` in the map of the backend that actually runs that stage
+        (``stage_runners`` first, else the primary runner) -- the same map model_for() reads.
+        CLI --stage-model and HTTP ``models`` both go through here, so the two surfaces route a
+        mixed-backend assignment identically. Apply stage_runners before calling this."""
+        backend = self.stage_runners.get(stage, self.runner)
+        if backend == "codex":
             models = dict(self.codex_stage_models)
             models[stage] = model
             return replace(self, codex_stage_models=models)
-        if self.runner == "mistral-api":
+        if backend == "mistral-api":
             models = dict(self.mistral_api_stage_models)
             models[stage] = model
             return replace(self, mistral_api_stage_models=models)
-        if self.runner == "mistral-vibe":
+        if backend == "mistral-vibe":
             models = dict(self.mistral_vibe_stage_models)
             models[stage] = model
             return replace(self, mistral_vibe_stage_models=models)
-        if self.runner == "gemini":
+        if backend == "deepseek-api":
+            models = dict(self.deepseek_api_stage_models)
+            models[stage] = model
+            return replace(self, deepseek_api_stage_models=models)
+        if backend == "gemini":
             models = dict(self.gemini_stage_models)
             models[stage] = model
             return replace(self, gemini_stage_models=models)
@@ -642,13 +719,23 @@ class PipelineConfig:
         which is a NO-OP for Codex -- model_for() ignores stage_models entirely when
         runner=="codex" (it reads codex_model instead), so calibrated() silently did nothing for a
         Codex run. Caught while building the cross-backend benchmark, whose --tier top mode
-        depends on calibrated() actually working per backend to be a fair comparison."""
-        if self.runner == "gemini":
+        depends on calibrated() actually working per backend to be a fair comparison.
+
+        The top model is chosen for the backend that RUNS the audit stage (stage_runners), never
+        a top model of another provider: a backend without a defined top tier is left as is."""
+        backend = self.stage_runners.get("audit", self.runner)
+        if backend == "gemini":
             return self.with_stage_model("audit", GEMINI_ARGON)
-        if self.runner == "codex":
-            return self.with_overrides(codex_model=CODEX_TOP)
-        if self.runner == "mistral-api":
+        if backend == "codex":
+            if self.runner == "codex":
+                return self.with_overrides(codex_model=CODEX_TOP)
+            return self.with_stage_model("audit", CODEX_TOP)
+        if backend == "mistral-api":
             return self.with_stage_model("audit", MISTRAL_API_TOP)
+        if backend == "mistral-vibe":
+            return self
+        if backend == "deepseek-api":
+            return self.with_stage_model("audit", DEEPSEEK_API_TOP)
         return self.with_stage_model("audit", OPUS)
 
     def for_smoke(self) -> "PipelineConfig":
@@ -693,6 +780,9 @@ class PipelineConfig:
             max_focuses=1,
             max_parallel_audits=1,
             audit_critic_passes=0,        # smoke stays single-session
+            # DeepSeek smoke is Flash everywhere (and still one focus, tight caps).
+            deepseek_api_model=DEEPSEEK_FLASH,
+            deepseek_api_stage_models={},
         )
 
 
@@ -708,6 +798,7 @@ _PATH_FIELDS = {"runs_dir", "prompts_dir", "ledger_path", "target_memory_dir", "
 _SECRET_FIELDS = {"gemini_api_key", "gemini_accounts",
                   "claude_api_key", "claude_api_keys",
                   "codex_api_key", "codex_api_keys", "mistral_api_key", "mistral_vibe_api_key",
+                  "deepseek_api_key",
                   "runtime_credentials"}
 _REDACTED = "<redacted>"
 

@@ -69,8 +69,23 @@ _MIGRATIONS = {
     "llm_calls": [("duration_ms", "INTEGER NOT NULL DEFAULT 0"), ("failure_kind", "TEXT"),
                   ("label", "TEXT"), ("requested_model", "TEXT"), ("served_model", "TEXT"),
                   ("served_models", "TEXT"), ("cost_source", "TEXT"),
-                  ("model_mismatch", "INTEGER NOT NULL DEFAULT 0"), ("effort", "TEXT")],
+                  ("model_mismatch", "INTEGER NOT NULL DEFAULT 0"), ("effort", "TEXT"),
+                  # metadata_json: the runner's allowlisted, validated LLMResult.metadata (the same
+                  # object written to llm_log.jsonl). accounting_id: stable random id of one
+                  # invocation's aggregate, unique when present, so a crash-recovery replay of a
+                  # journal cannot record the same aggregate twice (exactly-once AGGREGATE, not
+                  # exactly-once billing). unknown_reserved_usd: operational reserve kept for
+                  # requests whose usage is unknown; counted by the budget gate, never by run_cost.
+                  ("metadata_json", "TEXT"), ("accounting_id", "TEXT"),
+                  ("unknown_reserved_usd", "REAL NOT NULL DEFAULT 0")],
 }
+
+# Created after the columns exist (old DBs gain them in _migrate first). Partial: legacy and
+# non-journaled rows carry NULL and are never deduplicated.
+_POST_MIGRATION_INDEXES = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_llm_calls_accounting ON llm_calls(accounting_id) "
+    "WHERE accounting_id IS NOT NULL",
+)
 
 
 def _now() -> str:
@@ -111,6 +126,8 @@ class Ledger:
                         # started in the same second on 2026-11-05).
                         if "duplicate column name" not in str(exc).lower():
                             raise
+        for stmt in _POST_MIGRATION_INDEXES:
+            self._conn.execute(stmt)
 
     def close(self) -> None:
         self._conn.close()
@@ -144,21 +161,37 @@ class Ledger:
         cost_source: str | None = None,
         model_mismatch: bool = False,
         effort: str | None = None,
-    ) -> None:
+        metadata: dict | None = None,
+        accounting_id: str | None = None,
+        unknown_reserved_usd: float = 0.0,
+    ) -> bool:
+        """Record one invocation aggregate. Returns False only when a row with the same
+        ``accounting_id`` already exists (an idempotent replay); rows without an id always insert.
+        ``metadata`` must already be sanitized by the caller (runner.sanitize_metadata)."""
         with self._lock:
-            self._conn.execute(
-                """INSERT INTO llm_calls
+            cur = self._conn.execute(
+                """INSERT OR IGNORE INTO llm_calls
                    (ts, run_id, stage, model, prompt_sha256, input_tokens, output_tokens,
                     cost_usd, num_turns, session_id, stop_reason, duration_ms, failure_kind, label,
-                    requested_model, served_model, served_models, cost_source, model_mismatch, effort)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    requested_model, served_model, served_models, cost_source, model_mismatch, effort,
+                    metadata_json, accounting_id, unknown_reserved_usd)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (_now(), run_id, stage, model, prompt_sha256, input_tokens, output_tokens,
                  cost_usd, num_turns, session_id, stop_reason, duration_ms, failure_kind, label,
                  requested_model or model, served_model,
                  json.dumps(list(served_models), separators=(",", ":")), cost_source,
-                 1 if model_mismatch else 0, effort),
+                 1 if model_mismatch else 0, effort,
+                 json.dumps(metadata, sort_keys=True, separators=(",", ":")) if metadata else None,
+                 accounting_id, float(unknown_reserved_usd or 0.0)),
             )
             self._conn.commit()
+            return cur.rowcount == 1
+
+    def has_accounting_id(self, accounting_id: str) -> bool:
+        with self._lock:
+            row = self._conn.execute("SELECT 1 FROM llm_calls WHERE accounting_id = ? LIMIT 1",
+                                     (accounting_id,)).fetchone()
+        return row is not None
 
     @staticmethod
     def _run_id_and_children(run_id: str) -> tuple[str, str]:
@@ -177,6 +210,18 @@ class Ledger:
         with self._lock:
             row = self._conn.execute(
                 "SELECT COALESCE(SUM(cost_usd), 0.0) AS c FROM llm_calls "
+                "WHERE run_id = ? OR run_id LIKE ? ESCAPE '\\'",
+                (exact, children_pattern),
+            ).fetchone()
+        return float(row["c"])
+
+    def run_budget_spent(self, run_id: str) -> float:
+        """What the budget gate charges against a run: known estimated cost PLUS operational
+        reserves of requests whose usage is unknown. run_cost() stays the known minimum."""
+        exact, children_pattern = self._run_id_and_children(run_id)
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COALESCE(SUM(cost_usd + unknown_reserved_usd), 0.0) AS c FROM llm_calls "
                 "WHERE run_id = ? OR run_id LIKE ? ESCAPE '\\'",
                 (exact, children_pattern),
             ).fetchone()
@@ -232,6 +277,22 @@ class Ledger:
                 "FROM llm_calls"
             ).fetchone()
         return {"calls": int(row["n"]), "cost_usd": float(row["c"]), "runs": int(row["r"])}
+
+    def accounting_summary(self, run_id: str | None = None) -> dict:
+        where, args = '', ()
+        if run_id is not None:
+            exact, children = self._run_id_and_children(run_id)
+            where, args = " WHERE run_id = ? OR run_id LIKE ? ESCAPE '\\'", (exact, children)
+        with self._lock:
+            rows = self._conn.execute('SELECT unknown_reserved_usd, metadata_json FROM llm_calls'
+                                      + where, args).fetchall()
+        incomplete = 0
+        for row in rows:
+            md = json.loads(row['metadata_json']) if row['metadata_json'] else {}
+            incomplete += bool(row['unknown_reserved_usd'] or md.get('usage_complete') is False
+                               or md.get('accounting_complete') is False)
+        return {'unknown_reserved_usd': sum(row['unknown_reserved_usd'] for row in rows),
+                'incomplete_calls': incomplete}
 
     def cost_by_model(self) -> list[dict]:
         with self._lock:

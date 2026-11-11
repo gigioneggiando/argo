@@ -117,3 +117,17 @@ def test_fingerprint_is_cheap_on_a_few_thousand_files(tmp_path):
     t = time.perf_counter()
     repo_fingerprint(repo)
     assert time.perf_counter() - t < 1.0
+
+
+def test_mutation_after_a_failed_session_is_still_ledgered(tmp_path, monkeypatch):
+    """Spend that already happened is recorded before the integrity failure is raised."""
+    repo = _repo(tmp_path)
+    with pytest.raises(RunnerError) as ei:
+        _run(tmp_path, monkeypatch, repo,
+             mutate=lambda r: (r / "x").write_text("y", encoding="utf-8"),
+             raise_after=RunnerError("boom", retryable=True, failure_kind="timeout"))
+    assert ei.value.failure_kind == "repo_mutated"
+    led = Ledger(tmp_path / "l.sqlite")
+    rows = led.run_calls("R")
+    led.close()
+    assert len(rows) == 1 and rows[0]["failure_kind"] == "repo_mutated"

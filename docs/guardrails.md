@@ -195,7 +195,40 @@ target is the in-scope host instead of loopback — so the validators are **inve
 - There is no code path that writes into `repo/`.
 - **Detected, not just prevented:** every session is bracketed by `runner.repo_fingerprint(repo)`;
   a mismatch raises `RunnerError(failure_kind="repo_mutated", retryable=False)` on every backend
-  (`tests/test_repo_integrity.py`).
+  (`tests/test_repo_integrity.py`). The fingerprint is metadata-based and post-hoc: defense in
+  depth, not an atomic content hash.
+- **Fallback scratch isolation is fail-closed.** Before a fallback backend reuses a session's
+  scratch dir, the failed attempt's files move to `<dir>.failed-<n>` (kept, never deleted). If the
+  move fails or the dir is not recreated empty (e.g. a file held open on Windows), the chain stops
+  with non-retryable `artifact_isolation_failed`; the next backend never runs on stale artifacts.
+
+### 3a. API-runner tool boundary (`argo/api_tools.py`)
+
+API-native runners (`mistral-api`, the Vibe artifact writer) have no agent CLI and no OS sandbox:
+the model only proposes tool calls and Argo executes them in one shared dispatcher. It is a
+**tool/path boundary, not an OS sandbox**.
+
+- Tools: `read_file`, `list_dir`, `glob`, `grep` (repo copy + session scratch) and `write_file`
+  (scratch only, only when the stage grants `Write`). No shell, process, git, network or subagent
+  tool exists; unknown tools and invalid or unexpected arguments are denied without effect.
+- Paths: checked lexically first (Windows UNC/device namespaces, reserved device names, alternate
+  data streams and drive-relative paths are denied), then resolved with `realpath` and confined to
+  the roots. Symlinks and junctions leading outside are not followed by reads, walks or writes;
+  writes into a `.git` path are refused.
+- Writes: size-capped (4 MiB), JSON validated before commit, written to an unpredictable `mkstemp`
+  file in the target directory and atomically replaced. The directory holding the temp file is
+  re-verified before the commit; on any failure only the temp file this call created is removed.
+  Replacing a hard-linked artifact swaps the directory entry and never writes through the link.
+- Bounds: read 2000 lines / 256 KiB output, 2000-char display lines, at most 8 MiB scanned per
+  read (an over-long physical line is skipped in chunks, never held whole); list 500 entries; glob
+  300 results; grep 200 matches, 2 MiB per file; walks stop after 20000 files and say so without
+  inventing a total. Grep uses the `regex` package's matching timeout (0.05 s per line, 2 s per
+  call, both clipped to the session deadline); patterns over 2048 characters or with repeat counts
+  above 1000 are refused before compiling.
+- Limits: these checks cover links planted in the roots and a parent swapped between check and
+  use; a hostile process with the same privileges rewriting the filesystem around every syscall is
+  out of scope. Cooperative IO limits cannot interrupt a syscall blocked in the kernel.
+  Tests: `tests/test_api_tools.py` (symlink cases run on POSIX; junction cases on Windows).
 
 ## 4. `prohibited_techniques` propagated into every rendered prompt; render fails if missing
 
@@ -252,3 +285,12 @@ This page is the **safety** envelope (can Argo do something it shouldn't?). The 
 covered in [determinism-and-guardrails.md](determinism-and-guardrails.md): mechanical diffs,
 ground-truth build verification, physical budget/timeout/request caps, the scope-lock asserts above
 viewed as anti-hallucination gates, and commit-pin reproducibility.
+
+## DeepSeek provider boundary
+
+DeepSeek composes the shared toolbox above. Private reasoning stays in volatile
+history, and only accounting enters the run journal outside the tool roots.
+Whole batches are validated before dispatch. HTTP redirects and environment
+proxies are disabled; an absolute deadline also covers heartbeat bodies and waits.
+This remains a tool/path boundary, not an OS sandbox or a guarantee that authorized
+source contains no secrets. See [the backend limits](deepseek.md).

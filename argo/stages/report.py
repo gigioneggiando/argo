@@ -276,6 +276,11 @@ def _render_report(ctx, scope, survivors, dropped, resubmissions, total_cost, n_
     L.append(f"- Generated at: {ctx.timestamp()}")
     L.append("- Models: " + ", ".join(f"{k}={v}" for k, v in sorted(scope_models(ctx).items())))
     L.append(f"- LLM cost: ${total_cost:.4f} over {n_calls} call(s)")
+    accounting = ctx.ledger.accounting_summary(ctx.run_id)
+    if accounting['incomplete_calls']:
+        L.append(f"- Incomplete usage: {accounting['incomplete_calls']} call(s); known cost above "
+                 f"is a minimum estimate. Unknown-usage operational reserve: "
+                 f"${accounting['unknown_reserved_usd']:.4f} (not a provider invoice).")
     L.append("")
 
     # Executive summary

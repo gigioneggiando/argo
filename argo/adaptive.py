@@ -44,6 +44,9 @@ def _strong_model(backend: str, config: PipelineConfig, stage: str) -> str | Non
     if backend == "mistral-api":
         from .config import MISTRAL_API_TOP
         return MISTRAL_API_TOP
+    if backend == "deepseek-api":
+        from .config import DEEPSEEK_API_TOP
+        return DEEPSEEK_API_TOP
     return None                     # mistral-vibe: Vibe aliases have no stronger verified tier
 
 
@@ -64,6 +67,10 @@ def _set_stage_model(config: PipelineConfig, backend: str, stage: str, model: st
         values = dict(config.mistral_vibe_stage_models)
         values[stage] = model
         return config.with_overrides(mistral_vibe_stage_models=values)
+    if backend == "deepseek-api":
+        values = dict(config.deepseek_api_stage_models)
+        values[stage] = model
+        return config.with_overrides(deepseek_api_stage_models=values)
     values = dict(config.stage_models)
     values[stage] = model
     return config.with_overrides(stage_models=values)
@@ -89,7 +96,7 @@ def _escalation_budget(ctx: RunContext) -> tuple[float | None, str]:
         return float(session_cap), "session_max_cost_usd"
     run_cap = ctx.config.budget_usd
     if run_cap is not None:
-        spent = ctx.ledger.run_cost(ctx.run_id)
+        spent = ctx.ledger.run_budget_spent(ctx.run_id)
         return max(0.0, float(run_cap) - spent), "remaining_budget_usd"
     return None, "unbounded"
 
@@ -127,7 +134,8 @@ def maybe_escalate_after_audit(ctx: RunContext) -> list[dict]:
         # credential or silently pick a backend that was not configured for this run.
         for candidate in ctx.config.runner_fallbacks:
             if candidate != old_backend and candidate in {"headless", "codex", "gemini",
-                                                          "mistral-api", "mistral-vibe"}:
+                                                          "mistral-api", "mistral-vibe",
+                                                          "deepseek-api"}:
                 new_backend = candidate
                 break
     new_model = _strong_model(new_backend, ctx.config, stage)
@@ -144,7 +152,7 @@ def maybe_escalate_after_audit(ctx: RunContext) -> list[dict]:
     estimate, basis = _escalation_budget(ctx)
     remaining = None
     if ctx.config.budget_usd is not None:
-        remaining = max(0.0, float(ctx.config.budget_usd) - ctx.ledger.run_cost(ctx.run_id))
+        remaining = max(0.0, float(ctx.config.budget_usd) - ctx.ledger.run_budget_spent(ctx.run_id))
     if remaining is not None and estimate is not None and estimate > remaining:
         event = {"policy": policy, "trigger": "high_severity_finding", "reason_code": "BUDGET_HEADROOM_INSUFFICIENT",
                  "old_stage": stage, "old_backend": old_backend, "old_model": old_model,

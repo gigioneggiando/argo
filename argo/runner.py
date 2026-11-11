@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -33,7 +34,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .config import ARTIFACT_TOOLS, PipelineConfig, estimate_cost_usd, model_cost_source
+from .config import (ARTIFACT_TOOLS, NO_WEB_BACKENDS, PipelineConfig, estimate_cost_usd,
+                     model_cost_source)
 from .guardrails import GuardrailError, assert_no_network_tools, enforce_session_tools, session_policy
 from .ledger import Ledger
 from .rendering import sha256_text
@@ -83,10 +85,13 @@ FailureKind = str  # Literal["moderation_flagged", "credits_exhausted", "rate_li
 
 #: Failure kinds that a same-backend retry cannot fix (exhausted credits, a rejected or missing
 #: key, an invalid request, a stage the backend cannot serve, a repo mutation, a model pin
-#: mismatch). Stage-internal retry loops stop on these; FallbackRunner may still try ANOTHER backend.
+#: mismatch, a failed attempt's scratch dir that could not be isolated). Stage-internal retry loops stop on these; FallbackRunner may still try ANOTHER backend.
 TERMINAL_FAILURE_KINDS = frozenset({"credits_exhausted", "auth_failed", "credential_bootstrap",
                                     "invalid_request", "unsupported_stage_tool", "repo_mutated",
-                                    "model_mismatch", "model_unavailable", "budget_reached"})
+                                    "model_mismatch", "model_unavailable", "budget_reached",
+                                    "artifact_isolation_failed", "context_limit", "invalid_response",
+                                    "response_limit", "request_limit", "tool_loop",
+                                    "turn_limit_exceeded", "cancelled"})
 
 #: Codex CLI refusals that mean "this model is not usable with THIS login/profile" (observed with
 #: codex-cli 0.166, 2026-11-06). Same-account retries cannot help; another account in a
@@ -132,12 +137,95 @@ def _codex_model_unavailable(text: str) -> str | None:
 
 
 class RunnerError(RuntimeError):
+    """A backend session failure. ``partial_result`` optionally carries what the session had
+    already consumed (tokens, estimated cost, sanitized metadata) when the backend could not
+    return a normal error envelope; AgentRunner ledgers it instead of a zero-usage row."""
+
     def __init__(self, message: str, *, retry_after: str | None = None,
-                 retryable: bool = False, failure_kind: FailureKind | None = None):
+                 retryable: bool = False, failure_kind: FailureKind | None = None,
+                 partial_result: "LLMResult | None" = None):
         super().__init__(message)
         self.retry_after = retry_after
         self.retryable = retryable
         self.failure_kind = failure_kind
+        self.partial_result = partial_result
+
+
+# --- LLMResult.metadata allowlist -----------------------------------------------------------
+# One validator per accepted key. Everything else is dropped, and an invalid value is dropped,
+# never coerced: the ledger and llm_log.jsonl receive the SAME sanitized object, so provider
+# bodies, reasoning text, headers or arbitrary model output cannot reach either through metadata.
+_DROP = object()
+_LABEL_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,79}$")
+_ACCOUNTING_ID_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{7,63}$")
+
+
+def _md_int(minimum: int):
+    def check(v):
+        return v if isinstance(v, int) and not isinstance(v, bool) and v >= minimum else _DROP
+    return check
+
+
+def _md_money(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return _DROP
+    v = float(v)
+    return v if math.isfinite(v) and v >= 0 else _DROP
+
+
+def _md_bool(v):
+    return v if isinstance(v, bool) else _DROP
+
+
+def _md_enum(*allowed: str):
+    def check(v):
+        return v if isinstance(v, str) and v in allowed else _DROP
+    return check
+
+
+def _md_label(v):
+    return v if isinstance(v, str) and _LABEL_RX.match(v) else _DROP
+
+
+def _md_label_or_none(v):
+    return None if v is None else _md_label(v)
+
+
+def _md_accounting_id(v):
+    return v if isinstance(v, str) and _ACCOUNTING_ID_RX.match(v) else _DROP
+
+
+_METADATA_VALIDATORS = {
+    # accounting (API-native runners with a request journal)
+    "accounting_version": _md_int(1), "accounting_id": _md_accounting_id,
+    "request_count": _md_int(0), "unknown_request_count": _md_int(0),
+    "usage_complete": _md_bool, "accounting_complete": _md_bool,
+    "unknown_reserved_usd": _md_money,
+    "input_cache_hit_tokens": _md_int(0), "input_cache_miss_tokens": _md_int(0),
+    "cache_breakdown_unavailable": _md_bool,
+    # resolved provider controls and provenance (observed values only, bounded labels)
+    "deepseek_thinking": _md_enum("enabled", "disabled"),
+    "deepseek_reasoning_effort": _md_enum("low", "high", "max"),
+    "resolved_effort": _md_enum("low", "medium", "high", "xhigh", "max", "provider_default"),
+    "pricing_snapshot_id": _md_label, "catalog_declared_version": _md_label,
+    "catalog_as_of": _md_label, "api_returned_model": _md_label, "system_fingerprint": _md_label,
+    # Mistral Vibe (pre-existing fields, unchanged format)
+    "mistral_vibe_auth": _md_enum("key", "stored"), "auth_source": _md_label,
+    "vibe_version": _md_label_or_none,
+}
+
+
+def sanitize_metadata(metadata) -> dict:
+    """Return only allowlisted, validated metadata (see _METADATA_VALIDATORS)."""
+    if not isinstance(metadata, dict):
+        return {}
+    out = {}
+    for key, check in _METADATA_VALIDATORS.items():
+        if key in metadata:
+            value = check(metadata[key])
+            if value is not _DROP:
+                out[key] = value
+    return out
 
 
 class BudgetExceeded(RunnerError):
@@ -253,6 +341,8 @@ def _derived_account_label(config: PipelineConfig) -> str:
         return "mistral-api:api-key" if config.mistral_api_key else "mistral-api:ambient"
     if backend == "mistral-vibe":
         return "mistral-vibe:api-key" if config.mistral_vibe_api_key else "mistral-vibe:ambient"
+    if backend == "deepseek-api":
+        return "deepseek-api:api-key" if config.deepseek_api_key else "deepseek-api:ambient"
     return f"{backend}:default"
 
 
@@ -548,7 +638,9 @@ class AgentRunner(ABC):
         # Budget gate at the launch chokepoint (every backend, every stage): a stage's own
         # pre-loop check cannot see spend from sessions that finish while it is fanning out.
         if self.config.budget_usd is not None:
-            spent = self.ledger.run_cost(run_id)
+            # known estimated cost + operational reserves of unknown-usage requests, so an
+            # ambiguous request cannot make the next launch (or a fallback) look free
+            spent = self.ledger.run_budget_spent(run_id)
             if spent >= self.config.budget_usd:
                 raise BudgetExceeded(
                     f"Per-run budget ${self.config.budget_usd:.2f} reached (spent ${spent:.4f}); "
@@ -577,31 +669,61 @@ class AgentRunner(ABC):
                 label=label,
                 session_budget_usd=self._session_budget(run_id),
                 timeout_s=self.config.timeout_for(stage),
+                **({'run_dir': run_dir} if self.config.runner == 'deepseek-api' else {}),
             )
         except RunnerError as exc:
-            _assert_repo_unchanged(repo_dir, repo_before, stage=stage, label=label, cause=exc)
-            # A session that died without an envelope (timeout, startup failure) is still a call:
-            # ledger it so the failure is queryable. Its spend is unknown (cost 0, source unknown).
+            # Integrity is checked now but raised only AFTER the call is ledgered: whatever the
+            # session already consumed must be recorded even when the repo was mutated.
+            mutation: RunnerError | None = None
             try:
+                _assert_repo_unchanged(repo_dir, repo_before, stage=stage, label=label, cause=exc)
+            except RunnerError as m:
+                mutation = m
+            # A session that died without an envelope (timeout, startup failure) is still a call:
+            # ledger it so the failure is queryable. Its spend is unknown (cost 0, source unknown)
+            # unless the backend attached what it had already observed (partial_result).
+            partial = exc.partial_result if isinstance(exc.partial_result, LLMResult) else None
+            kind = "repo_mutated" if mutation is not None else (exc.failure_kind or "session_error")
+            duration_ms = int((time.monotonic() - started) * 1000)
+            try:
+                md = sanitize_metadata(partial.metadata) if partial is not None else {}
                 self.ledger.log_call(
                     run_id=run_id, stage=stage, model=model, prompt_sha256=prompt_sha,
-                    duration_ms=int((time.monotonic() - started) * 1000),
-                    failure_kind=exc.failure_kind or "session_error", label=label,
-                    requested_model=model, cost_source="unknown")
-                if self.config.runner == "mistral-vibe":
+                    input_tokens=partial.input_tokens if partial else 0,
+                    output_tokens=partial.output_tokens if partial else 0,
+                    cost_usd=partial.cost_usd if partial else 0.0,
+                    num_turns=partial.num_turns if partial else 0,
+                    stop_reason=partial.stop_reason if partial else None,
+                    duration_ms=duration_ms, failure_kind=kind, label=label,
+                    requested_model=model,
+                    served_model=partial.served_model if partial else None,
+                    served_models=partial.served_models if partial else (),
+                    cost_source=partial.cost_source if partial else "unknown",
+                    effort=md.get("resolved_effort")
+                    or self.config.stage_effort.get(stage, "provider_default"),
+                    metadata=md, accounting_id=md.get("accounting_id"),
+                    unknown_reserved_usd=md.get("unknown_reserved_usd", 0.0))
+                if self.config.runner == "mistral-vibe" or partial is not None:
+                    vibe = ({"mistral_vibe_auth": self.config.mistral_vibe_auth,
+                             "auth_source": "unknown", "vibe_version": None}
+                            if self.config.runner == "mistral-vibe" else {})
                     self._append_jsonl(run_dir, {
-                        "stage": stage, "label": label, "backend": "mistral-vibe",
+                        "stage": stage, "label": label, "backend": self.config.runner,
                         "backend_account": self.account_label, "model": model,
                         "requested_model": model, "prompt_sha256": prompt_sha,
-                        "is_error": True, "failure_kind": exc.failure_kind or "session_error",
-                        "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
-                        "cost_source": "unknown", "num_turns": 0,
-                        "duration_ms": int((time.monotonic() - started) * 1000),
-                        "mistral_vibe_auth": self.config.mistral_vibe_auth,
-                        "auth_source": "unknown", "vibe_version": None,
+                        "is_error": True, "failure_kind": kind,
+                        "input_tokens": partial.input_tokens if partial else 0,
+                        "output_tokens": partial.output_tokens if partial else 0,
+                        "cost_usd": partial.cost_usd if partial else 0.0,
+                        "cost_source": partial.cost_source if partial else "unknown",
+                        "num_turns": partial.num_turns if partial else 0,
+                        "duration_ms": duration_ms,
+                        **vibe, **md,
                     })
             except Exception:  # noqa: BLE001 -- logging must never mask the session error
                 pass
+            if mutation is not None:
+                raise mutation
             raise
         # checked now, raised only after the call is logged (its tokens/cost were still spent)
         repo_mutation: RunnerError | None = None
@@ -629,8 +751,16 @@ class AgentRunner(ABC):
             if failure_kind is None and result.api_error_status and "429" in str(result.api_error_status):
                 failure_kind = "rate_limited"
         model_mismatch = bool(result.served_model and result.served_model != model)
+        if model_mismatch and self.config.runner == "deepseek-api":
+            from .deepseek_api import equivalent_model
+            model_mismatch = not equivalent_model(model, result.served_model)
+        if self.config.runner == 'deepseek-api' and result.failure_kind == 'model_mismatch':
+            model_mismatch = True  # a later response can differ even when no single served ID exists
         if repo_mutation is not None:
             failure_kind = "repo_mutated"
+        # One sanitized metadata object for BOTH the ledger and the JSONL line.
+        md = sanitize_metadata(result.metadata)
+        effort = md.get("resolved_effort") or self.config.stage_effort.get(stage, "provider_default")
 
         # --- cost/latency/refusal logging (ledger + per-run JSONL) — ALWAYS, even on error -----
         self.ledger.log_call(
@@ -652,7 +782,10 @@ class AgentRunner(ABC):
             served_models=result.served_models,
             cost_source=result.cost_source,
             model_mismatch=model_mismatch,
-            effort=self.config.stage_effort.get(stage, "provider_default"),
+            effort=effort,
+            metadata=md,
+            accounting_id=md.get("accounting_id"),
+            unknown_reserved_usd=md.get("unknown_reserved_usd", 0.0),
         )
         self._append_jsonl(run_dir, {
             "stage": stage,
@@ -665,7 +798,7 @@ class AgentRunner(ABC):
             "served_models": list(result.served_models),
             "cost_source": result.cost_source,
             "model_mismatch": model_mismatch,
-            "effort": self.config.stage_effort.get(stage, "provider_default"),
+            "effort": effort,
             "prompt_sha256": prompt_sha,
             "input_tokens": result.input_tokens,
             "output_tokens": result.output_tokens,
@@ -678,13 +811,16 @@ class AgentRunner(ABC):
             "session_limit_reset_hint": reset_hint,
             "duration_ms": duration_ms,
             "failure_kind": failure_kind,
-            **{name: result.metadata[name]
-               for name in ("mistral_vibe_auth", "auth_source", "vibe_version")
-               if name in result.metadata},
+            **md,
         })
 
         if repo_mutation is not None:
             raise repo_mutation
+
+        if self.config.runner == "deepseek-api" and failure_kind == "cancelled":
+            raise RunnerCancelled("DeepSeek session cancelled")
+        if self.config.runner == "deepseek-api" and failure_kind == "budget_reached":
+            raise BudgetExceeded("DeepSeek request reservation exceeds remaining budget")
 
         if model_mismatch and not self.config.allow_model_substitution:
             raise RunnerError(
@@ -737,7 +873,7 @@ class AgentRunner(ABC):
         if self.config.session_max_cost_usd is not None:
             caps.append(self.config.session_max_cost_usd)
         if self.config.budget_usd is not None:
-            caps.append(max(0.0, self.config.budget_usd - self.ledger.run_cost(run_id)))
+            caps.append(max(0.0, self.config.budget_usd - self.ledger.run_budget_spent(run_id)))
         return min(caps) if caps else None
 
     @staticmethod
@@ -1492,15 +1628,18 @@ class CodexRunner(AgentRunner):
         served_models = _scan_codex_models(stdout)
         served = served_models[0] if len(served_models) == 1 else None
         effective_model = served or model
+        # A local provider (codex --oss) is never billed by a cloud provider: a catalog row with
+        # the same model ID (e.g. deepseek-flash) must not lend it a cloud price.
+        local = bool(self.config.codex_oss)
         return LLMResult(
             text=text, model=model, prompt_sha256=prompt_sha256, work_dir=work_dir,
             input_tokens=in_tok, output_tokens=out_tok,
-            cost_usd=estimate_cost_usd(effective_model, in_tok, out_tok),   # estimated (token-based)
+            cost_usd=0.0 if local else estimate_cost_usd(effective_model, in_tok, out_tok),
             num_turns=_count_codex_turns(stdout), session_id=None, stop_reason=f"exit_{rc}",
             is_error=(rc != 0),   # non-zero -> recoverable (the stage globs scratch for partials)
             api_error_status=None, raw=raw, requested_model=model,
             served_model=served, served_models=served_models,
-            cost_source=model_cost_source(effective_model),
+            cost_source="local_unpriced" if local else model_cost_source(effective_model),
         )
 
 
@@ -2146,12 +2285,24 @@ _RETRYABLE_HINTS = ("session limit", "rate limit", "rate_limit", "api_error_stat
                     "resource_exhausted", "resource has been exhausted")
 
 
+#: Structured failures that neither a retry nor ANOTHER backend can fix, or that must not be
+#: escaped by switching backends (spend, cancel, integrity, a request the caller built wrong).
+#: They win over a ``retryable`` flag and over the vendor-text hints below: an invalid request
+#: whose body happens to echo "quota" or "429" is still an invalid request. Deliberately absent:
+#: credits_exhausted / model_unavailable, which stay terminal for the stage but may move to an
+#: explicitly configured alternative provider.
+_FAIL_CLOSED_KINDS = frozenset({"credential_bootstrap", "auth_failed", "invalid_request",
+                                "context_limit", "repo_mutated", "artifact_isolation_failed",
+                                "budget_reached", "cancelled", "invalid_response", "response_limit",
+                                "request_limit", "tool_loop", "turn_limit_exceeded", "model_mismatch"})
+
+
 def _is_retryable(exc: Exception) -> bool:
     if isinstance(exc, GuardrailError):
         return False
     # Credential resolution happens before a model session exists. Its vendor diagnostics must
     # never enter the generic rate-limit text classifier and silently switch paying identities.
-    if getattr(exc, "failure_kind", None) == "credential_bootstrap":
+    if getattr(exc, "failure_kind", None) in _FAIL_CLOSED_KINDS:
         return False
     if bool(getattr(exc, "retryable", False)):
         return True
@@ -2363,6 +2514,9 @@ class FallbackRunner(AgentRunner):
             r.on_activity = sink
 
     def run(self, **kwargs) -> LLMResult:
+        if self.config.runner != 'mock' and any(isinstance(r, MockClaudeRunner) for r in self._runners):
+            raise RunnerError('production fallback chains cannot produce synthetic mock evidence',
+                              failure_kind='invalid_request')
         last_exc: Exception | None = None
         stage = kwargs.get("stage")
         attempts = 0
@@ -2375,6 +2529,9 @@ class FallbackRunner(AgentRunner):
                     if datetime.now(timezone.utc) <= disabled_until.astimezone(timezone.utc):
                         continue
                     del self._disabled[i]
+            if stage is not None and session_policy(stage).network \
+                    and r.config.runner in NO_WEB_BACKENDS:
+                continue        # cannot serve a web stage: skip it, never consume it as a fallback
             kw = dict(kwargs)
             if stage is not None:                     # each backend picks its own model for the stage
                 kw["model"] = r.config.model_for(stage)
@@ -2426,12 +2583,20 @@ def _set_aside_work_dir(work_dir, attempt: int) -> None:
     """Before a fallback backend reuses a session's scratch dir, move the failed attempt's files
     to a sibling ``<dir>.failed-<n>``: stages glob the scratch dir, so a stale partial artifact
     would otherwise be collected alongside (or instead of) the next backend's output. Kept on
-    disk for diagnosis. Best-effort: if the rename fails, the dir is left as it was."""
+    disk for diagnosis, never deleted.
+
+    Fail-closed: the successor may only run on a scratch dir that exists and is empty. If the
+    move or the re-creation fails (e.g. a file held open on Windows), raise a non-retryable
+    ``artifact_isolation_failed`` instead of letting the next backend reuse stale artifacts."""
     if work_dir is None:
         return
     wd = Path(work_dir)
     try:
-        if not wd.is_dir() or not any(wd.iterdir()):
+        if not wd.exists():
+            return
+        if not wd.is_dir():
+            raise OSError("scratch path is not a directory")
+        if not any(wd.iterdir()):
             return
         target = wd.with_name(f"{wd.name}.failed-{attempt}")
         n = attempt
@@ -2440,8 +2605,13 @@ def _set_aside_work_dir(work_dir, attempt: int) -> None:
             target = wd.with_name(f"{wd.name}.failed-{n}")
         wd.rename(target)
         wd.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass
+        if not wd.is_dir() or any(wd.iterdir()):
+            raise OSError("scratch dir was not recreated empty")
+    except OSError as exc:
+        raise RunnerError(
+            f"could not isolate the failed attempt's scratch dir before falling back "
+            f"({type(exc).__name__}); the next backend was not started",
+            retryable=False, failure_kind="artifact_isolation_failed") from None
 
 
 def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner:
@@ -2460,7 +2630,11 @@ def _build_one(config: PipelineConfig, ledger: Ledger, name: str) -> AgentRunner
     if name == "mistral-vibe":
         from .mistral_vibe import MistralVibeRunner
         return MistralVibeRunner(cfg, ledger)
-    raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', 'gemini', 'mistral-api', 'mistral-vibe', or 'mock')")
+    if name == "deepseek-api":
+        from .deepseek_api import DeepSeekApiRunner   # lazy, like mistral-api
+        return DeepSeekApiRunner(cfg, ledger)
+    raise ValueError(f"unknown runner {name!r} (expected 'headless', 'codex', 'gemini', "
+                     "'mistral-api', 'mistral-vibe', 'deepseek-api', or 'mock')")
 
 
 def _label_runner(runner: AgentRunner, backend: str, account: str, index: int) -> AgentRunner:

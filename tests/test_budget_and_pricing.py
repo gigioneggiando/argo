@@ -107,3 +107,111 @@ def test_model_unavailable_ignores_tool_output_in_stdout():
     assert _codex_model_unavailable(_codex_error_events(tool_output)) is None
     err = json.dumps({"type": "error", "message": f"The '{phrase}'"})
     assert _codex_model_unavailable(_codex_error_events(err)) is not None
+
+
+# ------------------------------------------------------------------------------ metadata + accounting
+from argo.runner import sanitize_metadata  # noqa: E402
+
+
+def test_metadata_allowlist_keeps_valid_fields_and_drops_the_rest():
+    md = sanitize_metadata({
+        "accounting_version": 1, "accounting_id": "acct-0123456789abcdef",
+        "request_count": 3, "unknown_request_count": 1, "usage_complete": False,
+        "accounting_complete": False, "unknown_reserved_usd": 0.25,
+        "input_cache_hit_tokens": 10, "input_cache_miss_tokens": 90,
+        "cache_breakdown_unavailable": False, "deepseek_thinking": "enabled",
+        "deepseek_reasoning_effort": "high", "pricing_snapshot_id": "deepseek-2026-11-09-peak",
+        "catalog_declared_version": "DeepSeek-V4.1-Flash-1017", "catalog_as_of": "2026-11-09",
+        "api_returned_model": "deepseek-flash", "system_fingerprint": "fp_abc123",
+        "resolved_effort": "high", "mistral_vibe_auth": "stored", "auth_source": "unknown",
+        "vibe_version": "2.4.1",
+        # dropped:
+        "reasoning_content": "PRIVATE-COT", "raw_body": {"x": 1}, "authorization": "Bearer k",
+    })
+    assert "reasoning_content" not in md and "raw_body" not in md and "authorization" not in md
+    assert md["request_count"] == 3 and md["deepseek_thinking"] == "enabled"
+    assert md["mistral_vibe_auth"] == "stored" and md["vibe_version"] == "2.4.1"
+    assert len(md) == 21
+
+
+@pytest.mark.parametrize("key,value", [
+    ("request_count", -1), ("request_count", True), ("request_count", 1.5),
+    ("unknown_reserved_usd", float("nan")), ("unknown_reserved_usd", float("inf")),
+    ("unknown_reserved_usd", -0.01), ("usage_complete", "yes"), ("deepseek_thinking", "auto"),
+    ("deepseek_reasoning_effort", "medium"), ("api_returned_model", "x" * 200),
+    ("system_fingerprint", "has spaces and\nnewlines"), ("accounting_id", "../../etc"),
+    ("mistral_vibe_auth", "password"),
+])
+def test_invalid_metadata_values_are_dropped_not_coerced(key, value):
+    assert key not in sanitize_metadata({key: value})
+
+
+def test_vibe_version_may_be_absent_but_recorded():
+    assert sanitize_metadata({"vibe_version": None}) == {"vibe_version": None}
+
+
+class _MetaRunner(ClaudeRunner):
+    meta: dict = {}
+    cost = 0.5
+
+    def _invoke(self, **kw):
+        return {"is_error": False, "result": "ok", "usage": {"input_tokens": 7, "output_tokens": 3},
+                "total_cost_usd": type(self).cost, "num_turns": 1, "session_id": "s",
+                "subtype": "success"}
+
+    def parse_envelope(self, raw, **kw):
+        res = super().parse_envelope(raw, **kw)
+        res.metadata = dict(type(self).meta)
+        return res
+
+
+def test_ledger_and_jsonl_carry_the_same_sanitized_metadata_and_resolved_effort(tmp_path):
+    led = Ledger(tmp_path / "l.sqlite")
+    _MetaRunner.meta = {"request_count": 2, "deepseek_reasoning_effort": "max",
+                        "resolved_effort": "max", "reasoning_content": "PRIVATE-COT"}
+    _run(_MetaRunner(PipelineConfig(), led), tmp_path)
+    row = led._conn.execute("SELECT metadata_json, effort FROM llm_calls").fetchone()
+    lines = (tmp_path / "run" / "llm_log.jsonl").read_text(encoding="utf-8").splitlines()
+    jsonl = json.loads(lines[-1])
+    stored = json.loads(row["metadata_json"])
+    assert stored == {"request_count": 2, "deepseek_reasoning_effort": "max", "resolved_effort": "max"}
+    assert {k: jsonl[k] for k in stored} == stored
+    assert "PRIVATE-COT" not in json.dumps(jsonl) and "PRIVATE-COT" not in row["metadata_json"]
+    assert row["effort"] == "max"
+    led.close()
+
+
+def test_launch_gate_counts_unknown_reserves(tmp_path):
+    led = Ledger(tmp_path / "l.sqlite")
+    _MetaRunner.meta, _MetaRunner.cost = {"unknown_reserved_usd": 1.6}, 0.5
+    r = _MetaRunner(PipelineConfig(budget_usd=2.0), led)
+    _run(r, tmp_path, "a")                               # known 0.5 + reserved 1.6 = 2.1
+    with pytest.raises(BudgetExceeded):
+        _run(r, tmp_path, "b")
+    assert led.run_cost("R") == 0.5
+    _MetaRunner.meta = {}
+    led.close()
+
+
+class _PartialRunner(ClaudeRunner):
+    def _invoke(self, *, work_dir, **kw):
+        from argo.runner import LLMResult
+        partial = LLMResult(text="", model="m", prompt_sha256="p", work_dir=work_dir,
+                            input_tokens=1000, output_tokens=100, cost_usd=0.0123,
+                            cost_source="estimated_partial", failure_kind="credits_exhausted",
+                            metadata={"request_count": 2, "usage_complete": False})
+        raise RunnerError("provider: insufficient balance", retryable=True,
+                          failure_kind="credits_exhausted", partial_result=partial)
+
+
+def test_known_usage_survives_a_raised_failure(tmp_path):
+    led = Ledger(tmp_path / "l.sqlite")
+    with pytest.raises(RunnerError):
+        _run(_PartialRunner(PipelineConfig(), led), tmp_path)
+    row = led._conn.execute("SELECT input_tokens, output_tokens, cost_usd, cost_source, "
+                            "failure_kind, metadata_json FROM llm_calls").fetchone()
+    assert (row["input_tokens"], row["output_tokens"]) == (1000, 100)
+    assert abs(row["cost_usd"] - 0.0123) < 1e-12 and row["cost_source"] == "estimated_partial"
+    assert row["failure_kind"] == "credits_exhausted"
+    assert json.loads(row["metadata_json"]) == {"request_count": 2, "usage_complete": False}
+    led.close()

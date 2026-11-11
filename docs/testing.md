@@ -124,7 +124,7 @@ Then, after approval to consume allowance:
 
 ```bash
 python -m argo.cli pipeline --smoke --runner mistral-vibe --mistral-vibe-auth stored \
-  --timeout 180 --max-turns 5 --parallel 1 --no-research --no-corroborate
+  --timeout 360 --max-turns 60 --parallel 1 --no-research --no-corroborate
 ```
 
 Do not add a fallback, API key, runtime/live tools or extra passes to make this succeed. Use an
@@ -134,3 +134,31 @@ repo, not just the CLI exit code. A turn/time/token-limited session or partially
 not a completed smoke. A native canary needs enough tokens for Vibe's own system prompt; record
 the approved actual caps and usage. Fake tests remain free and do not require the installed CLI,
 keyring, subscription or credentials.
+
+## DeepSeek offline contracts
+
+`tests/test_deepseek_api.py`, `test_deepseek_protocol.py` and
+`test_deepseek_server.py` use synthetic keys and fake providers. Tests cover the
+factory/AgentRunner path, schema-valid scratch artifacts, volatile reasoning,
+pre-batch validation, cache accounting, orphan-journal idempotence and a real
+loopback heartbeat server for the absolute deadline. No inference is required.
+See [the separate manual live matrix](deepseek.md#authorized-live-validation-only).
+The four Flash/Pro thinking combinations and a complete fixture pipeline require
+new approval; fake results do not pass those gates.
+
+### Recorded DeepSeek manual acceptance (2026-11-10)
+
+The four Flash/Pro thinking-enabled/high and disabled contracts passed on runtime
+SHA `ddba088`. The synthetic pipeline also passed cleanly with local context cap
+1000000, output 32768/request, 360 s/session, 60 tools, 128 HTTP requests/session,
+USD 1/session, USD 3/run, parallelism 1, one audit focus and a 900 s external
+watchdog. Web stages, fallback, SCA and target execution were disabled. Every
+session ended normally; required artifacts existed and source hashes were intact.
+The pipeline's peak estimate was USD 0.163207, not a provider invoice or price
+promise. The earlier 262144-cap attempt recovered artifacts after context limits
+and was explicitly not counted as clean. New paid runs need their own approval.
+
+With Docker's Linux engine available, the sealed-loopback runtime and ASan
+heap-overflow fixture integration tests both passed (mock model, zero inference).
+These tests execute only their synthetic fixtures; they do not authorize enabling
+runtime or ASan in an audit.

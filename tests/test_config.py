@@ -57,3 +57,39 @@ def test_smoke_always_has_positive_bounded_session_caps(turns, price):
 
 def test_smoke_preserves_zero_run_budget_as_a_launch_stop():
     assert PipelineConfig(budget_usd=0).for_smoke().budget_usd == 0
+
+
+# ------------------------------------------------------------------------------ stage-backend-aware setters
+def test_stage_model_lands_in_the_stage_backend_map_not_the_primary():
+    from argo.config import MISTRAL_VIBE_DEFAULT
+    cfg = PipelineConfig(runner="headless", stage_runners={"audit": "mistral-vibe"})
+    claude_audit = cfg.stage_models["audit"]
+    out = cfg.with_stage_model("audit", "devstral")
+    assert out.model_for("audit") == "devstral"
+    assert out.stage_models["audit"] == claude_audit            # primary map untouched
+    assert cfg.model_for("audit") == MISTRAL_VIBE_DEFAULT        # original unchanged
+
+
+def test_stage_routed_back_to_claude_from_an_api_primary():
+    from argo.config import SONNET
+    cfg = PipelineConfig(runner="mistral-api", stage_runners={"recon": "headless"})
+    out = cfg.with_stage_model("recon", SONNET)
+    assert out.model_for("recon") == SONNET
+    assert "recon" not in out.mistral_api_stage_models
+
+
+def test_calibration_uses_the_audit_stage_backend():
+    from argo.config import MISTRAL_API_TOP, OPUS
+    routed = PipelineConfig(runner="headless", stage_runners={"audit": "mistral-api"}).calibrated()
+    assert routed.model_for("audit") == MISTRAL_API_TOP
+    assert routed.stage_models == PipelineConfig().stage_models   # Claude map untouched
+    vibe = PipelineConfig(runner="headless", stage_runners={"audit": "mistral-vibe"})
+    assert vibe.calibrated().model_for("audit") == vibe.model_for("audit")   # never Opus on Vibe
+    assert PipelineConfig(runner="headless").calibrated().model_for("audit") == OPUS
+
+
+def test_calibration_of_primary_backends_is_unchanged():
+    from argo.config import CODEX_TOP, GEMINI_ARGON, MISTRAL_API_TOP
+    assert PipelineConfig(runner="codex").calibrated().codex_model == CODEX_TOP
+    assert PipelineConfig(runner="gemini").calibrated().model_for("audit") == GEMINI_ARGON
+    assert PipelineConfig(runner="mistral-api").calibrated().model_for("audit") == MISTRAL_API_TOP

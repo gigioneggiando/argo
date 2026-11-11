@@ -62,6 +62,12 @@ def _build_config(
     gemini_api_key: Optional[str] = None,
     gemini_accounts: Optional[str] = None,
     mistral_api_model: Optional[str] = None,
+    deepseek_api_model: Optional[str] = None,
+    deepseek_thinking: Optional[str] = None,
+    deepseek_reasoning_effort: Optional[str] = None,
+    deepseek_max_tokens: Optional[int] = None,
+    deepseek_context_window: Optional[int] = None,
+    deepseek_max_requests: Optional[int] = None,
     mistral_vibe_model: Optional[str] = None,
     mistral_vibe_auth: str = "key",
     claude_api_key: Optional[str] = None,
@@ -111,12 +117,26 @@ def _build_config(
         # to Pro) rather than being silently clobbered by a flat override applied after them.
         cfg = cfg.with_overrides(
             gemini_stage_models={k: gemini_model for k in cfg.gemini_stage_models})
+    deepseek_overrides = {name: value for name, value in (
+        ('deepseek_api_model', deepseek_api_model), ('deepseek_thinking', deepseek_thinking),
+        ('deepseek_reasoning_effort', deepseek_reasoning_effort),
+        ('deepseek_api_max_tokens', deepseek_max_tokens),
+        ('deepseek_api_context_window', deepseek_context_window),
+        ('deepseek_api_max_requests', deepseek_max_requests)) if value is not None}
+    if deepseek_api_model:
+        deepseek_overrides['deepseek_api_stage_models'] = {}
+    try:
+        cfg = cfg.with_overrides(**deepseek_overrides)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from None
     if timeout is not None:
-        cfg = cfg.with_overrides(session_timeout_s=timeout)
+        cfg = cfg.with_overrides(session_timeout_s=timeout,
+                                 stage_timeouts={s: min(t, timeout) for s, t in cfg.stage_timeouts.items()})
     if max_focuses is not None:
         if max_focuses < 1:
             raise typer.BadParameter("--max-focuses must be >= 1")
         cfg = cfg.with_overrides(max_focuses=max_focuses)
+    cfg = _apply_stage_assignments(cfg, None, stage_runners)
     if calibration:
         cfg = cfg.calibrated()            # audit -> the configured high-assurance model
     if audit_model:
@@ -147,10 +167,11 @@ def _build_config(
     # model is written to that backend's map rather than silently ignored by model_for().
     cfg = _apply_stage_assignments(cfg, stage_models, stage_runners, stage_efforts)
     from .model_catalog import validate_selection
-    stages = set(cfg.stage_models) | set(cfg.codex_stage_models) | set(cfg.gemini_stage_models) | set(cfg.stage_runners)
+    stages = set(cfg.stage_models) | set(cfg.codex_stage_models) | set(cfg.gemini_stage_models) | set(cfg.stage_runners) | set(cfg.deepseek_api_stage_models)
     for stage in stages:
         backend = cfg.stage_runners.get(stage, cfg.runner)
-        check = validate_selection(cfg.model_for(stage), backend)
+        check = validate_selection(cfg.model_for(stage), backend,
+                                   local=backend == "codex" and cfg.codex_oss)
         if check.get("selectable") is False:
             raise typer.BadParameter(f"effective routing {stage}: {check.get('reason', 'invalid model/backend pair')}")
     for model in cfg.codex_model_chain:
@@ -176,8 +197,8 @@ def _parse_assignments(values: Optional[list[str]], option: str) -> dict[str, st
 def _preflight_networked_stages(cfg: PipelineConfig) -> None:
     """Fail before any model call if an enabled research/corroborate stage would land on a backend
     without web tools (see config.networked_stage_conflicts)."""
-    from .config import networked_stage_conflicts
-    problems = networked_stage_conflicts(cfg)
+    from .config import networked_stage_conflicts, deepseek_run_conflicts
+    problems = networked_stage_conflicts(cfg) + deepseek_run_conflicts(cfg)
     if problems:
         raise typer.BadParameter("; ".join(problems))
 
@@ -188,39 +209,23 @@ def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[st
     runner_map = _parse_assignments(stage_runners, "--stage-runner")
     model_map = _parse_assignments(stage_models, "--stage-model")
     effort_map = _parse_assignments(stage_efforts, "--stage-effort")
-    valid_backends = {"headless", "codex", "gemini", "mistral-api", "mistral-vibe", "mock"}
+    valid_backends = {"headless", "codex", "gemini", "mistral-api", "mistral-vibe",
+                      "deepseek-api", "mock"}
     unknown = sorted(set(runner_map.values()) - valid_backends)
     if unknown:
         raise typer.BadParameter(f"--stage-runner unknown backend(s): {', '.join(unknown)}")
     if runner_map:
         cfg = cfg.with_overrides(stage_runners={**cfg.stage_runners, **runner_map})
     if model_map:
-        codex = dict(cfg.codex_stage_models)
-        gemini = dict(cfg.gemini_stage_models)
-        mistral = dict(cfg.mistral_api_stage_models)
-        vibe = dict(cfg.mistral_vibe_stage_models)
-        claude = dict(cfg.stage_models)
+        from .model_catalog import validate_selection
         for stage, model in model_map.items():
-            backend = runner_map.get(stage, cfg.stage_runners.get(stage, cfg.runner))
-            from .model_catalog import validate_selection
-            check = validate_selection(model, backend)
+            backend = cfg.stage_runners.get(stage, cfg.runner)      # runner_map already applied
+            check = validate_selection(model, backend, local=backend == "codex" and cfg.codex_oss)
             if check.get("selectable") is False:
                 raise typer.BadParameter(
                     f"--stage-model {stage}={model!r} is incompatible with backend {backend}: "
                     f"{check.get('reason', 'invalid selection')}")
-            if backend == "codex":
-                codex[stage] = model
-            elif backend == "gemini":
-                gemini[stage] = model
-            elif backend == "mistral-api":
-                mistral[stage] = model
-            elif backend == "mistral-vibe":
-                vibe[stage] = model
-            else:
-                claude[stage] = model
-        cfg = cfg.with_overrides(codex_stage_models=codex, gemini_stage_models=gemini,
-                                 mistral_api_stage_models=mistral,
-                                 mistral_vibe_stage_models=vibe, stage_models=claude)
+            cfg = cfg.with_stage_model(stage, model)                # same setter as HTTP
     if effort_map:
         allowed = {"low", "medium", "high", "xhigh", "max"}
         invalid = sorted(set(effort_map.values()) - allowed)
@@ -235,11 +240,18 @@ def _apply_stage_assignments(cfg: PipelineConfig, stage_models: Optional[list[st
     return cfg
 
 
+DeepSeekApiModelOpt = typer.Option(None, "--deepseek-api-model", help="(deepseek-api) Cloud model alias; default deepseek-flash.")
+DeepSeekThinkingOpt = typer.Option(None, "--deepseek-thinking", help="(deepseek-api) enabled | disabled; default enabled.")
+DeepSeekEffortOpt = typer.Option(None, "--deepseek-reasoning-effort", help="(deepseek-api) low | high | max; default high.")
+DeepSeekTokensOpt = typer.Option(None, "--deepseek-max-tokens", help="(deepseek-api) Finite output token cap; default 32768.")
+DeepSeekContextOpt = typer.Option(None, "--deepseek-context-window", help="(deepseek-api) Conservative context cap; default 262144.")
+DeepSeekRequestsOpt = typer.Option(None, "--deepseek-max-requests", help="(deepseek-api) HTTP request cap including retries; default 128.")
+
 RunnerOpt = typer.Option("headless", "--runner",
                          help="headless (Claude Code CLI) · codex (Codex CLI / OpenAI / OSS) · "
                               "gemini (Gemini CLI) · mistral-api (Mistral API, Argo tool loop; key "
                               "from ARGO_MISTRAL_API_KEY/MISTRAL_API_KEY) · mistral-vibe (Mistral "
-                              "Vibe CLI, isolated config) · mock")
+                              "Vibe CLI, isolated config); deepseek-api (cloud API) · mock")
 CodexModelOpt = typer.Option(None, "--codex-model",
                              help="(runner=codex) model id, e.g. gpt-6.1-sol; omit to use the "
                                   "Codex CLI's own default")
@@ -565,6 +577,12 @@ def show_routing(
     runner: str = RunnerOpt, codex_model: Optional[str] = CodexModelOpt,
     gemini_model: Optional[str] = GeminiModelOpt,
     mistral_api_model: Optional[str] = MistralApiModelOpt,
+    deepseek_api_model: Optional[str] = DeepSeekApiModelOpt,
+    deepseek_thinking: Optional[str] = DeepSeekThinkingOpt,
+    deepseek_reasoning_effort: Optional[str] = DeepSeekEffortOpt,
+    deepseek_max_tokens: Optional[int] = DeepSeekTokensOpt,
+    deepseek_context_window: Optional[int] = DeepSeekContextOpt,
+    deepseek_max_requests: Optional[int] = DeepSeekRequestsOpt,
     mistral_vibe_model: Optional[str] = MistralVibeModelOpt,
     stage_model: Optional[list[str]] = StageModelOpt,
     mistral_vibe_auth: str = MistralVibeAuthOpt,
@@ -577,12 +595,18 @@ def show_routing(
                         codex_model=codex_model, gemini_model=gemini_model,
                         mistral_api_model=mistral_api_model,
                         mistral_vibe_model=mistral_vibe_model,
+                        deepseek_api_model=deepseek_api_model,
+                        deepseek_thinking=deepseek_thinking,
+                        deepseek_reasoning_effort=deepseek_reasoning_effort,
+                        deepseek_max_tokens=deepseek_max_tokens,
+                        deepseek_context_window=deepseek_context_window,
+                        deepseek_max_requests=deepseek_max_requests,
                         stage_models=stage_model, stage_runners=stage_runner,
                         mistral_vibe_auth=mistral_vibe_auth,
                         stage_efforts=stage_effort)
     stages = sorted(set(cfg.stage_models) | set(cfg.gemini_stage_models) |
                     set(cfg.codex_stage_models) | set(cfg.mistral_api_stage_models) |
-                    set(cfg.mistral_vibe_stage_models) | set(cfg.stage_runners))
+                    set(cfg.mistral_vibe_stage_models) | set(cfg.deepseek_api_stage_models) | set(cfg.stage_runners))
     out = {}
     for s in stages:
         model = cfg.model_for(s)
@@ -1415,6 +1439,12 @@ def pipeline(
     gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
     gemini_accounts: Optional[str] = GeminiAccountsOpt,
     mistral_api_model: Optional[str] = MistralApiModelOpt,
+    deepseek_api_model: Optional[str] = DeepSeekApiModelOpt,
+    deepseek_thinking: Optional[str] = DeepSeekThinkingOpt,
+    deepseek_reasoning_effort: Optional[str] = DeepSeekEffortOpt,
+    deepseek_max_tokens: Optional[int] = DeepSeekTokensOpt,
+    deepseek_context_window: Optional[int] = DeepSeekContextOpt,
+    deepseek_max_requests: Optional[int] = DeepSeekRequestsOpt,
     mistral_vibe_model: Optional[str] = MistralVibeModelOpt,
     claude_api_key: Optional[str] = ClaudeApiKeyOpt,
     mistral_vibe_auth: str = MistralVibeAuthOpt,
@@ -1441,6 +1471,12 @@ def pipeline(
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
                         gemini_accounts=gemini_accounts, mistral_api_model=mistral_api_model,
                         mistral_vibe_model=mistral_vibe_model,
+                        deepseek_api_model=deepseek_api_model,
+                        deepseek_thinking=deepseek_thinking,
+                        deepseek_reasoning_effort=deepseek_reasoning_effort,
+                        deepseek_max_tokens=deepseek_max_tokens,
+                        deepseek_context_window=deepseek_context_window,
+                        deepseek_max_requests=deepseek_max_requests,
                         claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
                         mistral_vibe_auth=mistral_vibe_auth,
                         codex_api_key=codex_api_key, codex_api_keys=codex_api_keys,

@@ -28,10 +28,12 @@ class SettingsStore:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             data = {}
-        return {**DEFAULTS, **(data or {})}
+        from .schemas import Settings
+        return Settings(**{**DEFAULTS, **(data or {})}).model_dump()
 
     def save(self, data: dict) -> dict:
-        merged = {**DEFAULTS, **(data or {})}
+        from .schemas import Settings
+        merged = Settings(**{**DEFAULTS, **(data or {})}).model_dump()
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_text(json.dumps(merged, indent=2), encoding="utf-8")

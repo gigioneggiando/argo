@@ -4,15 +4,38 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr, model_validator
 
 
-class RunConfig(BaseModel):
+class DeepSeekSettings(BaseModel):
+    deepseek_api_model: Optional[str] = None
+    deepseek_thinking: Literal['enabled', 'disabled'] = 'enabled'
+    deepseek_reasoning_effort: Literal['low', 'high', 'max'] = 'high'
+    deepseek_api_max_tokens: int = Field(32768, ge=1, le=393216, strict=True)
+    deepseek_api_context_window: int = Field(262144, ge=1, le=1000000, strict=True)
+    deepseek_api_max_requests: int = Field(128, ge=1, le=10000, strict=True)
+
+    @model_validator(mode='after')
+    def validate_context(self):
+        if getattr(self, 'profile', None) and not {
+                'deepseek_api_max_tokens', 'deepseek_api_context_window'} <= self.model_fields_set:
+            return self  # cross-validation occurs after profile resolution in PipelineConfig
+        if self.deepseek_api_max_tokens + 8192 >= self.deepseek_api_context_window:
+            raise ValueError('DeepSeek output plus margin must fit the context window')
+        return self
+
+
+class RunConfig(DeepSeekSettings):
     """The subset of PipelineConfig a client may set per run. Defaults are deliberately safe:
     ``runner="mock"`` means a request spends **zero tokens** unless the client opts into
     ``headless``."""
     runner: str = Field("mock", description='"mock" (free) · "headless" (Claude Code) · "codex" (Codex CLI / OpenAI / OSS) · "gemini" (Gemini CLI) · "mistral-api" (Mistral API, Argo tool loop) · "mistral-vibe" (Mistral Vibe CLI)')
     budget_usd: Optional[float] = Field(None, description="per-run USD ceiling: no new session launches once spend reaches it")
+    deepseek_api_key: Optional[SecretStr] = Field(None, exclude=True, repr=False)
+    session_timeout_s: Optional[int] = Field(None, ge=1, strict=True)
+    session_max_turns: Optional[int] = Field(None, ge=1, strict=True)
+    session_max_cost_usd: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
+    max_focuses: Optional[int] = Field(None, ge=1, strict=True)
     audit_model: Optional[str] = Field(None, description="override the Stage-3 audit model")
     calibration: bool = Field(False, description="run audit on Opus (all-Opus)")
     parallel: int = Field(3, ge=1, le=16, description="max concurrent audit/validate sessions")
@@ -72,7 +95,7 @@ class RunConfig(BaseModel):
     # accounts); one HTTP request = one run = one identity.
 
 
-class Settings(BaseModel):
+class Settings(DeepSeekSettings):
     """Persisted UI defaults (Phase 2)."""
     runner: str = "mock"
     budget_usd: Optional[float] = None

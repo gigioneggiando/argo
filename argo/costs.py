@@ -82,6 +82,7 @@ def cost_report(ledger: Ledger, run_archetypes: dict | None = None) -> dict:
             "runs": runs,
             "cost_usd": round(total_cost, 6),
             "avg_cost_per_run": round(_div(total_cost, runs), 4),
+            **ledger.accounting_summary(),
         },
         "by_model": by_model,
         "by_stage": by_stage,

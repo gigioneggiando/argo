@@ -383,6 +383,12 @@ def run_suite(base_config, suite_dir, *, fixes: bool = False, label: str | None 
         "stage_effort": dict(base_config.stage_effort),
         "catalog_snapshot": base_config.model_catalog_snapshot,
         "benchmark_mode": True,
+        "harness": "argo-native-tools" if base_config.runner == 'deepseek-api' else base_config.runner,
+        "deepseek_controls": {k: getattr(base_config, k) for k in (
+            'deepseek_thinking', 'deepseek_reasoning_effort', 'deepseek_api_max_tokens',
+            'deepseek_api_context_window', 'deepseek_api_max_requests')},
+        "session_caps": {k: getattr(base_config, k) for k in (
+            'session_timeout_s', 'session_max_turns', 'session_max_cost_usd')},
     }
     if fixes:
         patched = sum(c.get("patch", {}).get("patched", 0) for c in case_results)
@@ -433,9 +439,10 @@ def _cheap_tier(cfg):
     stage_models["recon"] = SONNET
     gemini_stage_models = {k: GEMINI_FLASH_LITE for k in cfg.gemini_stage_models}
     gemini_stage_models["recon"] = GEMINI_FLASH
-    from .config import MISTRAL_API_CHEAP
+    from .config import MISTRAL_API_CHEAP, DEEPSEEK_FLASH
     return cfg.with_overrides(stage_models=stage_models, gemini_stage_models=gemini_stage_models,
-                              codex_model=CODEX_CHEAP, mistral_api_model=MISTRAL_API_CHEAP)
+                              codex_model=CODEX_CHEAP, mistral_api_model=MISTRAL_API_CHEAP,
+                              deepseek_api_model=DEEPSEEK_FLASH, deepseek_api_stage_models={})
 
 
 def _aggregate_cross_backend(backend_reports: dict[str, dict], *, suite: str, tier: str) -> dict:

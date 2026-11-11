@@ -20,7 +20,7 @@ AgentRunner (ABC)
 ├─ HeadlessClaudeRunner   # `claude -p` — Claude Code
 ├─ CodexRunner            # `codex exec` — OpenAI, or local/OSS via --oss / a custom provider (vLLM)
 ├─ GeminiRunner           # `gemini` — Google, tiered per stage like Claude
-├─ MistralApiRunner       # Mistral Chat Completions + Argo's own sandboxed tool loop (argo/mistral_api.py)
+├─ MistralApiRunner       # Mistral Chat Completions + Argo's path-confined tool loop (argo/mistral_api.py, tools: argo/api_tools.py)
 ├─ MistralVibeRunner      # `vibe` CLI under an isolated, Argo-written config (argo/mistral_vibe.py)
 ├─ MockClaudeRunner       # fixtures (zero tokens; the test suite)
 └─ FallbackRunner         # an ordered chain of the above (accounts and backends; see "Fallback")
@@ -584,3 +584,10 @@ register retry recovers it (`refusal_recovery_rate`) — deliberately NOT jailbr
 testing, see `argo/refusal_probe.py`'s module docstring. Both default to a cheap tier so a full
 3-backend sweep costs cents; `--tier top` is real, non-trivial spend across three paid APIs — see
 [benchmarks/README.md](../benchmarks/README.md) before running it for actual paper numbers.
+
+## DeepSeek API cloud backend
+
+`deepseek-api` is independent of Mistral and of local Codex OSS. Its endpoint is
+fixed, TLS verified, with redirects/environment proxies disabled, a total deadline
+and 16 MiB response cap. Only the confined shared file tools are exposed. See
+[controls, auth, retry/fallback, chat, aliases and dated peak pricing](deepseek.md).

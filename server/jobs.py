@@ -48,6 +48,21 @@ class JobManager:
             from argo.profiles import apply_profile
             cfg = apply_profile(cfg, req.config.profile)
             cfg = cfg.with_overrides(stage_runners={**cfg.stage_runners, **req.config.stage_runners})
+        from .schemas import DeepSeekSettings
+        overrides = {name: getattr(req.config, name) for name in DeepSeekSettings.model_fields
+                     if name in req.config.model_fields_set}
+        for name in ('session_timeout_s', 'session_max_turns', 'session_max_cost_usd', 'max_focuses'):
+            if getattr(req.config, name) is not None:
+                overrides[name] = getattr(req.config, name)
+        if req.config.deepseek_api_key is not None:
+            overrides['deepseek_api_key'] = req.config.deepseek_api_key.get_secret_value()
+        if overrides:
+            cfg = cfg.with_overrides(**overrides)
+        if req.config.session_timeout_s is not None:
+            cfg = cfg.with_overrides(stage_timeouts={stage: min(seconds, req.config.session_timeout_s)
+                                                     for stage, seconds in cfg.stage_timeouts.items()})
+        if req.config.deepseek_api_model:
+            cfg = cfg.with_overrides(deepseek_api_stage_models={})
         if req.config.gemini_model:
             # Flat override across every stage, applied BEFORE calibration/audit_model below so
             # those can still bump individual stages on top -- mirrors the CLI's _build_config.
@@ -85,14 +100,15 @@ class JobManager:
         from argo.model_catalog import validate_selection
         stages = (set(cfg.stage_models) | set(cfg.codex_stage_models) | set(cfg.gemini_stage_models)
                   | set(cfg.mistral_api_stage_models) | set(cfg.mistral_vibe_stage_models)
-                  | set(cfg.stage_runners))
+                  | set(cfg.deepseek_api_stage_models) | set(cfg.stage_runners))
         for stage in stages:
             backend = cfg.stage_runners.get(stage, cfg.runner)
-            check = validate_selection(cfg.model_for(stage), backend)
+            check = validate_selection(cfg.model_for(stage), backend,
+                                       local=backend == "codex" and cfg.codex_oss)
             if check.get("selectable") is False:
                 raise ValueError(f"invalid effective routing for {stage}: {check.get('reason')}")
-        from argo.config import networked_stage_conflicts
-        problems = networked_stage_conflicts(cfg)
+        from argo.config import networked_stage_conflicts, deepseek_run_conflicts
+        problems = networked_stage_conflicts(cfg) + deepseek_run_conflicts(cfg)
         if problems:
             raise ValueError("; ".join(problems))
         return cfg

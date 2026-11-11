@@ -321,3 +321,10 @@ Record agent/version, which instructions it loaded, commands, exit status, and a
 unexpected paid/network action. Check Codex, Claude, Gemini and Copilot separately;
 file/link checks are not a substitute for those actual sessions. Do not start real
 audits just to test onboarding.
+
+## DeepSeek cloud workflow
+
+See [DeepSeek API](deepseek.md) before a real run. Runtime key and explicit finite
+budget are required; do not put a key in argv. Offline protocol tests use synthetic
+providers; real smoke/dry-run require separate spend approval. Resume recovers
+accounting, never the private reasoning transcript.

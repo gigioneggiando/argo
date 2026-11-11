@@ -115,3 +115,15 @@ def test_invalid_auth_http_enum_is_a_schema_error(tmp_path):
     r = _client(tmp_path).post("/runs", json={"repo": str(REPO),
         "config": {"runner": "mistral-vibe", "mistral_vibe_auth": "auto"}})
     assert r.status_code == 422
+
+
+def test_http_and_cli_route_a_mixed_stage_model_to_the_same_backend(tmp_path):
+    """HTTP models{} must land in the stage's effective backend map exactly like --stage-model."""
+    from argo.cli import _apply_stage_assignments
+    jm = JobManager(PipelineConfig(runner="mock", runs_dir=tmp_path))
+    http = jm._config_for(_req(runner="headless", stage_runners={"audit": "mistral-vibe"},
+                               models={"audit": "devstral"}))
+    cli = _apply_stage_assignments(PipelineConfig(runner="headless"), ["audit=devstral"],
+                                   ["audit=mistral-vibe"])
+    assert http.model_for("audit") == cli.model_for("audit") == "devstral"
+    assert http.mistral_vibe_stage_models == cli.mistral_vibe_stage_models

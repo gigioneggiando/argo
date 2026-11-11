@@ -421,6 +421,8 @@ def resume_pipeline(ctx: RunContext, from_stage: str | None = None,
     status = read_status(ctx.run_dir)
     if not status:
         raise FileNotFoundError(f"cannot resume run {ctx.run_id}: missing or unreadable status.json")
+    from .deepseek_api import reconcile_journals
+    reconcile_journals(ctx.run_dir, ctx.ledger, ctx.run_id)
     stages = pipeline_stages(ctx)
     state_by_stage = {
         st.get("name"): st.get("state")

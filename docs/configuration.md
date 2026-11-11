@@ -64,6 +64,10 @@ argo show-routing --runner codex
 ```
 
 Precedence is explicit stage override, global backend override, profile, then built-in defaults.
+A stage model is stored in the map of the backend that runs that stage (`stage_runners`, else the
+primary runner): CLI `--stage-model` and HTTP `models` use the same setter, so a mixed-backend
+assignment routes identically on both surfaces. Calibration picks the top model of the backend
+that runs `audit`; a backend without a top tier (Vibe) keeps its model.
 `--stage-effort` is currently accepted only for the Claude/headless CLI, whose `--effort` values
 are verified locally; Codex/Gemini native effort controls are not guessed. Unknown custom model
 IDs remain selectable but are labeled `custom/unverified` and have unknown pricing.
@@ -105,7 +109,7 @@ The runner re-applies these on every call, so a stage cannot widen them. See
 
 | Field | CLI flag | Effect |
 |---|---|---|
-| `budget_usd` | `--budget` | per-run ceiling: no session launches once ledgered spend reaches it; sessions already running can overshoot (see [headless runner](headless-runner.md#caps-step-3)) |
+| `budget_usd` | `--budget` | per-run ceiling: no session launches once ledgered spend reaches it; sessions already running can overshoot (see [headless runner](headless-runner.md#caps-step-3)). Ledgered spend for the gate = known estimated cost + operational reserves recorded for requests whose usage is unknown (`unknown_reserved_usd`); reported run cost stays the known minimum |
 | `session_max_cost_usd` | `--session-budget` | per-session cap → the CLI's native `--max-budget-usd` |
 | `session_max_turns` | `--max-turns` | per-session turn tripwire (Claude: post-hoc; Codex: enforced mid-session) |
 | `codex_context_window` | `--codex-context-window` | local model's real context window; Codex compacts at 80% |
@@ -202,3 +206,11 @@ from argo.config import PipelineConfig, OPUS
 cfg = (PipelineConfig(runner="headless", budget_usd=20.0, max_parallel_audits=2)
        .with_stage_model("audit", OPUS))      # high-value target: audit on Opus
 ```
+
+## DeepSeek controls
+
+[DeepSeek API configuration](deepseek.md#configuration) lists every field, default,
+CLI mapping and precedence. `deepseek_api_stage_models` is the provider-specific
+map; CLI stage assignments and REST `models` feed it. `deepseek_api_key` is input-only
+and redacted in saved configuration. Budget decisions use known estimates plus
+unknown-usage reserves; these do not guarantee a maximum invoice.

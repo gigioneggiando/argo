@@ -10,7 +10,7 @@ import hashlib
 import json
 from typing import Any
 
-from .config import PipelineConfig
+from .config import PipelineConfig, NO_WEB_BACKENDS
 from .benchmark_knowledge import evidence_for
 from .model_catalog import resolve_pricing
 
@@ -79,6 +79,10 @@ def make_plan(fingerprint: dict[str, Any], config: PipelineConfig, *, objective:
                 reason("DURATION_CONSTRAINT", "optional deep/networked stages removed to fit requested duration")
             if estimated_high > max_duration_minutes:
                 raise ValueError(f"no plan fits max duration {max_duration_minutes}m; minimum estimated duration is {estimated_high}m")
+    for stage in ('research', 'corroborate'):
+        if stage in enabled and config.stage_runners.get(stage, config.runner) in NO_WEB_BACKENDS:
+            enabled.remove(stage)
+            reason('NO_WEB_TOOLS', f'{stage} not planned: selected backend has no web tools')
     stage_runners = {s: config.stage_runners.get(s, config.runner) for s in enabled}
     stage_models = {s: config.model_for(s) for s in enabled}
     evidence = evidence_for(fingerprint, benchmark_knowledge)
@@ -101,7 +105,8 @@ def make_plan(fingerprint: dict[str, Any], config: PipelineConfig, *, objective:
     low_cost = high_cost = 0.0
     for stage in enabled:
         model = stage_models[stage]
-        rates = resolve_pricing(model)
+        rates = (None if stage_runners[stage] == 'codex' and config.codex_oss
+                 else resolve_pricing(model))
         if rates is None:
             unknown_pricing.append(model)
             stage_estimates.append({"stage": stage, "model": model, "cost": "unknown"})

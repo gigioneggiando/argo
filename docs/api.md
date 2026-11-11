@@ -58,7 +58,7 @@ python -m argo.cli serve --host 127.0.0.1 --port 8000 --runs-dir runs
 | POST | `/screen` | deterministic, read-only local fingerprint (no execution/network) |
 | POST | `/plan` | fingerprint + objective → explainable plan, routing, cost/time range, and reasons |
 | GET | `/runs/{id}/chat` | chat history for the run |
-| POST | `/runs/{id}/chat` | `{message}` → one chat turn: `{reply, generated, cost_usd, validated_candidate}` (read-only repo; test files go to `generated/`). **B1**: if the analyst proposes a `CANDIDATE_FINDING.json` for a "why didn't you find X?", it is re-validated by the pipeline's adversarial validator and `validated_candidate` carries the verdict (null otherwise). `cost_usd` is the chat turn; the re-validation session is logged to the ledger (in the run total). |
+| POST | `/runs/{id}/chat` | `{message}` → one chat turn on the run's saved `config.json` (same loader as `argo resume`: backend, models, auth mode, caps, budget; redacted keys must come from the server environment): `{reply, generated, cost_usd, validated_candidate}` (read-only repo; test files go to `generated/`). **B1**: if the analyst proposes a `CANDIDATE_FINDING.json` for a "why didn't you find X?", it is re-validated by the pipeline's adversarial validator and `validated_candidate` carries the verdict (null otherwise). `cost_usd` is the chat turn; the re-validation session is logged to the ledger (in the run total). |
 | POST | `/runs/{id}/chat/stream` | **B2** the same chat turn as NDJSON: `{"type":"activity","text"}` lines while the analyst works (Claude, Codex, Gemini and Mistral API tool calls/interim messages; none yet on Vibe), then one `{"type":"done", …same payload as POST /chat}` or `{"type":"error","detail"}`. Same guardrails, ledger logging and persistence as the plain call |
 | GET | `/runs/{id}/generated` | files the chat analyst produced (e.g. test suites) |
 | POST | `/runs/{id}/fixes` | **Phase 6** — propose + verify a patch per confirmed finding: `{verify, only, re_audit}` → the fixes report (`build_cmd`/`docker` are CLI-only). Target repo stays read-only; verify runs on an isolated copy |
@@ -226,3 +226,15 @@ dry-run, the SSE stream reaching a terminal state, the artifact whitelist, and 4
 
 Auth/multi-user and subprocess isolation per run (vs. in-process threads). (Mid-stage cancellation,
 the frontend, and repo-zip upload are done.) See [roadmap.md](roadmap.md).
+
+## DeepSeek HTTP contract
+
+`GET /models` lists the cloud backend, model aliases and dated prices without
+authenticating to DeepSeek. `RunConfig` accepts the controls and input-only
+`deepseek_api_key` described in [DeepSeek API](deepseek.md); the same page includes
+a complete POST payload. HTTP caps additionally include `session_timeout_s`,
+`session_max_turns`, `session_max_cost_usd` and `max_focuses`. Configuration research
+overrides top-level research when provided. Missing execution prerequisites or
+incompatible OSINT routing return 400 before a job; schema failures return sanitized
+422 details without input values. Chat without a fresh runtime key returns 409.
+Status exposes `unknown_reserved_usd` and `incomplete_calls` separately from known cost.

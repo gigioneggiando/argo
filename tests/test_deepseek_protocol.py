@@ -443,6 +443,46 @@ def test_context_limit_includes_received_tool_call_before_effect(tmp_path):
     ledger.close()
 
 
+def test_history_is_auto_compacted_instead_of_failing_at_context_limit(tmp_path):
+    # A turn returns a large assistant content; the next top-of-loop estimate crosses
+    # the 80% compaction threshold, so the adapter folds history (a tools-free summary
+    # request) into [system, user(task + notes)] and continues to a final answer,
+    # rather than raising context_limit the way an uncompacted session would.
+    from argo.deepseek_api import COMPACT_INSTRUCTION
+    seen = []
+    def handler(req):
+        payload = json.loads(req.content)
+        seen.append(payload)
+        has_tools = 'tools' in payload
+        last = payload['messages'][-1]
+        if has_tools and last['content'] == 'Inspect synthetic repo':
+            # Round 1: big content forces the history over the threshold next iteration.
+            return httpx.Response(200, json=response(
+                content='A' * 95_000, calls=[call()], finish='tool_calls'))
+        if not has_tools:
+            # The compaction request: tools-free, asking for a progress summary.
+            assert last['content'] == COMPACT_INSTRUCTION
+            return httpx.Response(200, json=response(content='SUMMARY NOTES', finish='stop'))
+        # Continuation after compaction: history folded to system + one user message.
+        assert len(payload['messages']) == 2
+        assert '[Auto-compacted progress notes]' in last['content']
+        assert 'SUMMARY NOTES' in last['content'] and 'Inspect synthetic repo' in last['content']
+        return httpx.Response(200, json=response(content='FINAL ANSWER', finish='stop'))
+
+    runner, ledger = setup_runner(tmp_path, handler, deepseek_api_max_tokens=4000,
+                                  deepseek_api_context_window=120_000)
+    result = invoke(runner, tmp_path)
+    assert result.text == 'FINAL ANSWER'
+    assert not result.is_error and result.failure_kind is None
+    # req1 (tools) + compaction (no tools) + continuation (tools) == 3 provider requests.
+    assert len(seen) == 3
+    assert sum('tools' not in p for p in seen) == 1
+    events = [json.loads(line) for path in (tmp_path / 'run' / '.argo_sessions').glob('*.jsonl')
+              for line in path.read_text(encoding='utf-8').splitlines()]
+    assert any(event['event'] == 'compacted' for event in events)
+    ledger.close()
+
+
 def test_bad_tool_arguments_and_unknown_tool_get_ordered_denials(tmp_path):
     count=0
     def handler(req):

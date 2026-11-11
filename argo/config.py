@@ -70,6 +70,8 @@ DEEPSEEK_API_TOP = DEEPSEEK_PRO
 DEEPSEEK_MAX_OUTPUT_TOKENS = 393_216      # provider max_tokens upper bound (384K)
 DEEPSEEK_CONTEXT_CAP = 1_048_576          # provider's 1M-token limit, measured conservatively in bytes
 DEEPSEEK_CONTEXT_MARGIN = 8_192           # reserved on top of input estimate + max_tokens
+DEEPSEEK_COMPACT_FRACTION = 0.8           # auto-compact when input estimate exceeds this share of the
+                                          # usable input budget (window - max_tokens - margin), like Codex
 DEEPSEEK_MAX_REQUESTS_CAP = 10_000        # sanity bound for deepseek_api_max_requests
 DEEPSEEK_THINKING_MODES = ("enabled", "disabled")
 DEEPSEEK_EFFORTS = ("low", "high", "max")

@@ -27,7 +27,14 @@ context is at most 1048576 (the provider's 1M-token ceiling); Argo conservativel
 measures the serialized request in UTF-8 bytes, and output plus an 8192-unit margin
 must fit inside it. These integer caps reject booleans. Context estimation includes the full
 volatile history and tool schemas and deliberately overestimates using UTF-8 byte
-length. There is no automatic compaction: `context_limit` stops before sending.
+length. When the volatile history exceeds 80% of the usable input budget (window
+minus output minus margin) and there are whole turns to fold, the adapter
+auto-compacts: one tools-free request summarises the investigation so far, and the
+history is rebuilt as `[system, user(task + compacted notes)]` before continuing —
+the way Codex/Claude sessions compact inside their own CLIs. `context_limit` still
+stops before sending when even the system prompt and task cannot be made to fit, or
+when the summary request itself would not fit. A single oversized tool-call argument
+or tool result is a hard `context_limit` (it cannot be summarised away).
 HTTP request caps include retries. Tool calls have a separate cap (150 when unset).
 
 Use `--stage-model STAGE=MODEL` or HTTP `config.models` for individual stages.
@@ -120,8 +127,9 @@ Offline tests use MockTransport plus a loopback heartbeat server, synthetic keys
 schema validation and the real AgentRunner/factory path. They do not certify live
 provider behavior. Before release, separately approve and run Flash and Pro with
 thinking enabled/high and disabled, then a complete Flash fixture pipeline.
-Recheck official availability/pricing then. Token streaming, web tools, strict
-beta mode and automatic compaction remain outside this version.
+Recheck official availability/pricing then. Token streaming, web tools and strict
+beta mode remain outside this version. Automatic compaction is now in (see above);
+exercise a large-repo recon that triggers it before release.
 
 ### Recorded manual validation
 
@@ -135,5 +143,6 @@ fingerprints are observations, not physical pins or quality-benchmark claims.
 The default remains 262144. Its UTF-8 byte estimate is deliberately conservative;
 an earlier fixture attempt stopped recon/audit at `context_limit` and recovered
 artifacts. That attempt was not accepted as a clean smoke. The example above
-therefore explicitly uses the successfully validated cap; it still does not
-enable compaction or guarantee that an arbitrary repository will fit.
+therefore explicitly uses the successfully validated cap. Auto-compaction now lets
+a session fold its history and continue rather than stopping at `context_limit`,
+but it does not guarantee that an arbitrary repository will fit.

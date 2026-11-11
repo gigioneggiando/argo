@@ -19,13 +19,28 @@ from pathlib import Path
 import httpx
 
 from .api_tools import Toolbox, ToolError, bound_tool_result
-from .config import DEEPSEEK_API_BASE_URL, DEEPSEEK_CONTEXT_MARGIN, PipelineConfig
+from .config import (DEEPSEEK_API_BASE_URL, DEEPSEEK_COMPACT_FRACTION,
+                     DEEPSEEK_CONTEXT_MARGIN, PipelineConfig)
 from .ledger import Ledger
 from .model_catalog import DEEPSEEK_PRICING_SNAPSHOT_ID, get_model_spec
 from .runner import AgentRunner, LLMResult, RunnerCancelled, RunnerError, sanitize_metadata
 from .rendering import sha256_text
 
 MAX_BODY_BYTES = 16 * 1024 * 1024
+
+# Auto-compaction: when the volatile history approaches the context window, fold the
+# investigation so far into dense notes and continue, instead of failing with
+# context_limit (the behaviour Codex/Claude get from their own CLIs). Bounded output
+# keeps the summarising call cheap and guaranteed to fit under the window.
+COMPACT_MAX_TOKENS = 8_192
+COMPACT_INSTRUCTION = (
+    'You are running low on context budget and your earlier messages are about to be '
+    'discarded. Write a dense, self-contained progress summary so you can continue '
+    'without them. Capture: the task and the exact artifacts you must still produce; '
+    'the repository architecture and entry points found; files and locations already '
+    'examined (with paths); candidate findings and hypotheses with their evidence; '
+    'dead ends not worth revisiting; and the concrete next steps remaining. '
+    'Output only the notes as plain text, no tool calls.')
 
 
 class _Failure(Exception):
@@ -201,18 +216,13 @@ class DeepSeekApiRunner(AgentRunner):
                 raise _Failure('model_unavailable')
             async with httpx.AsyncClient(transport=self._transport, trust_env=False,
                                         follow_redirects=False, verify=True) as client:
-                while True:
-                    payload = dict(model=model, messages=messages, tools=tools, tool_choice='auto',
-                                   max_tokens=cfg.deepseek_api_max_tokens, stream=False,
-                                   thinking={'type': cfg.deepseek_thinking})
-                    if cfg.deepseek_thinking == 'enabled':
-                        payload['reasoning_effort'] = cfg.deepseek_reasoning_effort
-                    # UTF-8 byte count deliberately overestimates tokens, including all history.
-                    estimate = len(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
-                    if estimate + cfg.deepseek_api_max_tokens + DEEPSEEK_CONTEXT_MARGIN > cfg.deepseek_api_context_window:
-                        raise _Failure('context_limit')
+
+                async def request(payload, estimate, out_tokens):
+                    # One priced request with bounded retries; shared by the tool loop
+                    # and by compaction so accounting stays identical. Returns the 200
+                    # body or raises _Failure.
                     reserve = (estimate*spec.input_per_million +
-                               cfg.deepseek_api_max_tokens*spec.output_per_million)/1e6
+                               out_tokens*spec.output_per_million)/1e6
                     for retry in range(4):
                         check()
                         if md['request_count'] >= cfg.deepseek_api_max_requests:
@@ -223,7 +233,7 @@ class DeepSeekApiRunner(AgentRunner):
                         if used + reserve > min(budget, run_remaining):
                             raise _Failure('budget_reached')
                         md['request_count'] += 1
-                        log('intent', reserve_usd=reserve, max_tokens=cfg.deepseek_api_max_tokens)
+                        log('intent', reserve_usd=reserve, max_tokens=out_tokens)
                         try:
                             status, retry_after, body = await interruptible(receive(client, payload))
                         except (httpx.HTTPError, _Failure, RunnerCancelled):
@@ -244,7 +254,7 @@ class DeepSeekApiRunner(AgentRunner):
                                 raise _Failure('invalid_response') from None
                             observe(data, reserve)
                             log('observed', summary=raw)
-                            break
+                            return data
                         kind = {400:'invalid_request', 401:'auth_failed', 403:'auth_failed',
                                 402:'credits_exhausted', 422:'invalid_request',
                                 429:'rate_limited', 500:'unknown_retryable',
@@ -275,6 +285,53 @@ class DeepSeekApiRunner(AgentRunner):
                         if delay >= deadline - time.monotonic():
                             raise _Failure(kind)
                         await interruptible(asyncio.sleep(delay))
+
+                async def compact():
+                    # Fold history into dense notes and continue (Codex/Claude-style),
+                    # instead of dying at context_limit. Drops whole turns, so no tool
+                    # pair is orphaned: rebuild as [system, user(task + notes)].
+                    out_tokens = min(COMPACT_MAX_TOKENS, cfg.deepseek_api_max_tokens)
+                    probe = dict(model=model, max_tokens=out_tokens, stream=False,
+                                 thinking={'type': cfg.deepseek_thinking},
+                                 messages=messages + [dict(role='user', content=COMPACT_INSTRUCTION)])
+                    if cfg.deepseek_thinking == 'enabled':
+                        probe['reasoning_effort'] = cfg.deepseek_reasoning_effort
+                    estimate = len(json.dumps(probe, ensure_ascii=False).encode('utf-8'))
+                    if estimate + out_tokens + DEEPSEEK_CONTEXT_MARGIN > cfg.deepseek_api_context_window:
+                        return False  # the summary request itself will not fit; fail cleanly
+                    data = await request(probe, estimate, out_tokens)
+                    choices = data.get('choices')
+                    if not (isinstance(choices, list) and len(choices) == 1
+                            and isinstance(choices[0], dict)):
+                        return False
+                    note = choices[0].get('message')
+                    note = note.get('content') if isinstance(note, dict) else None
+                    if not isinstance(note, str) or not note.strip():
+                        return False
+                    messages[:] = [messages[0], dict(role='user', content=(
+                        prompt + '\n\n[Auto-compacted progress notes]\n'
+                        + note.replace(key, '<redacted>')))]
+                    log('compacted', summary=raw)
+                    return True
+
+                while True:
+                    payload = dict(model=model, messages=messages, tools=tools, tool_choice='auto',
+                                   max_tokens=cfg.deepseek_api_max_tokens, stream=False,
+                                   thinking={'type': cfg.deepseek_thinking})
+                    if cfg.deepseek_thinking == 'enabled':
+                        payload['reasoning_effort'] = cfg.deepseek_reasoning_effort
+                    # UTF-8 byte count deliberately overestimates tokens, including all history.
+                    estimate = len(json.dumps(payload, ensure_ascii=False).encode('utf-8'))
+                    usable = (cfg.deepseek_api_context_window - cfg.deepseek_api_max_tokens
+                              - DEEPSEEK_CONTEXT_MARGIN)
+                    # Auto-compact before the hard wall, but only when there are whole
+                    # turns to fold (system + task alone cannot be summarised away).
+                    if len(messages) > 2 and estimate > DEEPSEEK_COMPACT_FRACTION * usable:
+                        if await compact():
+                            continue
+                    if estimate + cfg.deepseek_api_max_tokens + DEEPSEEK_CONTEXT_MARGIN > cfg.deepseek_api_context_window:
+                        raise _Failure('context_limit')
+                    data = await request(payload, estimate, cfg.deepseek_api_max_tokens)
                     returned = data.get('model')
                     if isinstance(returned, str) and returned in sanitize_metadata({'api_returned_model':returned}).values():
                         md['api_returned_model'] = returned

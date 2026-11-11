@@ -118,5 +118,6 @@ Keep run artifacts, context packs, and drafts private unless approved for disclo
 
 For `deepseek-api`, read [the backend contract](docs/deepseek.md). Discovery is free;
 smoke and dry-run invoke a cloud model and require approval plus finite caps.
-No automatic web tools, context compaction, credential recovery or provider switch.
+No automatic web tools, credential recovery or provider switch. History is
+auto-compacted near the context window (summarise-and-continue), like Codex/Claude.
 Resume reconciles accounting before a new attempt and requires a runtime key.

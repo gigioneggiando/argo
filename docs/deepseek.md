@@ -61,7 +61,9 @@ are outside this version. Cancellation interrupts HTTP and prevents further tool
 401 is `auth_failed`; 402 is `credits_exhausted` and only an already configured
 alternative provider may be used. 400/422 are terminal `invalid_request`, with
 no identical retry. 429 and 500/503 have at most three additional HTTP attempts;
-valid Retry-After values must fit the remaining deadline. Error bodies and
+valid Retry-After values must fit the remaining deadline. Each 500/503 attempt
+retains its own unknown-cost reserve, and a retry must reserve its cost as well;
+a later success does not erase uncertainty from earlier server errors. Error bodies and
 private reasoning never enter diagnostics, activity, journals or result envelopes.
 Length/refusal/empty/malformed responses are errors, never successful artifacts.
 

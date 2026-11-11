@@ -34,6 +34,9 @@ particular while the version stays `0.y.z`.
 
 ### Changed
 
+- DeepSeek 500/503 retries retain a separate unknown-cost reserve for every
+  ambiguous server response; another HTTP attempt must fit the remaining budget.
+
 - The documented DeepSeek fixture example now explicitly sets a 1000000 local
   context cap, matching clean manual pipeline validation. The default remains
   262144; its conservative estimate can stop a session earlier. Four Flash/Pro

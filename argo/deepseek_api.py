@@ -249,7 +249,16 @@ class DeepSeekApiRunner(AgentRunner):
                                 402:'credits_exhausted', 422:'invalid_request',
                                 429:'rate_limited', 500:'unknown_retryable',
                                 503:'unknown_retryable'}.get(status, 'invalid_request')
-                        log('rejected', status=status)
+                        if status in (500, 503):
+                            # The server may have processed the request before
+                            # returning an error. Keep this attempt's reserve
+                            # before considering another HTTP request.
+                            md['unknown_request_count'] += 1
+                            md['unknown_reserved_usd'] += reserve
+                            md['usage_complete'] = md['accounting_complete'] = False
+                            log('unknown', status=status, reserve_usd=reserve, summary=raw)
+                        else:
+                            log('rejected', status=status)
                         if status not in (429, 500, 503) or retry == 3:
                             raise _Failure(kind)
                         delay = 2. ** retry

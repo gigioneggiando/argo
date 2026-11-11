@@ -210,6 +210,96 @@ def test_orphan_intent_is_reserved(tmp_path):
         assert ledger.run_cost('synthetic') == 0
 
 
+@pytest.mark.parametrize('status', [500, 503])
+def test_ambiguous_server_retry_reserves_each_attempt_before_retry(tmp_path, status):
+    requests = []
+    def handler(req):
+        requests.append(req)
+        return httpx.Response(status, text='temporary server error')
+
+    runner, ledger = setup_runner(tmp_path, handler, session_max_cost_usd=.05)
+    with pytest.raises(RunnerError) as exc:
+        invoke(runner, tmp_path)
+
+    # The first ambiguous attempt consumes an operational reserve, so this cap
+    # cannot also cover a second request. The provider must not be retried.
+    assert exc.value.failure_kind == 'budget_reached'
+    assert len(requests) == 1
+    accounting = ledger.accounting_summary('synthetic')
+    assert accounting['unknown_reserved_usd'] > 0
+    assert accounting['incomplete_calls'] == 1
+    events = [json.loads(line) for path in (tmp_path / 'run' / '.argo_sessions').glob('*.jsonl')
+              for line in path.read_text(encoding='utf-8').splitlines()]
+    ambiguous = [event for event in events if event['event'] == 'unknown']
+    assert len(ambiguous) == 1
+    assert ambiguous[0]['status'] == status
+    assert ambiguous[0]['reserve_usd'] > 0
+    assert 'body' not in ambiguous[0] and 'response' not in ambiguous[0]
+    ledger.close()
+
+
+def test_ambiguous_server_retry_keeps_reserve_after_later_success(tmp_path):
+    statuses = []
+    def handler(req):
+        if len(statuses) < 2:
+            status = (500, 503)[len(statuses)]
+            statuses.append(status)
+            return httpx.Response(status, text='temporary server error')
+        return httpx.Response(200, json=response())
+
+    runner, ledger = setup_runner(tmp_path, handler)
+    result = invoke(runner, tmp_path)
+
+    assert statuses == [500, 503]
+    assert result.metadata['request_count'] == 3
+    assert result.metadata['unknown_request_count'] == 2
+    assert result.metadata['unknown_reserved_usd'] > 0
+    assert result.metadata['usage_complete'] is False
+    assert result.metadata['accounting_complete'] is False
+    assert ledger.accounting_summary('synthetic')['unknown_reserved_usd'] == pytest.approx(
+        result.metadata['unknown_reserved_usd'])
+    events = [json.loads(line) for path in (tmp_path / 'run' / '.argo_sessions').glob('*.jsonl')
+              for line in path.read_text(encoding='utf-8').splitlines()]
+    ambiguous = [event for event in events if event['event'] == 'unknown']
+    assert [event['status'] for event in ambiguous] == statuses
+    assert sum(event['reserve_usd'] for event in ambiguous) == pytest.approx(
+        result.metadata['unknown_reserved_usd'])
+    ledger.close()
+
+
+def test_orphan_server_error_journal_preserves_reserve_idempotently(tmp_path):
+    from argo.deepseek_api import reconcile_journals
+
+    directory = tmp_path / '.argo_sessions'
+    directory.mkdir()
+    aid = '0123456789abcdef'
+    reserve = .05
+    summary = {'cost_usd': 0., 'input_tokens': 0, 'output_tokens': 0,
+               'tool_calls': 0, 'served_models': [], 'failure_kind': 'unknown_retryable',
+               'metadata': {'accounting_version': 1, 'accounting_id': aid,
+                   'request_count': 1, 'unknown_request_count': 1,
+                   'unknown_reserved_usd': reserve, 'usage_complete': False,
+                   'accounting_complete': False}}
+    records = [
+        {'event': 'intent', 'accounting_id': aid, 'run_id': 'synthetic',
+         'stage': 'audit', 'model': 'deepseek-flash', 'request_index': 1,
+         'reserve_usd': reserve, 'pid': -1},
+        {'event': 'unknown', 'accounting_id': aid, 'run_id': 'synthetic',
+         'stage': 'audit', 'model': 'deepseek-flash', 'request_index': 1,
+         'reserve_usd': reserve, 'status': 503, 'summary': summary, 'pid': -1},
+    ]
+    path = directory / f'deepseek-{aid}.jsonl'
+    path.write_text(''.join(json.dumps(row) + '\n' for row in records), encoding='utf-8')
+
+    with Ledger(tmp_path / 'after-crash.sqlite') as ledger:
+        reconcile_journals(tmp_path, ledger, 'synthetic')
+        assert ledger.run_cost('synthetic') == 0
+        assert ledger.run_budget_spent('synthetic') == pytest.approx(reserve)
+        assert ledger.accounting_summary('synthetic')['unknown_reserved_usd'] == pytest.approx(reserve)
+        reconcile_journals(tmp_path, ledger, 'synthetic')
+        assert len(ledger.run_calls('synthetic')) == 1
+
+
 def test_factory_run_reads_repo_and_writes_schema_valid_artifact(tmp_path):
     from argo.runner import build_runner
     from argo.schemas import validate_findings
@@ -332,6 +422,24 @@ def test_context_limit_preserves_history_and_stops_before_send(tmp_path):
         runner.run(prompt='x'*5000,run_dir=tmp_path/'run',work_dir=tmp_path/'run/scratch',
                    model='deepseek-flash',stage='audit',run_id='synthetic')
     assert exc.value.failure_kind=='context_limit' and not requests
+    ledger.close()
+
+
+def test_context_limit_includes_received_tool_call_before_effect(tmp_path):
+    # The assistant response is appended to the shared messages list before the
+    # pre-tool size check; its arguments must count before dispatch can write.
+    destination = tmp_path / 'run' / 'scratch' / 'oversized.txt'
+    oversized = 'x' * 270_000
+    data = response(calls=[call(name='write_file', args=json.dumps({
+        'path': 'oversized.txt', 'content': oversized}))], finish='tool_calls')
+    runner, ledger = setup_runner(tmp_path, lambda req: httpx.Response(200, json=data))
+
+    with pytest.raises(RunnerError) as exc:
+        invoke(runner, tmp_path)
+
+    assert exc.value.failure_kind == 'context_limit'
+    assert not destination.exists()
+    assert ledger.run_cost('synthetic') > 0
     ledger.close()
 
 

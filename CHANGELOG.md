@@ -9,6 +9,8 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-11
+
 ### Added
 
 - `--codex-model-chain <id,id,...>`: a Codex model de-escalation chain, strongest first. It expands
@@ -17,6 +19,14 @@ particular while the version stays `0.y.z`.
   non-terminal `moderation_flagged` or usage limit on a strong model advances the chain to a weaker
   tier automatically. Supersedes `--codex-model` for codex; `--smoke` ignores it. See
   [docs/backends.md](docs/backends.md).
+- DeepSeek cloud API backend with explicit thinking and output caps, validated native
+  tool batches, total HTTP deadlines, conservative cache pricing, unknown-usage
+  reservations and accounting-only orphan recovery. CLI/HTTP/UI expose provider
+  controls without a key CLI argument; runtime keys are input-only and redacted.
+  Local Codex OSS retains separate, unpriced semantics. Live provider validation
+  remains a separately authorized gate; offline fixtures are not live evidence.
+- A v0.16.0 architecture overview is linked from README and the architecture docs;
+  downloadable PNG, SVG, PDF and editable PowerPoint versions are included.
 
 ### Fixed
 
@@ -25,12 +35,9 @@ particular while the version stays `0.y.z`.
   `model_for("corroborate_docs")` raised `KeyError` (e.g. when corroborate fell back onto Claude),
   killing the run after validate. The offline pass now uses the same model tier as the online
   corroborate pass on every backend.
-- DeepSeek cloud API backend with explicit thinking and output caps, validated native
-  tool batches, total HTTP deadlines, conservative cache pricing, unknown-usage
-  reservations and accounting-only orphan recovery. CLI/HTTP/UI expose provider
-  controls without a key CLI argument; runtime keys are input-only and redacted.
-  Local Codex OSS retains separate, unpriced semantics. Live provider validation
-  remains a separately authorized gate; offline fixtures are not live evidence.
+- DeepSeek auto-compaction accepts only a complete assistant summary (`finish_reason=stop`) with
+  nonempty text and no tool calls. Truncated or malformed summaries are rejected without replacing
+  the prior history or orphaning tool-call/result pairs.
 
 ### Changed
 

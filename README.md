@@ -86,7 +86,7 @@ symbolic executor.
 
 ![Argo architecture overview for v0.16.0](docs/diagrams/argo-architecture-v0.16.0.png)
 
-*Prepared for v0.16.0 | [SVG](docs/diagrams/argo-architecture-v0.16.0.svg) |
+*v0.16.0 architecture | [SVG](docs/diagrams/argo-architecture-v0.16.0.svg) |
 [PDF](docs/diagrams/argo-architecture-v0.16.0.pdf) | [editable PowerPoint](docs/diagrams/argo-architecture-v0.16.0.pptx) |
 [detailed stage flow](docs/diagrams/pipeline_flow.svg)*
 

@@ -19,7 +19,7 @@ normalization/guardrail stages. The security
 logic lives in the prompts (`argo/prompts/`); this code ingests a program, sequences the
 stages, and produces a reviewable report. It never writes audit logic itself.
 
-## Architecture overview (planned v0.16.0)
+## Architecture overview (v0.16.0)
 
 ![Argo architecture overview for v0.16.0](diagrams/argo-architecture-v0.16.0.png)
 

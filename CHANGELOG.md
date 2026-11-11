@@ -9,6 +9,14 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+### Fixed
+
+- `corroborate` no longer crashes the pipeline when its offline `corroborate_docs` pass runs on the
+  Claude (headless) or Gemini backend. Those default stage-model maps omitted `corroborate_docs`, so
+  `model_for("corroborate_docs")` raised `KeyError` (e.g. when corroborate fell back onto Claude),
+  killing the run after validate. The offline pass now uses the same model tier as the online
+  corroborate pass on every backend.
+
 ## [0.15.1] - 2026-11-09
 
 ### Fixed

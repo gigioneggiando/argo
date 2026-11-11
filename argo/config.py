@@ -90,6 +90,7 @@ DEFAULT_CODEX_STAGE_MODELS: dict[str, str] = {
     "runtime": CODEX_BALANCED,
     "live": CODEX_BALANCED,
     "corroborate": CODEX_BALANCED,
+    "corroborate_docs": CODEX_BALANCED,  # offline docs/VCS pass of corroborate (no network tools)
     "verify": CODEX_TOP,
     "asan_poc": CODEX_TOP,
 }
@@ -114,6 +115,7 @@ DEFAULT_STAGE_MODELS: dict[str, str] = {
     "runtime": SONNET,  # R2: propose loopback probe plans + interpret results (offline, validated)
     "live": SONNET,     # L2: propose in-scope live probe plans + interpret results (offline, validated)
     "corroborate": SONNET,  # post-validation cross-check vs project docs + repo VCS history (networked)
+    "corroborate_docs": SONNET,  # the offline half of corroborate (repo docs/VCS only, no network)
     "verify": OPUS,     # deep re-derivation: unbounded, full repo access, cross-finding aware (opt-in)
     "asan_poc": OPUS,   # single-shot, precision-critical harness authoring (opt-in, C/C++ only)
 }
@@ -134,6 +136,7 @@ DEFAULT_GEMINI_STAGE_MODELS: dict[str, str] = {
     "runtime": GEMINI_FLASH,
     "live": GEMINI_FLASH,
     "corroborate": GEMINI_FLASH,
+    "corroborate_docs": GEMINI_FLASH,  # offline docs/VCS pass of corroborate (no network tools)
     "verify": GEMINI_ARGON,
     "asan_poc": GEMINI_ARGON,
 }

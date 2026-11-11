@@ -19,7 +19,13 @@ normalization/guardrail stages. The security
 logic lives in the prompts (`argo/prompts/`); this code ingests a program, sequences the
 stages, and produces a reviewable report. It never writes audit logic itself.
 
-See [diagrams/pipeline_flow.svg](diagrams/pipeline_flow.svg) for the visual flow.
+## Architecture overview (planned v0.16.0)
+
+![Argo architecture overview for v0.16.0](diagrams/argo-architecture-v0.16.0.png)
+
+[SVG](diagrams/argo-architecture-v0.16.0.svg) | [PDF](diagrams/argo-architecture-v0.16.0.pdf) |
+[editable PowerPoint](diagrams/argo-architecture-v0.16.0.pptx). This is a high-level map; the
+[detailed pipeline flow](diagrams/pipeline_flow.svg) shows execution ordering and stage outputs.
 
 ## Module map
 

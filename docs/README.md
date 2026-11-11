@@ -36,8 +36,11 @@ free fixture replay from real audits and documents cost, privacy, and recovery b
 
 ## Diagrams
 
-- [diagrams/pipeline_flow.svg](diagrams/pipeline_flow.svg) — the end-to-end 5-stage flow
-- [diagrams/prompt_enrichment.svg](diagrams/prompt_enrichment.svg) — how Stage 2 turns the
+- [Argo architecture overview (PNG)](diagrams/argo-architecture-v0.16.0.png) - planned v0.16.0
+  high-level map; also available as [SVG](diagrams/argo-architecture-v0.16.0.svg),
+  [PDF](diagrams/argo-architecture-v0.16.0.pdf), and [editable PowerPoint](diagrams/argo-architecture-v0.16.0.pptx)
+- [diagrams/pipeline_flow.svg](diagrams/pipeline_flow.svg) - the detailed end-to-end stage flow
+- [diagrams/prompt_enrichment.svg](diagrams/prompt_enrichment.svg) - how Stage 2 turns the
   reusable assets + scope + repo recon into custom audit prompts
 
 ## Quick map of the repo

@@ -483,6 +483,50 @@ def test_history_is_auto_compacted_instead_of_failing_at_context_limit(tmp_path)
     ledger.close()
 
 
+@pytest.mark.parametrize('bad_summary', ['truncated', 'wrong_role', 'empty', 'tool_calls'])
+def test_incomplete_compaction_summary_preserves_full_history(tmp_path, bad_summary):
+    seen = []
+    def handler(req):
+        payload = json.loads(req.content)
+        seen.append(payload)
+        has_tools = 'tools' in payload
+        last = payload['messages'][-1]
+        if has_tools and last['content'] == 'Inspect synthetic repo':
+            return httpx.Response(200, json=response(
+                content='A' * 95_000, calls=[call()], finish='tool_calls'))
+        if not has_tools:
+            summary = response(content='PARTIAL NOTES',
+                               finish='length' if bad_summary == 'truncated' else 'stop')
+            if bad_summary == 'wrong_role':
+                summary['choices'][0]['message']['role'] = 'user'
+            elif bad_summary == 'empty':
+                summary['choices'][0]['message']['content'] = '  '
+            elif bad_summary == 'tool_calls':
+                summary['choices'][0]['message']['tool_calls'] = [call('summary-call')]
+            return httpx.Response(200, json=summary)
+
+        # Rejected summary must leave the old assistant/tool exchange intact.
+        messages = payload['messages']
+        assert len(messages) == 4
+        assert messages[2]['role'] == 'assistant'
+        assert messages[2]['tool_calls'][0]['id'] == 'one'
+        assert messages[2]['content'] == 'A' * 95_000
+        assert messages[3]['role'] == 'tool'
+        assert messages[3]['tool_call_id'] == 'one'
+        return httpx.Response(200, json=response(content='FINAL ANSWER'))
+
+    runner, ledger = setup_runner(tmp_path, handler, deepseek_api_max_tokens=4000,
+                                  deepseek_api_context_window=120_000)
+    result = invoke(runner, tmp_path)
+    assert result.text == 'FINAL ANSWER'
+    assert not result.is_error and result.failure_kind is None
+    assert len(seen) == 3
+    events = [json.loads(line) for path in (tmp_path / 'run' / '.argo_sessions').glob('*.jsonl')
+              for line in path.read_text(encoding='utf-8').splitlines()]
+    assert not any(event['event'] == 'compacted' for event in events)
+    ledger.close()
+
+
 def test_bad_tool_arguments_and_unknown_tool_get_ordered_denials(tmp_path):
     count=0
     def handler(req):

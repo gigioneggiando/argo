@@ -756,4 +756,3 @@ def _raise_terminal(msg, kind):
     def b(kw):
         raise RunnerError(msg, retryable=False, failure_kind=kind)
     return b
-

@@ -304,8 +304,17 @@ class DeepSeekApiRunner(AgentRunner):
                     if not (isinstance(choices, list) and len(choices) == 1
                             and isinstance(choices[0], dict)):
                         return False
-                    note = choices[0].get('message')
-                    note = note.get('content') if isinstance(note, dict) else None
+                    choice = choices[0]
+                    note = choice.get('message')
+                    # A partial or malformed completion must never replace the
+                    # complete volatile history. In particular, `length` may
+                    # contain plausible-looking but incomplete notes.
+                    if (choice.get('index') != 0 or isinstance(choice.get('index'), bool)
+                        or choice.get('finish_reason') != 'stop'
+                        or not isinstance(note, dict) or note.get('role') != 'assistant'
+                        or note.get('tool_calls')):
+                        return False
+                    note = note.get('content')
                     if not isinstance(note, str) or not note.strip():
                         return False
                     messages[:] = [messages[0], dict(role='user', content=(

@@ -55,6 +55,7 @@ def _build_config(
     codex_oss: bool = False,
     codex_local_provider: Optional[str] = None,
     codex_context_window: Optional[int] = None,
+    codex_fs_jail: bool = False,
     fallback: Optional[str] = None,
     claude_accounts: Optional[str] = None,
     codex_accounts: Optional[str] = None,
@@ -97,6 +98,7 @@ def _build_config(
         codex_oss=codex_oss,
         codex_local_provider=codex_local_provider,
         codex_context_window=codex_context_window,
+        codex_fs_jail=codex_fs_jail,
         gemini_api_key=gemini_api_key,
         claude_api_key=claude_api_key,
         codex_api_key=codex_api_key,
@@ -262,6 +264,12 @@ CodexModelChainOpt = typer.Option(None, "--codex-model-chain",
                                   "(crossed with --codex-accounts) before dropping to --fallback. "
                                   "Supersedes --codex-model for codex.")
 CodexOssOpt = typer.Option(False, "--codex-oss", help="(runner=codex) use the open-source provider (--oss)")
+CodexFsJailOpt = typer.Option(
+    False, "--codex-fs-jail",
+    help="(runner=codex) EXPERIMENTAL: wrap the Codex session in an external bubblewrap FS jail "
+         "(repo ro + scratch cwd rw + minimal system + private /tmp only) so a session cannot read or "
+         "write any out-of-task host path. Filesystem only (egress stays Codex's seccomp / the "
+         "deployment's network isolation); refuses to launch if bwrap is missing. Default off.")
 CodexProviderOpt = typer.Option(None, "--codex-local-provider",
                                 help="(runner=codex --codex-oss) ollama | lmstudio")
 CodexContextWindowOpt = typer.Option(
@@ -1269,6 +1277,7 @@ def estimate(
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
     codex_context_window: Optional[int] = CodexContextWindowOpt,
+    codex_fs_jail: bool = CodexFsJailOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
     codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
@@ -1286,6 +1295,7 @@ def estimate(
                         codex_model=codex_model, codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
                         codex_context_window=codex_context_window,
+                        codex_fs_jail=codex_fs_jail,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
                         gemini_accounts=gemini_accounts,
@@ -1434,6 +1444,7 @@ def pipeline(
     codex_model_chain: Optional[str] = CodexModelChainOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt, fallback: Optional[str] = FallbackOpt,
     codex_context_window: Optional[int] = CodexContextWindowOpt,
+    codex_fs_jail: bool = CodexFsJailOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt,
     codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_model: Optional[str] = GeminiModelOpt, gemini_api_key: Optional[str] = GeminiApiKeyOpt,
@@ -1467,6 +1478,7 @@ def pipeline(
                         codex_oss=codex_oss,
                         codex_local_provider=codex_local_provider, fallback=fallback,
                         codex_context_window=codex_context_window,
+                        codex_fs_jail=codex_fs_jail,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
                         gemini_model=gemini_model, gemini_api_key=gemini_api_key,
                         gemini_accounts=gemini_accounts, mistral_api_model=mistral_api_model,

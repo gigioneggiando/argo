@@ -378,6 +378,19 @@ class PipelineConfig:
     # spawned sub-agents run outside the session's event stream, so Argo's turn/loop guards, token
     # accounting and transcripts cannot see them.
     codex_disable_features: tuple[str, ...] = ("multi_agent",)
+    # EXPERIMENTAL, opt-in, default off. Wrap the Codex session in an external bubblewrap jail that
+    # exposes ONLY the target repo (read-only), the scratch cwd (writable), a minimal read-only system,
+    # the Codex vendor dir + CODEX_HOME, and a private tmpfs /tmp -- so a session cannot read/write ANY
+    # out-of-task host path (`~/.ssh`, `*.env`, sibling run-dirs, /tmp canaries). It is the robust,
+    # version-independent alternative to Codex's own sandbox (which is bubblewrap-based and does not
+    # function on every host; Panoptes D2 spike). FILESYSTEM ONLY: it does NOT confine the model's
+    # network egress (the jail keeps the net namespace so Codex can reach the model endpoint), so use
+    # it only in a network-isolated deployment; egress confinement stays Codex's seccomp or a separate
+    # control. When on, the inner Codex runs `-s danger-full-access` (its own sandbox off -- the jail
+    # IS the sandbox); the runner REFUSES to launch if the bwrap binary is missing (never falls back to
+    # danger-full-access unconfined).
+    codex_fs_jail: bool = False
+    codex_fs_jail_bwrap: str = "bwrap"   # bwrap binary (overridable, e.g. a path to the real bwrap)
     # Real context window of a local model (tokens). Codex has no metadata for local models and so
     # never auto-compacts; set this to the server's window (e.g. Ollama OLLAMA_CONTEXT_LENGTH) so
     # Codex compacts at 80% instead of the server discarding half the conversation.

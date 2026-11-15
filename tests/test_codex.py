@@ -17,8 +17,8 @@ from argo.config import PipelineConfig, estimate_cost_usd
 from argo.guardrails import session_policy
 from argo.ledger import Ledger
 from argo.runner import (CodexRunner, RunnerError, _CODEX_NETWORK_CFG, _CODEX_FS_CONFINE,
-                         _scan_codex_tokens, _codex_home_for_api_key, _ensure_codex_api_key_home,
-                         build_runner)
+                         _codex_fs_jail_argv, _scan_codex_tokens, _codex_home_for_api_key,
+                         _ensure_codex_api_key_home, build_runner)
 
 
 def _runner(tmp_path, **cfg):
@@ -53,6 +53,42 @@ def test_writes_confined_to_cwd_every_stage(tmp_path):
         for fs_cfg in _CODEX_FS_CONFINE:
             assert fs_cfg in cmd, (stage, fs_cfg)
         assert "danger-full-access" not in cmd
+    r.ledger.close()
+
+
+def test_fs_jail_argv_confines_to_workspace():
+    # The external bwrap jail exposes ONLY repo(ro) + cwd(rw) + minimal system + codex vendor + home +
+    # a private tmpfs /tmp. Nothing else on the host is bound, so /home, /root, the real /tmp, sibling
+    # run-dirs and secrets are invisible. Deterministic argv -> unit-testable without a model.
+    inner = ["codex", "exec", "-s", "danger-full-access", "-"]
+    argv = _codex_fs_jail_argv(inner, repo_dir="/data/repo", work_dir="/scratch/run/work",
+                               codex_home="/home/box/.codex", codex_vendor_dir="/opt/codex-vendor",
+                               bwrap="bwrap")
+    s = " ".join(argv)
+    assert argv[0] == "bwrap"
+    assert "--ro-bind /data/repo /data/repo" in s          # repo read-only
+    assert "--bind /scratch/run/work /scratch/run/work" in s  # scratch cwd writable
+    assert "--ro-bind /opt/codex-vendor /opt/codex-vendor" in s  # codex binaries
+    assert "--bind /home/box/.codex /home/box/.codex" in s  # codex home writable (sqlite/helper)
+    assert "--tmpfs /tmp" in s and "--dev-bind /dev /dev" in s
+    assert "--chdir /scratch/run/work" in s
+    # NOT exposed: no bind of /home or /root themselves (only the explicit codex-home subpath)
+    assert "--ro-bind /home /home" not in s and "--bind /home /home" not in s
+    assert "/root" not in s
+    # the inner codex argv is appended after the `--` terminator
+    assert argv[argv.index("--") + 1:] == inner
+
+
+def test_jailed_build_cmd_uses_danger_full_access(tmp_path):
+    r = _runner(tmp_path)
+    jailed = r._build_codex_cmd(model="m", policy=session_policy("audit"),
+                                last_msg_file=tmp_path / "m", jailed=True)
+    assert jailed[jailed.index("-s") + 1] == "danger-full-access"   # the jail is the sandbox
+    for fs_cfg in _CODEX_FS_CONFINE:
+        assert fs_cfg not in jailed                                  # workspace-write knobs are N/A
+    plain = r._build_codex_cmd(model="m", policy=session_policy("audit"), last_msg_file=tmp_path / "m")
+    assert plain[plain.index("-s") + 1] == "workspace-write"
+    assert all(fs_cfg in plain for fs_cfg in _CODEX_FS_CONFINE)
     r.ledger.close()
 
 

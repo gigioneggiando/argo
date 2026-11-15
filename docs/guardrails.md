@@ -95,6 +95,26 @@ not enough: a seccomp filter is also needed to block unix-domain sockets. Withou
 non-refusing worker that follows an in-repo injection can exfiltrate to an attacker-controlled URL. The
 jail (filesystem) and this egress policy (network) together bound an untrusted-repo audit.
 
+*Reference* egress allowlist — nftables, filtering only the sandbox user (adapt to your deployment;
+Argo ships no firewall helper — the host network policy is the deployment's responsibility):
+
+```nft
+table inet argo_egress {
+  chain out {
+    type filter hook output priority 0; policy accept;
+    meta skuid != SANDBOX_UID accept                         # only the audit account is filtered
+    ct state established,related accept
+    ip daddr MODEL_ENDPOINT_IP tcp dport MODEL_PORT accept   # the model endpoint only
+    meta l4proto { tcp, udp } th dport 53 accept             # DNS (pin to a resolver if possible)
+    reject                                                   # default-deny the rest for that user
+  }
+}
+```
+
+Keep the allowlist minimal; an **inspecting proxy that holds the API credential** (so the agent never
+has it and can reach nothing else) is stronger than an IP allowlist. The `codex_fs_jail` flag confines
+the filesystem; this policy confines the network — apply both for an untrusted-repo audit.
+
 ### 2a. The bounded exception: the OSINT stages `research` + `corroborate`
 
 Exactly **two** stages are allowed any network access, and only the **OSINT subset** — `WebSearch` +

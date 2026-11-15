@@ -1161,6 +1161,33 @@ _CODEX_FS_CONFINE = ("sandbox_workspace_write.exclude_slash_tmp=true",
                      "sandbox_workspace_write.exclude_tmpdir_env_var=true")
 
 
+def _codex_fs_jail_argv(inner, *, repo_dir, work_dir, codex_home, codex_vendor_dir, bwrap="bwrap"):
+    """Prefix ``inner`` (a ``codex exec ...`` argv) with an EXTERNAL bubblewrap jail exposing ONLY a
+    minimal read-only system, the target repo (read-only), the scratch cwd (writable), the Codex
+    vendor dir + ``CODEX_HOME``, and a **private tmpfs /tmp**. Everything else on the host -- ``/home``,
+    ``/root``, the real ``/tmp``, sibling run-dirs, secrets -- is invisible, so the session can neither
+    read nor write any out-of-task path. Uses ``--dev-bind /dev /dev`` (binds the host /dev) to avoid
+    the devpts mount that is denied in restricted containers. **Filesystem only:** the network namespace
+    is kept so Codex can reach the model endpoint; egress confinement is not provided here. Deterministic
+    argv so it is unit-testable without a model (``tests/test_codex.py``)."""
+    # No --unshare-pid/ipc/uts/--new-session: those force a fresh /proc mount that restricted
+    # containers deny ("bwrap: Can't mount proc: Permission denied" — verified on a UCloud job).
+    # They are not needed for filesystem confinement, which comes from the mount namespace bwrap
+    # always creates plus the explicit binds below. --dev-bind /dev (not --dev) likewise avoids the
+    # devpts mount that such containers reject.
+    argv = [bwrap, "--die-with-parent", "--dev-bind", "/dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]
+    for ro in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):      # minimal read-only system
+        if os.path.exists(ro):
+            argv += ["--ro-bind", ro, ro]
+    for ro in filter(None, (str(repo_dir) if repo_dir else None, codex_vendor_dir)):
+        argv += ["--ro-bind", ro, ro]                                  # repo + codex binaries: read-only
+    argv += ["--bind", str(work_dir), str(work_dir)]                   # scratch cwd: writable
+    if codex_home:
+        argv += ["--bind", str(codex_home), str(codex_home)]           # codex home (sqlite/helper): writable
+    argv += ["--chdir", str(work_dir), "--"]
+    return argv + list(inner)
+
+
 def _scan_codex_tokens(stdout_jsonl: str) -> tuple[int, int]:
     """Best-effort token counts from Codex `--json` JSONL events (Codex reports tokens, not USD).
     Defensive: tolerates schema variation, returns the max seen (token events often carry running
@@ -1514,9 +1541,12 @@ class CodexRunner(AgentRunner):
     def _effective_model_label(self) -> str:
         return repr(self.config.codex_model) if self.config.codex_model else "(CLI default)"
 
-    def _build_codex_cmd(self, *, model, policy, last_msg_file: Path) -> list[str]:
+    def _build_codex_cmd(self, *, model, policy, last_msg_file: Path, jailed: bool = False) -> list[str]:
+        # jailed: the session runs inside an external bubblewrap FS jail (codex_fs_jail), which IS the
+        # sandbox, so Codex's own sandbox is turned off (`danger-full-access`). This is ONLY ever
+        # reached together with the jail wrap in _invoke (which refuses to launch without bwrap).
         cmd = [self._bin(), "exec",            # `exec` is non-interactive (never prompts for approval)
-               "-s", "workspace-write",        # write only the scratch cwd; network off by default
+               "-s", ("danger-full-access" if jailed else "workspace-write"),  # jail confines; else codex does
                "--skip-git-repo-check",        # the scratch cwd is not a git repo
                "--ephemeral",                  # do not persist session files
                "--json",                       # JSONL events on stdout (token usage)
@@ -1541,9 +1571,11 @@ class CodexRunner(AgentRunner):
             cmd += ["-c", f"model_context_window={int(window)}",
                     "-c", f"model_auto_compact_token_limit={int(window * 0.8)}"]
         # Confine writes to the scratch cwd: drop /tmp and $TMPDIR from the sandbox's writable roots.
-        # Every stage, independent of the network policy (see _CODEX_FS_CONFINE).
-        for fs_cfg in _CODEX_FS_CONFINE:
-            cmd += ["-c", fs_cfg]
+        # Every stage, independent of the network policy (see _CODEX_FS_CONFINE). Skipped when jailed:
+        # danger-full-access has no workspace-write roots to trim (the external jail confines instead).
+        if not jailed:
+            for fs_cfg in _CODEX_FS_CONFINE:
+                cmd += ["-c", fs_cfg]
         if policy is not None and policy.network:   # ONLY the research stage gets network egress
             cmd += ["-c", _CODEX_NETWORK_CFG]
         else:
@@ -1557,7 +1589,8 @@ class CodexRunner(AgentRunner):
     def _invoke(self, *, prompt, work_dir, model, repo_dir, allowed, disallowed, policy=None,
                 stage, run_id, label, session_budget_usd=None, timeout_s=None) -> dict:
         last_msg = Path(work_dir) / ".codex_last_message.txt"
-        cmd = self._build_codex_cmd(model=model, policy=policy, last_msg_file=last_msg)
+        jailed = bool(self.config.codex_fs_jail)
+        cmd = self._build_codex_cmd(model=model, policy=policy, last_msg_file=last_msg, jailed=jailed)
         timeout = timeout_s or self.config.session_timeout_s
         # Multi-account: point this invocation at a specific Codex config home (CODEX_HOME) so an
         # account-fallback can switch Codex accounts (limits are per-account). See build_runner.
@@ -1567,6 +1600,18 @@ class CodexRunner(AgentRunner):
         home_value = self._codex_home_env_value()
         if home_value:
             env = {**os.environ, "CODEX_HOME": home_value}
+        if jailed:
+            # The inner Codex runs danger-full-access; the external bwrap jail is what confines it.
+            # REFUSE to launch without bwrap -- never run danger-full-access unconfined.
+            bwrap = shutil.which(self.config.codex_fs_jail_bwrap)
+            if not bwrap:
+                raise RunnerError(
+                    f"codex_fs_jail is on but bubblewrap ({self.config.codex_fs_jail_bwrap!r}) is not "
+                    f"on PATH; refusing to launch Codex with danger-full-access unconfined",
+                    failure_kind="config")
+            cmd = _codex_fs_jail_argv(cmd, repo_dir=repo_dir, work_dir=work_dir, codex_home=home_value,
+                                      codex_vendor_dir=os.path.dirname(os.path.dirname(self._bin())),
+                                      bwrap=bwrap)
         events_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", label or stage)
         guard = _CodexSessionGuard(
             max_turns=self.config.session_max_turns,

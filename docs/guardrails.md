@@ -66,11 +66,18 @@ read an out-of-task file where an aligned worker refused — Panoptes D2 contain
 is the environment, not the process:** run untrusted-repo audits where the visible filesystem holds **no
 secrets** — an ephemeral container/VM per audit, a dedicated low-privilege user, no host `/home`,
 credential stores, or sibling run-dirs mounted. Argo already does this for the opt-in `runtime` stage
-(an egress-blocked throwaway container, §2b); extending that isolation to the **audit** stage — or
-restricting reads at the sandbox layer — is a tracked follow-up that must be validated against the
-actual Codex version (the `--ro-bind / /` behaviour and nested-namespace options are version/kernel
-dependent). Until then, the operating rule: **do not audit untrusted code in an environment where the
-sandbox user can read anything you would not paste into the model.**
+(an egress-blocked throwaway container, §2b). An **experimental, opt-in enforcement** of this at the
+audit stage exists: `config.codex_fs_jail` wraps the Codex session in an external **bubblewrap FS jail**
+(`runner._codex_fs_jail_argv`) exposing only the repo (ro), scratch cwd (rw), a minimal read-only
+system, the Codex vendor dir + `CODEX_HOME`, and a private tmpfs `/tmp` — so a session can read/write
+**nothing** outside the task (`~/.ssh`, `*.env`, sibling run-dirs, /tmp canaries are invisible). It is
+**filesystem only** — the net namespace is kept so Codex reaches the model endpoint, so egress stays
+Codex's seccomp or the deployment's network isolation — and it runs the inner Codex with
+`danger-full-access` (the jail is the sandbox), refusing to launch if `bwrap` is absent (never
+unconfined). Default **off**; needs end-to-end validation against the target Codex version before
+production (the Codex sandbox itself is bubblewrap-based and does not function on every host — Panoptes
+D2 spike). Until it graduates, the operating rule: **do not audit untrusted code in an environment where
+the sandbox user can read anything you would not paste into the model.**
 
 ### 2a. The bounded exception: the OSINT stages `research` + `corroborate`
 

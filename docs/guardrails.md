@@ -55,6 +55,23 @@ which was found to have a hard, unreliable Docker/Podman dependency during empir
 The Codex mapping is re-validated in `tests/test_codex.py`, the Gemini mapping in
 `tests/test_gemini.py` — see [backends.md](backends.md#the-guardrails-are-backend-neutral-enforced-per-backend).
 
+**Filesystem READS are broad — isolate the environment.** The sandbox confines *writes* (to the scratch
+cwd, above) and *egress* (§2), but by design it lets a session **read the whole filesystem it can see**:
+the Codex Linux sandbox runs each command under `bwrap --ro-bind / /`, mounting the entire host root
+**read-only** into the sandbox (only writes are restricted; this is Codex's documented model). So a
+prompt injection in an **untrusted target repo** can make the worker `cat` any file the sandbox *user*
+can read — `~/.ssh`, `*.env`, another audit's run directory. This is a demonstrated risk for
+open/uncensored workers with no refusal reflex (an abliterated worker followed an in-repo injection and
+read an out-of-task file where an aligned worker refused — Panoptes D2 containment study). **The control
+is the environment, not the process:** run untrusted-repo audits where the visible filesystem holds **no
+secrets** — an ephemeral container/VM per audit, a dedicated low-privilege user, no host `/home`,
+credential stores, or sibling run-dirs mounted. Argo already does this for the opt-in `runtime` stage
+(an egress-blocked throwaway container, §2b); extending that isolation to the **audit** stage — or
+restricting reads at the sandbox layer — is a tracked follow-up that must be validated against the
+actual Codex version (the `--ro-bind / /` behaviour and nested-namespace options are version/kernel
+dependent). Until then, the operating rule: **do not audit untrusted code in an environment where the
+sandbox user can read anything you would not paste into the model.**
+
 ### 2a. The bounded exception: the OSINT stages `research` + `corroborate`
 
 Exactly **two** stages are allowed any network access, and only the **OSINT subset** — `WebSearch` +

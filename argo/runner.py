@@ -1170,8 +1170,12 @@ def _codex_fs_jail_argv(inner, *, repo_dir, work_dir, codex_home, codex_vendor_d
     the devpts mount that is denied in restricted containers. **Filesystem only:** the network namespace
     is kept so Codex can reach the model endpoint; egress confinement is not provided here. Deterministic
     argv so it is unit-testable without a model (``tests/test_codex.py``)."""
-    argv = [bwrap, "--die-with-parent", "--unshare-pid", "--unshare-ipc", "--unshare-uts",
-            "--new-session", "--dev-bind", "/dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]
+    # No --unshare-pid/ipc/uts/--new-session: those force a fresh /proc mount that restricted
+    # containers deny ("bwrap: Can't mount proc: Permission denied" — verified on a UCloud job).
+    # They are not needed for filesystem confinement, which comes from the mount namespace bwrap
+    # always creates plus the explicit binds below. --dev-bind /dev (not --dev) likewise avoids the
+    # devpts mount that such containers reject.
+    argv = [bwrap, "--die-with-parent", "--dev-bind", "/dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]
     for ro in ("/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc"):      # minimal read-only system
         if os.path.exists(ro):
             argv += ["--ro-bind", ro, ro]

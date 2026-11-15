@@ -16,8 +16,9 @@ import argo.runner as runner_mod
 from argo.config import PipelineConfig, estimate_cost_usd
 from argo.guardrails import session_policy
 from argo.ledger import Ledger
-from argo.runner import (CodexRunner, RunnerError, _CODEX_NETWORK_CFG, _scan_codex_tokens,
-                         _codex_home_for_api_key, _ensure_codex_api_key_home, build_runner)
+from argo.runner import (CodexRunner, RunnerError, _CODEX_NETWORK_CFG, _CODEX_FS_CONFINE,
+                         _scan_codex_tokens, _codex_home_for_api_key, _ensure_codex_api_key_home,
+                         build_runner)
 
 
 def _runner(tmp_path, **cfg):
@@ -39,6 +40,19 @@ def test_build_cmd_is_sandboxed_and_offline_for_audit(tmp_path):
     assert not any("dangerously" in t for t in cmd)
     # an audit stage gets NO network
     assert _CODEX_NETWORK_CFG not in cmd
+    r.ledger.close()
+
+
+def test_writes_confined_to_cwd_every_stage(tmp_path):
+    # /tmp and $TMPDIR are excluded from the workspace-write writable roots on EVERY stage, so the
+    # only writable location is the scratch cwd -- an injected instruction in an untrusted repo cannot
+    # drop files outside the task's workspace. Independent of the network policy (research included).
+    r = _runner(tmp_path)
+    for stage in ("ingest", "recon", "audit", "validate", "report", "remediate", "research"):
+        cmd = r._build_codex_cmd(model="m", policy=session_policy(stage), last_msg_file=tmp_path / "m")
+        for fs_cfg in _CODEX_FS_CONFINE:
+            assert fs_cfg in cmd, (stage, fs_cfg)
+        assert "danger-full-access" not in cmd
     r.ledger.close()
 
 

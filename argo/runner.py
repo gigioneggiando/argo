@@ -1149,6 +1149,16 @@ _CODEX_NETWORK_CFG = "sandbox_workspace_write.network_access=true"
 #: Offline stages: also switch off Codex's built-in web_search tool (values: disabled | cached |
 #: indexed | live -- verified against codex-cli 0.166.0, which rejects any other variant).
 _CODEX_WEB_SEARCH_OFF = 'web_search="disabled"'
+#: Filesystem confinement: exclude ``/tmp`` and ``$TMPDIR`` from the workspace-write writable roots so
+#: the ONLY writable location is the scratch cwd. Codex ``workspace-write`` writable roots default to
+#: ``{cwd, /tmp, $TMPDIR}``; the two defaults let an injected instruction in an UNTRUSTED target repo
+#: drop files outside the task's workspace (demonstrated: under prompt injection an uncensored worker
+#: created ``/tmp/<marker>`` files the sandbox otherwise permitted). Applied to EVERY stage -- no audit
+#: stage needs the model to write ``/tmp`` (the model builds any scratch under its cwd). Reads are still
+#: broad in ``workspace-write`` and are confined separately. Isolated as a constant so a Codex key
+#: rename is a one-line fix (keys verified against codex-cli 0.166.0).
+_CODEX_FS_CONFINE = ("sandbox_workspace_write.exclude_slash_tmp=true",
+                     "sandbox_workspace_write.exclude_tmpdir_env_var=true")
 
 
 def _scan_codex_tokens(stdout_jsonl: str) -> tuple[int, int]:
@@ -1530,6 +1540,10 @@ class CodexRunner(AgentRunner):
         if window:
             cmd += ["-c", f"model_context_window={int(window)}",
                     "-c", f"model_auto_compact_token_limit={int(window * 0.8)}"]
+        # Confine writes to the scratch cwd: drop /tmp and $TMPDIR from the sandbox's writable roots.
+        # Every stage, independent of the network policy (see _CODEX_FS_CONFINE).
+        for fs_cfg in _CODEX_FS_CONFINE:
+            cmd += ["-c", fs_cfg]
         if policy is not None and policy.network:   # ONLY the research stage gets network egress
             cmd += ["-c", _CODEX_NETWORK_CFG]
         else:

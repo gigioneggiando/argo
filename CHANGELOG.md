@@ -9,6 +9,34 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-16
+
+Harness-level containment for untrusted-repository audits, motivated by the Panoptes D2 study: with an
+uncensored (abliterated) worker, executed out-of-task filesystem breaches scaled with how thoroughly the
+model's refusal was removed, so the harness — not the model's alignment — must own containment. These
+changes move filesystem confinement into Argo.
+
+### Added
+
+- `--codex-fs-jail` (config `codex_fs_jail`, default off): run the Codex backend inside an external
+  bubblewrap mount namespace that confines the session filesystem to the repository (read-only) and the
+  working directory (read-write) over a private `/tmp`, so a prompt-injected worker cannot read or write
+  out-of-task host paths. Opt-in; `codex_fs_jail_bwrap` selects the `bwrap` binary. Validated end-to-end:
+  an out-of-task read returns "No such file or directory". See [docs/guardrails.md](docs/guardrails.md).
+
+### Security
+
+- Codex `workspace-write` writes are now confined to the scratch working directory: `/tmp` and `$TMPDIR`
+  are excluded from the sandbox's writable roots, closing an out-of-task write path a non-refusing worker
+  could otherwise reach. Codex still writes its own cwd normally, so audits are unaffected.
+
+### Changed
+
+- Guardrails documentation now covers the broad-read exposure of `workspace-write` and the
+  environment-isolation control, and states that network egress is a default-deny control at the
+  deployment layer (Codex's `network_proxy` is bypassed by `danger-full-access`), with a reference
+  per-uid nftables allowlist example.
+
 ## [0.16.0] - 2026-11-11
 
 ### Added

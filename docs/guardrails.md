@@ -43,7 +43,12 @@ With `live` disabled (the default), the absolute "never a live host" rule below 
 **Backend-neutral by design.** The rule is one `SessionPolicy` (`guardrails.session_policy(stage)` —
 *no network except `research`, repo never writable*); each backend enforces it in its own dialect:
 the Claude runner via the tool allow/deny lists above; the **Codex** runner via the OS **sandbox**
-(`-s workspace-write`, network re-enabled only for `research`, never a `danger-*` escape); the
+(`-s workspace-write`, network re-enabled only for `research`, never a `danger-*` escape) — and,
+because `workspace-write` writable roots default to `{cwd, /tmp, $TMPDIR}`, the Codex runner also
+sets `sandbox_workspace_write.exclude_slash_tmp` and `.exclude_tmpdir_env_var` on **every** stage so
+the only writable location is the scratch cwd: an injected instruction in an untrusted target repo
+cannot drop files into the shared `/tmp` (reads remain broad under `workspace-write` and are confined
+separately); the
 **Gemini** runner via its **Policy Engine** (`--policy <toml>`, a named-tool denylist — the same
 dialect as Claude's, structurally distinct from Codex's OS-sandbox approach), not `--sandbox`,
 which was found to have a hard, unreliable Docker/Podman dependency during empirical verification.

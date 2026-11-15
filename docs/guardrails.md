@@ -74,10 +74,26 @@ system, the Codex vendor dir + `CODEX_HOME`, and a private tmpfs `/tmp` — so a
 **filesystem only** — the net namespace is kept so Codex reaches the model endpoint, so egress stays
 Codex's seccomp or the deployment's network isolation — and it runs the inner Codex with
 `danger-full-access` (the jail is the sandbox), refusing to launch if `bwrap` is absent (never
-unconfined). Default **off**; needs end-to-end validation against the target Codex version before
-production (the Codex sandbox itself is bubblewrap-based and does not function on every host — Panoptes
-D2 spike). Until it graduates, the operating rule: **do not audit untrusted code in an environment where
-the sandbox user can read anything you would not paste into the model.**
+unconfined). Default **off**; **validated end-to-end** on codex 0.166.0 (the worker's read of an
+out-of-workspace file returns "No such file or directory" while in-workspace read/write is intact),
+which matters because the Codex sandbox *itself* is bubblewrap-based and does not function on every host
+(Panoptes D2 spike). Until the jail is on by default, the operating rule holds: **do not audit untrusted
+code in an environment where the sandbox user can read anything you would not paste into the model.**
+
+**Network egress — default-deny at the deployment layer.** The FS jail confines the filesystem but keeps
+the network namespace (so Codex reaches the model endpoint); it does **not** confine the model's command
+egress, and Codex's own egress block (seccomp) is off under the jail's `danger-full-access` (and is
+unreliable on some hosts anyway). Codex's `network_proxy` domain allowlist does not help here either — it
+is an admin-managed control that *full sandbox escalation can bypass*. So, per industry best practice
+(default-deny + a minimal allowlist + an inspecting proxy), confine the model's egress at the
+**deployment/network layer**, not in-process: run the audit under a **default-deny egress policy that
+allows only the model endpoint** — a per-sandbox-user `nftables`/cloud egress allowlist, or (stronger)
+route LLM traffic through an **inspecting proxy that holds the API credential** so the agent never has it
+and can reach nothing else. Keep the allowlist minimal — every allowed destination is part of the
+boundary (an allowed package proxy has been used to tunnel out). On Linux, a network namespace alone is
+not enough: a seccomp filter is also needed to block unix-domain sockets. Without egress default-deny, a
+non-refusing worker that follows an in-repo injection can exfiltrate to an attacker-controlled URL. The
+jail (filesystem) and this egress policy (network) together bound an untrusted-repo audit.
 
 ### 2a. The bounded exception: the OSINT stages `research` + `corroborate`
 

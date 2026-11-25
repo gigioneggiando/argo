@@ -23,9 +23,9 @@ models.
 
 Not a benchmark score — pull requests, published advisories, and real CVEs, on real open-source projects.
 
-**27** projects · **97** public records · **66** public PRs · **24** published advisories · **86** resolved records · **5** open · **5** unpatched · **1** other closed · **13** CVEs listed\*
+**28** projects · **106** public records · **66** public PRs · **26** published advisories · **95** resolved records · **5** open · **5** unpatched · **1** other closed · **21** CVEs listed\*
 
-These counts mirror the [public archive](https://gigioneggiando.com/argo), checked 11 November 2026. The archive is a snapshot: 97 entries are public records, not distinct vulnerabilities; related advisories, CVEs and backports can refer to the same issue. Private reports are excluded; follow upstream links for current status.
+These counts mirror the [public archive](https://gigioneggiando.com/argo), checked 25 November 2026. The archive is a snapshot: 106 entries are public records, not distinct vulnerabilities; related advisories, CVEs and backports can refer to the same issue. Private reports are excluded; follow upstream links for current status.
 
 ### Selected public results
 

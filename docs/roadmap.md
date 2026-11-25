@@ -975,22 +975,22 @@ re-validation, and suppress their stale drafts. Targeted re-validation of only t
 findings shipped as `argo revalidate-context`; answer entry in the HTTP API and web UI (Questions tab)
 shipped 2026-11-06. Deferred: measured maintainer-rejection reduction.
 
-### F6 — Public Argo research/editorial site — OWNER INTENT · priority **P2** · effort **M**
+### F6 — Public Argo research/editorial site — SHIPPED
 
-Build an original Argo-designed editorial presence for public technical research, comparable in
-purpose (not design or copied content) to `causalsecurity.com/research`. Reuse the existing GitHub
-Pages public-findings deployment and advisory index where sensible rather than creating a second
-disconnected publication surface. Articles should have stable slugs, author/date/updated metadata,
-descriptions, categories/tags, canonical/OpenGraph/structured-data SEO, RSS/Atom, and explicit links
-to public advisories/CVEs/fixes and reproducible public artifacts.
+The public site now builds research articles from an explicit approval allow-list with stable slugs,
+metadata, canonical links, structured data, and an Atom feed. As of 25 November 2026, 22 approved
+articles are live alongside the findings archive on GitHub Pages and the personal site. Drafts and
+private evidence stay outside the public build. Future articles still require individual editorial
+approval and public-evidence checks.
 
-The publication boundary is non-negotiable: content must be generated only from an explicit public
-allow-list after advisory publication/embargo release. Private Fleece records, draft GHSA material,
-vendor correspondence, unredacted run artifacts, credentials, private target/source data, and
-unpublished evidence must live outside the Pages build inputs and must never be inferred as public
-from a filename or repository presence. Add a deterministic pre-deploy embargo/private-data check,
-fail the build closed on uncertain visibility, and keep editorial approval/manual publish as the
-final gate. No external wiki update is part of F1; wiki work happens only after the feature PR merges.
+The research section shares the existing GitHub Pages findings deployment and uses stable slugs,
+author/date metadata, descriptions, categories, canonical/OpenGraph/structured-data metadata,
+an Atom feed, and links to public advisories, CVEs, and fixes.
+
+Publication still depends on an explicit public allow-list after advisory publication or embargo
+release. The builder checks approval and public evidence before deployment. Private registry records,
+draft advisories, vendor correspondence, and unredacted run artifacts remain outside the public
+build inputs. Editorial approval remains the final publication gate.
 
 ### R1 — Awesome AI Hacking Agents feature reconnaissance — OWNER INTENT · priority **P1** · effort **M**
 

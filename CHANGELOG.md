@@ -9,6 +9,12 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-25
+
+### Documentation
+
+- Refresh the public findings snapshot to 106 records and 21 listed CVEs, and record that the research section is live.
+
 ## [0.17.0] - 2026-11-16
 
 Harness-level containment for untrusted-repository audits, motivated by the Panoptes D2 study: with an

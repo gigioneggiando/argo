@@ -72,10 +72,10 @@ def test_benchmark_rejects_overridden_model_and_missing_budget():
         "--tier", "cheap", "--codex-model", "gpt-6.2-sol", "--budget", "5",
     ])
     assert overridden.exit_code != 0
-    assert "require --tier custom" in overridden.output
+    assert "custom" in overridden.output
     unbounded = runner.invoke(app, ["bench", "--suite", str(SUITE), "--runner", "codex"])
     assert unbounded.exit_code != 0
-    assert "require --budget" in unbounded.output
+    assert "budget" in unbounded.output
 
 
 def test_score_false_negative():

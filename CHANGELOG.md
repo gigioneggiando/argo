@@ -9,6 +9,13 @@ particular while the version stays `0.y.z`.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-26
+
+### Added
+
+- `argo bench` now accepts explicit Codex account and per-stage model routing; `argo bench-cross --tier custom` preserves those selections. Benchmark preflight prints effective models, accounts and published API rates before any model calls, and real benchmarks require an explicit per-run budget.
+- Add current documented model catalog entries for GPT-6.2 Astra/Sol and Claude Fable 5.2. Existing default routing is unchanged.
+
 ## [0.17.1] - 2026-11-25
 
 ### Documentation

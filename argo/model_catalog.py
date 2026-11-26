@@ -54,14 +54,22 @@ class ModelSpec:
 
 
 MODEL_CATALOG: tuple[ModelSpec, ...] = (
-    # Refreshed 2026-11-06 from the providers' model, pricing and deprecation pages, and each
-    # current model probed with a one-line call through its CLI (see docs/backends.md "Model
-    # catalog"). "verified" in a note = answered that probe; access caveats are per account/plan.
+    # Baseline refreshed 2026-11-06 from provider documentation and CLI probes.
+    # New 2026-11-26 entries below use published model/pricing documentation; CLI access
+    # remains account-dependent until an authorized paid probe (see docs/backends.md).
     #
     # OpenAI / Codex.  Docs: developers.openai.com/api/docs/{models,pricing,deprecations},
     # learn.chatgpt.com/docs/models.  With a ChatGPT sign-in, Codex rejects models the plan does
     # not include, and a profile with `daybreak = true` accepts only Daybreak-compatible models
     # (gpt-6-sol, gpt-5.6-sol were; gpt-6-astra / gpt-6.1-* were not).
+    ModelSpec("openai", "gpt-6.2-astra", 8.0, 40.0, supports_reasoning=True,
+              cli_product="codex", cli_available=True, verified_at="2026-11-26",
+              source_url="https://developers.openai.com/api/docs/models/gpt-6.2-astra",
+              notes="Published model and API price; Codex account access varies by plan."),
+    ModelSpec("openai", "gpt-6.2-sol", 2.0, 10.0, supports_reasoning=True,
+              cli_product="codex", cli_available=True, verified_at="2026-11-26",
+              source_url="https://developers.openai.com/api/docs/models/gpt-6.2-sol",
+              notes="Published model and API price; Codex account access varies by plan."),
     ModelSpec("openai", "gpt-6-astra", 10.0, 50.0, supports_reasoning=True,
               cli_product="codex", cli_available=True,
               notes="Flagship. Verified via Codex (needs daybreak off; not on every ChatGPT plan)."),
@@ -155,6 +163,10 @@ MODEL_CATALOG: tuple[ModelSpec, ...] = (
     # Anthropic.  Docs: platform.claude.com/docs/en/about-claude/{models/overview,
     # model-deprecations,pricing}.  Fable/Mythos need usage credits or verified access on a
     # Claude subscription (probe: "requires usage credits" / no access).
+    ModelSpec("anthropic", "claude-fable-5-2", 8.0, 40.0, supports_thinking=True,
+              cli_product="claude", cli_available=True, verified_at="2026-11-26",
+              source_url="https://platform.claude.com/docs/en/models/fable-5-2/overview",
+              notes="Published model and API price; account access varies by plan."),
     ModelSpec("anthropic", "claude-fable-5-1", 10.0, 50.0, supports_thinking=True,
               cli_product="claude", cli_available=True,
               notes="Exists; on a Claude subscription it requires usage credits."),

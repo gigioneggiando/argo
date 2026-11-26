@@ -486,12 +486,12 @@ def compare_backends(base_config, suite_dir, *, backends: list[str], tier: str =
     ``benchmark_crossbackend_report.json``, written below; use that, not ``benchmark_report.json``,
     to read cross-backend results.
     """
-    if tier not in ("top", "cheap"):
-        raise ValueError(f"tier must be 'top' or 'cheap', got {tier!r}")
+    if tier not in ("top", "cheap", "custom"):
+        raise ValueError(f"tier must be 'top', 'cheap', or 'custom', got {tier!r}")
     backend_reports: dict[str, dict] = {}
     for b in backends:
         cfg = base_config.with_overrides(runner=b)
-        cfg = cfg.calibrated() if tier == "top" else _cheap_tier(cfg)
+        cfg = cfg.calibrated() if tier == "top" else _cheap_tier(cfg) if tier == "cheap" else cfg
         backend_reports[b] = run_suite(cfg, suite_dir, fixes=fixes,
                                        parallel_cases=parallel_cases, re_audit=re_audit, repeats=repeats)
     report = _aggregate_cross_backend(backend_reports, suite=Path(suite_dir).name, tier=tier)

@@ -36,6 +36,48 @@ def test_score_perfect():
     assert s["precision"] == 1.0 and s["recall"] == 1.0 and s["f1"] == 1.0
 
 
+def test_custom_codex_benchmark_preserves_account_and_stage_models(monkeypatch, tmp_path):
+    from typer.testing import CliRunner
+    from argo.cli import app
+    import argo.benchmark as benchmark
+
+    captured = {}
+
+    def fake_compare(cfg, suite, **kwargs):
+        captured.update(cfg=cfg, kwargs=kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(benchmark, "compare_backends", fake_compare)
+    result = CliRunner().invoke(app, [
+        "bench-cross", "--suite", str(SUITE), "--backends", "codex", "--tier", "custom",
+        "--codex-accounts", str(tmp_path / "codex-d"), "--stage-model", "audit=gpt-6.2-sol",
+        "--stage-model", "recon=gpt-6-luna", "--budget", "5",
+    ])
+    assert result.exit_code == 0, result.output
+    cfg = captured["cfg"]
+    assert cfg.codex_accounts == [str(tmp_path / "codex-d")]
+    assert cfg.model_for("audit") == "gpt-6.2-sol"
+    assert cfg.model_for("recon") == "gpt-6-luna"
+    assert "recon: gpt-6-luna" in result.output
+    assert "audit: gpt-6.2-sol" in result.output
+
+
+def test_benchmark_rejects_overridden_model_and_missing_budget():
+    from typer.testing import CliRunner
+    from argo.cli import app
+
+    runner = CliRunner()
+    overridden = runner.invoke(app, [
+        "bench-cross", "--suite", str(SUITE), "--backends", "codex",
+        "--tier", "cheap", "--codex-model", "gpt-6.2-sol", "--budget", "5",
+    ])
+    assert overridden.exit_code != 0
+    assert "custom" in overridden.output
+    unbounded = runner.invoke(app, ["bench", "--suite", str(SUITE), "--runner", "codex"])
+    assert unbounded.exit_code != 0
+    assert "budget" in unbounded.output
+
+
 def test_score_false_negative():
     expected = _E + [{"label": "xss", "cwe": "CWE-79", "file": "src/api/util.py"}]
     s = score_run(_F, expected)

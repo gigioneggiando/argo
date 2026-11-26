@@ -1,5 +1,18 @@
 # Benchmarks (Phase 7)
 
+For a controlled Codex comparison, use `bench-cross --tier custom` with an explicit
+account and per-stage models. The CLI prints the effective routing and published API
+prices before it starts; `cheap` and `top` reject model overrides so they cannot
+silently replace your selection. Example (real model calls, budget approval required):
+
+```powershell
+python -m argo.cli bench-cross --suite benchmarks/corpora --backends codex --tier custom --codex-accounts ~/.codex --stage-model recon=gpt-6-luna --stage-model audit=gpt-6.2-sol --budget 5 --repeats 1
+```
+
+`--budget` is a **per-run launch gate**, not a guaranteed billing limit. Codex
+sessions already running can exceed it, and repeated cases each have their own run
+budget. Confirm the displayed routing and scope before a paid run.
+
 A **suite** is a folder of labeled cases. Each case is a directory with:
 
 ```

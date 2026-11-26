@@ -1576,6 +1576,27 @@ def compare_recon_command(
     _emit(result)
 
 
+def _benchmark_preflight(cfg: PipelineConfig, suite: Path, repeats: int) -> None:
+    """Show the effective routing before any benchmark session can launch."""
+    from .model_catalog import get_model_spec
+
+    if cfg.runner != "mock" and cfg.budget_usd is None:
+        raise typer.BadParameter("real benchmarks require --budget (per run)")
+    cases = list(suite.glob("*/case.json"))
+    accounts = ",".join(Path(p).name for p in cfg.codex_accounts) or "CLI default"
+    exposure = (f"; up to ${len(cases) * repeats * cfg.budget_usd:g} across these runs before "
+                "in-flight overshoot" if cfg.budget_usd is not None else "")
+    typer.echo(f"[bench] {len(cases)} case(s) x {repeats}; backend={cfg.runner}; "
+               f"budget=${cfg.budget_usd} per run (soft){exposure}; Codex accounts={accounts}",
+               err=True)
+    for stage in ("research", "recon", "audit", "validate", "corroborate_docs", "corroborate", "report"):
+        model = cfg.model_for(stage)
+        spec = get_model_spec(model)
+        price = (f"${spec.input_per_million:g}/${spec.output_per_million:g} per MTok"
+                 if spec and spec.pricing_known else "price unknown")
+        typer.echo(f"[bench] {stage}: {model} ({price})", err=True)
+
+
 @app.command()
 def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=False,
                                      help="suite dir (each <case>/case.json + expected_findings.json)"),
@@ -1595,12 +1616,18 @@ def bench(suite: Path = typer.Option(..., "--suite", exists=True, file_okay=Fals
           runner: str = RunnerOpt, audit_model: Optional[str] = AuditModelOpt,
           calibration: bool = CalibrationOpt, budget: Optional[float] = BudgetOpt,
           parallel: int = ParallelOpt, runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
+          codex_model: Optional[str] = CodexModelOpt,
+          codex_accounts: Optional[str] = CodexAccountsOpt,
+          stage_models: Optional[list[str]] = StageModelOpt,
           mistral_vibe_auth: str = MistralVibeAuthOpt):
     """Phase 7: run a labeled suite and score findings precision/recall/F1 (by archetype + CWE).
     Use --runner mock for a free harness check; headless measures real model quality."""
     from .benchmark import ab_compare, run_suite
     cfg = _build_config(runner, audit_model, calibration, budget, parallel, runs_dir, scenario,
-                        mistral_vibe_auth=mistral_vibe_auth)
+                        codex_model=codex_model, codex_accounts=codex_accounts,
+                        stage_models=stage_models, mistral_vibe_auth=mistral_vibe_auth)
+    cfg = cfg.with_overrides(runs_dir=cfg.runs_dir.resolve())
+    _benchmark_preflight(cfg, suite, repeats)
     if ab_audit_model:
         _emit(ab_compare(cfg, suite, audit_model_b=ab_audit_model, fixes=fixes,
                          parallel_cases=parallel_cases, re_audit=re_audit))
@@ -1680,9 +1707,7 @@ def bench_cross(
              "(opt-in: mistral-api, mistral-vibe -- offline suites only)"),
     tier: str = typer.Option(
         "cheap", "--tier",
-        help="cheap (default) = Haiku 5.5 / gpt-6-luna / Flash-Lite per backend, keeps a full sweep "
-             "cheap · top = each backend's own top-tier model (Opus 5.5 / gpt-6-astra / Gemini 4 Argon), "
-             "for real paper numbers -- real, non-trivial spend across all configured backends"),
+        help="cheap, top, or custom (preserve explicit model routing)"),
     fixes: bool = typer.Option(False, "--fixes", help="also score Phase-6 patch quality"),
     parallel_cases: int = typer.Option(
         1, "--parallel-cases", min=1, max=16, metavar="N",
@@ -1694,6 +1719,7 @@ def bench_cross(
     budget: Optional[float] = BudgetOpt, parallel: int = ParallelOpt,
     runs_dir: Path = RunsDirOpt, scenario: str = ScenarioOpt,
     codex_model: Optional[str] = CodexModelOpt, codex_oss: bool = CodexOssOpt,
+    stage_models: Optional[list[str]] = StageModelOpt,
     codex_local_provider: Optional[str] = CodexProviderOpt,
     claude_accounts: Optional[str] = ClaudeAccountsOpt, codex_accounts: Optional[str] = CodexAccountsOpt,
     gemini_api_key: Optional[str] = GeminiApiKeyOpt, gemini_accounts: Optional[str] = GeminiAccountsOpt,
@@ -1705,13 +1731,27 @@ def bench_cross(
     `bench --ab-audit-model` (same backend, two models), this swaps the BACKEND itself."""
     from .benchmark import compare_backends
     names = [n.strip() for n in backends.split(",") if n.strip()]
-    cfg = _build_config("mock", None, False, budget, parallel, runs_dir, scenario,
+    if stage_models and len(names) != 1:
+        raise typer.BadParameter("--stage-model requires exactly one --backends entry")
+    cfg = _build_config(names[0] if stage_models else "mock", None, False,
+                        budget, parallel, runs_dir, scenario,
                         codex_model=codex_model, codex_oss=codex_oss,
+                        stage_models=stage_models,
                         codex_local_provider=codex_local_provider,
                         claude_accounts=claude_accounts, codex_accounts=codex_accounts,
                         gemini_api_key=gemini_api_key, gemini_accounts=gemini_accounts,
                         claude_api_key=claude_api_key, claude_api_keys=claude_api_keys,
                         codex_api_key=codex_api_key, codex_api_keys=codex_api_keys)
+    cfg = cfg.with_overrides(runs_dir=cfg.runs_dir.resolve())
+    if tier not in ("cheap", "top", "custom"):
+        raise typer.BadParameter("--tier must be cheap, top, or custom")
+    if (codex_model or stage_models) and tier != "custom":
+        raise typer.BadParameter("--codex-model and --stage-model require --tier custom; cheap/top override them")
+    from .benchmark import _cheap_tier
+    for name in names:
+        routed = cfg.with_overrides(runner=name)
+        routed = routed.calibrated() if tier == "top" else _cheap_tier(routed) if tier == "cheap" else routed
+        _benchmark_preflight(routed, suite, repeats)
     _emit(compare_backends(cfg, suite, backends=names, tier=tier, fixes=fixes,
                            parallel_cases=parallel_cases, re_audit=re_audit, repeats=repeats))
 

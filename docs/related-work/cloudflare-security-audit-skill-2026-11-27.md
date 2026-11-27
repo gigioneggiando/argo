@@ -1,0 +1,27 @@
+# Cloudflare security-audit-skill: fit for Argo (2026-11-27)
+
+Read-only review of `cloudflare/security-audit-skill` at commit `c1c8a8c1471069fb0e188eeaff69b8e8db6564a8`. The public skill is a set of audit instructions, a finding schema, and two Node validators. Cloudflare's blog describes a later internal fleet-wide harness; that harness is not this repository. The blog's operational metrics are Cloudflare-reported, not a reproducible benchmark of the public skill.
+
+## What is substantive
+
+- A canonical `coverage-ledger.json` unit is keyed by source-derived entry surface, trust boundary, subsystem, attack class, and optionally lifecycle. Each unit tracks assignment, paths reviewed, checks, prior state, candidate fingerprints and unresolved work. The validator checks canonical IDs, state transitions, ownership and artifact path shape. The report must disclose deferred/blocked units and incomplete candidate validation. This is a stronger audit-coverage contract than prose alone.
+- The finding contract separates `confirmed`, `needs_validation`, and `rejected`. A candidate gets an adversarial verifier; a fresh reviewer then checks final source citations. Material replacements get another independent review. The JSON validator checks structure and several semantic invariants, while the authors explicitly say it cannot establish the claim's truth.
+- Prior runs are used to reopen gaps and revalidate changed source. A prior clean unit is carried only with current-source support; a prior rejection suppresses only the exact disproved claim. These rules avoid the unsafe inference that past absence of a finding means current safety.
+- Domain companion files offer concrete checks for AI/MCP tool authority, HTTP protocol/auth, release supply chain, cloud deployment, messaging, resource exhaustion, data lifecycle and local IPC. Selection is tied to a source-visible boundary, not merely a language or dependency name.
+
+## Fit and limits
+
+Argo already has recon, audit focuses, mandatory checklists/variant census, adversarial validation, optional deep verify/second opinion, an F1 evidence contract, source-revision-bound target memory, and resume. The most credible gap is a **machine-checkable coverage ledger** spanning focus assignment, checked boundaries, deferred work, and report caveats. Argo's current `REPORT.md` includes finding proof levels and open obligations, but does not render a per-boundary covered/deferred/blocked summary from audit focus states. Investigate this gap before adding new agent passes.
+
+The public repository does not include a reusable autonomous harness, target runs, or a reproducible skill-on/off benchmark. Its test suite exercises the validators, not vulnerability detection. On this Windows host, `node --test` reported 46 pass, 7 fail, 12 skip: all seven failures were CLI input tests blocked because the validator requires `O_NOFOLLOW` and `O_NONBLOCK`, unavailable to Node here. This is a portability limitation for direct reuse, not evidence that the audit method fails. A structural validator also cannot prove that a cited line, runtime observation, or security boundary is true; human or independent source verification remains necessary. The prescribed per-candidate and final verifiers can be costly; do not make them mandatory in Argo without a measured cost/precision gain.
+
+Cloudflare reports internal fleet figures and says one skill run found roughly half the bugs found across repeated runs. The published skill lacks the underlying run-level dataset and fixed-model ablation, so treat those as motivating observations, not performance estimates transferable to Argo.
+
+## Decision and next experiment
+
+1. Keep the previously identified private `kind: "safe"` benchmark controls as the first measurement gate.
+2. Prototype a **small Argo coverage manifest** from existing recon focuses and durable audit focus states: stable source-derived unit ID, status (`covered`, `candidate`, `blocked`, `deferred`, `out_of_scope`), checked paths, reason for gaps, and exact source commit. Render deferred/blocked caveats in `REPORT.md`. Start with one focused source-audit run and validate that skipped work cannot appear as clean coverage. Avoid importing the full Cloudflare schema or Node scripts.
+3. Compare current versus manifest-assisted runs on a pinned positive-and-safe corpus, with identical model, budget and commit. Measure uncovered units, recall, false positives, review time, and token cost. Adopt only if the result justifies the bookkeeping.
+4. Later, pilot one narrowly selected companion class (for example AI/MCP approval binding or supply-chain release trust) on held-out relevant cases. Do not bulk-copy prompts or claim Cloudflare's internal fleet results for Argo.
+
+Sources: [repository](https://github.com/cloudflare/security-audit-skill/tree/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8), [recon/ledger design](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/RECONNAISSANCE.md), [finding verification](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/VALIDATION-AND-REPORTING.md), [validator](https://github.com/cloudflare/security-audit-skill/blob/c1c8a8c1471069fb0e188eeaff69b8e8db6564a8/skills/security-audit/validate-findings.cjs), [Cloudflare blog](https://blog.cloudflare.com/build-your-own-vulnerability-harness/), [Argo architecture](../architecture.md).

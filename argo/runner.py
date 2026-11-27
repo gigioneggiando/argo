@@ -1357,6 +1357,13 @@ class _CodexSessionGuard:
             self.kind = "turn_cap"
             return f"session exceeded max_turns cap {self.max_turns} (num_turns={self.turns})"
         call = item.get("command") or item.get("tool") or item.get("server") or ""
+        if item.get("type") == "file_change":
+            # Codex reports edits as file_change items without a command. Distinct files
+            # must count as progress, not as repeated empty tool calls.
+            call = tuple(sorted(
+                (str(change.get("path") or ""), str(change.get("kind") or ""))
+                for change in item.get("changes") or [] if isinstance(change, dict)
+            ))
         sig = json.dumps([item.get("type"), call, item.get("exit_code"),
                           str(item.get("aggregated_output") or item.get("status") or "")[:300]])
         self._repeat = self._repeat + 1 if sig == self._last_sig else 1

@@ -59,6 +59,25 @@ def test_guard_detects_identical_repeats_but_not_progress():
     assert reasons[-1] and "repeated the same tool call" in reasons[-1] and g.kind == "tool_loop"
 
 
+def test_guard_treats_distinct_file_changes_as_progress():
+    g = _CodexSessionGuard(max_turns=None)
+    for i in range(_CODEX_LOOP_REPEAT + 2):
+        event = json.dumps({"type": "item.completed", "item": {
+            "type": "file_change", "status": "completed",
+            "changes": [{"path": f"audit_{i}.md", "kind": "add"}]}})
+        assert g(event) is None
+    assert g.kind is None
+
+
+def test_guard_still_detects_repeated_identical_file_change():
+    g = _CodexSessionGuard(max_turns=None)
+    event = json.dumps({"type": "item.completed", "item": {
+        "type": "file_change", "status": "completed",
+        "changes": [{"path": "same.md", "kind": "add"}]}})
+    reasons = [g(event) for _ in range(_CODEX_LOOP_REPEAT)]
+    assert reasons[-1] and g.kind == "tool_loop"
+
+
 def test_guard_detects_failure_streak():
     g = _CodexSessionGuard(max_turns=None)
     reasons = [g(_cmd_event(f"cmd {i}", exit_code=1, output=f"bwrap: denied {i}"))
